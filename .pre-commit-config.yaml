@@ -1,0 +1,15 @@
+repos:
+  - repo: https://github.com/qoomon/git-conventional-commits
+    rev: v2.6.7
+    hooks:
+      - id: conventional-commits
+
+  - repo: local
+    hooks:
+      - id: ruff-py
+        name: ruff-python
+        language: system
+        exclude: "static"
+        types_or: [python, pyi]
+        entry: poetry
+        args: ["run", "ruff", "check"]
