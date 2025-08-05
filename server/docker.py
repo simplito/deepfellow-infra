@@ -199,19 +199,11 @@ def docker(options: DockerOptions) -> Callable[[ApplicationContext, List[str]], 
                     'image': options.image,
                     'ports': [f'{port}:{options.image_port}'],
                     'environment': options.env_vars,
-                    # TODO: move health check to a field
-                    # 'healthcheck': {
-                    #     'test': ['CMD', 'curl', '-f', f'http://localhost:{options.image_port}/health'],
-                    #     'interval': '30s',
-                    #     'timeout': '10s',
-                    #     'retries': 3,
-                    #     'start_period': '40s'
-                    # }
                 }
             }
         }
-        #if options.healthcheck:
-        #    pass
+        if options.healthcheck:
+            docker_compose_content['services'][options.service_name]['healthcheck'] = options.healthcheck
         if options.command:
             docker_compose_content['services'][options.service_name]['command'] = options.command
         if options.volumes:
@@ -293,13 +285,13 @@ def docker(options: DockerOptions) -> Callable[[ApplicationContext, List[str]], 
         docker_compose_cmd = options.docker_compose_cmd
         cmd_parts = docker_compose_cmd.split() + ["-f", str(docker_compose_file_path), "up", "-d"]
         command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
-        await Utils.run_command(command)
+        return await Utils.run_command_for_success(command)
 
     async def _stop_docker_compose(docker_compose_file_path: Path) -> None:
         docker_compose_cmd = options.docker_compose_cmd
         cmd_parts = docker_compose_cmd.split() + ["-f", str(docker_compose_file_path), "down", "--remove-orphans"]
         command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
-        await Utils.run_command(command)
+        await Utils.run_command_for_success(command)
 
     async def handler(ctx: ApplicationContext, args: List[str]) -> Dict[str, Any]:
         service, command = args
@@ -335,28 +327,28 @@ def docker(options: DockerOptions) -> Callable[[ApplicationContext, List[str]], 
             # Handle different scenarios based on running state, health, and differences
             if not is_running and not has_difference:
                 # Not running, no difference -> start
-                await _start_docker_compose(docker_compose_file_path)
+                start_output = await _start_docker_compose(docker_compose_file_path)
             elif not is_running and has_difference:
                 # Not running, has difference -> render then start
                 port = await _render_docker_compose(docker_compose_file_path, options, ctx)
-                await _start_docker_compose(docker_compose_file_path)
+                start_output = await _start_docker_compose(docker_compose_file_path)
             elif is_running and has_difference:
                 # Running but has difference -> stop -> render -> start
-                # Running but unhealthy -> restart
-                print(f"Container {service_name} is unhealthy or there are differences, restarting...")
+                print(f"{service_name} config was changed. Restarting...")
                 await _stop_docker_compose(docker_compose_file_path)
                 port = await _render_docker_compose(docker_compose_file_path, options, ctx)
-                await _start_docker_compose(docker_compose_file_path)
+                start_output = await _start_docker_compose(docker_compose_file_path)
 
             # Check if container is healthy after starting    
             is_healthy = await _is_docker_compose_healthy(docker_compose_file_path, service_name)
             retry_count = 0
             max_retries = 3
             while not is_healthy and retry_count < max_retries:
-                print(f"Container {service} wasn't healthy. Restarting and allocating new port. (Attempt {retry_count + 1}/{max_retries})")
+                
+                print(f"Container {service} wasn't healthy. Restarting and allocating a new port. (Attempt {retry_count + 1}/{max_retries})\n Error: {start_output}")
                 await _stop_docker_compose(docker_compose_file_path)
                 port = await _render_docker_compose(docker_compose_file_path, options, ctx)
-                await _start_docker_compose(docker_compose_file_path)
+                start_output = await _start_docker_compose(docker_compose_file_path)
                 
                 # Wait before checking health again
                 await asyncio.sleep(2)
