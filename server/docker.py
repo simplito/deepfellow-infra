@@ -56,6 +56,7 @@ class ProxyHandler:
         ):
         self.type = "proxy"
         self.url = url
+
 class ImageOptions:
     pass
 
@@ -78,6 +79,7 @@ class DockerOptions:
         ulimits: Mapping = None,
         shm_size: Optional[str] = None,
         entrypoint: Optional[str] = None,
+        healthcheck: Optional[str] = None,
     ):
         self.name = name
         self.image = image
@@ -96,6 +98,7 @@ class DockerOptions:
         self.uliumits = ulimits
         self.shm_size = shm_size
         self.entrypoint = entrypoint
+        self.healthcheck = healthcheck
 
         if shutil.which("docker-compose"):
             self.docker_compose_cmd = "docker-compose" 
@@ -113,7 +116,6 @@ def docker(options: DockerOptions) -> Callable[[ApplicationContext, List[str]], 
         docker_compose_cmd = options.docker_compose_cmd
         if not docker_compose_file_path.exists():
             return False
-        
         try:
             cmd = f"{docker_compose_cmd} -f {docker_compose_file_path} ps --services --filter status=running"
             result = await Utils.run_command(cmd)

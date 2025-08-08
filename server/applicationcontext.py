@@ -51,32 +51,32 @@ class ApplicationContext:
         raise RuntimeError(f"No free port in range {start} - {end}")
     
     def get_docker_compose_dir(self):
-        dir = (Path(__file__).resolve().parent / "../../storage/config")
+        dir = (Path(__file__).resolve().parent / "../storage/config")
         if not dir.is_dir():
-            dir.mkdir()
+            dir.mkdir(parents=True)
 
         return dir
 
     def get_tts_dir(self):
-        dir = (Path(__file__).resolve().parent / "../../storage/tts")
+        dir = (Path(__file__).resolve().parent / "../storage/tts")
         if not dir.is_dir():
-            dir.mkdir()
+            dir.mkdir(parents=True)
 
         return dir
     
     def get_images_dir(self):
-        dir = (Path(__file__).resolve().parent / "../../storage/images")
+        dir = (Path(__file__).resolve().parent / "../storage/images")
         if not dir.is_dir():
-            dir.mkdir()
+            dir.mkdir(parents=True)
             for name in ["extensions", "outputs", "embeddings", "models"]:
-                (dir / name).mkdir()
+                (dir / name).mkdir(parents=True)
 
         return dir
 
     def get_model_dir(self):
-        dir = (Path(__file__).resolve().parent / "../../storage/models")
+        dir = (Path(__file__).resolve().parent / "../storage/models")
         if not dir.is_dir():
-            dir.mkdir()
+            dir.mkdir(parents=True)
 
         return dir
     
