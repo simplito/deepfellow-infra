@@ -37,5 +37,5 @@ just dev
 
 ## Turn on gemma3-1b service
 ```bash
-curl -v -X POST http://localhost:6543/admin -H "Content-Type: application/json" -d '{"args": ["gemma3-1b", "install"]}'
+curl -v -X POST http://localhost:7999/admin -H "Content-Type: application/json" -d '{"args": ["easyocr", "install"]}'
 ```

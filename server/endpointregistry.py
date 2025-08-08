@@ -17,7 +17,6 @@ class ProxyOptions:
             self.rewrite_model_to = rewrite_model_to
             self.remove_model = remove_model
 
-
 class EndpointRegistry:
     def __init__(self):
         self.chat_completion_endpoints: Mapping = {}
