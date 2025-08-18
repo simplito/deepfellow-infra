@@ -39,3 +39,29 @@ just dev
 ```bash
 curl -v -X POST http://localhost:7999/admin -H "Content-Type: application/json" -d '{"args": ["easyocr", "install"]}'
 ```
+
+## Docker image
+
+Build
+```bash
+docker build -t infra .
+```
+
+To run application in docker you need share `docker.sock`. For rootless it is `/run/user/$UID/docker.sock` for normal setup it is `/var/run/docker.sock`. To run docker image with rootless call:
+```
+docker run -it --rm \
+  -p 8086:8086 \
+  -v $PWD/storage:/app/storage \
+  -v /run/user/$UID/docker.sock:/var/run/docker.sock \
+  infra
+```
+
+If you want to increase workers count run like this:
+```
+docker run -it --rm \
+  -p 8086:8086 \
+  -v $PWD/storage:/app/storage \
+  -v /run/user/$UID/docker.sock:/var/run/docker.sock \
+  infra \
+  bash -c "uv run uvicorn server.main:app --host 0.0.0.0 --port 8086 --workers 2"
+```
