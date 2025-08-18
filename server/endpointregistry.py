@@ -35,7 +35,8 @@ class EndpointRegistry:
         self.register_chat_completion(model, SimpleEndpoint(on_request=on_request))
 
     def unregister_chat_completion(self, model: str):
-        del self.chat_completion_endpoints[model]
+        if model in self.chat_completion_endpoints:
+            del self.chat_completion_endpoints[model]
 
     def register_audio_speech(self, model: str, endpoint):
         if model in self.audio_speech_endpoints:
@@ -49,7 +50,8 @@ class EndpointRegistry:
         self.register_audio_speech(model, SimpleEndpoint(on_request=on_request))
 
     def unregister_audio_speech(self, model: str):
-        del self.audio_speech_endpoints[model]
+        if model in self.audio_speech_endpoints:
+            del self.audio_speech_endpoints[model]
 
     def register_image_generations(self, model: str, endpoint):
         if model in self.images_generations_endpoints:
@@ -63,7 +65,8 @@ class EndpointRegistry:
         self.register_image_generations(model, SimpleEndpoint(on_request=on_request))
 
     def unregister_image_generations(self, model: str):
-        del self.images_generations_endpoints[model]
+        if model in self.images_generations_endpoints:
+            del self.images_generations_endpoints[model]
 
     def register_custom_endpoint(self, url: str, endpoint):
         if url in self.custom_endpoints:
@@ -76,7 +79,8 @@ class EndpointRegistry:
         self.register_custom_endpoint(url, SimpleEndpoint(on_request=on_request))
 
     def unregister_custom_endpoint(self, model: str):
-        del self.custom_endpoints[model]
+        if model in self.custom_endpoints:
+            del self.custom_endpoints[model]
 
     def has_chat_completion_model(self, model: str):
         return model in self.chat_completion_endpoints

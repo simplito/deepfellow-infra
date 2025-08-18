@@ -15,7 +15,7 @@ class FileContent(TypedDict):
 
 class ServiceProvider:
     def get_file_path(self) -> str:
-        return (Path(__file__).parent / "../../storage/services.json").resolve()
+        return (Path(__file__).parent / "../storage/services.json").resolve()
 
     def load(self) -> FileContent:
         fpath = self.get_file_path()

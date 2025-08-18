@@ -370,29 +370,17 @@ def docker(options: DockerOptions) -> Callable[[ApplicationContext, List[str]], 
         
 
         elif command == "uninstall":
-            docker_compose_file = Path(ctx.get_docker_compose_dir()) / options.name + ".yaml"
-            current_content = docker_compose_file.read_text()
-            current_config = yaml.safe_load(current_content)
-            current_service = current_config.get('services', {}).get(options.service_name, {})
-            current_ports = current_service.get('ports', [])
-            port = int(current_ports[0].split(':')[0])
-
-            if not docker_compose_file.is_file():
-                raise FileNotFoundError("File not found. Cannot uninstall.")
-            if options.api_endpoint is not None:
-                url = Utils.join_url(f"http://localhost:{port}", options.api_endpoint)
-                ctx.endpoint_registry.unregister_custom_endpoint(options.api_endpoint, ProxyOptions(
-                    url=url,
-                ))
-            elif options.chat_completion is not None:
-                url = f"http://localhost:{port}/v1/chat/completions"
-                ctx.endpoint_registry.unregister_chat_completion(options.chat_completion.model, ProxyOptions(
-                    url=url,
-                    rewrite_model_to=options.chat_completion.rewrite_model_to,
-                    remove_model=options.chat_completion.remove_model  
-                ))    
-            docker_compose_file.unlink()
             await ctx.remove_command_from_bootstrap(bootstrap_args)
+
+            if options.api_endpoint is not None:
+                ctx.endpoint_registry.unregister_custom_endpoint(options.api_endpoint)
+            if options.chat_completion is not None:
+                ctx.endpoint_registry.unregister_chat_completion(options.chat_completion.model)
+            
+            docker_compose_file = Path(ctx.get_docker_compose_dir() / (options.name + ".yaml"))
+            if docker_compose_file.is_file():  
+                docker_compose_file.unlink()
+            
             return {"success": True}
 
         elif command == "status":
