@@ -1,0 +1,15 @@
+Apply
+# Ignore all files and directories by default
+*
+
+# Do not ignore .py files (to include Python source code)
+!*.py
+
+# Include "server" directory
+!server/
+
+# Do not match pyproject.* files
+!pyproject.toml
+
+# Include specific pyproject files
+!uv.lock
