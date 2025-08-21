@@ -63,5 +63,5 @@ docker run -it --rm \
   -v $PWD/storage:/app/storage \
   -v /run/user/$UID/docker.sock:/var/run/docker.sock \
   infra \
-  bash -c "uv run uvicorn server.main:app --host 0.0.0.0 --port 8086 --workers 2"
+  bash -c "/app/.venv/bin/uvicorn server.main:app --host 0.0.0.0 --port 8086 --workers 2"
 ```
