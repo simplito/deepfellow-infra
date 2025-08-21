@@ -9,7 +9,10 @@ RUN uv venv .venv \
 #   && uv sync --frozen \
 #   && uv run ruff check server/ tests/ \
 #   && uv run pytest --showlocals --tb=auto -ra --cov server --cov-branch --cov-report=term-missing tests/ \
+#   && rm -rf .venv \
   && uv sync --frozen --no-dev \
+  && rm -rf .venv/lib/python*/site-packages/*/test \
+  && rm -rf .venv/lib/python*/site-packages/*/tests \
   && rm -rf tests .ruff_cache .pytest_cache
 
 FROM base AS runner
