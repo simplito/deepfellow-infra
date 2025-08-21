@@ -13,3 +13,6 @@ Apply
 
 # Include specific pyproject files
 !uv.lock
+
+# Include license
+LICENSE.md

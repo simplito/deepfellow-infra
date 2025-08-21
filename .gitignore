@@ -11,7 +11,6 @@ config/infra_config.toml
 *.gguf
 *.safetensors
 *.json
-*.lock
 server/new/services/models/*
 *.jinja
 /storage
