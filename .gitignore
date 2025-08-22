@@ -16,5 +16,8 @@ server/new/services/models/*
 /storage
 .gitkeep
 *.png
-*.pt 
+*.pt
 *.mp3
+.coverage
+.pytest_cache
+.ruff_cache

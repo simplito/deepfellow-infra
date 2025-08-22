@@ -8,6 +8,9 @@ Apply
 # Include "server" directory
 !server/
 
+# Include "tests" directory
+!tests/
+
 # Do not match pyproject.* files
 !pyproject.toml
 

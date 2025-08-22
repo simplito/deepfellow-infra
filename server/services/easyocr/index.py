@@ -1,6 +1,5 @@
-from server.ocr import ocr, OcrOptions
+"""EasyOCR service."""
 
-service = ocr(OcrOptions(
-    name="EasyOCR",
-    language="en"
-    ))
+from server.ocr import OcrOptions, ocr
+
+service = ocr(OcrOptions(name="EasyOCR", language="en"))
