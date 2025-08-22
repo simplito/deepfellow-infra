@@ -387,7 +387,9 @@ def docker(options: DockerOptions) -> Callable[[ApplicationContext, list[str]], 
             if options.chat_completion is not None:
                 ctx.endpoint_registry.unregister_chat_completion(options.chat_completion.model)
 
+            docker_compose_cmd = options.docker_compose_cmd
             docker_compose_file = Path(ctx.get_docker_compose_dir() / (options.name + ".yaml"))
+            await Utils.run_command(f"{docker_compose_cmd} -f {docker_compose_file} down")
             if docker_compose_file.is_file():
                 docker_compose_file.unlink()
 
@@ -396,7 +398,7 @@ def docker(options: DockerOptions) -> Callable[[ApplicationContext, list[str]], 
         if command == "status":
             docker_compose_cmd = options.docker_compose_cmd
             docker_compose_file = str(Path(ctx.get_docker_compose_dir() / (options.name + ".yaml")))
-            res = await Utils.run_command(f"{docker_compose_cmd} logs -f {docker_compose_file}")
+            res = await Utils.run_command(f"{docker_compose_cmd} -f {docker_compose_file} logs")
             if res.exit_code == 1 and res.stderr.strip() == f"Error: file '{docker_compose_file}' not found":
                 return {"success": True, "info": "not found"}
             return {"success": True, "info": res.stdout}
