@@ -308,11 +308,10 @@ def docker(options: DockerOptions) -> Callable[[ApplicationContext, list[str]], 
         bootstrap_args = [service, "run"] + (options.additional_bootstrap_args or [])
 
         if command == "install":
-            port = ctx.get_free_port()
             docker_compose_dir = ctx.get_docker_compose_dir()
             docker_compose_file_path = docker_compose_dir / (options.name + ".yaml")
 
-            await _render_docker_compose(docker_compose_file_path, options, ctx)
+            port = await _render_docker_compose(docker_compose_file_path, options, ctx)
             await _start_docker_compose(docker_compose_file_path)
 
             _register_api_endpoint(options, ctx, port)
