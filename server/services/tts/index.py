@@ -1,6 +1,9 @@
-from server.coqui import coqui, CoquiOptions
+"""Coqui service."""
 
-service = coqui(CoquiOptions(
+from server.coqui import CoquiOptions, coqui
+
+service = coqui(
+    CoquiOptions(
         name="tts",
         model_name="tts_models/en/vctk/vits",
         default_speaker="p225",

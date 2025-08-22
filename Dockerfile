@@ -6,10 +6,11 @@ COPY --from=ghcr.io/astral-sh/uv:0.8.12 /uv /uvx /bin/
 WORKDIR /app
 COPY . .
 RUN uv venv .venv \
-#   && uv sync --frozen \
-#   && uv run ruff check server/ tests/ \
-#   && uv run pytest --showlocals --tb=auto -ra --cov server --cov-branch --cov-report=term-missing tests/ \
-#   && rm -rf .venv \
+  && uv sync --frozen \
+  && uv run ruff check server/ tests/ \
+  && uv run ruff format server/ tests/ --check \
+  && uv run pytest --showlocals --tb=auto -ra --cov server --cov-branch --cov-report=term-missing tests/ \
+  && rm -rf .venv \
   && uv sync --frozen --no-dev \
   && rm -rf .venv/lib/python*/site-packages/*/test \
   && rm -rf .venv/lib/python*/site-packages/*/tests \

@@ -1,6 +1,9 @@
-from server.stable_diffusion import stable_diffusion, StableDiffusionOptions
+"""Stable diffusion service."""
 
-service = stable_diffusion(StableDiffusionOptions(
+from server.stable_diffusion import StableDiffusionOptions, stable_diffusion
+
+service = stable_diffusion(
+    StableDiffusionOptions(
         name="automatic1",
         model_name="placeholder",
         env_vars={},

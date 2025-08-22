@@ -1,19 +1,23 @@
+"""Stable Diffusion backend."""
+
 import base64
-from datetime import UTC, datetime
-from enum import Enum
 import io
 import json
 import re
-from PIL import Image
-from typing import Callable, Literal, List, Dict, Mapping, Any
+from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
+from enum import Enum
 from platform import system
+from typing import Any, Literal
+
 from aiohttp import ClientSession
 from attr import dataclass
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
+from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 
 from .applicationcontext import ApplicationContext
-from .docker import docker, DockerOptions, FunctionHandler, ImageGenerationsOptions
+from .docker import DockerOptions, FunctionHandler, ImageGenerationsOptions, docker
 
 
 class ImagesRequest(BaseModel):
@@ -26,7 +30,7 @@ class ImagesRequest(BaseModel):
     output_compression: int = Field(95, ge=0, le=100)
     n: int = Field(1, ge=1, le=10)
     # Not supported yet. Possible to do.
-    background: Literal["auto", "transparent", "opaque"] = "auto" # LayerDiffusion in forge version.
+    background: Literal["auto", "transparent", "opaque"] = "auto"  # LayerDiffusion in forge version.
     style: str = "vivid"
     moderation: str = "auto"
     # Not supported
@@ -63,8 +67,8 @@ class OverrideSettings(BaseModel):
 
 
 class StableDiffusionInputSettings(BaseModel):
-    prompt: str = "" # Consider generate from prompt
-    negative_prompt: str = "" # Consider generate from prompt
+    prompt: str = ""  # Consider generate from prompt
+    negative_prompt: str = ""  # Consider generate from prompt
     sampler_name: str = "DPM++ 2M"
     scheduler: str = "Kerras"
     steps: int = Field(default=20, ge=1, le=50)
@@ -93,7 +97,7 @@ class StableDiffusionOptions:
 class QualityLevel(Enum):
     high = 35
     medium = 20
-    auto = 20
+    auto = 20  # noqa: PIE796
     low = 15
 
 
@@ -102,7 +106,7 @@ def split_text_to_json_and_prompt(text: str) -> tuple[dict, str]:
     # With this regex we get two matches
     # (one match with whole <sd>example text</sd>)
     # and one with what inside sd html element like example text
-    json_candidates = re.findall(r'(<sd>(.*?)</sd>)', text, re.DOTALL)
+    json_candidates = re.findall(r"(<sd>(.*?)</sd>)", text, re.DOTALL)
     if not json_candidates:
         # No json found in text
         return {}, text
@@ -115,10 +119,8 @@ def split_text_to_json_and_prompt(text: str) -> tuple[dict, str]:
     except json.JSONDecodeError:
         # Settings json not correct, return error.
         raise HTTPException(
-            422,
-            "Something went wrong with stable diffusion settings."
-            "Please place correct json in prompt in html <sd></sd> tags."
-        )
+            422, "Something went wrong with stable diffusion settings.Please place correct json in prompt in html <sd></sd> tags."
+        ) from None
 
     # Remove whole sd html element from prompt text
     remaining_text = text.replace(extracted_text, "")
@@ -141,14 +143,13 @@ def get_image_size(size: str) -> tuple[int, int]:
     try:
         width, height = int(sizes[0]), int(sizes[1])
     except ValueError:
-        raise ValueError("Sizes are not ints. Format should be like '517x768'")
+        raise ValueError("Sizes are not ints. Format should be like '517x768'") from None
 
     return width, height
 
 
-def convert_b64png_to_b64jpg(b64_png: str, quality: int=90) -> str:
-    """
-    Converts a Base64 encoded PNG image string to a Base64 encoded JPG image string.
+def convert_b64png_to_b64jpg(b64_png: str, quality: int = 90) -> str:
+    """Convert a Base64 encoded PNG image string to a Base64 encoded JPG image string.
 
     Args:
         b64_png: The Base64 encoded PNG string. Should NOT include the "data:image/png;base64," prefix.
@@ -162,28 +163,26 @@ def convert_b64png_to_b64jpg(b64_png: str, quality: int=90) -> str:
     image_stream = io.BytesIO(png_bytes)
     img = Image.open(image_stream)
 
-    if img.mode == 'RGBA':
-        background = Image.new('RGB', img.size, (255, 255, 255))
+    if img.mode == "RGBA":
+        background = Image.new("RGB", img.size, (255, 255, 255))
         background.paste(img, mask=img.split()[3])
         img = background
-    else: # img.mode == 'RGB'
-        img = img.convert('RGB')
+    else:  # img.mode == 'RGB'
+        img = img.convert("RGB")
 
     output_buffer = io.BytesIO()
     img.save(output_buffer, format="JPEG", quality=quality)
 
     base64_jpg_bytes = base64.b64encode(output_buffer.getvalue())
-    base64_jpg_string = base64_jpg_bytes.decode('utf-8')
 
-    return base64_jpg_string
+    return base64_jpg_bytes.decode("utf-8")
 
 
-def convert_b64png_to_b64webp(b64_png: str, quality: int=90) -> str:
-    """
-    Converts a Base64 encoded PNG image string to a Base64 encoded WebP image string.
+def convert_b64png_to_b64webp(b64_png: str, quality: int = 90) -> str:
+    """Convert a Base64 encoded PNG image string to a Base64 encoded WebP image string.
 
     Args:
-        b64_png_string: The Base64 encoded PNG string. Should NOT include the "data:image/png;base64," prefix.
+        b64_png: The Base64 encoded PNG string. Should NOT include the "data:image/png;base64," prefix.
         quality: The quality of the JPG image, between 0 and 100, with 100 being the highest quality.
 
     Returns:
@@ -198,13 +197,11 @@ def convert_b64png_to_b64webp(b64_png: str, quality: int=90) -> str:
     img.save(output_buffer, format="WEBP", quality=quality)
 
     base64_webp_bytes = base64.b64encode(output_buffer.getvalue())
-    base64_webp_string = base64_webp_bytes.decode('utf-8')
 
-    return base64_webp_string
-
+    return base64_webp_bytes.decode("utf-8")
 
 
-def get_in_format(img: str, format: str = "png", quality: int = 95):
+def _get_in_format(img: str, format: str = "png", quality: int = 95) -> str:
     match format:
         case "jpg":
             return convert_b64png_to_b64jpg(img, quality)
@@ -216,11 +213,11 @@ def get_in_format(img: str, format: str = "png", quality: int = 95):
             raise ValueError("Not Supported format")
 
 
-def add_body_config(settings_original: dict, body: ImagesRequest, remaining_text: str) -> dict:
+def _add_body_config(settings_original: dict, body: ImagesRequest, remaining_text: str) -> dict:
     settings = settings_original.copy()
 
     if body.response_format != "b64_json":
-        raise ValueError(f"Response format {body.response_format} not supported")
+        raise ValueError("Response format not supported", body.response_format)
 
     if body.partial_images != 0:
         raise ValueError("Partial images not supported")
@@ -243,31 +240,30 @@ def add_body_config(settings_original: dict, body: ImagesRequest, remaining_text
     return settings
 
 
-def stable_diffusion(options: StableDiffusionOptions) -> Callable[[ApplicationContext, List[str]], Any]:
-    async def stable_diffusion_handler(port: int, body: ImagesRequest, req=None) -> ImagesResponse:
-        url  = f"http://localhost:{port}/sdapi/v1/txt2img/"
+def stable_diffusion(options: StableDiffusionOptions) -> Callable[[ApplicationContext, list[str]], Any]:
+    """Prepare stable diffusion setup."""
+
+    async def stable_diffusion_handler(port: int, body_org: dict, _req: Request) -> ImagesResponse:
+        body = ImagesRequest(**body_org)
+        url = f"http://localhost:{port}/sdapi/v1/txt2img/"
 
         settings_raw, remaining_text = split_text_to_json_and_prompt(body.prompt)
         try:
-            settings_edited = add_body_config(settings_raw, body, remaining_text)
+            settings_edited = _add_body_config(settings_raw, body, remaining_text)
         except ValueError as err:
-            raise HTTPException(422, str(err))
+            raise HTTPException(422, str(err)) from None
 
         try:
             settings = StableDiffusionInputSettings(**settings_edited)
         except ValidationError:
-            raise HTTPException(422, "Incorrect settings.")
+            raise HTTPException(422, "Incorrect settings.") from None
 
         async with ClientSession(url) as client:
-            response = await client.post(url, json=settings.model_dump(), timeout=120) # type: ignore
+            response = await client.post(url, json=settings.model_dump(), timeout=120)  # type: ignore
 
             if response.status != 200:
                 raise HTTPException(
-                    500,
-                    (
-                        "Something went wrong inside Stable Diffusion Web UI."
-                        f"Error {response.status}: {response.content}"
-                    )
+                    500, (f"Something went wrong inside Stable Diffusion Web UI.Error {response.status}: {response.content}")
                 )
 
             # try:
@@ -276,16 +272,15 @@ def stable_diffusion(options: StableDiffusionOptions) -> Callable[[ApplicationCo
             #     raise HTTPException(500, "There is no images in Stable Diffusion response.")
 
         try:
-            imgs = [get_in_format(img, body.output_format, body.output_compression) for img in data_raw["images"]]
+            imgs = [_get_in_format(img, body.output_format, body.output_compression) for img in data_raw["images"]]
         except ValueError:
-            raise HTTPException(422, f"Not supported image format: {body.output_format}")
+            raise HTTPException(422, f"Not supported image format: {body.output_format}") from None
         except Exception as exc:
-            raise HTTPException(500, f"Somethign went wrong: {exc}")
+            raise HTTPException(500, f"Somethign went wrong: {exc}") from None
 
         return ImagesResponse(data=[B64Data(b64_json=img, revised_prompt=settings.prompt) for img in imgs])
 
-
-    async def handler(ctx: ApplicationContext, args: List[str]) -> Dict[str, Any]:
+    async def handler(ctx: ApplicationContext, args: list[str]) -> dict[str, Any]:
         if system() == "Darwin":
             raise NotImplementedError("Stable Diffusion is not supported on macOS")
 
@@ -304,20 +299,19 @@ def stable_diffusion(options: StableDiffusionOptions) -> Callable[[ApplicationCo
             "COMMANDLINE_ARGS": "--listen --api --xformers --no-half-vae",
         }
 
-        return await docker(DockerOptions(
-            name=f"stable-diffusion-{options.name}",
-            image=image,
-            env_vars=env_vars,
-            image_port=17860,
-            use_gpu=options.use_gpu,
-            volumes=volumes,
-            restart="unless-stopped",
-            api_endpoint=options.image_endpoint,
-            additional_bootstrap_args=options.additional_bootstrap_args,
-            image_generations=ImageGenerationsOptions(
-                model = options.model_name,
-                handler = FunctionHandler(stable_diffusion_handler)
+        return await docker(
+            DockerOptions(
+                name=f"stable-diffusion-{options.name}",
+                image=image,
+                env_vars=env_vars,
+                image_port=17860,
+                use_gpu=options.use_gpu,
+                volumes=volumes,
+                restart="unless-stopped",
+                api_endpoint=options.image_endpoint,
+                additional_bootstrap_args=options.additional_bootstrap_args,
+                image_generations=ImageGenerationsOptions(model=options.model_name, handler=FunctionHandler(stable_diffusion_handler)),
             )
-        ))(ctx, args)
+        )(ctx, args)
 
     return handler
