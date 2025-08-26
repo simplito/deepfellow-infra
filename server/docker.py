@@ -39,7 +39,7 @@ class FunctionHandler:
 class ProxyHandler:
     type: Literal["proxy"]
 
-    def __init__(self, url: str = "/v1/audio/speech"):
+    def __init__(self, url: str):
         self.type = "proxy"
         self.url = url
 
@@ -51,7 +51,13 @@ class ImageGenerationsOptions:
 
 
 class AudioSpeechOptions:
-    def __init__(self, model: str, handler: FunctionHandler | ProxyHandler):
+    def __init__(self, model: str | list[str], handler: FunctionHandler | ProxyHandler):
+        self.model = model
+        self.handler = handler
+
+
+class AudioTranscriptionsOptions:
+    def __init__(self, model: str | list[str], handler: FunctionHandler | ProxyHandler):
         self.model = model
         self.handler = handler
 
@@ -76,10 +82,12 @@ class DockerOptions:
         chat_completion: ChatCompletionsOptions | None = None,
         image_generations: ImageGenerationsOptions | None = None,
         audio_generation: AudioSpeechOptions | None = None,
+        audio_transcriptions: AudioTranscriptionsOptions | None = None,
         ulimits: Mapping | None = None,
         shm_size: str | None = None,
         entrypoint: str | None = None,
         healthcheck: str | None = None,
+        reset_uid: bool = False,
     ):
         self.name = name
         self.image = image
@@ -95,10 +103,12 @@ class DockerOptions:
         self.chat_completion = chat_completion
         self.image_generations = image_generations
         self.audio_generation = audio_generation
+        self.audio_transcriptions = audio_transcriptions
         self.uliumits = ulimits
         self.shm_size = shm_size
         self.entrypoint = entrypoint
         self.healthcheck = healthcheck
+        self.reset_uid = reset_uid
 
         if shutil.which("docker-compose"):
             self.docker_compose_cmd = "docker-compose"
@@ -197,6 +207,23 @@ def docker(options: DockerOptions) -> Callable[[ApplicationContext, list[str]], 
 
                 ctx.endpoint_registry.register_audio_speech(options.audio_generation.model, SimpleEndpoint(on_request=my_audio_handler))
 
+        if options.audio_transcriptions:
+            if options.audio_transcriptions.handler.type == "proxy":
+                url = Utils.join_url(f"http://localhost:{port}", options.audio_transcriptions.handler.url)
+                ctx.endpoint_registry.register_audio_transcriptions_as_proxy(
+                    options.audio_transcriptions.model,
+                    ProxyOptions(url=url, form=True),
+                )
+            elif options.audio_transcriptions.handler.type == "function":
+                audio_handler = options.audio_transcriptions.handler
+
+                async def my_audio_handler(body: dict, req: Request) -> Any:  # noqa: ANN401
+                    return await audio_handler.func(port, body, req)
+
+                ctx.endpoint_registry.register_audio_transcriptions(
+                    options.audio_transcriptions.model, SimpleEndpoint(on_request=my_audio_handler)
+                )
+
         if options.image_generations:
             if options.image_generations.handler.type == "proxy":
                 url = Utils.join_url(f"http://localhost:{port}", options.image_generations.handler.url)
@@ -236,6 +263,8 @@ def docker(options: DockerOptions) -> Callable[[ApplicationContext, list[str]], 
             docker_compose_content["services"][options.service_name]["shm_size"] = options.shm_size
         if options.entrypoint:
             docker_compose_content["services"][options.service_name]["entrypoint"] = options.entrypoint
+        if options.reset_uid:
+            docker_compose_content["services"][options.service_name]["user"] = "0:0"
         if options.use_gpu:
             docker_compose_content["services"][options.service_name]["deploy"] = {
                 "resources": {"reservations": {"devices": [{"driver": "nvidia", "count": 1, "capabilities": ["gpu"]}]}}
@@ -386,6 +415,8 @@ def docker(options: DockerOptions) -> Callable[[ApplicationContext, list[str]], 
                 ctx.endpoint_registry.unregister_custom_endpoint(options.api_endpoint)
             if options.chat_completion is not None:
                 ctx.endpoint_registry.unregister_chat_completion(options.chat_completion.model)
+            if options.audio_generation is not None:
+                ctx.endpoint_registry.unregister_audio_speech(options.audio_generation.model)
 
             docker_compose_cmd = options.docker_compose_cmd
             docker_compose_file = Path(ctx.get_docker_compose_dir() / (options.name + ".yaml"))

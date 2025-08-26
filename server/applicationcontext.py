@@ -93,6 +93,13 @@ class ApplicationContext:
             dir.mkdir(parents=True)
         return dir
 
+    def get_service_dir(self, service: str) -> Path:
+        """Get service dir."""
+        dir = Path(__file__).resolve().parent.parent / f"./storage/services/{service}"
+        if not dir.is_dir():
+            dir.mkdir(parents=True)
+        return dir
+
     def is_port_available(self, port: int) -> bool:
         """Check whether port is available."""
         try:

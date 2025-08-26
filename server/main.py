@@ -1,7 +1,7 @@
 """Main app module."""
 
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, cast
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -58,6 +58,16 @@ async def on_audio_speech(request: Request) -> Any:  # noqa: ANN401
     if not endpoint_registry.has_audio_speech_model(body["model"]):
         return JSONResponse(content={"error": "Given model is not supported"}, status_code=400)
     return await endpoint_registry.execute_audio_speech(body, request)
+
+
+@app.post("/v1/audio/transcriptions")
+async def on_audio_translation(request: Request) -> Any:  # noqa: ANN401
+    """Process audio translation request."""
+    body = dict(await request.form())
+    endpoint_registry = _get_endpoint()
+    if not endpoint_registry.has_audio_transcriptions_model(cast("str", body["model"])):
+        return JSONResponse(content={"error": "Given model is not supported"}, status_code=400)
+    return await endpoint_registry.execute_audio_transcriptions(body, request)
 
 
 @app.post("/v1/images/generations")
