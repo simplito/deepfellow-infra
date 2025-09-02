@@ -5,15 +5,15 @@ import socket
 from pathlib import Path
 from typing import Any
 
+from server.config import AppSettings
 from server.utils.exceptions import AppError
 
-from .config import Config
 from .endpointregistry import EndpointRegistry
 from .serviceprovider import ServiceProvider
 
 
 class ApplicationContext:
-    def __init__(self, endpoint_registry: EndpointRegistry, config: Config, service_provider: ServiceProvider):
+    def __init__(self, endpoint_registry: EndpointRegistry, config: AppSettings, service_provider: ServiceProvider):
         self.endpoint_registry = endpoint_registry
         self.config = config
         self.service_provider = service_provider
