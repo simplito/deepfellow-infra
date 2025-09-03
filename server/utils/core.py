@@ -9,8 +9,6 @@ from urllib.parse import quote
 
 from aiohttp import ClientSession
 
-from server.applicationcontext import ApplicationContext
-
 
 class CommandResult(NamedTuple):
     exit_code: int
@@ -97,7 +95,7 @@ class Utils:
         return quote(text, safe=safe)
 
     @staticmethod
-    async def ensure_model_downloaded(context: ApplicationContext, model_url: str) -> tuple[Path, str]:
+    async def ensure_model_downloaded(model_url: str, model_dir: Path, filename: str | None = None) -> tuple[Path, str]:
         """Download model if it's a URL, return (local_path, filename)."""
         if not model_url.startswith("https://"):
             # Already a local path
@@ -105,11 +103,12 @@ class Utils:
             return local_path, local_path.name
 
         # Get filename from URL (last part after /)
-        filename = model_url.split("/")[-1]
-        local_path = context.get_model_dir() / filename
+        filename2 = filename if filename is not None else model_url.split("/")[-1]
+        dir = model_dir
+        local_path = dir / filename2
 
         if not local_path.exists():
-            print(f"Downloading {filename}...")
+            print(f"Downloading {filename2}...")
 
             # Ensure the models directory exists
             local_path.parent.mkdir(parents=True, exist_ok=True)
@@ -131,12 +130,12 @@ class Utils:
                         local_path.unlink()
                     raise RuntimeError("Downloaded file is empty or missing", local_path)  # noqa: TRY301
 
-                print(f"Successfully downloaded {filename} ({local_path.stat().st_size} bytes)")
+                print(f"Successfully downloaded {filename2} ({local_path.stat().st_size} bytes)")
 
             except Exception as e:
                 # Clean up any partial download
                 if local_path.exists():
                     local_path.unlink()
-                raise RuntimeError("Failed to download", filename) from e
+                raise RuntimeError("Failed to download", filename2) from e
 
-        return local_path, filename
+        return local_path, filename2

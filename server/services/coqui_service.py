@@ -1,0 +1,239 @@
+"""Coqui service."""
+
+from collections.abc import AsyncGenerator, Callable
+from pathlib import Path
+from typing import Any
+
+from aiohttp import ClientSession
+from fastapi import HTTPException, Request
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+
+from server.docker import DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
+from server.endpointregistry import SimpleEndpoint
+from server.ffmpeg import ffmpeg_audio_convert_async_gen
+from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
+from server.models.services import InstallServiceIn, UninstallServiceIn
+from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
+from server.utils.core import Utils
+
+
+class CoquiModel(BaseModel):
+    docker_name: str
+    default_speaker: str
+    response_format: str = "mp3"
+    model_type: str
+    language: str | None = None
+
+
+class CoquiConst(BaseModel):
+    image_gpu: str
+    image_cpu: str
+    models: dict[str, CoquiModel]
+
+
+_const = CoquiConst(
+    image_gpu="ghcr.io/coqui-ai/tts",
+    image_cpu="ghcr.io/coqui-ai/tts-cpu",
+    models={
+        "tts_models/en/vctk/vits": CoquiModel(
+            docker_name="en-vctk-vits",
+            default_speaker="p225",
+            model_type="tts",
+        ),
+    },
+)
+
+
+class ModelInstalledInfo:
+    def __init__(
+        self,
+        id: str,
+        type: str,
+        registered_name: str,
+        options: InstallModelIn,
+        docker: DockerOptions,
+        port: int,
+    ):
+        self.id = id
+        self.type = type
+        self.registered_name = registered_name
+        self.options = options
+        self.docker = docker
+        self.port = port
+
+
+class InstalledInfo:
+    def __init__(
+        self,
+        models: dict[str, ModelInstalledInfo],
+        options: InstallServiceIn,
+    ):
+        self.models = models
+        self.options = options
+
+
+class CoquiCmdOptions:
+    def __init__(
+        self,
+        model_name: str,
+        model_path: str | None,
+        cuda: bool,
+        language: str | None,
+    ):
+        self.model_name = model_name
+        self.model_path = model_path
+        self.cuda = cuda
+        self.language = language
+
+
+class CoquiService(Base2Service[InstalledInfo]):
+    def get_id(self) -> str:
+        """Return the service id."""
+        return "coqui"
+
+    def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
+        return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
+
+    async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
+        image = self._get_image(options.gpu)
+        await docker_pull(image)
+        return InstalledInfo(models={}, options=options)
+
+    async def _uninstall(self, options: UninstallServiceIn) -> None:
+        info = self._check_installed()
+        for model in info.models.values():
+            await self._uninstall_model(model.id, UninstallModelIn())
+        self.installed = None
+        if options.purge:
+            await self._clear_working_dir()
+
+    async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
+        """List models."""
+        info = self._check_installed()
+        out_list: list[RetrieveModelOut] = []
+        for model_id, model in _const.models.items():
+            installed = model_id in info.models
+            if filters.installed is None or filters.installed == installed:
+                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.model_type, installed=installed))
+        return ListModelsOut(list=out_list)
+
+    async def get_model(self, model_id: str) -> RetrieveModelOut:
+        """Get the model."""
+        info = self._check_installed()
+        if model_id not in _const.models:
+            raise HTTPException(status_code=400, detail="Model not found")
+        model = _const.models[model_id]
+        installed = model_id in info.models
+        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.model_type, installed=installed)
+
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+        info = self._check_installed()
+        if model_id in info.models:
+            return
+        if model_id not in _const.models:
+            raise HTTPException(status_code=400, detail="Model not found")
+        model = _const.models[model_id]
+        volumes = [f"{self._get_working_output_dir()}:/root/tts-output", f"{self._get_working_dir()}/models:/root/.local/share/tts"]
+        image = self._get_image(info.options.gpu)
+
+        docker_options = DockerOptions(
+            name=f"{self.get_id()}-{model.docker_name}",
+            image=image,
+            command=self._build_coqui_command(
+                CoquiCmdOptions(
+                    model_name=model_id,
+                    model_path=None,
+                    cuda=info.options.gpu,
+                    language=model.language,
+                )
+            ),
+            entrypoint="/bin/bash",
+            image_port=5002,
+            restart="unless-stopped",
+            volumes=volumes,
+            use_gpu=info.options.gpu,
+        )
+        port = await install_and_run_docker(self.application_context, docker_options)
+        registered_name = options.alias if options.alias is not None else model_id
+        info.models[model_id] = ModelInstalledInfo(
+            id=model_id,
+            type=model.model_type,
+            registered_name=registered_name,
+            options=options,
+            docker=docker_options,
+            port=port,
+        )
+        self.endpoint_registry.register_audio_speech(
+            registered_name, SimpleEndpoint(on_request=_create_handler(port, model.default_speaker, model.response_format))
+        )
+
+    def _get_image(self, gpu: bool) -> str:
+        return _const.image_gpu if gpu else _const.image_cpu
+
+    def _get_working_output_dir(self) -> Path:
+        path = self._get_working_dir() / "output"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def _build_coqui_command(self, options: CoquiCmdOptions) -> str:
+        cmd_args = ["python3", "TTS/server/server.py"]
+
+        if options.model_path:
+            cmd_args.extend(["--model_path", options.model_path])
+        elif options.model_name:
+            cmd_args.extend(["--model_name", options.model_name])
+        else:
+            raise ValueError("Either model_path or model_name must be provided")
+
+        cmd_args.extend(["--port", "5002"])
+
+        if options.cuda:
+            cmd_args.extend(["--use_cuda", "true"])
+
+        if options.language:
+            cmd_args.extend(["--language", options.language])
+
+        command_string = " ".join(cmd_args)
+        return f"-c {Utils.shell_escape(command_string)}"
+
+    async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
+        info = self._check_installed()
+        if model_id not in info.models:
+            return
+        model = info.models[model_id]
+        del info.models[model_id]
+        if model.type == "tts":
+            self.endpoint_registry.unregister_audio_speech(model.registered_name)
+        await uninstall_docker(self.application_context, model.docker)
+        if options.purge:
+            # unsupported
+            pass
+
+
+def _create_handler(port: int, default_speaker: str, response_format: str) -> Callable[[dict, Request], Any]:
+    async def _proxy_post_request(url: str) -> AsyncGenerator[bytes]:
+        async with ClientSession() as session, session.get(url) as resp:
+            async for chunk in resp.content.iter_any():
+                if chunk:
+                    yield chunk
+
+    async def coqui_handler(body: dict, _req: Request) -> StreamingResponse:
+        text = body.get("input", "")
+        voice = body.get("voice") or default_speaker
+        response_format2 = body.get("response_format", response_format)
+        if response_format2 is None:
+            response_format2 = "wav"
+
+        encoded_text = Utils.str_encode(text)
+        coqui_url = f"http://localhost:{port}/api/tts?text={encoded_text}"
+
+        if voice is not None:
+            voice_encoded = Utils.str_encode(voice)
+            coqui_url += f"&speaker_id={voice_encoded}"
+        return StreamingResponse(
+            ffmpeg_audio_convert_async_gen(_proxy_post_request(coqui_url), "wav", response_format2),
+            media_type=f"audio/{response_format2}",
+        )
+
+    return coqui_handler
