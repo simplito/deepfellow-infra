@@ -32,6 +32,7 @@ class ProxyOptions:
 class EndpointRegistry:
     def __init__(self):
         self.chat_completion_endpoints: dict[str, SimpleEndpoint] = {}
+        self.embeddings_endpoints: dict[str, SimpleEndpoint] = {}
         self.audio_speech_endpoints: dict[str, SimpleEndpoint] = {}
         self.audio_transcriptions_endpoints: dict[str, SimpleEndpoint] = {}
         self.custom_endpoints: dict[str, SimpleEndpoint] = {}
@@ -55,6 +56,25 @@ class EndpointRegistry:
         """Unregister chat completion for given model."""
         if model in self.chat_completion_endpoints:
             del self.chat_completion_endpoints[model]
+
+    def register_embeddings(self, model: str, endpoint: SimpleEndpoint) -> None:
+        """Register embeddings endpoint for given model."""
+        if model in self.embeddings_endpoints:
+            raise AppError("There is already registered endpoint for given model", model)
+        self.embeddings_endpoints[model] = endpoint
+
+    def register_embeddings_as_proxy(self, model: str, options: ProxyOptions) -> None:
+        """Register embeddings for given model as a proxy."""
+
+        async def on_request(body: dict, req: Request) -> StreamingResponse:
+            return await self._proxy(body, options, req)
+
+        self.register_embeddings(model, SimpleEndpoint(on_request=on_request))
+
+    def unregister_embeddings(self, model: str) -> None:
+        """Unregister embeddings for given model."""
+        if model in self.embeddings_endpoints:
+            del self.embeddings_endpoints[model]
 
     def register_audio_speech(self, model: str | list[str], endpoint: SimpleEndpoint) -> None:
         """Register audio speech endpoint for given model."""
@@ -154,6 +174,10 @@ class EndpointRegistry:
         """Check whether the chat completion model is registered."""
         return model in self.chat_completion_endpoints
 
+    def has_embeddings_model(self, model: str) -> bool:
+        """Check whether the embeddings model is registered."""
+        return model in self.embeddings_endpoints
+
     def has_audio_speech_model(self, model: str) -> bool:
         """Check whether the audio speech model is registered."""
         return model in self.audio_speech_endpoints
@@ -170,12 +194,19 @@ class EndpointRegistry:
         """Check whether the custom endpoint is registered."""
         return url in self.custom_endpoints
 
-    def execute_chat_completion(self, data: dict, req: Request) -> Any:  # noqa: ANN401
+    async def execute_chat_completion(self, data: dict, req: Request) -> Any:  # noqa: ANN401
         """Process chat completion request."""
         endpoint = self.chat_completion_endpoints[data["model"]]
         if not endpoint:
             raise AppError("Given model is not supported", data["model"])
-        return endpoint.on_request(data, req)
+        return await endpoint.on_request(data, req)
+
+    async def execute_embeddings(self, data: dict, req: Request) -> Any:  # noqa: ANN401
+        """Process embeddings request."""
+        endpoint = self.embeddings_endpoints[data["model"]]
+        if not endpoint:
+            raise AppError("Given model is not supported", data["model"])
+        return await endpoint.on_request(data, req)
 
     def execute_images_generations(self, data: dict, req: Request) -> Any:  # noqa: ANN401
         """Process images generations request."""
@@ -238,6 +269,7 @@ async def proxy_post_request(
                         yield chunk
             finally:
                 await resp.release()
+                await session.close()
 
         return status_code, content_type, generator()
 

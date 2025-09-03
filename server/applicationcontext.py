@@ -1,57 +1,33 @@
 """Application Content module."""
 
-import importlib.util
 import socket
+import time
 from pathlib import Path
-from typing import Any
 
 from server.config import AppSettings
-from server.utils.exceptions import AppError
+from server.services_manager import ServicesManager
 
 from .endpointregistry import EndpointRegistry
 from .serviceprovider import ServiceProvider
 
 
 class ApplicationContext:
-    def __init__(self, endpoint_registry: EndpointRegistry, config: AppSettings, service_provider: ServiceProvider):
+    def __init__(
+        self, endpoint_registry: EndpointRegistry, config: AppSettings, service_provider: ServiceProvider, services_manager: ServicesManager
+    ):
         self.endpoint_registry = endpoint_registry
         self.config = config
         self.service_provider = service_provider
+        self.services_manager = services_manager
         self.allocated_ports = set()
-
-    async def run(self, args: list[str]) -> Any:  # noqa: ANN401
-        """Run service with given args."""
-        service_name = args[0]
-        if not service_name or ".." in service_name or "/" in service_name or "\\" in service_name:
-            raise AppError("Invalid module name")
-        service_path = (Path(__file__).parent / f"./services/{service_name}/index.py").resolve()
-        if not service_path.is_file():
-            raise FileNotFoundError("Service not found", (service_name, service_path))
-
-        spec = importlib.util.spec_from_file_location(service_name, service_path)
-        if not spec:
-            raise AppError("No spec for service", (service_name, service_path))
-        if not spec.loader:
-            raise AppError("No spec loader for service", (service_name, service_path))
-        plugin = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(plugin)
-        if not hasattr(plugin, "service"):
-            raise AttributeError("Service does not define a 'service(context, args)' function", service_name)
-        return await plugin.service(self, args)
 
     async def load(self) -> None:
         """Load all service from bootstrap."""
         info = self.service_provider.load()
-        for x in info["bootstrapCommands"]:
-            await self.run(x["args"])
-
-    async def add_command_to_bootstrap(self, args: list[str]) -> None:
-        """Add command to bootstrap."""
-        await self.service_provider.save_command(args)
-
-    async def remove_command_from_bootstrap(self, args: list[str]) -> None:
-        """Remove command from bootstrap."""
-        await self.service_provider.remove_command(args)
+        for service_id, service_cfg in info["services"].items():
+            start = time.time()
+            await self.services_manager.load_service(service_id, service_cfg)
+            print(f"{service_id} loaded in {round(time.time() - start, 1)}s")
 
     def get_free_port(self, start: int = 20_000, end: int = 30_000) -> int:
         """Get next free port."""
@@ -65,30 +41,7 @@ class ApplicationContext:
 
     def get_docker_compose_dir(self) -> Path:
         """Get docker compose dir."""
-        dir = Path(__file__).resolve().parent / "../storage/config"
-        if not dir.is_dir():
-            dir.mkdir(parents=True)
-        return dir
-
-    def get_tts_dir(self) -> Path:
-        """Get text to speach dir."""
-        dir = Path(__file__).resolve().parent / "../storage/tts"
-        if not dir.is_dir():
-            dir.mkdir(parents=True)
-        return dir
-
-    def get_images_dir(self) -> Path:
-        """Get images dir."""
-        dir = Path(__file__).resolve().parent / "../storage/images"
-        if not dir.is_dir():
-            dir.mkdir(parents=True)
-            for name in ["extensions", "outputs", "embeddings", "models"]:
-                (dir / name).mkdir(parents=True)
-        return dir
-
-    def get_model_dir(self) -> Path:
-        """Get model dir."""
-        dir = Path(__file__).resolve().parent / "../storage/models"
+        dir = Path(__file__).resolve().parent.parent / "./storage/config"
         if not dir.is_dir():
             dir.mkdir(parents=True)
         return dir

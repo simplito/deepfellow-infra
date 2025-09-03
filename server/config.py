@@ -11,6 +11,7 @@ class ConfigError(SystemExit):
 
 class AppSettings(BaseSettings):
     api_key: str
+    admin_api_key: str
 
     model_config = SettingsConfigDict(
         env_file=".env",

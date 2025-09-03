@@ -11,6 +11,9 @@ Apply
 # Include "tests" directory
 !tests/
 
+# Include "tests" directory
+!static/
+
 # Do not match pyproject.* files
 !pyproject.toml
 

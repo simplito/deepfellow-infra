@@ -14,3 +14,11 @@ def auth_server(request: Request, api_key: Annotated[HTTPAuthorizationCredential
         return api_key.credentials
 
     raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def auth_admin(request: Request, api_key: Annotated[HTTPAuthorizationCredentials, Depends(oauth2_scheme)]) -> str:
+    """Authenticate administrator."""
+    if api_key.credentials == request.app.state.context.config.admin_api_key:
+        return api_key.credentials
+
+    raise HTTPException(status_code=401, detail="Unauthorized")

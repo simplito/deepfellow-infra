@@ -4,7 +4,7 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Literal, TypedDict, cast
+from typing import Any, Literal, TypedDict, cast
 
 
 class BootstrapCommand(TypedDict):
@@ -13,11 +13,12 @@ class BootstrapCommand(TypedDict):
 
 class FileContent(TypedDict):
     bootstrapCommands: list[BootstrapCommand]
+    services: dict[str, Any]
 
 
 class ServiceProvider:
     def _get_file_path(self) -> Path:
-        return (Path(__file__).parent / "../storage/services.json").resolve()
+        return (Path(__file__).parent.parent / "./storage/services.json").resolve()
 
     def load(self) -> FileContent:
         """Load settings file content."""
@@ -25,9 +26,12 @@ class ServiceProvider:
         try:
             with fpath.open(encoding="utf-8") as f:
                 content = f.read()
-                return json.loads(content)
+                data: FileContent = json.loads(content)
+                if "services" not in data:
+                    data["services"] = {}
+                return data
         except FileNotFoundError:
-            return {"bootstrapCommands": []}
+            return {"bootstrapCommands": [], "services": {}}
 
     async def save(self, content: FileContent) -> None:
         """Save settings file content."""
@@ -51,25 +55,21 @@ class ServiceProvider:
         if new_content is not False:
             await self.save(new_content)
 
-    async def save_command(self, args: list[str]) -> None:
-        """Add command to bootstrap."""
+    async def save_service_config(self, service_id: str, data: dict) -> None:
+        """Save service config."""
 
         async def handler(content: FileContent) -> Literal[False] | FileContent:
-            if any(cmd["args"] == args for cmd in content["bootstrapCommands"]):
-                return False
-            content["bootstrapCommands"].append({"args": args})
+            content["services"][service_id] = data
             return content
 
         await self._modify(handler)
 
-    async def remove_command(self, args: list[str]) -> None:
-        """Remove command from bootstrap."""
+    async def clear_service_config(self, service_id: str) -> None:
+        """Clear service config."""
 
         async def handler(content: FileContent) -> Literal[False] | FileContent:
-            index = next((i for i, cmd in enumerate(content["bootstrapCommands"]) if cmd["args"] == args), -1)
-            if index == -1:
-                return False
-            content["bootstrapCommands"].pop(index)
+            if service_id in content["services"]:
+                del content["services"][service_id]
             return content
 
         await self._modify(handler)

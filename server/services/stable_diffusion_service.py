@@ -1,23 +1,190 @@
-"""Stable Diffusion backend."""
+"""Stable diffusion service."""
 
 import base64
 import io
 import json
+import platform
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import Enum
-from platform import system
+from pathlib import Path
 from typing import Any, Literal
 
+import aiohttp
 from aiohttp import ClientSession
-from attr import dataclass
 from fastapi import HTTPException, Request
 from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 
-from .applicationcontext import ApplicationContext
-from .docker import DockerOptions, FunctionHandler, ImageGenerationsOptions, docker
+from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
+from server.endpointregistry import SimpleEndpoint
+from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
+from server.models.services import InstallServiceIn, UninstallServiceIn
+from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
+from server.utils.core import Utils
+
+ModelType = Literal["txt2img"]
+
+
+class StableDiffusionModel(BaseModel):
+    type: ModelType
+    url: str
+    filename: str
+    model_url: str | None = None
+
+
+class StableDiffusionConst(BaseModel):
+    image_gpu: str
+    image_cpu: str
+    models: dict[str, StableDiffusionModel]
+
+
+_const = StableDiffusionConst(
+    image_gpu="ghcr.io/ai-dock/stable-diffusion-webui:latest",
+    image_cpu="ghcr.io/ai-dock/stable-diffusion-webui:v2-cpu-22.04-v1.10.1",
+    models={
+        "HiDream-I1-Full": StableDiffusionModel(
+            type="txt2img",
+            url="https://civitai.com/api/download/models/509959?type=Model&format=SafeTensor&size=pruned&fp=fp16",
+            filename="unstableIllusionPRO_pro.safetensors",
+            model_url="https://civitai.com/models/147687/unstable-illusion-pro?modelVersionId=509959",
+        )
+    },
+)
+
+
+class ModelInstalledInfo(BaseModel):
+    id: str
+    type: str
+    registered_name: str
+    options: InstallModelIn
+    model_path: Path
+
+
+class InstalledInfo:
+    def __init__(
+        self,
+        docker: DockerOptions,
+        port: int,
+        models: dict[str, ModelInstalledInfo],
+        options: InstallServiceIn,
+    ):
+        self.docker = docker
+        self.port = port
+        self.models = models
+        self.options = options
+
+
+class FetchResult(BaseModel):
+    status_code: int
+    data: Any
+
+
+class StableDiffusionService(Base2Service[InstalledInfo]):
+    def get_id(self) -> str:
+        """Return the service id."""
+        return "stable-diffusion"
+
+    def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
+        return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
+
+    async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
+        if platform.system() == "Darwin":
+            raise NotImplementedError("Stable Diffusion is not supported on macOS")
+        volumes = [
+            f"{self._get_working_stable_diffusion_dir()}:/opt/stable-diffusion-webui/models/Stable-diffusion",
+            f"{self._get_working_lora_dir()}:/opt/stable-diffusion-webui/models/Lora",
+        ]
+        image = _const.image_gpu if options.gpu else _const.image_cpu
+
+        docker_options = DockerOptions(
+            name="stable-diffusion",
+            image=image,
+            env_vars={
+                "COMMANDLINE_ARGS": "--listen --api --no-half-vae",  #  --xformers
+            },
+            image_port=17860,
+            use_gpu=options.gpu,
+            volumes=volumes,
+            restart="unless-stopped",
+        )
+        port = await install_and_run_docker(self.application_context, docker_options)
+        return InstalledInfo(docker=docker_options, port=port, models={}, options=options)
+
+    async def _uninstall(self, options: UninstallServiceIn) -> None:
+        info = self._check_installed()
+        for model in info.models.values():
+            if model.type == "txt2img":
+                self.endpoint_registry.unregister_image_generations(model.registered_name)
+        self.installed = None
+        await uninstall_docker(self.application_context, info.docker)
+        if options.purge:
+            await self._clear_working_dir()
+
+    async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
+        """List models."""
+        info = self._check_installed()
+        out_list: list[RetrieveModelOut] = []
+        for model_id, model in _const.models.items():
+            installed = model_id in info.models
+            if filters.installed is None or filters.installed == installed:
+                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed))
+        return ListModelsOut(list=out_list)
+
+    async def get_model(self, model_id: str) -> RetrieveModelOut:
+        """Get the model."""
+        info = self._check_installed()
+        if model_id not in _const.models:
+            raise HTTPException(status_code=400, detail="Model not found")
+        model = _const.models[model_id]
+        installed = model_id in info.models
+        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed)
+
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+        info = self._check_installed()
+        if model_id in info.models:
+            return
+        if model_id not in _const.models:
+            raise HTTPException(status_code=400, detail="Model not found")
+        model = _const.models[model_id]
+
+        local_model_path, _ = await Utils.ensure_model_downloaded(model.url, self._get_working_stable_diffusion_dir(), model.filename)
+        registered_name = options.alias if options.alias is not None else model_id
+        info.models[model_id] = ModelInstalledInfo(
+            id=model_id, type=model.type, registered_name=registered_name, options=options, model_path=local_model_path.absolute()
+        )
+        if model.type == "txt2img":
+            self.endpoint_registry.register_image_generations(
+                registered_name, SimpleEndpoint(on_request=_stable_diffusion_handler(info.port))
+            )
+
+    async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
+        info = self._check_installed()
+        if model_id not in info.models:
+            return
+        model = info.models[model_id]
+        del info.models[model_id]
+        if model.type == "txt2img":
+            self.endpoint_registry.unregister_image_generations(model.registered_name)
+
+        if options.purge:
+            model.model_path.unlink()
+
+    def _get_working_stable_diffusion_dir(self) -> Path:
+        path = self._get_working_dir() / "models/Stable-diffusion"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def _get_working_lora_dir(self) -> Path:
+        path = self._get_working_dir() / "models/Lora"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    async def _fetch(self, port: int, url: str, method: str = "GET", data: dict | None = None) -> FetchResult:
+        full_url = f"http://localhost:{port}{url}"
+        async with aiohttp.ClientSession() as session, session.request(method, full_url, json=data) as response:
+            return FetchResult(status_code=response.status, data=await response.text())
 
 
 class ImagesRequest(BaseModel):
@@ -78,20 +245,6 @@ class StableDiffusionInputSettings(BaseModel):
     height: int = Field(default=512, ge=64, le=2048)
     override_settings: OverrideSettings = OverrideSettings()
     override_settings_restore_afterwards: bool = True
-
-
-@dataclass
-class StableDiffusionOptions:
-    name: str
-    model_name: str
-    env_vars: Mapping = {}
-    image: str = "ghcr.io/ai-dock/stable-diffusion-webui:latest"
-    image_cpu: str = "ghcr.io/ai-dock/stable-diffusion-webui:v2-cpu-22.04-v1.10.1"
-    hf_token: str | None = None
-    use_gpu: bool = True
-    image_endpoint: str = "/v1/images/generation"
-    additional_bootstrap_args: list[str] = []
-    image_generation: ImageGenerationsOptions | None = None
 
 
 class QualityLevel(Enum):
@@ -240,10 +393,8 @@ def _add_body_config(settings_original: dict, body: ImagesRequest, remaining_tex
     return settings
 
 
-def stable_diffusion(options: StableDiffusionOptions) -> Callable[[ApplicationContext, list[str]], Any]:
-    """Prepare stable diffusion setup."""
-
-    async def stable_diffusion_handler(port: int, body_org: dict, _req: Request) -> ImagesResponse:
+def _stable_diffusion_handler(port: int) -> Callable[[dict, Request], Any]:
+    async def handler(body_org: dict, _req: Request) -> ImagesResponse:
         body = ImagesRequest(**body_org)
         url = f"http://localhost:{port}/sdapi/v1/txt2img/"
 
@@ -279,39 +430,5 @@ def stable_diffusion(options: StableDiffusionOptions) -> Callable[[ApplicationCo
             raise HTTPException(500, f"Somethign went wrong: {exc}") from None
 
         return ImagesResponse(data=[B64Data(b64_json=img, revised_prompt=settings.prompt) for img in imgs])
-
-    async def handler(ctx: ApplicationContext, args: list[str]) -> dict[str, Any]:
-        if system() == "Darwin":
-            raise NotImplementedError("Stable Diffusion is not supported on macOS")
-
-        images_dir = ctx.get_images_dir()
-
-        volumes = [
-            f"{images_dir}/models/Stable-diffusion:/opt/stable-diffusion-webui/models/Stable-diffusion",
-            f"{images_dir}/models/Lora:/opt/stable-diffusion-webui/models/Lora",
-            # f"{images_dir}/outputs:/opt/stable-diffusion-webui/outputs",
-            # f"{images_dir}/embeddings:/opt/stable-diffusion-webui/embeddings",
-            # f"{images_dir}/extensions:/opt/stable-diffusion-webui/extensions"
-        ]
-
-        image = options.image if options.use_gpu else options.image_cpu
-        env_vars = {
-            "COMMANDLINE_ARGS": "--listen --api --xformers --no-half-vae",
-        }
-
-        return await docker(
-            DockerOptions(
-                name=f"stable-diffusion-{options.name}",
-                image=image,
-                env_vars=env_vars,
-                image_port=17860,
-                use_gpu=options.use_gpu,
-                volumes=volumes,
-                restart="unless-stopped",
-                api_endpoint=options.image_endpoint,
-                additional_bootstrap_args=options.additional_bootstrap_args,
-                image_generations=ImageGenerationsOptions(model=options.model_name, handler=FunctionHandler(stable_diffusion_handler)),
-            )
-        )(ctx, args)
 
     return handler
