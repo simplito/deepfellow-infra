@@ -5,7 +5,7 @@ from typing import Any, NamedTuple
 
 from aiohttp import FormData
 from aiohttp.client import ClientSession
-from fastapi import Request
+from fastapi import HTTPException, Request
 from starlette.responses import StreamingResponse
 
 from server.utils.exceptions import AppError
@@ -44,6 +44,12 @@ class EndpointRegistry:
         for model_id in self.chat_completion_endpoints:
             models.append({"id": model_id, "object": "model", "created": 0, "owned_by": "unknown"})
         return models
+
+    def get_chat_completions_model(self, model_id: str) -> Any:  # noqa: ANN401
+        """Get chat completions model."""
+        if model_id not in self.chat_completion_endpoints:
+            raise HTTPException(404, f"Model not found {model_id}")
+        return {"id": model_id, "object": "model", "created": 0, "owned_by": "unknown"}
 
     def register_chat_completion(self, model: str, endpoint: SimpleEndpoint) -> None:
         """Register chat completion endpoint for given model."""

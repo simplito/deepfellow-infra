@@ -2,7 +2,7 @@
 
 from typing import Annotated, Any, cast
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Path, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -24,6 +24,16 @@ async def on_models(
 ) -> Any:  # noqa: ANN401
     """Process models request."""
     return {"object": "list", "data": endpoint_registry.get_chat_completions_models()}
+
+
+@app.get("/v1/models/{model_id}")
+async def on_model(
+    _: Annotated[str, Depends(auth_server)],
+    model_id: Annotated[str, Path(..., description="The ID of the model to use.")],
+    endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+) -> Any:  # noqa: ANN401
+    """Process models request."""
+    return endpoint_registry.get_chat_completions_model(model_id)
 
 
 @app.post("/v1/chat/completions")
