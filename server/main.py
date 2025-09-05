@@ -17,6 +17,15 @@ app.include_router(services.router)
 app.include_router(models.router)
 
 
+@app.get("/v1/models")
+async def on_models(
+    _: Annotated[str, Depends(auth_server)],
+    endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+) -> Any:  # noqa: ANN401
+    """Process models request."""
+    return {"object": "list", "data": endpoint_registry.get_chat_completions_models()}
+
+
 @app.post("/v1/chat/completions")
 async def on_chat_complete(
     request: Request,

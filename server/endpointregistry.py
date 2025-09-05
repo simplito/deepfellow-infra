@@ -38,6 +38,13 @@ class EndpointRegistry:
         self.custom_endpoints: dict[str, SimpleEndpoint] = {}
         self.images_generations_endpoints: dict[str, SimpleEndpoint] = {}
 
+    def get_chat_completions_models(self) -> list:
+        """Get chat completions models."""
+        models = []
+        for model_id in self.chat_completion_endpoints:
+            models.append({"id": model_id})
+        return models
+
     def register_chat_completion(self, model: str, endpoint: SimpleEndpoint) -> None:
         """Register chat completion endpoint for given model."""
         if model in self.chat_completion_endpoints:
