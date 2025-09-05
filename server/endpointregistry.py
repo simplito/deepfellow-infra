@@ -42,7 +42,7 @@ class EndpointRegistry:
         """Get chat completions models."""
         models = []
         for model_id in self.chat_completion_endpoints:
-            models.append({"id": model_id})
+            models.append({"id": model_id, "object": "model", "created": 0, "owned_by": "unknown"})
         return models
 
     def register_chat_completion(self, model: str, endpoint: SimpleEndpoint) -> None:
