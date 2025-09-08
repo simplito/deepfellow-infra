@@ -27,6 +27,7 @@ dev = [
     "respx>=0.22.0",
     "ruff>=0.11.9",
     "freezegun>=1.5.2",
+    "pyright>=1.1.405",
 ]
 
 [tool.ruff]
@@ -138,5 +139,14 @@ exclude_also = [
 ]
 
 [tool.pyright]
+include = ["server", "tests"]
+exclude = ["**/__pycache__"]
 venvPath = "."
 venv = ".venv"
+typeCheckingMode = "strict"
+reportMissingTypeArgument = "none"
+reportUnknownArgumentType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+pythonVersion = "3.13"

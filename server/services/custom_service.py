@@ -109,17 +109,21 @@ class CustomService(Base2Service[InstalledInfo]):
             # unsupported
             pass
 
+    def get_docker_options(self) -> DockerOptions:
+        """Return docker options."""
+        return DockerOptions(
+            image_port=8000,
+            name="easyocr",
+            image="gitlab2.simplito.com:5050/df/df-ocr:1.0.0",
+            use_gpu=False,
+            env_vars={},
+            restart="unless-stopped",
+            volumes=[f"{self._get_working_dir()}/easyocr/model:/root/.EasyOCR/model"],
+        )
+
 
 def _load_easy_ocr(service: CustomService) -> DockerOptions:
-    return DockerOptions(
-        image_port=8000,
-        name="easyocr",
-        image="gitlab2.simplito.com:5050/df/df-ocr:1.0.0",
-        use_gpu=False,
-        env_vars={},
-        restart="unless-stopped",
-        volumes=[f"{service._get_working_dir()}/easyocr/model:/root/.EasyOCR/model"],
-    )
+    return service.get_docker_options()
 
 
 class CustomModel:

@@ -9,6 +9,7 @@ RUN uv venv .venv \
   && uv sync --frozen \
   && uv run ruff check server/ tests/ \
   && uv run ruff format server/ tests/ --check \
+  && uv run pyright \
   && uv run pytest --showlocals --tb=auto -ra --cov server --cov-branch --cov-report=term-missing tests/ \
   && rm -rf .venv \
   && uv sync --frozen --no-dev \

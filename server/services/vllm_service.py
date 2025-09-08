@@ -15,11 +15,11 @@ from server.services.base2_service import Base2Service, ModelConfig, ServiceConf
 class VllmModel(BaseModel):
     docker_name: str
     hf_id: str
-    env_vars: Mapping | None = None
+    env_vars: Mapping[str, str] | None = None
     quantization: str | None = None
     dtype: str = "auto"
     shm_size: str = "16gb"
-    ulimits: Mapping | None = None
+    ulimits: Mapping[str, str] | None = None
     max_model_len: int | None = None
     gpu_memory_utilization: float = 0.9
 

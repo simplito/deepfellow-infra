@@ -13,6 +13,9 @@ ruff *FLAGS:
 ruff-format *FLAGS:
     uv run ruff format server/ tests/ {{FLAGS}}
 
+pyright:
+    uv run pyright
+
 mypy *FLAGS:
     uv run mypy server/ tests/ {{FLAGS}}
 

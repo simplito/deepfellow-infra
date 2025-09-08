@@ -5,6 +5,7 @@ import json
 import shutil
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -21,11 +22,11 @@ class DockerOptions:
         image_port: int,
         command: str | None = None,
         use_gpu: bool = False,
-        volumes: list | None = None,
+        volumes: list[str] | None = None,
         restart: str | None = None,
-        env_vars: Mapping | None = None,
+        env_vars: Mapping[str, str] | None = None,
         api_endpoint: str | None = None,
-        ulimits: Mapping | None = None,
+        ulimits: Mapping[str, str] | None = None,
         shm_size: str | None = None,
         entrypoint: str | None = None,
         healthcheck: str | None = None,
@@ -84,7 +85,7 @@ async def stop_docker_compose(docker_compose_file_path: Path) -> None:
     await Utils.run_command_for_success(command)
 
 
-async def docker_compose_status(docker_compose_file_path: Path) -> dict:
+async def docker_compose_status(docker_compose_file_path: Path) -> dict[str, Any]:
     """Get status for given docker compose."""
     docker_compose_cmd = get_docker_compoes_cmd()
     res = await Utils.run_command(f"{docker_compose_cmd} -f {docker_compose_file_path} logs")
@@ -151,9 +152,9 @@ async def is_docker_compose_healthy(docker_compose_file_path: Path, service_name
         return False
 
 
-def generate_docker_compose_content(options: DockerOptions, port: int) -> dict:
+def generate_docker_compose_content(options: DockerOptions, port: int) -> dict[str, Any]:
     """Generate docker compose content."""
-    docker_compose_content = {
+    docker_compose_content: dict[str, Any] = {
         "services": {
             options.service_name: {
                 "image": options.image,

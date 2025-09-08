@@ -15,7 +15,7 @@ from server.models.services import InstallServiceIn, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 
 
-def _read_models_from_json() -> dict[str, bool]:
+def _read_models_from_json() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
     ollama_path = Path(__file__).parent.parent.parent / "./static/ollama.json"
     with ollama_path.open(encoding="utf-8") as f:
         data = json.loads(f.read())

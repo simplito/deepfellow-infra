@@ -366,7 +366,7 @@ def _get_in_format(img: str, format: str = "png", quality: int = 95) -> str:
             raise ValueError("Not Supported format")
 
 
-def _add_body_config(settings_original: dict, body: ImagesRequest, remaining_text: str) -> dict:
+def _add_body_config(settings_original: dict[str, Any], body: ImagesRequest, remaining_text: str) -> dict:
     settings = settings_original.copy()
 
     if body.response_format != "b64_json":
