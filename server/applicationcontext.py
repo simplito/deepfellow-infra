@@ -19,7 +19,7 @@ class ApplicationContext:
         self.config = config
         self.service_provider = service_provider
         self.services_manager = services_manager
-        self.allocated_ports = set()
+        self.allocated_ports = set[int]()
 
     async def load(self) -> None:
         """Load all service from bootstrap."""

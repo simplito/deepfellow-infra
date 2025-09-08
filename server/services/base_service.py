@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, RetrieveServiceOut, UninstallServiceIn
+from server.serviceprovider import ServiceRawConfig
 
 
 class BaseService(ABC):
@@ -20,7 +21,7 @@ class BaseService(ABC):
         """Check whether service is installed."""
 
     @abstractmethod
-    async def load(self, config: dict) -> None:
+    async def load(self, config: ServiceRawConfig) -> None:
         """Load service using the config."""
 
     @abstractmethod

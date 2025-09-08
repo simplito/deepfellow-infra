@@ -4,8 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Path, Query
 
-from server.core.dependencies import get_services_manager
-from server.dependecies import auth_admin
+from server.core.dependencies import auth_admin, get_services_manager
 from server.models.models import (
     InstallModelIn,
     InstallModelOut,

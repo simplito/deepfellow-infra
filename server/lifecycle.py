@@ -20,7 +20,7 @@ from server.services_manager import ServicesManager
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """FastAPI Lifespan.
 
     In here:

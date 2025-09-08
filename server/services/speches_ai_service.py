@@ -1,8 +1,7 @@
 """Speaches AI service."""
 
-from typing import Any, Literal
+from typing import Literal
 
-import aiohttp
 from fastapi import HTTPException
 from pydantic import BaseModel
 
@@ -11,6 +10,7 @@ from server.endpointregistry import ProxyOptions
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
+from server.utils.core import fetch_from_localhost
 
 ModelType = Literal["tts", "stt"]
 
@@ -366,11 +366,6 @@ class InstalledInfo:
         self.options = options
 
 
-class FetchResult(BaseModel):
-    status_code: int
-    data: Any
-
-
 class SpeachesAIService(Base2Service[InstalledInfo]):
     def get_id(self) -> str:
         """Return the service id."""
@@ -436,7 +431,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         type = _const.models[model_id]
-        res = await self._fetch(info.port, f"/v1/models/{model_id}", "POST")
+        res = await fetch_from_localhost(info.port, f"/v1/models/{model_id}", "POST")
         if res.status_code != 200 and res.status_code != 201:
             print("Error when install model in speaches-ai", model_id, res.status_code, res.data)
             raise HTTPException(status_code=400, detail="Model not avaialble")
@@ -463,9 +458,4 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             self.endpoint_registry.unregister_audio_transcriptions(model.registered_name)
 
         if options.purge:
-            await self._fetch(info.port, f"/v1/models/{model_id}", "DELETE")
-
-    async def _fetch(self, port: int, url: str, method: str = "GET", data: dict | None = None) -> FetchResult:
-        full_url = f"http://localhost:{port}{url}"
-        async with aiohttp.ClientSession() as session, session.request(method, full_url, json=data) as response:
-            return FetchResult(status_code=response.status, data=await response.text())
+            await fetch_from_localhost(info.port, f"/v1/models/{model_id}", "DELETE")

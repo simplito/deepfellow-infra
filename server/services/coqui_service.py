@@ -1,8 +1,7 @@
 """Coqui service."""
 
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any
 
 from aiohttp import ClientSession
 from fastapi import HTTPException, Request
@@ -10,8 +9,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from server.docker import DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
-from server.endpointregistry import SimpleEndpoint
+from server.endpointregistry import EndpointCallback, SimpleEndpoint
 from server.ffmpeg import ffmpeg_audio_convert_async_gen
+from server.models.common import RequestBody
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -211,14 +211,14 @@ class CoquiService(Base2Service[InstalledInfo]):
             pass
 
 
-def _create_handler(port: int, default_speaker: str, response_format: str) -> Callable[[dict, Request], Any]:
+def _create_handler(port: int, default_speaker: str, response_format: str) -> EndpointCallback:
     async def _proxy_post_request(url: str) -> AsyncGenerator[bytes]:
         async with ClientSession() as session, session.get(url) as resp:
             async for chunk in resp.content.iter_any():
                 if chunk:
                     yield chunk
 
-    async def coqui_handler(body: dict, _req: Request) -> StreamingResponse:
+    async def coqui_handler(body: RequestBody, _req: Request) -> StreamingResponse:
         text = body.get("input", "")
         voice = body.get("voice") or default_speaker
         response_format2 = body.get("response_format", response_format)

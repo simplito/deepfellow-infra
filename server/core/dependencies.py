@@ -1,11 +1,16 @@
 """Core FastAPI dependencies for the application."""
 
-from fastapi import Request
+from typing import Annotated
+
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from server.applicationcontext import ApplicationContext
 from server.endpointregistry import EndpointRegistry
 from server.serviceprovider import ServiceProvider
 from server.services_manager import ServicesManager
+
+oauth2_scheme = HTTPBearer()
 
 
 def get_application_context(request: Request) -> ApplicationContext:
@@ -42,3 +47,19 @@ def get_services_manager(request: Request) -> ServicesManager:
         raise RuntimeError("ServicesManager not found in application state. Ensure it's set during app lifespan.")
 
     return services_manager
+
+
+def auth_server(request: Request, api_key: Annotated[HTTPAuthorizationCredentials, Depends(oauth2_scheme)]) -> str:
+    """Authenticate an server key."""
+    if api_key.credentials == request.app.state.context.config.api_key:
+        return api_key.credentials
+
+    raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def auth_admin(request: Request, api_key: Annotated[HTTPAuthorizationCredentials, Depends(oauth2_scheme)]) -> str:
+    """Authenticate administrator."""
+    if api_key.credentials == request.app.state.context.config.admin_api_key:
+        return api_key.credentials
+
+    raise HTTPException(status_code=401, detail="Unauthorized")

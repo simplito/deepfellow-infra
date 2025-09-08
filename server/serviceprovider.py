@@ -4,16 +4,15 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Literal, TypedDict, cast
+from typing import Literal, TypedDict, cast
 
+from server.models.common import JsonSerializable
 
-class BootstrapCommand(TypedDict):
-    args: list[str]
+ServiceRawConfig = JsonSerializable
 
 
 class FileContent(TypedDict):
-    bootstrapCommands: list[BootstrapCommand]
-    services: dict[str, Any]
+    services: dict[str, ServiceRawConfig]
 
 
 class ServiceProvider:
@@ -31,7 +30,7 @@ class ServiceProvider:
                     data["services"] = {}
                 return data
         except FileNotFoundError:
-            return {"bootstrapCommands": [], "services": {}}
+            return {"services": {}}
 
     async def save(self, content: FileContent) -> None:
         """Save settings file content."""
@@ -55,7 +54,7 @@ class ServiceProvider:
         if new_content is not False:
             await self.save(new_content)
 
-    async def save_service_config(self, service_id: str, data: dict) -> None:
+    async def save_service_config(self, service_id: str, data: ServiceRawConfig) -> None:
         """Save service config."""
 
         async def handler(content: FileContent) -> Literal[False] | FileContent:

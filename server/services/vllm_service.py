@@ -1,7 +1,5 @@
 """Vllm service."""
 
-from collections.abc import Mapping
-
 from fastapi import HTTPException
 from pydantic import BaseModel
 
@@ -15,11 +13,11 @@ from server.services.base2_service import Base2Service, ModelConfig, ServiceConf
 class VllmModel(BaseModel):
     docker_name: str
     hf_id: str
-    env_vars: Mapping[str, str] | None = None
+    env_vars: dict[str, str] | None = None
     quantization: str | None = None
     dtype: str = "auto"
     shm_size: str = "16gb"
-    ulimits: Mapping[str, str] | None = None
+    ulimits: dict[str, str] | None = None
     max_model_len: int | None = None
     gpu_memory_utilization: float = 0.9
 

@@ -12,7 +12,7 @@ from server.applicationcontext import ApplicationContext
 from server.endpointregistry import EndpointRegistry
 from server.models.models import InstallModelIn, UninstallModelIn
 from server.models.services import InstallServiceIn, UninstallServiceIn
-from server.serviceprovider import ServiceProvider
+from server.serviceprovider import ServiceProvider, ServiceRawConfig
 from server.services.base_service import BaseService
 
 
@@ -46,7 +46,7 @@ class Base2Service[T](BaseService):
         """Check whether service is installed."""
         return self.installed is not None
 
-    async def load(self, config: dict) -> None:
+    async def load(self, config: ServiceRawConfig) -> None:
         """Load service using the config."""
         cfg = ServiceConfig(**config)
         await self._install(cfg.options)

@@ -1,18 +1,29 @@
 """Endpoint registry holds callbacks for given endpoints and models."""
 
-from collections.abc import AsyncGenerator, Callable
-from typing import Any, NamedTuple
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from typing import Literal, NamedTuple
 
 from aiohttp import FormData
 from aiohttp.client import ClientSession
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, UploadFile
+from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
+from server.models.common import FormFields, JsonSerializable, RequestBody, StarletteResponse
 from server.utils.exceptions import AppError
+
+EndpointCallback = Callable[[RequestBody, Request], Awaitable[StarletteResponse]]
 
 
 class SimpleEndpoint(NamedTuple):
-    on_request: Callable[[dict, Request], Any]
+    on_request: EndpointCallback
+
+
+class ChatCompletionModel(BaseModel):
+    id: str
+    object: Literal["model"]
+    created: int
+    owned_by: str
 
 
 class ProxyOptions:
@@ -38,18 +49,18 @@ class EndpointRegistry:
         self.custom_endpoints: dict[str, SimpleEndpoint] = {}
         self.images_generations_endpoints: dict[str, SimpleEndpoint] = {}
 
-    def get_chat_completions_models(self) -> list:
+    def get_chat_completions_models(self) -> list[ChatCompletionModel]:
         """Get chat completions models."""
-        models = []
+        models: list[ChatCompletionModel] = []
         for model_id in self.chat_completion_endpoints:
-            models.append({"id": model_id, "object": "model", "created": 0, "owned_by": "unknown"})
+            models.append(ChatCompletionModel(id=model_id, object="model", created=0, owned_by="unknown"))
         return models
 
-    def get_chat_completions_model(self, model_id: str) -> Any:  # noqa: ANN401
+    def get_chat_completions_model(self, model_id: str) -> ChatCompletionModel:
         """Get chat completions model."""
         if model_id not in self.chat_completion_endpoints:
             raise HTTPException(404, f"Model not found {model_id}")
-        return {"id": model_id, "object": "model", "created": 0, "owned_by": "unknown"}
+        return ChatCompletionModel(id=model_id, object="model", created=0, owned_by="unknown")
 
     def register_chat_completion(self, model: str, endpoint: SimpleEndpoint) -> None:
         """Register chat completion endpoint for given model."""
@@ -60,8 +71,8 @@ class EndpointRegistry:
     def register_chat_completion_as_proxy(self, model: str, options: ProxyOptions) -> None:
         """Register chat completion for given model as a proxy."""
 
-        async def on_request(body: dict, req: Request) -> StreamingResponse:
-            return await self._proxy(body, options, req)
+        async def on_request(body: RequestBody, request: Request) -> StreamingResponse:
+            return await self._proxy(body, options, request)
 
         self.register_chat_completion(model, SimpleEndpoint(on_request=on_request))
 
@@ -79,8 +90,8 @@ class EndpointRegistry:
     def register_embeddings_as_proxy(self, model: str, options: ProxyOptions) -> None:
         """Register embeddings for given model as a proxy."""
 
-        async def on_request(body: dict, req: Request) -> StreamingResponse:
-            return await self._proxy(body, options, req)
+        async def on_request(body: RequestBody, request: Request) -> StreamingResponse:
+            return await self._proxy(body, options, request)
 
         self.register_embeddings(model, SimpleEndpoint(on_request=on_request))
 
@@ -102,8 +113,8 @@ class EndpointRegistry:
     def register_audio_speech_as_proxy(self, model: str | list[str], options: ProxyOptions) -> None:
         """Register audio speech for given model as a proxy."""
 
-        async def on_request(body: dict, req: Request) -> StreamingResponse:
-            return await self._proxy(body, options, req)
+        async def on_request(body: RequestBody, request: Request) -> StreamingResponse:
+            return await self._proxy(body, options, request)
 
         self.register_audio_speech(model, SimpleEndpoint(on_request=on_request))
 
@@ -127,14 +138,14 @@ class EndpointRegistry:
     def register_audio_transcriptions_as_proxy(self, model: str | list[str], options: ProxyOptions) -> None:
         """Register audio transcriptions for given model as a proxy."""
 
-        async def on_request(body: dict, req: Request) -> StreamingResponse:
+        async def on_request(body: RequestBody, request: Request) -> StreamingResponse:
             form_data = FormData()
-            for key in body:
-                if key == "file":
-                    form_data.add_field("file", await body["file"].read(), filename="audio", content_type="application/octet-stream")
+            for key, value in body.items():
+                if isinstance(value, UploadFile):
+                    form_data.add_field("file", await value.read(), filename=value.filename, content_type=value.content_type)
                 else:
-                    form_data.add_field(key, body[key])
-            return await self._proxy(form_data, options, req)
+                    form_data.add_field(key, value)
+            return await self._proxy(form_data, options, request)
 
         self.register_audio_transcriptions(model, SimpleEndpoint(on_request=on_request))
 
@@ -154,8 +165,8 @@ class EndpointRegistry:
     def register_image_generations_as_proxy(self, model: str, options: ProxyOptions) -> None:
         """Register image generations for given model as a proxy."""
 
-        async def on_request(body: dict, req: Request) -> StreamingResponse:
-            return await self._proxy(body, options, req)
+        async def on_request(body: RequestBody, request: Request) -> StreamingResponse:
+            return await self._proxy(body, options, request)
 
         self.register_image_generations(model, SimpleEndpoint(on_request=on_request))
 
@@ -173,8 +184,8 @@ class EndpointRegistry:
     def register_custom_endpoint_as_proxy(self, url: str, options: ProxyOptions) -> None:
         """Register custom endpoint as a proxy."""
 
-        async def on_request(body: dict, req: Request) -> StreamingResponse:
-            return await self._proxy(body, options, req)
+        async def on_request(body: RequestBody, request: Request) -> StreamingResponse:
+            return await self._proxy(body, options, request)
 
         self.register_custom_endpoint(url, SimpleEndpoint(on_request=on_request))
 
@@ -207,53 +218,54 @@ class EndpointRegistry:
         """Check whether the custom endpoint is registered."""
         return url in self.custom_endpoints
 
-    async def execute_chat_completion(self, data: dict, req: Request) -> Any:  # noqa: ANN401
+    async def execute_chat_completion(self, data: RequestBody, request: Request) -> StarletteResponse:
         """Process chat completion request."""
         endpoint = self.chat_completion_endpoints[data["model"]]
         if not endpoint:
             raise AppError("Given model is not supported", data["model"])
-        return await endpoint.on_request(data, req)
+        return await endpoint.on_request(data, request)
 
-    async def execute_embeddings(self, data: dict, req: Request) -> Any:  # noqa: ANN401
+    async def execute_embeddings(self, data: RequestBody, request: Request) -> StarletteResponse:
         """Process embeddings request."""
         endpoint = self.embeddings_endpoints[data["model"]]
         if not endpoint:
             raise AppError("Given model is not supported", data["model"])
-        return await endpoint.on_request(data, req)
+        return await endpoint.on_request(data, request)
 
-    def execute_images_generations(self, data: dict, req: Request) -> Any:  # noqa: ANN401
+    async def execute_images_generations(self, data: RequestBody, request: Request) -> StarletteResponse:
         """Process images generations request."""
         endpoint = self.images_generations_endpoints[data["model"]]
         if not endpoint:
             raise AppError("Given model is not supported", data["model"])
-        return endpoint.on_request(data, req)
+        return await endpoint.on_request(data, request)
 
-    async def execute_audio_speech(self, data: dict, req: Request) -> Any:  # noqa: ANN401
+    async def execute_audio_speech(self, data: RequestBody, request: Request) -> StarletteResponse:
         """Process audio speech request."""
         endpoint = self.audio_speech_endpoints.get(data["model"])
         if not endpoint:
             raise AppError("Given model is not supported", data["model"])
-        return await endpoint.on_request(data, req)
+        return await endpoint.on_request(data, request)
 
-    async def execute_audio_transcriptions(self, data: dict, req: Request) -> Any:  # noqa: ANN401
+    async def execute_audio_transcriptions(self, data: RequestBody, request: Request) -> StarletteResponse:
         """Process audio transcriptions request."""
         endpoint = self.audio_transcriptions_endpoints.get(data["model"])
         if not endpoint:
             raise AppError("Given model is not supported", data["model"])
-        return await endpoint.on_request(data, req)
+        return await endpoint.on_request(data, request)
 
-    def execute_custom_endpoints(self, url: str, body: dict, req: Request) -> Any:  # noqa: ANN401
+    async def execute_custom_endpoints(self, url: str, body: RequestBody, request: Request) -> StarletteResponse:
         """Process custom endpoint request."""
         endpoint = self.custom_endpoints[url]
         if not endpoint:
             raise AppError("Given url is not supported", url)
-        return endpoint.on_request(body, req)
+        return await endpoint.on_request(body, request)
 
-    async def _proxy(self, body: Any, options: ProxyOptions, _req: Request) -> StreamingResponse:  # noqa: ANN401
-        if options.remove_model:
-            del body["model"]
-        if options.rewrite_model_to:
-            body["model"] = options.rewrite_model_to
+    async def _proxy(self, body: JsonSerializable | FormFields | FormData, options: ProxyOptions, _request: Request) -> StreamingResponse:
+        if not isinstance(body, FormData):
+            if options.remove_model:
+                del body["model"]
+            if options.rewrite_model_to:
+                body["model"] = options.rewrite_model_to
 
         (status_code, media_type, generator) = await proxy_post_request(options.url, body, form=options.form)
         return StreamingResponse(generator, media_type=media_type, status_code=status_code)
@@ -261,7 +273,7 @@ class EndpointRegistry:
 
 async def proxy_post_request(
     url: str,
-    body: Any,  # noqa: ANN401
+    body: JsonSerializable | FormFields | FormData,
     headers: dict[str, str] | None = None,
     form: bool = False,
 ) -> tuple[int, str, AsyncGenerator[bytes]]:

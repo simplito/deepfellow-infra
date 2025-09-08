@@ -1,16 +1,16 @@
 """Main app module."""
 
-from typing import Annotated, Any, cast
+from typing import Annotated, cast
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from server.api import models, services
-from server.core.dependencies import get_endpoint_registry
-from server.dependecies import auth_server
+from server.core.dependencies import auth_server, get_endpoint_registry
 from server.endpointregistry import EndpointRegistry
 from server.lifecycle import lifespan
+from server.models.common import RequestBody, StarletteResponse
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(services.router)
@@ -21,7 +21,7 @@ app.include_router(models.router)
 async def on_models(
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
-) -> Any:  # noqa: ANN401
+) -> StarletteResponse:
     """Process models request."""
     return {"object": "list", "data": endpoint_registry.get_chat_completions_models()}
 
@@ -31,19 +31,19 @@ async def on_model(
     _: Annotated[str, Depends(auth_server)],
     model_id: Annotated[str, Path(..., description="The ID of the model to use.")],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
-) -> Any:  # noqa: ANN401
+) -> StarletteResponse:
     """Process models request."""
     return endpoint_registry.get_chat_completions_model(model_id)
 
 
 @app.post("/v1/chat/completions")
-async def on_chat_complete(
+async def on_chat_completions(
     request: Request,
-    body: dict,
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
-) -> Any:  # noqa: ANN401
+) -> StarletteResponse:
     """Process chat completions request."""
+    body = await _read_json(request)
     if not endpoint_registry.has_chat_completion_model(body["model"]):
         return JSONResponse(content={"error": "Given model is not supported"}, status_code=400)
     return await endpoint_registry.execute_chat_completion(body, request)
@@ -54,7 +54,7 @@ async def on_embeddings(
     request: Request,
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
-) -> Any:  # noqa: ANN401
+) -> StarletteResponse:
     """Process embeddings request."""
     body = await _read_json(request)
     if not endpoint_registry.has_embeddings_model(body["model"]):
@@ -67,7 +67,7 @@ async def on_audio_speech(
     request: Request,
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
-) -> Any:  # noqa: ANN401
+) -> StarletteResponse:
     """Process audio speech request."""
     body = await _read_json(request)
     if not endpoint_registry.has_audio_speech_model(body["model"]):
@@ -76,11 +76,11 @@ async def on_audio_speech(
 
 
 @app.post("/v1/audio/transcriptions")
-async def on_audio_translation(
+async def on_audio_transcriptions(
     request: Request,
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
-) -> Any:  # noqa: ANN401
+) -> StarletteResponse:
     """Process audio translation request."""
     body = dict(await request.form())
     if not endpoint_registry.has_audio_transcriptions_model(cast("str", body["model"])):
@@ -89,11 +89,11 @@ async def on_audio_translation(
 
 
 @app.post("/v1/images/generations")
-async def on_image_generation(
+async def on_images_generations(
     request: Request,
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
-) -> Any:  # noqa: ANN401
+) -> StarletteResponse:
     """Process images genenerations request."""
     body = await _read_json(request)
     if not endpoint_registry.has_image_generations_model(body["model"]):
@@ -106,7 +106,7 @@ async def on_custom_endpoint(
     request: Request,
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
-) -> Any:  # noqa: ANN401
+) -> StarletteResponse:
     """Process custom endpoint request."""
     body = await _read_json(request)
     if not endpoint_registry.has_custom_endpoint(request.url.path):
@@ -117,7 +117,7 @@ async def on_custom_endpoint(
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 
-async def _read_json(request: Request) -> dict:
+async def _read_json(request: Request) -> RequestBody:
     try:
         return await request.json()
     except Exception:

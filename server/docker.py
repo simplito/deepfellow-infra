@@ -3,11 +3,11 @@
 import asyncio
 import json
 import shutil
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import NotRequired, TypedDict
 
 import yaml
+from pydantic import BaseModel
 
 from server.applicationcontext import ApplicationContext
 from server.utils.core import CommandResult2, Utils
@@ -24,9 +24,9 @@ class DockerOptions:
         use_gpu: bool = False,
         volumes: list[str] | None = None,
         restart: str | None = None,
-        env_vars: Mapping[str, str] | None = None,
+        env_vars: dict[str, str] | None = None,
         api_endpoint: str | None = None,
-        ulimits: Mapping[str, str] | None = None,
+        ulimits: dict[str, str] | None = None,
         shm_size: str | None = None,
         entrypoint: str | None = None,
         healthcheck: str | None = None,
@@ -51,6 +51,47 @@ class DockerOptions:
 
 class DockerNotInstalledError(Exception):
     pass
+
+
+class DockerComposeStatus(BaseModel):
+    success: bool
+    info: str
+
+
+class DockerComposeDevice(TypedDict):
+    driver: str
+    count: int
+    capabilities: list[str]
+
+
+class DockerComposeReservations(TypedDict):
+    devices: list[DockerComposeDevice]
+
+
+class DockerComposeResource(TypedDict):
+    reservations: DockerComposeReservations
+
+
+class DockerComposeDeploy(TypedDict):
+    resources: DockerComposeResource
+
+
+class DockerComposeService(TypedDict):
+    image: str
+    ports: NotRequired[list[str]]
+    environment: NotRequired[dict[str, str]]
+    healthcheck: NotRequired[str]
+    command: NotRequired[str]
+    volumes: NotRequired[list[str]]
+    restart: NotRequired[str]
+    shm_size: NotRequired[str]
+    entrypoint: NotRequired[str]
+    user: NotRequired[str]
+    deploy: NotRequired[DockerComposeDeploy]
+
+
+class DockerComposeContent(TypedDict):
+    services: dict[str, DockerComposeService]
 
 
 _docker_compose_cmd: str | None = None
@@ -85,13 +126,13 @@ async def stop_docker_compose(docker_compose_file_path: Path) -> None:
     await Utils.run_command_for_success(command)
 
 
-async def docker_compose_status(docker_compose_file_path: Path) -> dict[str, Any]:
+async def docker_compose_status(docker_compose_file_path: Path) -> DockerComposeStatus:
     """Get status for given docker compose."""
     docker_compose_cmd = get_docker_compoes_cmd()
     res = await Utils.run_command(f"{docker_compose_cmd} -f {docker_compose_file_path} logs")
     if res.exit_code == 1 and res.stderr.strip() == f"Error: file '{docker_compose_file_path}' not found":
-        return {"success": True, "info": "not found"}
-    return {"success": True, "info": res.stdout}
+        return DockerComposeStatus(success=True, info="not found")
+    return DockerComposeStatus(success=True, info=res.stdout)
 
 
 async def is_docker_compose_running(docker_compose_file_path: Path, service_name: str) -> bool:
@@ -152,35 +193,30 @@ async def is_docker_compose_healthy(docker_compose_file_path: Path, service_name
         return False
 
 
-def generate_docker_compose_content(options: DockerOptions, port: int) -> dict[str, Any]:
+def generate_docker_compose_content(options: DockerOptions, port: int) -> DockerComposeContent:
     """Generate docker compose content."""
-    docker_compose_content: dict[str, Any] = {
-        "services": {
-            options.service_name: {
-                "image": options.image,
-                "ports": [f"{port}:{options.image_port}"],
-                "environment": options.env_vars,
-            }
-        }
+    service: DockerComposeService = {
+        "image": options.image,
+        "ports": [f"{port}:{options.image_port}"],
+        "environment": options.env_vars,
     }
     if options.healthcheck:
-        docker_compose_content["services"][options.service_name]["healthcheck"] = options.healthcheck
+        service["healthcheck"] = options.healthcheck
     if options.command:
-        docker_compose_content["services"][options.service_name]["command"] = options.command
+        service["command"] = options.command
     if options.volumes:
-        docker_compose_content["services"][options.service_name]["volumes"] = options.volumes
+        service["volumes"] = options.volumes
     if options.restart:
-        docker_compose_content["services"][options.service_name]["restart"] = options.restart
+        service["restart"] = options.restart
     if options.shm_size:
-        docker_compose_content["services"][options.service_name]["shm_size"] = options.shm_size
+        service["shm_size"] = options.shm_size
     if options.entrypoint:
-        docker_compose_content["services"][options.service_name]["entrypoint"] = options.entrypoint
+        service["entrypoint"] = options.entrypoint
     if options.reset_uid:
-        docker_compose_content["services"][options.service_name]["user"] = "0:0"
+        service["user"] = "0:0"
     if options.use_gpu:
-        docker_compose_content["services"][options.service_name]["deploy"] = {
-            "resources": {"reservations": {"devices": [{"driver": "nvidia", "count": 1, "capabilities": ["gpu"]}]}}
-        }
+        service["deploy"] = {"resources": {"reservations": {"devices": [{"driver": "nvidia", "count": 1, "capabilities": ["gpu"]}]}}}
+    docker_compose_content: DockerComposeContent = {"services": {options.service_name: service}}
     return docker_compose_content
 
 

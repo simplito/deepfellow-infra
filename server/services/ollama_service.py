@@ -2,9 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any
 
-import aiohttp
 from fastapi import HTTPException
 from pydantic import BaseModel
 
@@ -13,6 +11,7 @@ from server.endpointregistry import ProxyOptions
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
+from server.utils.core import fetch_from_localhost
 
 
 def _read_models_from_json() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
@@ -72,11 +71,6 @@ class InstalledInfo:
         self.port = port
         self.models = models
         self.options = options
-
-
-class FetchResult(BaseModel):
-    status_code: int
-    data: Any
 
 
 class OllamaService(Base2Service[InstalledInfo]):
@@ -139,7 +133,7 @@ class OllamaService(Base2Service[InstalledInfo]):
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model_type = _const.models[model_id]
-        res = await self._fetch(info.port, "/api/pull", "POST", {"model": model_id})
+        res = await fetch_from_localhost(info.port, "/api/pull", "POST", {"model": model_id})
         if res.status_code != 200 and res.status_code != 201:
             print("Error when install model in ollama", model_id, res.status_code, res.data)
             raise HTTPException(status_code=400, detail="Model not avaialble")
@@ -166,9 +160,4 @@ class OllamaService(Base2Service[InstalledInfo]):
             self.endpoint_registry.unregister_embeddings(model.registered_name)
 
         if options.purge:
-            await self._fetch(info.port, "/api/delete", "DELETE", {"name": model_id})
-
-    async def _fetch(self, port: int, url: str, method: str = "GET", data: dict | None = None) -> FetchResult:
-        full_url = f"http://localhost:{port}{url}"
-        async with aiohttp.ClientSession() as session, session.request(method, full_url, json=data) as response:
-            return FetchResult(status_code=response.status, data=await response.text())
+            await fetch_from_localhost(info.port, "/api/delete", "DELETE", {"name": model_id})

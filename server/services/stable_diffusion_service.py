@@ -5,20 +5,19 @@ import io
 import json
 import platform
 import re
-from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal, NotRequired, TypedDict
 
-import aiohttp
 from aiohttp import ClientSession
 from fastapi import HTTPException, Request
 from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
-from server.endpointregistry import SimpleEndpoint
+from server.endpointregistry import EndpointCallback, SimpleEndpoint
+from server.models.common import RequestBody
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -74,11 +73,6 @@ class InstalledInfo:
         self.port = port
         self.models = models
         self.options = options
-
-
-class FetchResult(BaseModel):
-    status_code: int
-    data: Any
 
 
 class StableDiffusionService(Base2Service[InstalledInfo]):
@@ -181,11 +175,6 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    async def _fetch(self, port: int, url: str, method: str = "GET", data: dict | None = None) -> FetchResult:
-        full_url = f"http://localhost:{port}{url}"
-        async with aiohttp.ClientSession() as session, session.request(method, full_url, json=data) as response:
-            return FetchResult(status_code=response.status, data=await response.text())
-
 
 class ImagesRequest(BaseModel):
     # Supported
@@ -254,7 +243,15 @@ class QualityLevel(Enum):
     low = 15
 
 
-def split_text_to_json_and_prompt(text: str) -> tuple[dict, str]:
+class StableDiffusionOptions(TypedDict):
+    prompt: NotRequired[str]
+    n_iter: NotRequired[int]
+    width: NotRequired[int]
+    height: NotRequired[int]
+    steps: NotRequired[int]
+
+
+def split_text_to_json_and_prompt(text: str) -> tuple[StableDiffusionOptions, str]:
     """Split text into prompt and JSON data for settings."""
     # With this regex we get two matches
     # (one match with whole <sd>example text</sd>)
@@ -268,7 +265,7 @@ def split_text_to_json_and_prompt(text: str) -> tuple[dict, str]:
 
     try:
         # Convert text to dict
-        json_output: dict = json.loads(json_candidate)
+        json_output: StableDiffusionOptions = json.loads(json_candidate)
     except json.JSONDecodeError:
         # Settings json not correct, return error.
         raise HTTPException(
@@ -366,7 +363,7 @@ def _get_in_format(img: str, format: str = "png", quality: int = 95) -> str:
             raise ValueError("Not Supported format")
 
 
-def _add_body_config(settings_original: dict[str, Any], body: ImagesRequest, remaining_text: str) -> dict:
+def _add_body_config(settings_original: StableDiffusionOptions, body: ImagesRequest, remaining_text: str) -> StableDiffusionOptions:
     settings = settings_original.copy()
 
     if body.response_format != "b64_json":
@@ -393,8 +390,8 @@ def _add_body_config(settings_original: dict[str, Any], body: ImagesRequest, rem
     return settings
 
 
-def _stable_diffusion_handler(port: int) -> Callable[[dict, Request], Any]:
-    async def handler(body_org: dict, _req: Request) -> ImagesResponse:
+def _stable_diffusion_handler(port: int) -> EndpointCallback:
+    async def handler(body_org: RequestBody, _req: Request) -> ImagesResponse:
         body = ImagesRequest(**body_org)
         url = f"http://localhost:{port}/sdapi/v1/txt2img/"
 

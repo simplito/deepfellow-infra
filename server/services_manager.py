@@ -12,6 +12,7 @@ from server.models.services import (
     RetrieveServiceOut,
     UninstallServiceIn,
 )
+from server.serviceprovider import ServiceRawConfig
 from server.services.base_service import BaseService
 
 
@@ -26,7 +27,7 @@ class ServicesManager:
             raise RuntimeError("Service already registered", service_id)
         self.services[service_id] = service
 
-    async def load_service(self, service_id: str, service_cfg: dict) -> None:
+    async def load_service(self, service_id: str, service_cfg: ServiceRawConfig) -> None:
         """Load service."""
         if service_id in self.services:
             await self.services[service_id].load(service_cfg)

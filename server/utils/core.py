@@ -7,7 +7,11 @@ from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import quote
 
+import aiohttp
 from aiohttp import ClientSession
+from pydantic import BaseModel
+
+from server.models.common import JsonSerializable
 
 
 class CommandResult(NamedTuple):
@@ -139,3 +143,15 @@ class Utils:
                 raise RuntimeError("Failed to download", filename2) from e
 
         return local_path, filename2
+
+
+class FetchResult(BaseModel):
+    status_code: int
+    data: str
+
+
+async def fetch_from_localhost(port: int, url: str, method: str = "GET", data: JsonSerializable | None = None) -> FetchResult:
+    """Make HTTP request to localhost on given port."""
+    full_url = f"http://localhost:{port}{url}"
+    async with aiohttp.ClientSession() as session, session.request(method, full_url, json=data) as response:
+        return FetchResult(status_code=response.status, data=await response.text())
