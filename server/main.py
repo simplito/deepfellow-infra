@@ -14,6 +14,7 @@ from server.models.api import (
     ChatCompletionModel,
     ChatCompletionModels,
     ChatCompletionRequest,
+    CompletionLegacyRequest,
     CreateSpeechRequest,
     CreateTranscriptionRequest,
     EmbeddingRequest,
@@ -56,6 +57,19 @@ async def on_chat_completions(
     if not endpoint_registry.has_chat_completion_model(body.model):
         return JSONResponse(content={"error": "Given model is not supported"}, status_code=400)
     return await endpoint_registry.execute_chat_completion(body, request)
+
+
+@app.post("/v1/completions")
+async def on_completions(
+    request: Request,
+    body: Annotated[CompletionLegacyRequest, Body(...)],
+    _: Annotated[str, Depends(auth_server)],
+    endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+) -> StarletteResponse:
+    """Process completions request."""
+    if not endpoint_registry.has_completion_model(body.model):
+        return JSONResponse(content={"error": "Given model is not supported"}, status_code=400)
+    return await endpoint_registry.execute_completion(body, request)
 
 
 @app.post("/v1/embeddings")

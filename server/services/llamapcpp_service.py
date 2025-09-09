@@ -7,7 +7,6 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from server.docker import DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
-from server.endpointregistry import ProxyOptions
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -157,9 +156,7 @@ class LLamacppService(Base2Service[InstalledInfo]):
             port=port,
             model_path=local_model_path.absolute(),
         )
-        self.endpoint_registry.register_chat_completion_as_proxy(
-            registered_name, ProxyOptions(url=f"http://localhost:{port}/v1/chat/completions")
-        )
+        self.endpoint_registry.register_all_completions_as_proxy(registered_name, f"http://localhost:{port}")
 
     def _get_image(self, gpu: bool) -> str:
         return _const.image_cpu_arm64 if system() == "Darwin" else _const.image_gpu if gpu else _const.image_cpu
@@ -170,7 +167,7 @@ class LLamacppService(Base2Service[InstalledInfo]):
             return
         model = info.models[model_id]
         del info.models[model_id]
-        self.endpoint_registry.unregister_chat_completion(model.registered_name)
+        self.endpoint_registry.unregister_all_completions(model.registered_name)
         await uninstall_docker(self.application_context, model.docker)
         if options.purge:
             model.model_path.unlink()
