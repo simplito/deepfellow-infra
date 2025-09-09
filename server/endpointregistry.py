@@ -13,6 +13,7 @@ from server.models.api import (
     ChatCompletionModel,
     ChatCompletionModels,
     ChatCompletionRequest,
+    CompletionLegacyRequest,
     CreateSpeechRequest,
     CreateTranscriptionRequest,
     EmbeddingRequest,
@@ -45,6 +46,7 @@ class ProxyOptions:
 class EndpointRegistry:
     def __init__(self):
         self.chat_completion_endpoints: dict[str, SimpleEndpoint[ChatCompletionRequest]] = {}
+        self.completion_endpoints: dict[str, SimpleEndpoint[CompletionLegacyRequest]] = {}
         self.embeddings_endpoints: dict[str, SimpleEndpoint[EmbeddingRequest]] = {}
         self.audio_speech_endpoints: dict[str, SimpleEndpoint[CreateSpeechRequest]] = {}
         self.audio_transcriptions_endpoints: dict[str, SimpleEndpoint[CreateTranscriptionRequest]] = {}
@@ -82,6 +84,35 @@ class EndpointRegistry:
         """Unregister chat completion for given model."""
         if model in self.chat_completion_endpoints:
             del self.chat_completion_endpoints[model]
+
+    def register_completion(self, model: str, endpoint: SimpleEndpoint[CompletionLegacyRequest]) -> None:
+        """Register completion endpoint for given model."""
+        if model in self.completion_endpoints:
+            raise AppError("There is already registered endpoint for given model", model)
+        self.completion_endpoints[model] = endpoint
+
+    def register_completion_as_proxy(self, model: str, options: ProxyOptions) -> None:
+        """Register completion for given model as a proxy."""
+
+        async def on_request(body: CompletionLegacyRequest, request: Request) -> StreamingResponse:
+            return await self._proxy(body, options, request)
+
+        self.register_completion(model, SimpleEndpoint(on_request=on_request))
+
+    def unregister_completion(self, model: str) -> None:
+        """Unregister completion for given model."""
+        if model in self.completion_endpoints:
+            del self.completion_endpoints[model]
+
+    def register_all_completions_as_proxy(self, model: str, url: str) -> None:
+        """Register given model to chat completions and legacy completions."""
+        self.register_chat_completion_as_proxy(model, ProxyOptions(url=f"{url}/v1/chat/completions"))
+        self.register_completion_as_proxy(model, ProxyOptions(url=f"{url}/v1/completions"))
+
+    def unregister_all_completions(self, model: str) -> None:
+        """Unregister given model from chat completions and legacy completions."""
+        self.unregister_chat_completion(model)
+        self.unregister_completion(model)
 
     def register_embeddings(self, model: str, endpoint: SimpleEndpoint[EmbeddingRequest]) -> None:
         """Register embeddings endpoint for given model."""
@@ -211,6 +242,10 @@ class EndpointRegistry:
         """Check whether the chat completion model is registered."""
         return model in self.chat_completion_endpoints
 
+    def has_completion_model(self, model: str) -> bool:
+        """Check whether the completion model is registered."""
+        return model in self.completion_endpoints
+
     def has_embeddings_model(self, model: str) -> bool:
         """Check whether the embeddings model is registered."""
         return model in self.embeddings_endpoints
@@ -234,6 +269,13 @@ class EndpointRegistry:
     async def execute_chat_completion(self, data: ChatCompletionRequest, request: Request) -> StarletteResponse:
         """Process chat completion request."""
         endpoint = self.chat_completion_endpoints[data.model]
+        if not endpoint:
+            raise AppError("Given model is not supported", data.model)
+        return await endpoint.on_request(data, request)
+
+    async def execute_completion(self, data: CompletionLegacyRequest, request: Request) -> StarletteResponse:
+        """Process completion request."""
+        endpoint = self.completion_endpoints[data.model]
         if not endpoint:
             raise AppError("Given model is not supported", data.model)
         return await endpoint.on_request(data, request)

@@ -99,7 +99,7 @@ class OllamaService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         for model in info.models.values():
             if model.type == "llm":
-                self.endpoint_registry.unregister_chat_completion(model.registered_name)
+                self.endpoint_registry.unregister_all_completions(model.registered_name)
             if model.type == "embedding":
                 self.endpoint_registry.unregister_embeddings(model.registered_name)
         self.installed = None
@@ -140,9 +140,7 @@ class OllamaService(Base2Service[InstalledInfo]):
         registered_name = options.alias if options.alias is not None else model_id
         info.models[model_id] = ModelInstalledInfo(id=model_id, type=model_type, registered_name=registered_name, options=options)
         if model_type == "llm":
-            self.endpoint_registry.register_chat_completion_as_proxy(
-                registered_name, ProxyOptions(url=f"http://localhost:{info.port}/v1/chat/completions")
-            )
+            self.endpoint_registry.register_all_completions_as_proxy(registered_name, f"http://localhost:{info.port}")
         if model_type == "embedding":
             self.endpoint_registry.register_embeddings_as_proxy(
                 registered_name, ProxyOptions(url=f"http://localhost:{info.port}/v1/embeddings")
@@ -155,7 +153,7 @@ class OllamaService(Base2Service[InstalledInfo]):
         model = info.models[model_id]
         del info.models[model_id]
         if model.type == "llm":
-            self.endpoint_registry.unregister_chat_completion(model.registered_name)
+            self.endpoint_registry.unregister_all_completions(model.registered_name)
         if model.type == "embedding":
             self.endpoint_registry.unregister_embeddings(model.registered_name)
 
