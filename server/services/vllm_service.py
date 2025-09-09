@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from server.docker import DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
-from server.models.services import InstallServiceIn, UninstallServiceIn
+from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 
 
@@ -63,14 +63,20 @@ class ModelInstalledInfo:
         self.port = port
 
 
+class VllmOptions(BaseModel):
+    gpu: bool
+
+
 class InstalledInfo:
     def __init__(
         self,
         models: dict[str, ModelInstalledInfo],
         options: InstallServiceIn,
+        parsed_options: VllmOptions,
     ):
         self.models = models
         self.options = options
+        self.parsed_options = parsed_options
 
 
 class VllmService(Base2Service[InstalledInfo]):
@@ -78,13 +84,26 @@ class VllmService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "vllm"
 
+    def get_spec(self) -> ServiceSpecification:
+        """Return the service specification."""
+        return ServiceSpecification(
+            fields=[
+                ServiceField(type="bool", name="gpu", description="Run on GPU"),
+            ]
+        )
+
+    def get_installed_info(self) -> bool | ServiceOptions:
+        """Get service installed info."""
+        return False if self.installed is None else self.installed.options.spec
+
     def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
         return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
 
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
-        image = self._get_image(options.gpu)
+        parsed_options = VllmOptions(**options.spec)
+        image = self._get_image(parsed_options.gpu)
         await docker_pull(image)
-        return InstalledInfo(models={}, options=options)
+        return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -141,7 +160,7 @@ class VllmService(Base2Service[InstalledInfo]):
         if model.max_model_len:
             vllm_command.extend(["--max-model-len", str(model.max_model_len)])
 
-        image = self._get_image(info.options.gpu)
+        image = self._get_image(info.parsed_options.gpu)
         volumes = [f"{self._get_working_dir() / 'models'}:/models"]
 
         docker_options = DockerOptions(
@@ -152,7 +171,7 @@ class VllmService(Base2Service[InstalledInfo]):
             env_vars=model.env_vars,
             restart="unless-stopped",
             volumes=volumes,
-            use_gpu=info.options.gpu,
+            use_gpu=info.parsed_options.gpu,
             shm_size=model.shm_size,
             ulimits=model.ulimits,
         )

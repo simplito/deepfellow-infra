@@ -46,6 +46,52 @@ function resetModelFilters() {
     modelInstalled = "__all";
 }
 
+function showInstallServiceModal(info, onInstall) {
+    const html = `
+<div class="modal-backdrop">
+    <div class="modal">
+        <div class="modal-title">Install ${info.id}</div>
+        <form class="fields" data-id="modal-form">
+            ${info.spec.fields.map(field => `
+                <div class="field">
+                    <div class="field-label">${field.description}</div>
+                    <div class="field-input">${(() => {
+                        if (field.type === "text" || field.type === "password") {
+                            return `<input type="${field.type}" name="${field.name}" required="required" value="${field.default || ""}" placeholder="${field.description}" />`;
+                        }
+                        if (field.type === "bool") {
+                            return `<input type="checkbox" name="${field.name}" />`;
+                        }
+                    })()}</div>
+                </div>
+            `).join("")}
+        </form>
+        <div class="buttons">
+            <button data-id="cancel">Cancel</button>
+            <button data-id="install">Install</button>
+        </div>
+    </div>
+</div>`;
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    document.body.append(div);
+    div.querySelector("[data-id=cancel]").addEventListener("click", () => {
+        div.remove();
+    });
+    div.querySelector("[data-id=install]").addEventListener("click", () => {
+        const valid = div.querySelector("form").reportValidity();
+        if (!valid) {
+            return;
+        }
+        const data = {};
+        for (const field of div.querySelectorAll("input")) {
+            data[field.name] = field.type == "checkbox" ? field.checked : field.value;
+        }
+        onInstall(data);
+        div.remove();
+    });
+}
+
 async function showServicePage(id) {
     showLoadingPage();
     const data = await (await fetchX(`/admin/services/${id}/models`)).json();
@@ -154,13 +200,24 @@ root.addEventListener("click", async e => {
         const serviceId = dataActionEle.getAttribute("data-service-id");
         const modelId = dataActionEle.getAttribute("data-model-id");
         if (action === "install-service") {
-            showLoadingPage()
-            await (await fetchX(`/admin/services/${serviceId}`, {
-                method: "POST",
-                body: JSON.stringify({gpu: false}),
-                headers: {"Content-Type": "application/json"}
+            const info = await (await fetchX(`/admin/services/${serviceId}`, {
+                method: "GET"
             })).json();
-            showServicesPage();
+            showInstallServiceModal(info, async data => {
+                showLoadingPage();
+                try {
+                    await (await fetchX(`/admin/services/${serviceId}`, {
+                        method: "POST",
+                        body: JSON.stringify({spec: data}),
+                        headers: {"Content-Type": "application/json"}
+                    })).json();
+                }
+                catch (e) {
+                    console.log("Error", e);
+                    alert("Error");
+                }
+                showServicesPage();
+            });
         }
         else if (action === "uninstall-service") {
             showLoadingPage()

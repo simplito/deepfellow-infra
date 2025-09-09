@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
-from server.models.services import InstallServiceIn, UninstallServiceIn
+from server.models.services import InstallServiceIn, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 
 
@@ -39,6 +39,14 @@ class CustomService(Base2Service[InstalledInfo]):
     def get_id(self) -> str:
         """Return the service id."""
         return "custom"
+
+    def get_spec(self) -> ServiceSpecification:
+        """Return the service specification."""
+        return ServiceSpecification(fields=[])
+
+    def get_installed_info(self) -> bool | ServiceOptions:
+        """Get service installed info."""
+        return False if self.installed is None else self.installed.options.spec
 
     def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
         return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])

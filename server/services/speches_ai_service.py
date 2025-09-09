@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
-from server.models.services import InstallServiceIn, UninstallServiceIn
+from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 from server.utils.core import fetch_from_localhost
 
@@ -352,6 +352,10 @@ class ModelInstalledInfo(BaseModel):
     options: InstallModelIn
 
 
+class SpeachesAIOptions(BaseModel):
+    gpu: bool
+
+
 class InstalledInfo:
     def __init__(
         self,
@@ -359,11 +363,13 @@ class InstalledInfo:
         port: int,
         models: dict[str, ModelInstalledInfo],
         options: InstallServiceIn,
+        parsed_options: SpeachesAIOptions,
     ):
         self.docker = docker
         self.port = port
         self.models = models
         self.options = options
+        self.parsed_options = parsed_options
 
 
 class SpeachesAIService(Base2Service[InstalledInfo]):
@@ -371,18 +377,31 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "speaches-ai"
 
+    def get_spec(self) -> ServiceSpecification:
+        """Return the service specification."""
+        return ServiceSpecification(
+            fields=[
+                ServiceField(type="bool", name="gpu", description="Run on GPU"),
+            ]
+        )
+
+    def get_installed_info(self) -> bool | ServiceOptions:
+        """Get service installed info."""
+        return False if self.installed is None else self.installed.options.spec
+
     def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
         return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
 
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
+        parsed_options = SpeachesAIOptions(**options.spec)
         volumes = [f"{self._get_working_dir()}/cache:/home/ubuntu/.cache/huggingface/hub"]
-        image = _const.image_gpu if options.gpu else _const.image_cpu
+        image = _const.image_gpu if parsed_options.gpu else _const.image_cpu
 
         docker_options = DockerOptions(
             name="speaches-ai",
             image=image,
             image_port=8000,
-            use_gpu=options.gpu,
+            use_gpu=parsed_options.gpu,
             volumes=volumes,
             env_vars={
                 "ENABLE_UI": "False",
@@ -391,7 +410,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             reset_uid=True,
         )
         port = await install_and_run_docker(self.application_context, docker_options)
-        return InstalledInfo(docker=docker_options, port=port, models={}, options=options)
+        return InstalledInfo(docker=docker_options, port=port, models={}, options=options, parsed_options=parsed_options)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()

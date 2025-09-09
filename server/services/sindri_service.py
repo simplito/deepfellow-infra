@@ -1,7 +1,4 @@
-"""Ollama service."""
-
-import json
-from pathlib import Path
+"""Sindri service."""
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -11,44 +8,23 @@ from server.endpointregistry import ProxyOptions
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
-from server.utils.core import fetch_from_localhost
 
 
-def _read_models_from_json() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
-    ollama_path = Path(__file__).parent.parent.parent / "./static/ollama.json"
-    with ollama_path.open(encoding="utf-8") as f:
-        data = json.loads(f.read())
-        # tags = [x["tags"] for x in data["list"]]
-        # flat: list[str] = [x["tag"] for sublist in tags for x in sublist]
-        tags = [x["mainTags"] for x in data["list"]]
-        flat: list[str] = [x.removesuffix(":latest") for sublist in tags for x in sublist]
-
-        map: dict[str, bool] = {}
-        for tag in flat:
-            map[tag] = True
-        return map
+class SindriAiModel(BaseModel):
+    type: str
+    real_model_name: str
 
 
-def _read_models() -> dict[str, str]:
-    ollama_path = Path(__file__).parent.parent.parent / "./static/ollama-min.json"
-    with ollama_path.open(encoding="utf-8") as f:
-        registry = json.loads(f.read())
-        map: dict[str, str] = {}
-        for tag in registry["llms"]:
-            map[tag] = "llm"
-        for tag in registry["embeddings"]:
-            map[tag] = "embedding"
-        return map
-
-
-class OllamaAiConst(BaseModel):
+class SindriAiConst(BaseModel):
     image: str
-    models: dict[str, str]
+    models: dict[str, SindriAiModel]
 
 
-_const = OllamaAiConst(
-    image="ollama/ollama",
-    models=_read_models(),
+_const = SindriAiConst(
+    image="sindrilabs/evllm-proxy:v0.0.8",
+    models={
+        "gemma3:27b": SindriAiModel(type="llm", real_model_name="gemma3"),
+    },
 )
 
 
@@ -59,8 +35,9 @@ class ModelInstalledInfo(BaseModel):
     options: InstallModelIn
 
 
-class OllamaOptions(BaseModel):
-    gpu: bool
+class SindriOptions(BaseModel):
+    api_url: str
+    api_key: str
 
 
 class InstalledInfo:
@@ -70,7 +47,7 @@ class InstalledInfo:
         port: int,
         models: dict[str, ModelInstalledInfo],
         options: InstallServiceIn,
-        parsed_options: OllamaOptions,
+        parsed_options: SindriOptions,
     ):
         self.docker = docker
         self.port = port
@@ -79,16 +56,17 @@ class InstalledInfo:
         self.parsed_options = parsed_options
 
 
-class OllamaService(Base2Service[InstalledInfo]):
+class SindriService(Base2Service[InstalledInfo]):
     def get_id(self) -> str:
         """Return the service id."""
-        return "ollama"
+        return "sindri"
 
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
         return ServiceSpecification(
             fields=[
-                ServiceField(type="bool", name="gpu", description="Run on GPU"),
+                ServiceField(type="text", name="api_url", description="API URL", default="https://sindri.app/api/ai/v1/openai"),
+                ServiceField(type="password", name="api_key", description="API Key"),
             ]
         )
 
@@ -100,14 +78,30 @@ class OllamaService(Base2Service[InstalledInfo]):
         return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
 
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
-        parsed_options = OllamaOptions(**options.spec)
-        volumes = [f"{self._get_working_dir()}/main:/root/.ollama"]
+        parsed_options = SindriOptions(**options.spec)
+        config_path = self._get_working_dir() / "config.yaml"
+        data = f"""listenAddress: 0.0.0.0
+listenPort: 8080
+appMode: release
 
+sindriClient:
+  baseURL: {parsed_options.api_url}
+  apiKey: {parsed_options.api_key}
+  requestTimeoutSeconds: 10
+  
+  encryption:
+    enabled: true
+    keySource: ephemeral  # or 'value' or 'file'
+    # Configure keys if not using ephemeral
+"""
+        with config_path.open("w", encoding="utf-8") as f:
+            f.write(data)
+        volumes = [f"{config_path}:/config.yaml"]
         docker_options = DockerOptions(
-            name="ollama",
+            name="sindri",
             image=_const.image,
-            image_port=11434,
-            use_gpu=parsed_options.gpu,
+            command="serve /config.yaml",
+            image_port=8080,
             volumes=volumes,
             restart="unless-stopped",
         )
@@ -118,9 +112,7 @@ class OllamaService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         for model in info.models.values():
             if model.type == "llm":
-                self.endpoint_registry.unregister_all_completions(model.registered_name)
-            if model.type == "embedding":
-                self.endpoint_registry.unregister_embeddings(model.registered_name)
+                self.endpoint_registry.unregister_chat_completion(model.registered_name)
         self.installed = None
         await uninstall_docker(self.application_context, info.docker)
         if options.purge:
@@ -130,10 +122,10 @@ class OllamaService(Base2Service[InstalledInfo]):
         """List models."""
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
-        for model_id, model_type in _const.models.items():
+        for model_id, model in _const.models.items():
             installed = model_id in info.models
             if filters.installed is None or filters.installed == installed:
-                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model_type, installed=installed))
+                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed))
         return ListModelsOut(list=out_list)
 
     async def get_model(self, model_id: str) -> RetrieveModelOut:
@@ -141,9 +133,9 @@ class OllamaService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
-        model_type = _const.models[model_id]
+        model = _const.models[model_id]
         installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model_type, installed=installed)
+        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed)
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
         info = self._check_installed()
@@ -151,18 +143,13 @@ class OllamaService(Base2Service[InstalledInfo]):
             return
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
-        model_type = _const.models[model_id]
-        res = await fetch_from_localhost(info.port, "/api/pull", "POST", {"model": model_id})
-        if res.status_code != 200 and res.status_code != 201:
-            print("Error when install model in ollama", model_id, res.status_code, res.data)
-            raise HTTPException(status_code=400, detail="Model not avaialble")
+        model = _const.models[model_id]
         registered_name = options.alias if options.alias is not None else model_id
-        info.models[model_id] = ModelInstalledInfo(id=model_id, type=model_type, registered_name=registered_name, options=options)
-        if model_type == "llm":
-            self.endpoint_registry.register_all_completions_as_proxy(registered_name, f"http://localhost:{info.port}")
-        if model_type == "embedding":
-            self.endpoint_registry.register_embeddings_as_proxy(
-                registered_name, ProxyOptions(url=f"http://localhost:{info.port}/v1/embeddings")
+        info.models[model_id] = ModelInstalledInfo(id=model_id, type=model.type, registered_name=registered_name, options=options)
+        if model.type == "llm":
+            self.endpoint_registry.register_chat_completion_as_proxy(
+                registered_name,
+                ProxyOptions(url=f"http://localhost:{info.port}/v1/chat/completions", rewrite_model_to=model.real_model_name),
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
@@ -172,9 +159,8 @@ class OllamaService(Base2Service[InstalledInfo]):
         model = info.models[model_id]
         del info.models[model_id]
         if model.type == "llm":
-            self.endpoint_registry.unregister_all_completions(model.registered_name)
-        if model.type == "embedding":
-            self.endpoint_registry.unregister_embeddings(model.registered_name)
+            self.endpoint_registry.unregister_chat_completion(model.registered_name)
 
         if options.purge:
-            await fetch_from_localhost(info.port, "/api/delete", "DELETE", {"name": model_id})
+            # unsupported
+            pass

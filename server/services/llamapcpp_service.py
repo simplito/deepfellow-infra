@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from server.docker import DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
-from server.models.services import InstallServiceIn, UninstallServiceIn
+from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 from server.utils.core import Utils
 
@@ -74,14 +74,20 @@ class ModelInstalledInfo:
         self.model_path = model_path
 
 
+class LLamacppOptions(BaseModel):
+    gpu: bool
+
+
 class InstalledInfo:
     def __init__(
         self,
         models: dict[str, ModelInstalledInfo],
         options: InstallServiceIn,
+        parsed_options: LLamacppOptions,
     ):
         self.models = models
         self.options = options
+        self.parsed_options = parsed_options
 
 
 class LLamacppService(Base2Service[InstalledInfo]):
@@ -89,13 +95,26 @@ class LLamacppService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "llamacpp"
 
+    def get_spec(self) -> ServiceSpecification:
+        """Return the service specification."""
+        return ServiceSpecification(
+            fields=[
+                ServiceField(type="bool", name="gpu", description="Run on GPU"),
+            ]
+        )
+
+    def get_installed_info(self) -> bool | ServiceOptions:
+        """Get service installed info."""
+        return False if self.installed is None else self.installed.options.spec
+
     def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
         return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
 
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
-        image = self._get_image(options.gpu)
+        parsed_options = LLamacppOptions(**options.spec)
+        image = self._get_image(parsed_options.gpu)
         await docker_pull(image)
-        return InstalledInfo(models={}, options=options)
+        return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -135,7 +154,7 @@ class LLamacppService(Base2Service[InstalledInfo]):
         local_model_path, model_filename = await Utils.ensure_model_downloaded(model.model_path, model_dir)
         model_in_container = f"/models/{model_filename}"
         volumes = [f"{local_model_path.absolute()}:{model_in_container}:ro"]
-        image = self._get_image(info.options.gpu)
+        image = self._get_image(info.parsed_options.gpu)
 
         docker_options = DockerOptions(
             name=f"{self.get_id()}-{model.docker_name}",
@@ -144,7 +163,7 @@ class LLamacppService(Base2Service[InstalledInfo]):
             image_port=8080,
             restart="unless-stopped",
             volumes=volumes,
-            use_gpu=info.options.gpu,
+            use_gpu=info.parsed_options.gpu,
         )
         port = await install_and_run_docker(self.application_context, docker_options)
         registered_name = options.alias if options.alias is not None else model_id

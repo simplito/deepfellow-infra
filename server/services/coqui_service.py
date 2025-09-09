@@ -13,7 +13,7 @@ from server.endpointregistry import EndpointCallback, SimpleEndpoint
 from server.ffmpeg import ffmpeg_audio_convert_async_gen
 from server.models.api import CreateSpeechRequest
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
-from server.models.services import InstallServiceIn, UninstallServiceIn
+from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 from server.utils.core import Utils
 
@@ -63,14 +63,20 @@ class ModelInstalledInfo:
         self.port = port
 
 
+class CoquiOptions(BaseModel):
+    gpu: bool
+
+
 class InstalledInfo:
     def __init__(
         self,
         models: dict[str, ModelInstalledInfo],
         options: InstallServiceIn,
+        parsed_options: CoquiOptions,
     ):
         self.models = models
         self.options = options
+        self.parsed_options = parsed_options
 
 
 class CoquiCmdOptions:
@@ -92,13 +98,26 @@ class CoquiService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "coqui"
 
+    def get_spec(self) -> ServiceSpecification:
+        """Return the service specification."""
+        return ServiceSpecification(
+            fields=[
+                ServiceField(type="bool", name="gpu", description="Run on GPU"),
+            ]
+        )
+
+    def get_installed_info(self) -> bool | ServiceOptions:
+        """Get service installed info."""
+        return False if self.installed is None else self.installed.options.spec
+
     def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
         return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
 
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
-        image = self._get_image(options.gpu)
+        parsed_options = CoquiOptions(**options.spec)
+        image = self._get_image(parsed_options.gpu)
         await docker_pull(image)
-        return InstalledInfo(models={}, options=options)
+        return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -135,7 +154,7 @@ class CoquiService(Base2Service[InstalledInfo]):
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
         volumes = [f"{self._get_working_output_dir()}:/root/tts-output", f"{self._get_working_dir()}/models:/root/.local/share/tts"]
-        image = self._get_image(info.options.gpu)
+        image = self._get_image(info.parsed_options.gpu)
 
         docker_options = DockerOptions(
             name=f"{self.get_id()}-{model.docker_name}",
@@ -144,7 +163,7 @@ class CoquiService(Base2Service[InstalledInfo]):
                 CoquiCmdOptions(
                     model_name=model_id,
                     model_path=None,
-                    cuda=info.options.gpu,
+                    cuda=info.parsed_options.gpu,
                     language=model.language,
                 )
             ),
@@ -152,7 +171,7 @@ class CoquiService(Base2Service[InstalledInfo]):
             image_port=5002,
             restart="unless-stopped",
             volumes=volumes,
-            use_gpu=info.options.gpu,
+            use_gpu=info.parsed_options.gpu,
         )
         port = await install_and_run_docker(self.application_context, docker_options)
         registered_name = options.alias if options.alias is not None else model_id

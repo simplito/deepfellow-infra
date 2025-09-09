@@ -127,15 +127,15 @@ class ChatCompletionRequest(BaseModel):
         "Deepfellow supports a wide range of models with different capabilities, and performance "
         "characteristics.",
     )
-    tools: list[ToolChat] = Field(
-        default_factory=list[ToolChat],
+    tools: list[ToolChat] | None = Field(
+        None,
         description=(
             "A list of tools the model may call. Currently, only functions are supported as a tool. Use this to "
             "provide a list of functions the model may generate JSON inputs for."
         ),
     )
-    tool_choice: str | dict[str, Any] = Field(
-        "auto",
+    tool_choice: str | dict[str, Any] | None = Field(
+        None,
         description=(
             "Controls which (if any) tool is called by the model. `null` means the model will not call any tool "
             "and instead generates a message. `auto` means the model can pick between generating a message or calling "
@@ -145,7 +145,7 @@ class ChatCompletionRequest(BaseModel):
         ),
     )
     temperature: float | None = Field(
-        0.7,
+        None,
         description=(
             "What sampling temperature to use, between `0` and `2`. Higher values like `0.8` will make the output more "
             "random, while lower values like `0.2` will make it more focused and deterministic. We generally recommend "
@@ -153,7 +153,7 @@ class ChatCompletionRequest(BaseModel):
         ),
     )
     top_p: float | None = Field(
-        1.0,
+        None,
         description=(
             "An alternative to sampling with temperature, called nucleus sampling, where the model considers the "
             "results of the tokens with `top_p` probability mass. So `0.1` means only the tokens comprising the top "
@@ -161,13 +161,13 @@ class ChatCompletionRequest(BaseModel):
         ),
     )
     n: int | None = Field(
-        1,
+        None,
         description=(
             "How many chat completion choices to generate for each input message. Keep `n` as `1` to receive one choice per input message."
         ),
     )
     stream: bool | None = Field(
-        False,
+        None,
         description=(
             "If set to `true`, the model response data will be streamed to the client as it is generated using server-sent events."
         ),
@@ -247,36 +247,36 @@ class EmbeddingRequest(BaseModel):
 
 
 class ImagesRequest(BaseModel):
-    prompt: str
-    background: Literal["auto", "transparent", "opaque"] | None = "auto"
-    model: str = ""
-    moderation: str | None = "auto"
-    n: int | None = Field(1, ge=1, le=4)
+    prompt: str = Field()
+    background: Literal["auto", "transparent", "opaque"] | None = Field(default=None)
+    model: str = Field()
+    moderation: str | None = Field(default=None)
+    n: int | None = Field(None, ge=1, le=4)
     output_compression: int | None = Field(95, ge=0, le=100)
-    output_format: Literal["png", "webp", "jpeg"] | None = "png"
-    quality: Literal["low", "medium", "high", "auto"] | None = "auto"
-    response_format: Literal["url", "b64_json"] | None = "b64_json"
-    size: str | None = "auto"
-    style: str | None = "vivid"
-    user: str | None = ""
-    partial_images: int | None = 0
-    stream: bool | None = False
+    output_format: Literal["png", "webp", "jpeg"] | None = Field(default=None)
+    quality: Literal["low", "medium", "high", "auto"] | None = Field(default=None)
+    response_format: Literal["url", "b64_json"] | None = Field(default=None)
+    size: str | None = Field(default=None)
+    style: str | None = Field(default=None)
+    user: str | None = Field(default=None)
+    partial_images: int | None = Field(default=None)
+    stream: bool | None = Field(default=None)
 
 
 class CreateSpeechRequest(BaseModel):
     input: str = Field(..., max_length=4096, description="The text to generate audio for. The maximum length is 4096 characters.")
     model: str = Field(..., description="One of the available TTS models.")
-    voice: str | None = Field(..., description="The voice to use when generating the audio.")
-    instructions: str | None = Field(default="", description="Control the voice of your generated audio with additional instructions.")
+    voice: str | None = Field(default=None, description="The voice to use when generating the audio.")
+    instructions: str | None = Field(default=None, description="Control the voice of your generated audio with additional instructions.")
     format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] | None = Field(
-        default="mp3",
+        default=None,
         description="The format to audio in. Supported formats are mp3, opus, aac, flac, wav, and pcm.",
     )
     speed: float | None = Field(
-        default=1.0, ge=0.25, le=4.0, description="The speed of the generated audio. Select a value from 0.25 to 4.0. 1.0 is the default."
+        default=None, ge=0.25, le=4.0, description="The speed of the generated audio. Select a value from 0.25 to 4.0. 1.0 is the default."
     )
     stream_format: Literal["sse", "audio"] | None = Field(
-        default="audio",
+        default=None,
         description="The format to stream the audio in. Supported formats are sse and audio. sse is not supported for tts-1 or tts-1-hd.",
     )
 
@@ -299,23 +299,23 @@ type TranscriptionInclude = Literal["logprobs"]
 class AudioChunkingStrategy(BaseModel):
     type: Literal["server_vad"] = Field(..., description="Must be set to 'server_vad' to enable manual chunking using server side VAD")
 
-    prefix_padding_ms: int = Field(
-        default=300,
+    prefix_padding_ms: int | None = Field(
+        default=None,
         ge=0,
         description="Amount of audio to include before the VAD detected speech (in milliseconds). "
         "This ensures the beginning of speech is not cut off.",
     )
 
-    silence_duration_ms: int = Field(
-        default=200,
+    silence_duration_ms: int | None = Field(
+        default=None,
         ge=0,
         description="Duration of silence to detect speech stop (in milliseconds). "
         "With shorter values the model will respond more quickly, "
         "but may jump in on short pauses from the user.",
     )
 
-    threshold: float = Field(
-        default=0.5,
+    threshold: float | None = Field(
+        default=None,
         ge=0.0,
         le=1.0,
         description="Sensitivity threshold (0.0 to 1.0) for voice activity detection. "
@@ -330,15 +330,15 @@ class CreateTranscriptionRequest(BaseModel):
         ...,
         description="The audio file object (not file name) in one of these formats: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, or webm.",
     )
-    temperature: float = Field(
-        default=0.0,
+    temperature: float | None = Field(
+        default=None,
         ge=0.0,
         le=1.0,
         description="The sampling temperature, between 0 and 1. Higher values like 0.8 will make the output more random, "
         "while lower values like 0.2 will make it more focused and deterministic. If set to 0, the model will use log probability "
         "to automatically increase the temperature until certain thresholds are hit.",
     )
-    type: str = Field("text", description="The format type, either 'text' or 'json_object'")
+    type: str | None = Field(default=None, description="The format type, either 'text' or 'json_object'")
     chunking_strategy: Literal["auto"] | AudioChunkingStrategy | None = Field(
         default=None,
         description="Controls how the audio is cut into chunks."
@@ -347,29 +347,29 @@ class CreateTranscriptionRequest(BaseModel):
         " server_vad object can be provided to tweak VAD detection parameters manually."
         " If unset, the audio is transcribed as a single block.",
     )
-    include: list[TranscriptionInclude] = Field(
-        default_factory=list[TranscriptionInclude],
+    include: list[TranscriptionInclude] | None = Field(
+        default=None,
         alias="include[]",
         description="Additional information to include in the transcription response. "
         "logprobs will return the log probabilities of the tokens in the response to "
         "understand the model's confidence in the transcription.",
     )
-    language: str = Field(
-        default="",
+    language: str | None = Field(
+        default=None,
         description="The language of the input audio. Supplying the input language in ISO-639-1 (e.g. en) "
         "format will improve accuracy and latency.",
     )
-    prompt: str = Field(
-        default="",
+    prompt: str | None = Field(
+        default=None,
         description="An optional text to guide the model's style or continue a previous audio segment. "
         "The prompt should match the audio language.",
     )
-    stream: bool = Field(
-        default=False,
+    stream: bool | None = Field(
+        default=None,
         description="If set to true, the model response data will be streamed to the client as it is generated using server-sent events.",
     )
-    timestamp_granularities: list[Literal["word", "segment"]] = Field(
-        default=["segment"],
+    timestamp_granularities: list[Literal["word", "segment"]] | None = Field(
+        default=None,
         alias="timestamp_granularities[]",
         description="The timestamp granularities to populate for this transcription. response_format must be set verbose_json to use "
         "timestamp granularities. "
@@ -380,54 +380,6 @@ class CreateTranscriptionRequest(BaseModel):
 
 type Bias = Annotated[int, Field(ge=-100, le=100)]
 type StopSequenceList = Annotated[list[str], Field(max_length=4)]
-
-
-class LogProbs(BaseModel):
-    """Log probability information for tokens."""
-
-    text_offset: list[int]
-    token_logprobs: list[float]
-    tokens: list[str]
-    top_logprobs: list[dict[str, float]]  # List of dicts mapping tokens to their log probabilities
-
-
-class Choice(BaseModel):
-    """Represents a single completion choice."""
-
-    finish_reason: Literal["stop", "length", "content_filter"] = Field(..., description="The reason the model stopped generating tokens.")
-    index: int = Field(..., description="The index of this choice in the list of choices.")
-    logprobs: LogProbs | None = Field(default=None, description="Log probability information for the tokens.")
-    text: str = Field(..., description="The generated text for this choice.")
-
-
-class CompletionTokensDetails(BaseModel):
-    """Breakdown of tokens used in a completion."""
-
-    accepted_prediction_tokens: int | None = Field(
-        default=None, description="Tokens from prediction that appeared in completion (Predicted Outputs)."
-    )
-    audio_tokens: int | None = Field(default=None, description="Audio input tokens generated by the model.")
-    reasoning_tokens: int | None = Field(default=None, description="Tokens generated by the model for reasoning.")
-    rejected_prediction_tokens: int | None = Field(
-        default=None, description="Tokens from prediction that did not appear in completion (Predicted Outputs)."
-    )
-
-
-class PromptTokensDetails(BaseModel):
-    """Breakdown of tokens used in the prompt."""
-
-    audio_tokens: int | None = Field(default=None, description="Audio input tokens present in the prompt.")
-    cached_tokens: int | None = Field(default=None, description="Cached tokens present in the prompt.")
-
-
-class Usage(BaseModel):
-    """Usage statistics for the completion request."""
-
-    completion_tokens: int = Field(default=0, description="Number of tokens in the generated completion.")
-    prompt_tokens: int = Field(default=0, description="Number of tokens in the prompt.")
-    total_tokens: int = Field(default=0, description="Total number of tokens used in the request (prompt + completion).")
-    completion_tokens_details: CompletionTokensDetails | None = Field(default=None, description="Detailed breakdown of completion tokens.")
-    prompt_tokens_details: PromptTokensDetails | None = Field(default=None, description="Detailed breakdown of prompt tokens.")
 
 
 class StreamOptions(BaseModel):
@@ -448,13 +400,13 @@ class CompletionLegacyRequest(BaseModel):
     )
 
     best_of: int | None = Field(
-        default=1, ge=1, description="Generate best_of completions and return the best one. Must be greater than n if both are set."
+        default=None, ge=1, description="Generate best_of completions and return the best one. Must be greater than n if both are set."
     )
 
-    echo: bool | None = Field(default=False, description="Echo back the prompt in addition to the completion.")
+    echo: bool | None = Field(default=None, description="Echo back the prompt in addition to the completion.")
 
     frequency_penalty: float | None = Field(
-        default=0.0, ge=-2.0, le=2.0, description="Penalize new tokens based on their existing frequency (-2.0 to 2.0)."
+        default=None, ge=-2.0, le=2.0, description="Penalize new tokens based on their existing frequency (-2.0 to 2.0)."
     )
 
     logit_bias: dict[str, Bias] | None = Field(
@@ -463,30 +415,30 @@ class CompletionLegacyRequest(BaseModel):
 
     logprobs: int | None = Field(default=None, ge=0, le=5, description="Include log probabilities on the most likely tokens (max 5).")
 
-    max_tokens: int | None = Field(default=16, ge=1, description="Maximum number of tokens to generate in the completion.")
+    max_tokens: int | None = Field(default=None, ge=1, description="Maximum number of tokens to generate in the completion.")
 
-    n: int | None = Field(default=1, ge=1, description="How many completions to generate for each prompt.")
+    n: int | None = Field(default=None, ge=1, description="How many completions to generate for each prompt.")
 
     presence_penalty: float | None = Field(
-        default=0.0, ge=-2.0, le=2.0, description="Penalize new tokens based on whether they appear in the text so far (-2.0 to 2.0)."
+        default=None, ge=-2.0, le=2.0, description="Penalize new tokens based on whether they appear in the text so far (-2.0 to 2.0)."
     )
 
     seed: int | None = Field(default=None, description="Seed for deterministic sampling (best effort, not guaranteed).")
 
     stop: str | StopSequenceList | None = Field(default=None, description="Up to 4 sequences where the API will stop generating.")
 
-    stream: bool | None = Field(default=False, description="Stream back partial progress as server-sent events.")
+    stream: bool | None = Field(default=None, description="Stream back partial progress as server-sent events.")
 
     stream_options: StreamOptions | None = Field(default=None, description="Options for streaming response (only used when stream=True).")
 
     suffix: str | None = Field(default=None, description="Suffix after completion of inserted text.")
 
     temperature: float | None = Field(
-        default=1.0, ge=0.0, le=2.0, description="Sampling temperature (0-2). Higher = more random, lower = more deterministic."
+        default=None, ge=0.0, le=2.0, description="Sampling temperature (0-2). Higher = more random, lower = more deterministic."
     )
 
     top_p: float | None = Field(
-        default=1.0, ge=0.0, le=1.0, description="Nucleus sampling - consider tokens with top_p probability mass (0-1)."
+        default=None, ge=0.0, le=1.0, description="Nucleus sampling - consider tokens with top_p probability mass (0-1)."
     )
 
     user: str | None = Field(default=None, description="Unique identifier for end-user to help monitor and detect abuse.")
