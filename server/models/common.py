@@ -2,10 +2,9 @@
 
 from typing import Any
 
-from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
+# from fastapi.responses import JSONResponse, StreamingResponse
+# from pydantic import BaseModel
 
-RequestBody = dict[str, Any]
-FormFields = dict[str, Any]
-JsonSerializable = dict[str, Any]
-StarletteResponse = JsonSerializable | JSONResponse | BaseModel | StreamingResponse
+type FormFields = dict[str, Any]
+type JsonSerializable = dict[str, Any]
+type StarletteResponse = Any  # JsonSerializable | JSONResponse | BaseModel | StreamingResponse
