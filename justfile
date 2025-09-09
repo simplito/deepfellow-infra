@@ -29,3 +29,5 @@ todo:
     git grep "# TODO" -- "*.py"
     git grep "# FIX" -- "*.py"
     git grep "# DONE" -- "*.py"
+
+check: ruff ruff-format pyright
