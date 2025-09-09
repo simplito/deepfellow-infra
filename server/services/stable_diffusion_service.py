@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import EndpointCallback, SimpleEndpoint
-from server.models.common import RequestBody
+from server.models.api import ImagesRequest
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -174,26 +174,6 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         path = self._get_working_dir() / "models/Lora"
         path.mkdir(parents=True, exist_ok=True)
         return path
-
-
-class ImagesRequest(BaseModel):
-    # Supported
-    prompt: str = Field(..., examples=['A painting of a cat <sd>{"negative_prompt": "low quality"}</sd>'])
-    model: str = ""
-    size: str = Field("auto", examples=["512x512", "auto"])
-    quality: Literal["low", "medium", "high", "auto"] = "auto"
-    output_format: Literal["png", "webp", "jpeg"] = "png"
-    output_compression: int = Field(95, ge=0, le=100)
-    n: int = Field(1, ge=1, le=10)
-    # Not supported yet. Possible to do.
-    background: Literal["auto", "transparent", "opaque"] = "auto"  # LayerDiffusion in forge version.
-    style: str = "vivid"
-    moderation: str = "auto"
-    # Not supported
-    response_format: Literal["url", "b64_json"] = "b64_json"
-    partial_images: int = 0
-    stream: bool = False
-    user: str = ""
 
 
 class InputTokensDetails(BaseModel):
@@ -366,10 +346,10 @@ def _get_in_format(img: str, format: str = "png", quality: int = 95) -> str:
 def _add_body_config(settings_original: StableDiffusionOptions, body: ImagesRequest, remaining_text: str) -> StableDiffusionOptions:
     settings = settings_original.copy()
 
-    if body.response_format != "b64_json":
+    if body.response_format is not None and body.response_format != "b64_json":
         raise ValueError("Response format not supported", body.response_format)
 
-    if body.partial_images != 0:
+    if body.partial_images is not None and body.partial_images != 0:
         raise ValueError("Partial images not supported")
 
     if body.stream:
@@ -390,9 +370,8 @@ def _add_body_config(settings_original: StableDiffusionOptions, body: ImagesRequ
     return settings
 
 
-def _stable_diffusion_handler(port: int) -> EndpointCallback:
-    async def handler(body_org: RequestBody, _req: Request) -> ImagesResponse:
-        body = ImagesRequest(**body_org)
+def _stable_diffusion_handler(port: int) -> EndpointCallback[ImagesRequest]:
+    async def handler(body: ImagesRequest, _req: Request) -> ImagesResponse:
         url = f"http://localhost:{port}/sdapi/v1/txt2img/"
 
         settings_raw, remaining_text = split_text_to_json_and_prompt(body.prompt)
@@ -420,7 +399,7 @@ def _stable_diffusion_handler(port: int) -> EndpointCallback:
             #     raise HTTPException(500, "There is no images in Stable Diffusion response.")
 
         try:
-            imgs = [_get_in_format(img, body.output_format, body.output_compression) for img in data_raw["images"]]
+            imgs = [_get_in_format(img, body.output_format or "png", body.output_compression or 95) for img in data_raw["images"]]
         except ValueError:
             raise HTTPException(422, f"Not supported image format: {body.output_format}") from None
         except Exception as exc:
