@@ -13,6 +13,7 @@ from server.services.coqui_service import CoquiService
 from server.services.custom_service import CustomService
 from server.services.llamapcpp_service import LLamacppService
 from server.services.ollama_service import OllamaService
+from server.services.openai_service import OpenAIService
 from server.services.sindri_service import SindriService
 from server.services.speches_ai_service import SpeachesAIService
 from server.services.stable_diffusion_service import StableDiffusionService
@@ -51,6 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     app.state.services_manager.register_service(CustomService(app.state.context, app.state.endpoint_registry, app.state.service_provider))
     app.state.services_manager.register_service(CoquiService(app.state.context, app.state.endpoint_registry, app.state.service_provider))
     app.state.services_manager.register_service(SindriService(app.state.context, app.state.endpoint_registry, app.state.service_provider))
+    app.state.services_manager.register_service(OpenAIService(app.state.context, app.state.endpoint_registry, app.state.service_provider))
 
     await app.state.context.load()
     yield
