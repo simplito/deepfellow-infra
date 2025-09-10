@@ -36,11 +36,13 @@ class ProxyOptions:
         rewrite_model_to: str | None = None,
         remove_model: bool = False,
         form: bool = False,
+        headers: dict[str, str] | None = None,
     ):
         self.url = url
         self.rewrite_model_to = rewrite_model_to
         self.remove_model = remove_model
         self.form = form
+        self.headers = headers
 
 
 class EndpointRegistry:
@@ -104,10 +106,10 @@ class EndpointRegistry:
         if model in self.completion_endpoints:
             del self.completion_endpoints[model]
 
-    def register_all_completions_as_proxy(self, model: str, url: str) -> None:
+    def register_all_completions_as_proxy(self, model: str, url: str, rewrite_model_to: str | None = None) -> None:
         """Register given model to chat completions and legacy completions."""
-        self.register_chat_completion_as_proxy(model, ProxyOptions(url=f"{url}/v1/chat/completions"))
-        self.register_completion_as_proxy(model, ProxyOptions(url=f"{url}/v1/completions"))
+        self.register_chat_completion_as_proxy(model, ProxyOptions(url=f"{url}/v1/chat/completions", rewrite_model_to=rewrite_model_to))
+        self.register_completion_as_proxy(model, ProxyOptions(url=f"{url}/v1/completions", rewrite_model_to=rewrite_model_to))
 
     def unregister_all_completions(self, model: str) -> None:
         """Unregister given model from chat completions and legacy completions."""
@@ -320,7 +322,6 @@ class EndpointRegistry:
         body: bytes | BaseModel | JsonSerializable | FormFields | FormData,
         options: ProxyOptions,
         _request: Request,
-        headers: dict[str, str] | None = None,
     ) -> StreamingResponse:
         if not isinstance(body, (FormData | bytes | bytearray | memoryview)):
             body = body.model_dump(exclude_none=True) if isinstance(body, BaseModel) else body
@@ -332,7 +333,7 @@ class EndpointRegistry:
         (status_code, media_type, generator) = await proxy_post_request(
             options.url,
             body,
-            headers=headers,
+            headers=options.headers,
             form=options.form,
         )
         return StreamingResponse(generator, media_type=media_type, status_code=status_code)
