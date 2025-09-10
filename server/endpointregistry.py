@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import NamedTuple
+from urllib.parse import urljoin
 
 from aiohttp import FormData
 from aiohttp.client import ClientSession
@@ -230,8 +231,17 @@ class EndpointRegistry:
         """Register custom endpoint as a proxy."""
 
         async def on_request(_body: None, request: Request) -> StreamingResponse:
-            data = await request.body()
-            return await self._proxy(data, options, request)
+            headers = dict(request.headers)
+            if options.headers:
+                for key, value in options.headers:
+                    headers[key] = value
+            (status_code, media_type, response_headers, generator) = await proxy_request(
+                method=request.method,
+                url=urljoin(options.url, request.url.path[7:]),
+                body=request.stream(),
+                headers=headers,
+            )
+            return StreamingResponse(generator, media_type=media_type, status_code=status_code, headers=response_headers)
 
         self.register_custom_endpoint(url, SimpleEndpoint(on_request=on_request))
 
@@ -365,6 +375,36 @@ async def proxy_post_request(
                 await session.close()
 
         return status_code, content_type, generator()
+
+    except Exception:
+        await session.close()
+        raise
+
+
+async def proxy_request(
+    url: str,
+    method: str,
+    body: AsyncGenerator[bytes],
+    headers: dict[str, str] | None = None,
+) -> tuple[int, str, dict[str, str], AsyncGenerator[bytes]]:
+    """Make request to given url and stream it."""
+    session = ClientSession()
+    try:
+        resp = await session.request(method=method, url=url, data=body, headers=headers or {})
+        status_code = resp.status
+        content_type = resp.headers.get("content-type", "application/octet-stream")
+        response_headers = dict(resp.headers)
+
+        async def generator() -> AsyncGenerator[bytes]:
+            try:
+                async for chunk in resp.content.iter_any():
+                    if chunk:
+                        yield chunk
+            finally:
+                await resp.release()
+                await session.close()
+
+        return status_code, content_type, response_headers, generator()
 
     except Exception:
         await session.close()

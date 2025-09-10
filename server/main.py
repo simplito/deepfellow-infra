@@ -124,16 +124,20 @@ async def on_images_generations(
     return await endpoint_registry.execute_images_generations(body, request)
 
 
-@app.post("/custom/{full_path:path}")
+@app.api_route(
+    "/custom/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+)
 async def on_custom_endpoint(
     request: Request,
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
 ) -> StarletteResponse:
     """Process custom endpoint request."""
-    if not endpoint_registry.has_custom_endpoint(request.url.path):
+    url = request.url.path[7:]
+    if not endpoint_registry.has_custom_endpoint(url):
         return JSONResponse(content="404 Not found", status_code=404)
-    return await endpoint_registry.execute_custom_endpoints(request.url.path, request)
+    return await endpoint_registry.execute_custom_endpoints(url, request)
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
