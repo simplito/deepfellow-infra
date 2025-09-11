@@ -3,9 +3,8 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from server.api import models, services
+from server.api import models, openai, services
 from server.lifecycle import lifespan
-from server.openai import api as openai
 from server.websockets import api as websocket
 
 app = FastAPI(lifespan=lifespan)

@@ -1,6 +1,6 @@
 """Websocket models."""
 
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal, NamedTuple, TypeVar
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, SecretStr, field_serializer, field_validator
@@ -84,9 +84,10 @@ class ModelsClear(JsonRpcNotificationRequest):
 JsonRpc = ModelsUsage | ModelsList | ModelsClear | InfraConnect
 
 
-def ensure_list(v: Any) -> list[Any]:  # noqa: ANN401
-    """Convert object to list of objects. If is list do nothing."""
-    return v if isinstance(v, list) else [v]  # type: ignore
+class InfraConnectData(NamedTuple):
+    url: str
+    key: str
+    is_inside: bool
 
 
 class WebsocketMsgs(BaseModel):
@@ -101,3 +102,8 @@ class WebsocketMsgs(BaseModel):
 
 class SubInfraMsgs(WebsocketMsgs):
     msgs: list[JsonRpc]  # type: ignore
+
+
+def ensure_list(v: Any) -> list[Any]:  # noqa: ANN401
+    """Convert object to list of objects. If is list do nothing."""
+    return v if isinstance(v, list) else [v]  # type: ignore

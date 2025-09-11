@@ -3,13 +3,14 @@
 import logging
 import urllib.parse
 from collections.abc import AsyncGenerator, Callable
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
 from fastapi.responses import StreamingResponse
 
 from server.config import ParentInfra
 from server.websockets.loadbalancer import get_infra_url, get_key
+from server.websockets.models import InfraConnectData
 from server.websockets.subinfra import ExternalInfraWsManager
 
 if TYPE_CHECKING:
@@ -17,12 +18,6 @@ if TYPE_CHECKING:
     from server.websockets.models import InfraInfo
 
 logger = logging.getLogger("uvicorn.error")
-
-
-class InfraConnectData(NamedTuple):
-    url: str
-    key: str
-    is_inside: bool
 
 
 def create_infra_uri(parent_infra_config: ParentInfra) -> str:
