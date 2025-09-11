@@ -344,7 +344,7 @@ async def proxy(
 ) -> StreamingResponse:
     """Proxy endpoint."""
     if not isinstance(body, (FormData | bytes | bytearray | memoryview)):
-        body = body.model_dump() if isinstance(body, BaseModel) else body
+        body = body.model_dump(exclude_none=True) if isinstance(body, BaseModel) else body
         if options.remove_model:
             del body["model"]
         if options.rewrite_model_to:
