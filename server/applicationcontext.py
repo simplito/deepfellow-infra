@@ -13,7 +13,11 @@ from .serviceprovider import ServiceProvider
 
 class ApplicationContext:
     def __init__(
-        self, endpoint_registry: EndpointRegistry, config: AppSettings, service_provider: ServiceProvider, services_manager: ServicesManager
+        self,
+        endpoint_registry: EndpointRegistry,
+        config: AppSettings,
+        service_provider: ServiceProvider,
+        services_manager: ServicesManager,
     ):
         self.endpoint_registry = endpoint_registry
         self.config = config

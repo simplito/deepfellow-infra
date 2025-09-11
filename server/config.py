@@ -2,6 +2,7 @@
 
 import os
 
+from pydantic import BaseModel, SecretStr
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 
@@ -9,9 +10,18 @@ class ConfigError(SystemExit):
     """Exception raised when there is an error in the configuration."""
 
 
+class ParentInfra(BaseModel):
+    ws_url: str = ""
+    api_key: str = ""
+
+
 class AppSettings(BaseSettings):
-    api_key: str
-    admin_api_key: str
+    name: str
+    url: str
+    admin_api_key: SecretStr
+    infra_api_key: SecretStr
+    api_key: SecretStr
+    parent_infra: ParentInfra = ParentInfra()
 
     model_config = SettingsConfigDict(
         env_file=".env",
