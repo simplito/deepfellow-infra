@@ -109,6 +109,9 @@ class OllamaService(Base2Service[InstalledInfo]):
             image_port=11434,
             use_gpu=parsed_options.gpu,
             volumes=volumes,
+            env_vars={
+                "OLLAMA_NUM_PARALLEL": "3",
+            },
             restart="unless-stopped",
         )
         port = await install_and_run_docker(self.application_context, docker_options)

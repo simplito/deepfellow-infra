@@ -51,7 +51,7 @@ class ListServicesOut(BaseModel):
 
 
 class ListAllModelsFilters(BaseModel):
-    installed: bool = False
+    installed: bool | None = None
     service_id: str | None = None
 
 
