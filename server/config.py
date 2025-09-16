@@ -18,9 +18,9 @@ class ParentInfra(BaseModel):
 class AppSettings(BaseSettings):
     name: str
     url: str
-    admin_api_key: SecretStr
-    infra_api_key: SecretStr
-    api_key: SecretStr
+    admin_api_key: SecretStr  # key to connect to marketplace
+    infra_api_key: SecretStr  # key to connect subinfra through ws
+    api_key: SecretStr  # key to call /v1/ endpoints
     parent_infra: ParentInfra = ParentInfra()
 
     model_config = SettingsConfigDict(

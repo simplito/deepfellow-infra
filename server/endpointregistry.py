@@ -353,7 +353,7 @@ async def proxy(
     (status_code, media_type, response_headers, generator) = await proxy_post_request(
         options.url,
         body,
-        headers=headers,
+        headers=(options.headers or {}) | (headers or {}),
         form=options.form,
     )
     return StreamingResponse(generator, media_type=media_type, status_code=status_code, headers=response_headers)
