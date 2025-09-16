@@ -375,6 +375,8 @@ async def proxy_post_request(
         status_code = resp.status
         content_type = resp.headers.get("content-type", "application/octet-stream")
         response_headers = dict(resp.headers)
+        response_headers.pop("Content-Encoding", None)
+        response_headers.pop("Transfer-Encoding", None)
 
         async def generator() -> AsyncGenerator[bytes]:
             try:
@@ -405,6 +407,8 @@ async def proxy_request(
         status_code = resp.status
         content_type = resp.headers.get("content-type", "application/octet-stream")
         response_headers = dict(resp.headers)
+        response_headers.pop("Content-Encoding", None)
+        response_headers.pop("Transfer-Encoding", None)
 
         async def generator() -> AsyncGenerator[bytes]:
             try:
