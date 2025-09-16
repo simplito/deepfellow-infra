@@ -12,6 +12,7 @@ from server.endpointregistry import EndpointRegistry
 from server.serviceprovider import ServiceProvider
 from server.services.coqui_service import CoquiService
 from server.services.custom_service import CustomService
+from server.services.googleai_service import GoogleAIService
 from server.services.llamapcpp_service import LLamacppService
 from server.services.ollama_service import OllamaService
 from server.services.openai_service import OpenAIService
@@ -60,6 +61,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     services_manager.register_service(CoquiService(context, endpoint_registry, service_provider))
     services_manager.register_service(SindriService(context, endpoint_registry, service_provider))
     services_manager.register_service(OpenAIService(context, endpoint_registry, service_provider))
+    services_manager.register_service(GoogleAIService(context, endpoint_registry, service_provider))
 
     # Load functions
     await context.load()
