@@ -1,6 +1,7 @@
 """Remote service."""
 
 from abc import abstractmethod
+from urllib.parse import urljoin
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -49,6 +50,8 @@ class InstalledInfo:
 
 
 class RemoteService(Base2Service[InstalledInfo]):
+    url_prefix: str = "v1/"
+
     @abstractmethod
     def get_default_url(self) -> str:
         """Return the default url."""
@@ -135,58 +138,65 @@ class RemoteService(Base2Service[InstalledInfo]):
             completions=model.completions,
             legacy_completions=model.legacy_completions,
         )
+        url_base = urljoin(info.parsed_options.api_url, self.url_prefix)
         if model.type == "llm":
             if model.completions:
+                url = urljoin(url_base, "chat/completions")
                 self.endpoint_registry.register_chat_completion_as_proxy(
                     registered_name,
                     ProxyOptions(
-                        url=f"{info.parsed_options.api_url}/v1/chat/completions",
+                        url=url,
                         rewrite_model_to=model.real_model_name or model_id,
                         headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
                     ),
                 )
             if model.legacy_completions:
+                url = urljoin(url_base, "completions")
                 self.endpoint_registry.register_completion_as_proxy(
                     registered_name,
                     ProxyOptions(
-                        url=f"{info.parsed_options.api_url}/v1/completions",
+                        url=url,
                         rewrite_model_to=model.real_model_name,
                         headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
                     ),
                 )
         if model.type == "tts":
+            url = urljoin(url_base, "v1/audio/speech")
             self.endpoint_registry.register_audio_speech_as_proxy(
                 registered_name,
                 ProxyOptions(
-                    url=f"{info.parsed_options.api_url}/v1/audio/speech",
+                    url=url,
                     rewrite_model_to=model.real_model_name,
                     headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
                 ),
             )
         if model.type == "stt":
+            url = urljoin(url_base, "v1/audio/transcriptions")
             self.endpoint_registry.register_audio_transcriptions_as_proxy(
                 registered_name,
                 ProxyOptions(
-                    url=f"{info.parsed_options.api_url}/v1/audio/transcriptions",
+                    url=url,
                     rewrite_model_to=model.real_model_name,
                     headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
                     form=True,
                 ),
             )
         if model.type == "txt2img":
+            url = urljoin(url_base, "v1/images/generations")
             self.endpoint_registry.register_image_generations_as_proxy(
                 registered_name,
                 ProxyOptions(
-                    url=f"{info.parsed_options.api_url}/v1/images/generations",
+                    url=url,
                     rewrite_model_to=model.real_model_name,
                     headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
                 ),
             )
         if model.type == "embedding":
+            url = urljoin(url_base, "v1/embeddings")
             self.endpoint_registry.register_embeddings_as_proxy(
                 registered_name,
                 ProxyOptions(
-                    url=f"{info.parsed_options.api_url}/v1/embeddings",
+                    url=url,
                     rewrite_model_to=model.real_model_name,
                     headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
                 ),
