@@ -141,7 +141,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                     registered_name,
                     ProxyOptions(
                         url=f"{info.parsed_options.api_url}/v1/chat/completions",
-                        rewrite_model_to=model.real_model_name,
+                        rewrite_model_to=model.real_model_name or model_id,
                         headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
                     ),
                 )

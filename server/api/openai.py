@@ -56,13 +56,15 @@ async def on_chat_completions(
 ) -> StarletteResponse:
     """Process chat completions request."""
     model = body.model
-    url, key, is_inside = get_lazy_infra(request, model)
-    if not url:
+    # url, key, is_inside = get_lazy_infra(request, model)
+    # if not url:
+    #     raise HTTPException(400, "Given model is not found")
+
+    # if not is_inside:
+    #     return await proxy(body.model_dump(), ProxyOptions(url=get_proxy_url(url, request)), request, auth_header(key))
+    # TODO revert changes
+    if not endpoint_registry.has_chat_completion_model(model):
         raise HTTPException(400, "Given model is not found")
-
-    if not is_inside:
-        return await proxy(body.model_dump(), ProxyOptions(url=get_proxy_url(url, request)), request, auth_header(key))
-
     return await endpoint_registry.execute_chat_completion(request, model, body)
 
 
