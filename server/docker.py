@@ -205,9 +205,10 @@ def generate_docker_compose_content(options: DockerOptions, port: int) -> Docker
     """Generate docker compose content."""
     service: DockerComposeService = {
         "image": options.image,
-        "ports": [f"{port}:{options.image_port}"],
         "environment": options.env_vars,
     }
+    if not options.subnet:
+        service["ports"] = [f"{port}:{options.image_port}"]
     if options.healthcheck:
         service["healthcheck"] = options.healthcheck
     if options.command:
