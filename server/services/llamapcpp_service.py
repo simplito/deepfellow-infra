@@ -166,6 +166,7 @@ class LLamacppService(Base2Service[InstalledInfo]):
             restart="unless-stopped",
             volumes=volumes,
             use_gpu=info.parsed_options.gpu,
+            subnet=self.application_context.get_docker_subnet(),
         )
         port = await install_and_run_docker(self.application_context, docker_options)
         registered_name = options.alias if options.alias is not None else model_id

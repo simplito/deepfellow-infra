@@ -25,6 +25,10 @@ class ApplicationContext:
         self.services_manager = services_manager
         self.allocated_ports = set[int]()
 
+    def get_docker_subnet(self) -> str | None:
+        """Return docker subnet name or None if it is not set."""
+        return self.config.docker_subnet if self.config.docker_subnet else None
+
     def get_container_host(self, container_name: str) -> str:
         """Return container_name if there is docker_subnet in config otherwise return locaahost."""
         return container_name if self.config.docker_subnet else "localhost"

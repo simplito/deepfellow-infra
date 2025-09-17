@@ -123,6 +123,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             use_gpu=parsed_options.gpu,
             volumes=volumes,
             restart="unless-stopped",
+            subnet=self.application_context.get_docker_subnet(),
         )
         port = await install_and_run_docker(self.application_context, docker_options)
         return InstalledInfo(

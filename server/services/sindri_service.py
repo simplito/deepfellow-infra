@@ -106,6 +106,7 @@ sindriClient:
             image_port=8080,
             volumes=volumes,
             restart="unless-stopped",
+            subnet=self.application_context.get_docker_subnet(),
         )
         port = await install_and_run_docker(self.application_context, docker_options)
         return InstalledInfo(

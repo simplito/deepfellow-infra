@@ -1,6 +1,7 @@
 """Custom service."""
 
 from collections.abc import Callable
+from pathlib import Path
 
 from fastapi import HTTPException
 
@@ -130,11 +131,12 @@ class CustomService(Base2Service[InstalledInfo]):
             env_vars={},
             restart="unless-stopped",
             volumes=[f"{self._get_working_dir()}/easyocr/model:/root/.EasyOCR/model"],
+            subnet=self.application_context.get_docker_subnet(),
         )
 
-
-def _load_easy_ocr(service: CustomService) -> DockerOptions:
-    return service.get_docker_options()
+    def get_working_dir(self) -> Path:
+        """Get working dir."""
+        return self.get_working_dir()
 
 
 class CustomModel:
@@ -162,18 +164,28 @@ _const = CustomConst(
         "bentoml/example-summarization": CustomModel(
             model_type="custom",
             custom_endpoint="/summarize",
-            options=DockerOptions(
+            options=lambda custom_service: DockerOptions(
                 image_port=3000,
                 name="bentoml",
                 image="gitlab2.simplito.com:5050/df/deepfellow-infra/bentomlexample:1.0.0",
                 command="serve",
                 env_vars={},
+                subnet=custom_service.application_context.get_docker_subnet(),
             ),
         ),
         "easyOCR": CustomModel(
             model_type="custom",
             custom_endpoint="/v1/ocr",
-            options=_load_easy_ocr,
+            options=lambda custom_service: DockerOptions(
+                image_port=8000,
+                name="easyocr",
+                image="gitlab2.simplito.com:5050/df/df-ocr:1.0.0",
+                use_gpu=False,
+                env_vars={},
+                restart="unless-stopped",
+                volumes=[f"{custom_service.get_working_dir()}/easyocr/model:/root/.EasyOCR/model"],
+                subnet=custom_service.application_context.get_docker_subnet(),
+            ),
         ),
     },
 )

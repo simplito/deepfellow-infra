@@ -31,6 +31,7 @@ class DockerOptions:
         entrypoint: str | None = None,
         healthcheck: str | None = None,
         reset_uid: bool = False,
+        subnet: str | None = None,
     ):
         self.name = name
         self.image = image
@@ -47,6 +48,7 @@ class DockerOptions:
         self.entrypoint = entrypoint
         self.healthcheck = healthcheck
         self.reset_uid = reset_uid
+        self.subnet = subnet
 
 
 class DockerNotInstalledError(Exception):
@@ -88,10 +90,16 @@ class DockerComposeService(TypedDict):
     entrypoint: NotRequired[str]
     user: NotRequired[str]
     deploy: NotRequired[DockerComposeDeploy]
+    networks: NotRequired[list[str]]
+
+
+class DockerComposeNetwork(TypedDict):
+    external: bool
 
 
 class DockerComposeContent(TypedDict):
     services: dict[str, DockerComposeService]
+    networks: NotRequired[dict[str, DockerComposeNetwork]]
 
 
 _docker_compose_cmd: str | None = None
@@ -193,7 +201,7 @@ async def is_docker_compose_healthy(docker_compose_file_path: Path, service_name
         return False
 
 
-def generate_docker_compose_content(options: DockerOptions, port: int) -> DockerComposeContent:
+def generate_docker_compose_content(options: DockerOptions, port: int) -> DockerComposeContent:  # noqa: C901
     """Generate docker compose content."""
     service: DockerComposeService = {
         "image": options.image,
@@ -216,7 +224,11 @@ def generate_docker_compose_content(options: DockerOptions, port: int) -> Docker
         service["user"] = "0:0"
     if options.use_gpu:
         service["deploy"] = {"resources": {"reservations": {"devices": [{"driver": "nvidia", "count": 1, "capabilities": ["gpu"]}]}}}
+    if options.subnet:
+        service["networks"] = [options.subnet]
     docker_compose_content: DockerComposeContent = {"services": {options.service_name: service}}
+    if options.subnet:
+        docker_compose_content["networks"] = {options.subnet: {"external": True}}
     return docker_compose_content
 
 
