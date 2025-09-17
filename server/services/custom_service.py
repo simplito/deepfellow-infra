@@ -18,11 +18,13 @@ class ModelInstalledInfo:
         options: InstallModelIn,
         port: int,
         docker_options: DockerOptions,
+        container_host: str,
     ):
         self.id = id
         self.options = options
         self.port = port
         self.docker_options = docker_options
+        self.container_host = container_host
 
 
 class InstalledInfo:
@@ -94,14 +96,15 @@ class CustomService(Base2Service[InstalledInfo]):
 
         docker_options = model.options(self) if callable(model.options) else model.options
         port = await install_and_run_docker(self.application_context, docker_options)
-        info.models[model_id] = ModelInstalledInfo(
+        info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
             options=options,
             port=port,
             docker_options=docker_options,
+            container_host=self.application_context.get_container_host(docker_options.name),
         )
         self.endpoint_registry.register_custom_endpoint_as_proxy(
-            model.custom_endpoint, ProxyOptions(url=f"http://localhost:{port}{model.custom_endpoint}")
+            model.custom_endpoint, ProxyOptions(url=f"http://{model_info.container_host}:{port}{model.custom_endpoint}")
         )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:

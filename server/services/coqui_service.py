@@ -53,6 +53,7 @@ class ModelInstalledInfo:
         registered_name: str,
         options: InstallModelIn,
         docker: DockerOptions,
+        container_host: str,
         port: int,
     ):
         self.id = id
@@ -60,6 +61,7 @@ class ModelInstalledInfo:
         self.registered_name = registered_name
         self.options = options
         self.docker = docker
+        self.container_host = container_host
         self.port = port
 
 
@@ -175,16 +177,18 @@ class CoquiService(Base2Service[InstalledInfo]):
         )
         port = await install_and_run_docker(self.application_context, docker_options)
         registered_name = options.alias if options.alias is not None else model_id
-        info.models[model_id] = ModelInstalledInfo(
+        info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
             type=model.model_type,
             registered_name=registered_name,
             options=options,
             docker=docker_options,
+            container_host=self.application_context.get_container_host(docker_options.name),
             port=port,
         )
         self.endpoint_registry.register_audio_speech(
-            registered_name, SimpleEndpoint(on_request=_create_handler(port, model.default_speaker, model.response_format))
+            registered_name,
+            SimpleEndpoint(on_request=_create_handler(model_info.container_host, port, model.default_speaker, model.response_format)),
         )
 
     def _get_image(self, gpu: bool) -> str:
@@ -230,7 +234,9 @@ class CoquiService(Base2Service[InstalledInfo]):
             pass
 
 
-def _create_handler(port: int, default_speaker: str | None, response_format: str | None) -> EndpointCallback[CreateSpeechRequest]:
+def _create_handler(
+    container_host: str, port: int, default_speaker: str | None, response_format: str | None
+) -> EndpointCallback[CreateSpeechRequest]:
     async def _proxy_post_request(url: str) -> AsyncGenerator[bytes]:
         async with ClientSession() as session, session.get(url) as resp:
             async for chunk in resp.content.iter_any():
@@ -245,7 +251,7 @@ def _create_handler(port: int, default_speaker: str | None, response_format: str
             response_format2 = "wav"
 
         encoded_text = Utils.str_encode(text)
-        coqui_url = f"http://localhost:{port}/api/tts?text={encoded_text}"
+        coqui_url = f"http://{container_host}:{port}/api/tts?text={encoded_text}"
 
         if voice is not None:
             voice_encoded = Utils.str_encode(voice)

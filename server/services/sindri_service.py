@@ -44,12 +44,14 @@ class InstalledInfo:
     def __init__(
         self,
         docker: DockerOptions,
+        container_host: str,
         port: int,
         models: dict[str, ModelInstalledInfo],
         options: InstallServiceIn,
         parsed_options: SindriOptions,
     ):
         self.docker = docker
+        self.container_host = container_host
         self.port = port
         self.models = models
         self.options = options
@@ -106,7 +108,14 @@ sindriClient:
             restart="unless-stopped",
         )
         port = await install_and_run_docker(self.application_context, docker_options)
-        return InstalledInfo(docker=docker_options, port=port, models={}, options=options, parsed_options=parsed_options)
+        return InstalledInfo(
+            docker=docker_options,
+            container_host=self.application_context.get_container_host(docker_options.name),
+            port=port,
+            models={},
+            options=options,
+            parsed_options=parsed_options,
+        )
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -149,7 +158,7 @@ sindriClient:
         if model.type == "llm":
             self.endpoint_registry.register_chat_completion_as_proxy(
                 registered_name,
-                ProxyOptions(url=f"http://localhost:{info.port}/v1/chat/completions", rewrite_model_to=model.real_model_name),
+                ProxyOptions(url=f"http://{info.container_host}:{info.port}/v1/chat/completions", rewrite_model_to=model.real_model_name),
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:

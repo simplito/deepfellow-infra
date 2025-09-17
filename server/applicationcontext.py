@@ -25,6 +25,10 @@ class ApplicationContext:
         self.services_manager = services_manager
         self.allocated_ports = set[int]()
 
+    def get_container_host(self, container_name: str) -> str:
+        """Return container_name if there is docker_subnet in config otherwise return locaahost."""
+        return container_name if self.config.docker_subnet else "localhost"
+
     async def load(self) -> None:
         """Load all service from bootstrap."""
         info = self.service_provider.load()

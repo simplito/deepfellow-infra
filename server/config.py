@@ -22,6 +22,7 @@ class AppSettings(BaseSettings):
     infra_api_key: SecretStr  # key to connect subinfra through ws
     api_key: SecretStr  # key to call /v1/ endpoints
     parent_infra: ParentInfra = ParentInfra()
+    docker_subnet: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

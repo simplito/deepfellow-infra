@@ -11,7 +11,7 @@ from server.endpointregistry import ProxyOptions
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
-from server.utils.core import fetch_from_localhost
+from server.utils.core import fetch_from
 
 
 def _read_models_from_json() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
@@ -67,12 +67,14 @@ class InstalledInfo:
     def __init__(
         self,
         docker: DockerOptions,
+        container_host: str,
         port: int,
         models: dict[str, ModelInstalledInfo],
         options: InstallServiceIn,
         parsed_options: OllamaOptions,
     ):
         self.docker = docker
+        self.container_host = container_host
         self.port = port
         self.models = models
         self.options = options
@@ -115,7 +117,14 @@ class OllamaService(Base2Service[InstalledInfo]):
             restart="unless-stopped",
         )
         port = await install_and_run_docker(self.application_context, docker_options)
-        return InstalledInfo(docker=docker_options, port=port, models={}, options=options, parsed_options=parsed_options)
+        return InstalledInfo(
+            docker=docker_options,
+            container_host=self.application_context.get_container_host(docker_options.name),
+            port=port,
+            models={},
+            options=options,
+            parsed_options=parsed_options,
+        )
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -155,17 +164,17 @@ class OllamaService(Base2Service[InstalledInfo]):
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model_type = _const.models[model_id]
-        res = await fetch_from_localhost(info.port, "/api/pull", "POST", {"model": model_id})
+        res = await fetch_from(info.container_host, info.port, "/api/pull", "POST", {"model": model_id})
         if res.status_code != 200 and res.status_code != 201:
             print("Error when install model in ollama", model_id, res.status_code, res.data)
             raise HTTPException(status_code=400, detail="Model not avaialble")
         registered_name = options.alias if options.alias is not None else model_id
         info.models[model_id] = ModelInstalledInfo(id=model_id, type=model_type, registered_name=registered_name, options=options)
         if model_type == "llm":
-            self.endpoint_registry.register_all_completions_as_proxy(registered_name, f"http://localhost:{info.port}")
+            self.endpoint_registry.register_all_completions_as_proxy(registered_name, f"http://{info.container_host}:{info.port}")
         if model_type == "embedding":
             self.endpoint_registry.register_embeddings_as_proxy(
-                registered_name, ProxyOptions(url=f"http://localhost:{info.port}/v1/embeddings")
+                registered_name, ProxyOptions(url=f"http://{info.container_host}:{info.port}/v1/embeddings")
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
@@ -180,4 +189,4 @@ class OllamaService(Base2Service[InstalledInfo]):
             self.endpoint_registry.unregister_embeddings(model.registered_name)
 
         if options.purge:
-            await fetch_from_localhost(info.port, "/api/delete", "DELETE", {"name": model_id})
+            await fetch_from(info.container_host, info.port, "/api/delete", "DELETE", {"name": model_id})
