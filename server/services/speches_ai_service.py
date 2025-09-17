@@ -10,7 +10,7 @@ from server.endpointregistry import ProxyOptions
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
-from server.utils.core import fetch_from_localhost
+from server.utils.core import fetch_from
 
 ModelType = Literal["tts", "stt"]
 
@@ -360,12 +360,14 @@ class InstalledInfo:
     def __init__(
         self,
         docker: DockerOptions,
+        container_host: str,
         port: int,
         models: dict[str, ModelInstalledInfo],
         options: InstallServiceIn,
         parsed_options: SpeachesAIOptions,
     ):
         self.docker = docker
+        self.container_host = container_host
         self.port = port
         self.models = models
         self.options = options
@@ -410,7 +412,14 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             reset_uid=True,
         )
         port = await install_and_run_docker(self.application_context, docker_options)
-        return InstalledInfo(docker=docker_options, port=port, models={}, options=options, parsed_options=parsed_options)
+        return InstalledInfo(
+            docker=docker_options,
+            container_host=self.application_context.get_container_host(docker_options.name),
+            port=port,
+            models={},
+            options=options,
+            parsed_options=parsed_options,
+        )
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -450,7 +459,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         type = _const.models[model_id]
-        res = await fetch_from_localhost(info.port, f"/v1/models/{model_id}", "POST")
+        res = await fetch_from(info.container_host, info.port, f"/v1/models/{model_id}", "POST")
         if res.status_code != 200 and res.status_code != 201:
             print("Error when install model in speaches-ai", model_id, res.status_code, res.data)
             raise HTTPException(status_code=400, detail="Model not avaialble")
@@ -458,11 +467,11 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         info.models[model_id] = ModelInstalledInfo(id=model_id, type=type, registered_name=registered_name, options=options)
         if type == "tts":
             self.endpoint_registry.register_audio_speech_as_proxy(
-                registered_name, ProxyOptions(url=f"http://localhost:{info.port}/v1/audio/speech")
+                registered_name, ProxyOptions(url=f"http://{info.container_host}:{info.port}/v1/audio/speech")
             )
         if type == "stt":
             self.endpoint_registry.register_audio_transcriptions_as_proxy(
-                registered_name, ProxyOptions(url=f"http://localhost:{info.port}/v1/audio/transcriptions", form=True)
+                registered_name, ProxyOptions(url=f"http://{info.container_host}:{info.port}/v1/audio/transcriptions", form=True)
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
@@ -477,4 +486,4 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             self.endpoint_registry.unregister_audio_transcriptions(model.registered_name)
 
         if options.purge:
-            await fetch_from_localhost(info.port, f"/v1/models/{model_id}", "DELETE")
+            await fetch_from(info.container_host, info.port, f"/v1/models/{model_id}", "DELETE")

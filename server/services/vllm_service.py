@@ -54,12 +54,14 @@ class ModelInstalledInfo:
         registered_name: str,
         options: InstallModelIn,
         docker: DockerOptions,
+        container_host: str,
         port: int,
     ):
         self.id = id
         self.registered_name = registered_name
         self.options = options
         self.docker = docker
+        self.container_host = container_host
         self.port = port
 
 
@@ -177,14 +179,15 @@ class VllmService(Base2Service[InstalledInfo]):
         )
         port = await install_and_run_docker(self.application_context, docker_options)
         registered_name = options.alias if options.alias is not None else model_id
-        info.models[model_id] = ModelInstalledInfo(
+        info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
             registered_name=registered_name,
             options=options,
             docker=docker_options,
+            container_host=self.application_context.get_container_host(docker_options.name),
             port=port,
         )
-        self.endpoint_registry.register_all_completions_as_proxy(registered_name, f"http://localhost:{port}")
+        self.endpoint_registry.register_all_completions_as_proxy(registered_name, f"http://{model_info.container_host}:{port}")
 
     def _get_image(self, gpu: bool) -> str:
         return _const.image_gpu if gpu else _const.image_cpu

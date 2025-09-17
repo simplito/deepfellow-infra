@@ -69,12 +69,14 @@ class InstalledInfo:
     def __init__(
         self,
         docker: DockerOptions,
+        container_host: str,
         port: int,
         models: dict[str, ModelInstalledInfo],
         options: InstallServiceIn,
         parsed_options: SDOptions,
     ):
         self.docker = docker
+        self.container_host = container_host
         self.port = port
         self.models = models
         self.options = options
@@ -123,7 +125,14 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             restart="unless-stopped",
         )
         port = await install_and_run_docker(self.application_context, docker_options)
-        return InstalledInfo(docker=docker_options, port=port, models={}, options=options, parsed_options=parsed_options)
+        return InstalledInfo(
+            docker=docker_options,
+            container_host=self.application_context.get_container_host(docker_options.name),
+            port=port,
+            models={},
+            options=options,
+            parsed_options=parsed_options,
+        )
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -169,7 +178,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         )
         if model.type == "txt2img":
             self.endpoint_registry.register_image_generations(
-                registered_name, SimpleEndpoint(on_request=_stable_diffusion_handler(info.port))
+                registered_name, SimpleEndpoint(on_request=_stable_diffusion_handler(info.container_host, info.port))
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
@@ -389,9 +398,9 @@ def _add_body_config(settings_original: StableDiffusionOptions, body: ImagesRequ
     return settings
 
 
-def _stable_diffusion_handler(port: int) -> EndpointCallback[ImagesRequest]:
+def _stable_diffusion_handler(container_host: str, port: int) -> EndpointCallback[ImagesRequest]:
     async def handler(body: ImagesRequest, _req: Request) -> ImagesResponse:
-        url = f"http://localhost:{port}/sdapi/v1/txt2img/"
+        url = f"http://{container_host}:{port}/sdapi/v1/txt2img/"
 
         settings_raw, remaining_text = split_text_to_json_and_prompt(body.prompt)
         try:
