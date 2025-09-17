@@ -49,14 +49,14 @@ class ApplicationContext:
 
     def get_docker_compose_dir(self) -> Path:
         """Get docker compose dir."""
-        dir = Path(__file__).resolve().parent.parent / "./storage/config"
+        dir = self.config.get_storage_dir() / "./config"
         if not dir.is_dir():
             dir.mkdir(parents=True)
         return dir
 
     def get_service_dir(self, service: str) -> Path:
         """Get service dir."""
-        dir = Path(__file__).resolve().parent.parent / f"./storage/services/{service}"
+        dir = self.config.get_storage_dir() / f"./services/{service}"
         if not dir.is_dir():
             dir.mkdir(parents=True)
         return dir

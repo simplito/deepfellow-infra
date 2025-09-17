@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Literal, TypedDict, cast
 
+from server.config import AppSettings
 from server.models.common import JsonSerializable
 
 ServiceRawConfig = JsonSerializable
@@ -16,8 +17,11 @@ class FileContent(TypedDict):
 
 
 class ServiceProvider:
+    def __init__(self, config: AppSettings):
+        self.config = config
+
     def _get_file_path(self) -> Path:
-        return (Path(__file__).parent.parent / "./storage/services.json").resolve()
+        return (self.config.get_storage_dir() / "./services.json").resolve()
 
     def load(self) -> FileContent:
         """Load settings file content."""

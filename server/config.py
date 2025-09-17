@@ -1,6 +1,7 @@
 """Config."""
 
 import os
+from pathlib import Path
 
 from pydantic import BaseModel, SecretStr
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
@@ -23,6 +24,7 @@ class AppSettings(BaseSettings):
     api_key: SecretStr  # key to call /v1/ endpoints
     parent_infra: ParentInfra = ParentInfra()
     docker_subnet: str = ""
+    storage_dir: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -61,3 +63,12 @@ class AppSettings(BaseSettings):
 
         # Default: use env, dotenv, and TOML
         return (env_settings, dotenv_settings)  # pragma: no cover
+
+    def get_storage_dir(self) -> Path:
+        """Get storage dir."""
+        return Path(self.storage_dir) if self.storage_dir else get_main_dir() / "./storage"
+
+
+def get_main_dir() -> Path:
+    """Get main dir of the application."""
+    return Path(__file__).resolve().parent.parent

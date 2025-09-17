@@ -142,7 +142,7 @@ class CustomService(Base2Service[InstalledInfo]):
 
     def get_working_dir(self) -> Path:
         """Get working dir."""
-        return self.get_working_dir()
+        return self._get_working_dir()
 
 
 class CustomModel:

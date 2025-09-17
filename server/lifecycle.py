@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     app.state.internal_ws_manager = InternalInfraWsManager()
     app.state.external_ws_manager = external_ws_manager = ExternalInfraWsManager(create_infra_uri(config.parent_infra), app.state)
     app.state.endpoint_registry = endpoint_registry = EndpointRegistry()
-    app.state.service_provider = service_provider = ServiceProvider()
+    app.state.service_provider = service_provider = ServiceProvider(config)
     app.state.services_manager = services_manager = ServicesManager(external_ws_manager)
     app.state.context = context = ApplicationContext(endpoint_registry, config, service_provider, services_manager)
     app.state.tasks = tasks = set[asyncio.Task[None]]()

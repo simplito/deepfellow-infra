@@ -1,12 +1,12 @@
 """Ollama service."""
 
 import json
-from pathlib import Path
 
 from fastapi import HTTPException
 from pydantic import BaseModel
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
+from server.config import get_main_dir
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
@@ -16,7 +16,7 @@ from server.utils.core import fetch_from
 
 
 def _read_models_from_json() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
-    ollama_path = Path(__file__).parent.parent.parent / "./static/ollama.json"
+    ollama_path = get_main_dir() / "./static/ollama.json"
     with ollama_path.open(encoding="utf-8") as f:
         data = json.loads(f.read())
         # tags = [x["tags"] for x in data["list"]]
@@ -31,7 +31,7 @@ def _read_models_from_json() -> dict[str, bool]:  # pyright: ignore[reportUnused
 
 
 def _read_models() -> dict[str, str]:
-    ollama_path = Path(__file__).parent.parent.parent / "./static/ollama-min.json"
+    ollama_path = get_main_dir() / "./static/ollama-min.json"
     with ollama_path.open(encoding="utf-8") as f:
         registry = json.loads(f.read())
         map: dict[str, str] = {}
