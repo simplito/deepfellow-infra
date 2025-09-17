@@ -60,11 +60,13 @@ def handle_usage(f: Callable[..., Any]) -> Callable[..., Any]:
         model: str = kwargs.get("model", args[2])
         external_ws: ExternalInfraWsManager = request.app.state.external_ws_manager
         external_ws.add_usage(model)
-        resp = await f(*args, **kwargs)
-        if isinstance(resp, StreamingResponse):
-            gen = add_usage_for_response(resp, model, external_ws)
-            return StreamingResponse(gen, media_type=resp.media_type, status_code=resp.status_code, headers=resp.headers)
-        external_ws.remove_usage(model)
+        try:
+            resp = await f(*args, **kwargs)
+            if isinstance(resp, StreamingResponse):
+                gen = add_usage_for_response(resp, model, external_ws)
+                return StreamingResponse(gen, media_type=resp.media_type, status_code=resp.status_code, headers=resp.headers)
+        finally:
+            external_ws.remove_usage(model)
         return resp
 
     return wrapper
