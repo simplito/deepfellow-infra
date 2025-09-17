@@ -175,7 +175,7 @@ async def on_images_generations(
     if not is_inside:
         return await proxy(body.model_dump(), ProxyOptions(url=get_proxy_url(url, request)), request, auth_header(key))
 
-    return await endpoint_registry.execute_images_generations(body, request)
+    return await endpoint_registry.execute_images_generations(request, model, body)
 
 
 @router.post("/custom/{full_path:path}")
