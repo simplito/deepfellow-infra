@@ -150,8 +150,7 @@ class FetchResult(BaseModel):
     data: str
 
 
-async def fetch_from(host: str, port: int, url: str, method: str = "GET", data: JsonSerializable | None = None) -> FetchResult:
+async def fetch_from(url: str, method: str = "GET", data: JsonSerializable | None = None) -> FetchResult:
     """Make HTTP request to host on given port."""
-    full_url = f"http://{host}:{port}{url}"
-    async with aiohttp.ClientSession() as session, session.request(method, full_url, json=data) as response:
+    async with aiohttp.ClientSession() as session, session.request(method, url, json=data) as response:
         return FetchResult(status_code=response.status, data=await response.text())

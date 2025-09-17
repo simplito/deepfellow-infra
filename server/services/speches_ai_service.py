@@ -5,6 +5,7 @@ from typing import Literal
 from fastapi import HTTPException
 from pydantic import BaseModel
 
+from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
@@ -360,18 +361,21 @@ class InstalledInfo:
     def __init__(
         self,
         docker: DockerOptions,
-        container_host: str,
-        port: int,
         models: dict[str, ModelInstalledInfo],
         options: InstallServiceIn,
         parsed_options: SpeachesAIOptions,
+        container_host: str,
+        container_port: int,
+        docker_exposed_port: int,
     ):
         self.docker = docker
-        self.container_host = container_host
-        self.port = port
         self.models = models
         self.options = options
         self.parsed_options = parsed_options
+        self.container_host = container_host
+        self.container_port = container_port
+        self.docker_exposed_port = docker_exposed_port
+        self.base_url = get_base_url(self.container_host, self.container_port)
 
 
 class SpeachesAIService(Base2Service[InstalledInfo]):
@@ -399,6 +403,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         volumes = [f"{self._get_working_dir()}/cache:/home/ubuntu/.cache/huggingface/hub"]
         image = _const.image_gpu if parsed_options.gpu else _const.image_cpu
 
+        subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name="speaches-ai",
             image=image,
@@ -410,16 +415,17 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             },
             restart="unless-stopped",
             reset_uid=True,
-            subnet=self.application_context.get_docker_subnet(),
+            subnet=subnet,
         )
-        port = await install_and_run_docker(self.application_context, docker_options)
+        docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
         return InstalledInfo(
             docker=docker_options,
-            container_host=self.application_context.get_container_host(docker_options.name),
-            port=port,
             models={},
             options=options,
             parsed_options=parsed_options,
+            container_host=get_container_host(subnet, docker_options.name),
+            container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+            docker_exposed_port=docker_exposed_port,
         )
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
@@ -460,19 +466,17 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         type = _const.models[model_id]
-        res = await fetch_from(info.container_host, info.port, f"/v1/models/{model_id}", "POST")
+        res = await fetch_from(f"{info.base_url}/v1/models/{model_id}", "POST")
         if res.status_code != 200 and res.status_code != 201:
             print("Error when install model in speaches-ai", model_id, res.status_code, res.data)
             raise HTTPException(status_code=400, detail="Model not avaialble")
         registered_name = options.alias if options.alias is not None else model_id
         info.models[model_id] = ModelInstalledInfo(id=model_id, type=type, registered_name=registered_name, options=options)
         if type == "tts":
-            self.endpoint_registry.register_audio_speech_as_proxy(
-                registered_name, ProxyOptions(url=f"http://{info.container_host}:{info.port}/v1/audio/speech")
-            )
+            self.endpoint_registry.register_audio_speech_as_proxy(registered_name, ProxyOptions(url=f"{info.base_url}/v1/audio/speech"))
         if type == "stt":
             self.endpoint_registry.register_audio_transcriptions_as_proxy(
-                registered_name, ProxyOptions(url=f"http://{info.container_host}:{info.port}/v1/audio/transcriptions", form=True)
+                registered_name, ProxyOptions(url=f"{info.base_url}/v1/audio/transcriptions", form=True)
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
@@ -487,4 +491,4 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             self.endpoint_registry.unregister_audio_transcriptions(model.registered_name)
 
         if options.purge:
-            await fetch_from(info.container_host, info.port, f"/v1/models/{model_id}", "DELETE")
+            await fetch_from(f"{info.base_url}/v1/models/{model_id}", "DELETE")

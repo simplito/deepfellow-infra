@@ -3,6 +3,7 @@
 from fastapi import HTTPException
 from pydantic import BaseModel
 
+from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
@@ -55,14 +56,17 @@ class ModelInstalledInfo:
         options: InstallModelIn,
         docker: DockerOptions,
         container_host: str,
-        port: int,
+        container_port: int,
+        docker_exposed_port: int,
     ):
         self.id = id
         self.registered_name = registered_name
         self.options = options
         self.docker = docker
         self.container_host = container_host
-        self.port = port
+        self.container_port = container_port
+        self.docker_exposed_port = docker_exposed_port
+        self.base_url = get_base_url(self.container_host, self.container_port)
 
 
 class VllmOptions(BaseModel):
@@ -165,6 +169,7 @@ class VllmService(Base2Service[InstalledInfo]):
         image = self._get_image(info.parsed_options.gpu)
         volumes = [f"{self._get_working_dir() / 'models'}:/models"]
 
+        subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name=f"{self.get_id()}-{model.docker_name}",
             image=image,
@@ -176,19 +181,20 @@ class VllmService(Base2Service[InstalledInfo]):
             use_gpu=info.parsed_options.gpu,
             shm_size=model.shm_size,
             ulimits=model.ulimits,
-            subnet=self.application_context.get_docker_subnet(),
+            subnet=subnet,
         )
-        port = await install_and_run_docker(self.application_context, docker_options)
+        docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
         registered_name = options.alias if options.alias is not None else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
             registered_name=registered_name,
             options=options,
             docker=docker_options,
-            container_host=self.application_context.get_container_host(docker_options.name),
-            port=port,
+            container_host=get_container_host(subnet, docker_options.name),
+            container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+            docker_exposed_port=docker_exposed_port,
         )
-        self.endpoint_registry.register_all_completions_as_proxy(registered_name, f"http://{model_info.container_host}:{port}")
+        self.endpoint_registry.register_all_completions_as_proxy(registered_name, model_info.base_url)
 
     def _get_image(self, gpu: bool) -> str:
         return _const.image_gpu if gpu else _const.image_cpu

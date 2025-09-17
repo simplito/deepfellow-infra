@@ -15,6 +15,7 @@ from fastapi import HTTPException, Request
 from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 
+from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import EndpointCallback, SimpleEndpoint
 from server.models.api import ImagesRequest
@@ -69,18 +70,21 @@ class InstalledInfo:
     def __init__(
         self,
         docker: DockerOptions,
-        container_host: str,
-        port: int,
         models: dict[str, ModelInstalledInfo],
         options: InstallServiceIn,
         parsed_options: SDOptions,
+        container_host: str,
+        container_port: int,
+        docker_exposed_port: int,
     ):
         self.docker = docker
-        self.container_host = container_host
-        self.port = port
         self.models = models
         self.options = options
         self.parsed_options = parsed_options
+        self.container_host = container_host
+        self.container_port = container_port
+        self.docker_exposed_port = docker_exposed_port
+        self.base_url = get_base_url(self.container_host, self.container_port)
 
 
 class StableDiffusionService(Base2Service[InstalledInfo]):
@@ -113,6 +117,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         ]
         image = _const.image_gpu if parsed_options.gpu else _const.image_cpu
 
+        subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name="stable-diffusion",
             image=image,
@@ -123,16 +128,17 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             use_gpu=parsed_options.gpu,
             volumes=volumes,
             restart="unless-stopped",
-            subnet=self.application_context.get_docker_subnet(),
+            subnet=subnet,
         )
-        port = await install_and_run_docker(self.application_context, docker_options)
+        docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
         return InstalledInfo(
             docker=docker_options,
-            container_host=self.application_context.get_container_host(docker_options.name),
-            port=port,
             models={},
             options=options,
             parsed_options=parsed_options,
+            container_host=get_container_host(subnet, docker_options.name),
+            container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+            docker_exposed_port=docker_exposed_port,
         )
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
@@ -179,7 +185,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         )
         if model.type == "txt2img":
             self.endpoint_registry.register_image_generations(
-                registered_name, SimpleEndpoint(on_request=_stable_diffusion_handler(info.container_host, info.port))
+                registered_name, SimpleEndpoint(on_request=_stable_diffusion_handler(info.base_url))
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
@@ -399,9 +405,9 @@ def _add_body_config(settings_original: StableDiffusionOptions, body: ImagesRequ
     return settings
 
 
-def _stable_diffusion_handler(container_host: str, port: int) -> EndpointCallback[ImagesRequest]:
+def _stable_diffusion_handler(base_url: str) -> EndpointCallback[ImagesRequest]:
     async def handler(body: ImagesRequest, _req: Request) -> ImagesResponse:
-        url = f"http://{container_host}:{port}/sdapi/v1/txt2img/"
+        url = f"{base_url}/sdapi/v1/txt2img/"
 
         settings_raw, remaining_text = split_text_to_json_and_prompt(body.prompt)
         try:

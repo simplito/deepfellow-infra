@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
+from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
@@ -17,15 +18,18 @@ class ModelInstalledInfo:
         self,
         id: str,
         options: InstallModelIn,
-        port: int,
         docker_options: DockerOptions,
         container_host: str,
+        container_port: int,
+        docker_exposed_port: int,
     ):
         self.id = id
         self.options = options
-        self.port = port
         self.docker_options = docker_options
         self.container_host = container_host
+        self.container_port = container_port
+        self.docker_exposed_port = docker_exposed_port
+        self.base_url = get_base_url(self.container_host, self.container_port)
 
 
 class InstalledInfo:
@@ -95,17 +99,19 @@ class CustomService(Base2Service[InstalledInfo]):
         model_dir = self._get_working_dir() / "models"
         model_dir.mkdir(parents=True, exist_ok=True)
 
-        docker_options = model.options(self) if callable(model.options) else model.options
-        port = await install_and_run_docker(self.application_context, docker_options)
+        subnet = self.application_context.get_docker_subnet()
+        docker_options = model.options(self, subnet) if callable(model.options) else model.options
+        docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
             options=options,
-            port=port,
             docker_options=docker_options,
-            container_host=self.application_context.get_container_host(docker_options.name),
+            container_host=get_container_host(subnet, docker_options.name),
+            container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+            docker_exposed_port=docker_exposed_port,
         )
         self.endpoint_registry.register_custom_endpoint_as_proxy(
-            model.custom_endpoint, ProxyOptions(url=f"http://{model_info.container_host}:{port}{model.custom_endpoint}")
+            model.custom_endpoint, ProxyOptions(url=f"{model_info.base_url}{model.custom_endpoint}")
         )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
@@ -144,7 +150,7 @@ class CustomModel:
         self,
         model_type: str,
         custom_endpoint: str,
-        options: DockerOptions | Callable[[CustomService], DockerOptions],
+        options: DockerOptions | Callable[[CustomService, str | None], DockerOptions],
     ):
         self.model_type = model_type
         self.custom_endpoint = custom_endpoint
@@ -164,19 +170,19 @@ _const = CustomConst(
         "bentoml/example-summarization": CustomModel(
             model_type="custom",
             custom_endpoint="/summarize",
-            options=lambda custom_service: DockerOptions(
+            options=lambda _, subnet: DockerOptions(
                 image_port=3000,
                 name="bentoml",
                 image="gitlab2.simplito.com:5050/df/deepfellow-infra/bentomlexample:1.0.0",
                 command="serve",
                 env_vars={},
-                subnet=custom_service.application_context.get_docker_subnet(),
+                subnet=subnet,
             ),
         ),
         "easyOCR": CustomModel(
             model_type="custom",
             custom_endpoint="/v1/ocr",
-            options=lambda custom_service: DockerOptions(
+            options=lambda custom_service, subnet: DockerOptions(
                 image_port=8000,
                 name="easyocr",
                 image="gitlab2.simplito.com:5050/df/df-ocr:1.0.0",
@@ -184,7 +190,7 @@ _const = CustomConst(
                 env_vars={},
                 restart="unless-stopped",
                 volumes=[f"{custom_service.get_working_dir()}/easyocr/model:/root/.EasyOCR/model"],
-                subnet=custom_service.application_context.get_docker_subnet(),
+                subnet=subnet,
             ),
         ),
     },

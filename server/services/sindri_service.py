@@ -3,6 +3,7 @@
 from fastapi import HTTPException
 from pydantic import BaseModel
 
+from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
@@ -44,18 +45,21 @@ class InstalledInfo:
     def __init__(
         self,
         docker: DockerOptions,
-        container_host: str,
-        port: int,
         models: dict[str, ModelInstalledInfo],
         options: InstallServiceIn,
         parsed_options: SindriOptions,
+        container_host: str,
+        container_port: int,
+        docker_exposed_port: int,
     ):
         self.docker = docker
-        self.container_host = container_host
-        self.port = port
         self.models = models
         self.options = options
         self.parsed_options = parsed_options
+        self.container_host = container_host
+        self.container_port = container_port
+        self.docker_exposed_port = docker_exposed_port
+        self.base_url = get_base_url(self.container_host, self.container_port)
 
 
 class SindriService(Base2Service[InstalledInfo]):
@@ -99,6 +103,7 @@ sindriClient:
         with config_path.open("w", encoding="utf-8") as f:
             f.write(data)
         volumes = [f"{config_path}:/config.yaml"]
+        subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name="sindri",
             image=_const.image,
@@ -106,16 +111,17 @@ sindriClient:
             image_port=8080,
             volumes=volumes,
             restart="unless-stopped",
-            subnet=self.application_context.get_docker_subnet(),
+            subnet=subnet,
         )
-        port = await install_and_run_docker(self.application_context, docker_options)
+        docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
         return InstalledInfo(
             docker=docker_options,
-            container_host=self.application_context.get_container_host(docker_options.name),
-            port=port,
             models={},
             options=options,
             parsed_options=parsed_options,
+            container_host=get_container_host(subnet, docker_options.name),
+            container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+            docker_exposed_port=docker_exposed_port,
         )
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
@@ -159,7 +165,7 @@ sindriClient:
         if model.type == "llm":
             self.endpoint_registry.register_chat_completion_as_proxy(
                 registered_name,
-                ProxyOptions(url=f"http://{info.container_host}:{info.port}/v1/chat/completions", rewrite_model_to=model.real_model_name),
+                ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model.real_model_name),
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:

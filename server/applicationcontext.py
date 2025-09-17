@@ -29,10 +29,6 @@ class ApplicationContext:
         """Return docker subnet name or None if it is not set."""
         return self.config.docker_subnet if self.config.docker_subnet else None
 
-    def get_container_host(self, container_name: str) -> str:
-        """Return container_name if there is docker_subnet in config otherwise return locaahost."""
-        return container_name if self.config.docker_subnet else "localhost"
-
     async def load(self) -> None:
         """Load all service from bootstrap."""
         info = self.service_provider.load()
@@ -75,3 +71,18 @@ class ApplicationContext:
             return True  # noqa: TRY300
         except OSError:
             return False
+
+
+def get_base_url(host: str, port: int) -> str:
+    """Get base url."""
+    return f"http://{host}:{port}"
+
+
+def get_container_host(subnet: str | None, container_name: str) -> str:
+    """Return container_name if there is docker_subnet in config otherwise return locaahost."""
+    return container_name if subnet else "localhost"
+
+
+def get_container_port(subnet: str | None, exposed_port: int, original_port: int) -> int:
+    """Return container_name if there is docker_subnet in config otherwise return locaahost."""
+    return original_port if subnet else exposed_port

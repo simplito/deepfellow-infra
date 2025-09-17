@@ -8,6 +8,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
 from server.endpointregistry import EndpointCallback, SimpleEndpoint
 from server.ffmpeg import ffmpeg_audio_convert_async_gen
@@ -54,7 +55,8 @@ class ModelInstalledInfo:
         options: InstallModelIn,
         docker: DockerOptions,
         container_host: str,
-        port: int,
+        container_port: int,
+        docker_exposed_port: int,
     ):
         self.id = id
         self.type = type
@@ -62,7 +64,9 @@ class ModelInstalledInfo:
         self.options = options
         self.docker = docker
         self.container_host = container_host
-        self.port = port
+        self.container_port = container_port
+        self.docker_exposed_port = docker_exposed_port
+        self.base_url = get_base_url(self.container_host, self.container_port)
 
 
 class CoquiOptions(BaseModel):
@@ -158,6 +162,7 @@ class CoquiService(Base2Service[InstalledInfo]):
         volumes = [f"{self._get_working_output_dir()}:/root/tts-output", f"{self._get_working_dir()}/models:/root/.local/share/tts"]
         image = self._get_image(info.parsed_options.gpu)
 
+        subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name=f"{self.get_id()}-{model.docker_name}",
             image=image,
@@ -174,9 +179,9 @@ class CoquiService(Base2Service[InstalledInfo]):
             restart="unless-stopped",
             volumes=volumes,
             use_gpu=info.parsed_options.gpu,
-            subnet=self.application_context.get_docker_subnet(),
+            subnet=subnet,
         )
-        port = await install_and_run_docker(self.application_context, docker_options)
+        docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
         registered_name = options.alias if options.alias is not None else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
@@ -184,12 +189,13 @@ class CoquiService(Base2Service[InstalledInfo]):
             registered_name=registered_name,
             options=options,
             docker=docker_options,
-            container_host=self.application_context.get_container_host(docker_options.name),
-            port=port,
+            container_host=get_container_host(subnet, docker_options.name),
+            container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+            docker_exposed_port=docker_exposed_port,
         )
         self.endpoint_registry.register_audio_speech(
             registered_name,
-            SimpleEndpoint(on_request=_create_handler(model_info.container_host, port, model.default_speaker, model.response_format)),
+            SimpleEndpoint(on_request=_create_handler(model_info.base_url, model.default_speaker, model.response_format)),
         )
 
     def _get_image(self, gpu: bool) -> str:
@@ -235,9 +241,7 @@ class CoquiService(Base2Service[InstalledInfo]):
             pass
 
 
-def _create_handler(
-    container_host: str, port: int, default_speaker: str | None, response_format: str | None
-) -> EndpointCallback[CreateSpeechRequest]:
+def _create_handler(base_url: str, default_speaker: str | None, response_format: str | None) -> EndpointCallback[CreateSpeechRequest]:
     async def _proxy_post_request(url: str) -> AsyncGenerator[bytes]:
         async with ClientSession() as session, session.get(url) as resp:
             async for chunk in resp.content.iter_any():
@@ -252,7 +256,7 @@ def _create_handler(
             response_format2 = "wav"
 
         encoded_text = Utils.str_encode(text)
-        coqui_url = f"http://{container_host}:{port}/api/tts?text={encoded_text}"
+        coqui_url = f"{base_url}/api/tts?text={encoded_text}"
 
         if voice is not None:
             voice_encoded = Utils.str_encode(voice)
