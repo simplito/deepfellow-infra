@@ -430,7 +430,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
-        for model in info.models.values():
+        for model in info.models.copy().values():
             if model.type == "tts":
                 self.endpoint_registry.unregister_audio_speech(model.registered_name)
             if model.type == "stt":

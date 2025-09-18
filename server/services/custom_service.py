@@ -63,8 +63,8 @@ class CustomService(Base2Service[InstalledInfo]):
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
-        for model in info.models.values():
-            await self._uninstall_model(model.id, UninstallModelIn())
+        for model in info.models.copy().values():
+            await self._uninstall_model(model.id, UninstallModelIn(purge=options.purge))
         self.installed = None
         if options.purge:
             await self._clear_working_dir()

@@ -135,7 +135,7 @@ class OllamaService(Base2Service[InstalledInfo]):
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
-        for model in info.models.values():
+        for model in info.models.copy().values():
             if model.type == "llm":
                 self.endpoint_registry.unregister_all_completions(model.registered_name)
             if model.type == "embedding":

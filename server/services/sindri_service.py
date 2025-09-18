@@ -126,7 +126,7 @@ sindriClient:
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
-        for model in info.models.values():
+        for model in info.models.copy().values():
             if model.type == "llm":
                 self.endpoint_registry.unregister_chat_completion(model.registered_name)
         self.installed = None
