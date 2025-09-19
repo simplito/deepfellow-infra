@@ -43,15 +43,6 @@ def get_proxy_url(url: str, request: Request) -> str:
     return urllib.parse.urljoin(url, request.url.path)
 
 
-async def add_usage_for_response(f: StreamingResponse, model: str, external_ws: ExternalInfraWsManager) -> AsyncGenerator[Any]:
-    """Add usage for response."""
-    try:
-        async for chunk in f.body_iterator:
-            yield chunk
-    finally:
-        external_ws.remove_usage(model)
-
-
 def handle_usage(f: Callable[..., Any]) -> Callable[..., Any]:
     """Measures execution time."""
 
@@ -62,11 +53,24 @@ def handle_usage(f: Callable[..., Any]) -> Callable[..., Any]:
         external_ws.add_usage(model)
         try:
             resp = await f(*args, **kwargs)
-            if isinstance(resp, StreamingResponse):
-                gen = add_usage_for_response(resp, model, external_ws)
-                return StreamingResponse(gen, media_type=resp.media_type, status_code=resp.status_code, headers=resp.headers)
-        finally:
+        except Exception:
             external_ws.remove_usage(model)
+            raise
+
+        if isinstance(resp, StreamingResponse):
+
+            async def add_usage_for_response(f: StreamingResponse, model: str, external_ws: ExternalInfraWsManager) -> AsyncGenerator[Any]:
+                """Add usage for response."""
+                try:
+                    async for chunk in f.body_iterator:
+                        yield chunk
+                finally:
+                    external_ws.remove_usage(model)
+
+            gen = add_usage_for_response(resp, model, external_ws)
+            return StreamingResponse(gen, media_type=resp.media_type, status_code=resp.status_code, headers=resp.headers)
+
+        external_ws.remove_usage(model)
         return resp
 
     return wrapper
