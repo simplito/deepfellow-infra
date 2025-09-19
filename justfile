@@ -7,6 +7,9 @@ dev-trace:
 test *FLAGS:
     uv run pytest --showlocals --tb=auto -ra --cov server --cov-branch --cov-report=term-missing --no-cov-on-fail {{FLAGS}}
 
+ntest *FLAGS:
+    uv run pytest --showlocals --tb=auto -ra --cov server --cov-branch --cov-report=term-missing --no-cov-on-fail -n auto {{FLAGS}}
+
 ruff *FLAGS:
     uv run ruff check server/ tests/ {{FLAGS}}
 
