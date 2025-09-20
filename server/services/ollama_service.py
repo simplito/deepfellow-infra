@@ -62,6 +62,7 @@ class ModelInstalledInfo(BaseModel):
 
 class OllamaOptions(BaseModel):
     gpu: bool
+    num_parallel: int = 3
 
 
 class InstalledInfo:
@@ -95,6 +96,12 @@ class OllamaService(Base2Service[InstalledInfo]):
         return ServiceSpecification(
             fields=[
                 ServiceField(type="bool", name="gpu", description="Run on GPU"),
+                ServiceField(
+                    type="number",
+                    name="num_parallel",
+                    description="How many copies of one model can be loaded (OLLAMA_NUM_PARALLEL)",
+                    default="3",
+                ),
             ]
         )
 
@@ -117,7 +124,7 @@ class OllamaService(Base2Service[InstalledInfo]):
             use_gpu=parsed_options.gpu,
             volumes=volumes,
             env_vars={
-                "OLLAMA_NUM_PARALLEL": "3",
+                "OLLAMA_NUM_PARALLEL": str(parsed_options.num_parallel),
             },
             restart="unless-stopped",
             subnet=subnet,
