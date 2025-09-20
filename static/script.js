@@ -56,7 +56,7 @@ function showInstallServiceModal(info, onInstall) {
                 <div class="field">
                     <div class="field-label">${field.description}</div>
                     <div class="field-input">${(() => {
-                        if (field.type === "text" || field.type === "password") {
+                        if (field.type === "text" || field.type === "password" || field.type === "number") {
                             return `<input type="${field.type}" name="${field.name}" required="required" value="${field.default || ""}" placeholder="${field.description}" />`;
                         }
                         if (field.type === "bool") {
