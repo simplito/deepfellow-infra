@@ -12,7 +12,7 @@ function showHtml(html) {
 
 async function showServicesPage() {
     showLoadingPage();
-    const data = await (await fetchX("/admin/services")).json();
+    const data = await fetchX("/admin/services");
     const html = `
         <div class="page services-page">
             <h3>Services</h3>
@@ -94,7 +94,7 @@ function showInstallServiceModal(info, onInstall) {
 
 async function showServicePage(id) {
     showLoadingPage();
-    const data = await (await fetchX(`/admin/services/${id}/models`)).json();
+    const data = await fetchX(`/admin/services/${id}/models`);
     const list = data.list.sort((a, b) => {
         if (a.installed !== b.installed) {
             return a.installed ? -1 : 1;
@@ -200,32 +200,29 @@ root.addEventListener("click", async e => {
         const serviceId = dataActionEle.getAttribute("data-service-id");
         const modelId = dataActionEle.getAttribute("data-model-id");
         if (action === "install-service") {
-            const info = await (await fetchX(`/admin/services/${serviceId}`, {
+            const info = await fetchX(`/admin/services/${serviceId}`, {
                 method: "GET"
-            })).json();
+            });
             showInstallServiceModal(info, async data => {
                 showLoadingPage();
                 try {
-                    await (await fetchX(`/admin/services/${serviceId}`, {
+                    await fetchX(`/admin/services/${serviceId}`, {
                         method: "POST",
                         body: JSON.stringify({spec: data}),
                         headers: {"Content-Type": "application/json"}
-                    })).json();
+                    });
                 }
-                catch (e) {
-                    console.log("Error", e);
-                    alert("Error");
-                }
+                catch {}
                 showServicesPage();
             });
         }
         else if (action === "uninstall-service") {
             showLoadingPage()
-            await (await fetchX(`/admin/services/${serviceId}`, {
+            await fetchX(`/admin/services/${serviceId}`, {
                 method: "DELETE",
                 body: JSON.stringify({purge: false}),
                 headers: {"Content-Type": "application/json"}
-            })).json();
+            });
             showServicesPage();
         }
         else if (action === "open-service-models") {
@@ -234,20 +231,20 @@ root.addEventListener("click", async e => {
         }
         else if (action === "install-model") {
             showLoadingPage()
-            await (await fetchX(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
+            await fetchX(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
                 method: "POST",
                 body: JSON.stringify({alias: null}),
                 headers: {"Content-Type": "application/json"}
-            })).json();
+            });
             showServicePage(serviceId);
         }
         else if (action === "uninstall-model") {
             showLoadingPage()
-            await (await fetchX(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
+            await fetchX(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
                 method: "DELETE",
                 body: JSON.stringify({purge: false}),
                 headers: {"Content-Type": "application/json"}
-            })).json();
+            });
             showServicePage(serviceId);
         }
         else if (action === "open-services") {
@@ -268,7 +265,20 @@ async function fetchX(url, options) {
         document.location.reload();
         throw new Error("Unauthorized");
     }
-    return response;
+    const content = await response.text();
+    if (response.status !== 200) {
+        console.log("Invalid status code", response.status, content);
+        alert(`ERROR: Invalid status code ${response.status} - ${content}`);
+        throw new Error("Invalid status code");
+    }
+    try {
+        return JSON.parse(content);
+    }
+    catch (e) {
+        console.log("JSON parse error", content, e);
+        alert(`ERROR: Invalid response, cannot parse JSON - ${content}`)
+        throw e;
+    }
 }
 
 function showAdminApiKeyModal() {
