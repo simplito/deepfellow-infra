@@ -178,7 +178,6 @@ class RemoteService(Base2Service[InstalledInfo]):
                     url=url,
                     rewrite_model_to=model.real_model_name,
                     headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
-                    form=True,
                 ),
             )
         if model.type == "txt2img":

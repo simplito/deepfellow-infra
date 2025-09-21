@@ -3,12 +3,11 @@
 import logging
 from typing import Annotated
 
-from aiohttp import FormData
 from fastapi import APIRouter, Body, Depends, Form, HTTPException, Path, Request
 from fastapi.responses import JSONResponse
 
 from server.core.dependencies import auth_server, get_endpoint_registry
-from server.endpointregistry import EndpointRegistry, ProxyOptions, proxy
+from server.endpointregistry import EndpointRegistry, ProxyOptions, post_form, post_json
 from server.models.api import (
     ChatCompletionModel,
     ChatCompletionModels,
@@ -56,13 +55,13 @@ async def on_chat_completions(
 ) -> StarletteResponse:
     """Process chat completions request."""
     model = body.model
-    # url, key, is_inside = get_lazy_infra(request, model)
-    # if not url:
-    #     raise HTTPException(400, "Given model is not found")
+    url, key, is_inside = get_lazy_infra(request, model)
+    if not url:
+        raise HTTPException(400, "Given model is not found")
 
-    # if not is_inside:
-    #     return await proxy(body.model_dump(), ProxyOptions(url=get_proxy_url(url, request)), request, auth_header(key))
-    # TODO revert changes
+    if not is_inside:
+        return await post_json(body, ProxyOptions(url=get_proxy_url(url, request), headers=auth_header(key)), request)
+
     if not endpoint_registry.has_chat_completion_model(model):
         raise HTTPException(400, "Given model is not found")
     return await endpoint_registry.execute_chat_completion(request, model, body)
@@ -82,7 +81,7 @@ async def on_completions(
         raise HTTPException(400, "Given model is not found")
 
     if not is_inside:
-        return await proxy(body.model_dump(), ProxyOptions(url=get_proxy_url(url, request)), request, auth_header(key))
+        return await post_json(body, ProxyOptions(url=get_proxy_url(url, request), headers=auth_header(key)), request)
 
     return await endpoint_registry.execute_completion(request, model, body)
 
@@ -101,7 +100,7 @@ async def on_embeddings(
         raise HTTPException(400, "Given model is not found")
 
     if not is_inside:
-        return await proxy(body.model_dump(), ProxyOptions(url=get_proxy_url(url, request)), request, auth_header(key))
+        return await post_json(body, ProxyOptions(url=get_proxy_url(url, request), headers=auth_header(key)), request)
 
     return await endpoint_registry.execute_embeddings(request, model, body)
 
@@ -120,7 +119,7 @@ async def on_audio_speech(
         raise HTTPException(400, "Given model is not found")
 
     if not is_inside:
-        return await proxy(body.model_dump(), ProxyOptions(url=get_proxy_url(url, request)), request, auth_header(key))
+        return await post_json(body, ProxyOptions(url=get_proxy_url(url, request), headers=auth_header(key)), request)
 
     return await endpoint_registry.execute_audio_speech(request, model, body)
 
@@ -139,22 +138,7 @@ async def on_audio_transcriptions(
         raise HTTPException(400, "Given model is not found")
 
     if not is_inside:
-        form = FormData()
-        for field_name in CreateTranscriptionRequest.model_fields:
-            if field_name == "file":
-                form.add_field("file", await body.file.read(), filename=body.file.filename, content_type=body.file.content_type)
-            else:
-                field_value = getattr(body, field_name)
-                if field_value:
-                    if isinstance(field_value, list):
-                        for element in field_value:  # pyright: ignore[reportUnknownVariableType]
-                            form.add_field(field_name + "[]", element)
-                    elif isinstance(field_value, bool):
-                        form.add_field(field_name, "true" if field_value else "false")
-                    else:
-                        form.add_field(field_name, field_value)
-
-        return await proxy(body.model_dump(), ProxyOptions(url=get_proxy_url(url, request), form=True), request, auth_header(key))
+        return await post_form(body, ProxyOptions(url=get_proxy_url(url, request), headers=auth_header(key)), request)
 
     return await endpoint_registry.execute_audio_transcriptions(request, model, body)
 
@@ -173,7 +157,7 @@ async def on_images_generations(
         raise HTTPException(400, "Given model is not found")
 
     if not is_inside:
-        return await proxy(body.model_dump(), ProxyOptions(url=get_proxy_url(url, request)), request, auth_header(key))
+        return await post_json(body, ProxyOptions(url=get_proxy_url(url, request), headers=auth_header(key)), request)
 
     return await endpoint_registry.execute_images_generations(request, model, body)
 
@@ -185,6 +169,7 @@ async def on_custom_endpoint(
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
 ) -> StarletteResponse:
     """Process custom endpoint request."""
-    if not endpoint_registry.has_custom_endpoint(request.url.path):
-        return JSONResponse(content="404 Not found", status_code=404)
-    return await endpoint_registry.execute_custom_endpoints(request, request.url.path)
+    url_path = request.url.path[7:]
+    if not endpoint_registry.has_custom_endpoint(url_path):
+        return JSONResponse(content="404 Not found, given url is no registered", status_code=404)
+    return await endpoint_registry.execute_custom_endpoints(request, url_path)

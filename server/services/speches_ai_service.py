@@ -476,7 +476,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             self.endpoint_registry.register_audio_speech_as_proxy(registered_name, ProxyOptions(url=f"{info.base_url}/v1/audio/speech"))
         if type == "stt":
             self.endpoint_registry.register_audio_transcriptions_as_proxy(
-                registered_name, ProxyOptions(url=f"{info.base_url}/v1/audio/transcriptions", form=True)
+                registered_name, ProxyOptions(url=f"{info.base_url}/v1/audio/transcriptions")
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
