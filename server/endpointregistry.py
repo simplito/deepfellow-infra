@@ -368,7 +368,7 @@ class HttpResponse:
         allowed_response_headers = allowed_response_headers or []
         response_headers = {k: v for k, v in dict(self.response.headers).items() if k in allowed_response_headers}
         return StreamingResponse(
-            self.response.content, media_type=self.response.content_type, status_code=self.response.status, headers=response_headers
+            self.content, media_type=self.response.content_type, status_code=self.response.status, headers=response_headers
         )
 
 
