@@ -62,7 +62,8 @@ class DockerComposeStatus(BaseModel):
 
 class DockerComposeDevice(TypedDict):
     driver: str
-    count: int
+    count: NotRequired[int]
+    device_ids: NotRequired[list[int]]
     capabilities: list[str]
 
 
@@ -103,6 +104,7 @@ class DockerComposeContent(TypedDict):
 
 
 _docker_compose_cmd: str | None = None
+_has_gpu_support: bool | None = None
 
 
 def get_docker_compoes_cmd() -> str:
@@ -116,6 +118,15 @@ def get_docker_compoes_cmd() -> str:
         else:
             raise DockerNotInstalledError("Docker is not installed.")
     return _docker_compose_cmd
+
+
+async def has_gpu_support() -> bool:
+    """Return whether there is GPU support."""
+    global _has_gpu_support
+    if _has_gpu_support is None:
+        result = await Utils.run_command("docker run --gpus all --rm busybox echo")
+        _has_gpu_support = result.exit_code == 0
+    return _has_gpu_support
 
 
 async def start_docker_compose(docker_compose_file_path: Path) -> CommandResult2:
@@ -201,7 +212,7 @@ async def is_docker_compose_healthy(docker_compose_file_path: Path, service_name
         return False
 
 
-def generate_docker_compose_content(options: DockerOptions, port: int) -> DockerComposeContent:  # noqa: C901
+async def generate_docker_compose_content(options: DockerOptions, port: int) -> DockerComposeContent:  # noqa: C901
     """Generate docker compose content."""
     service: DockerComposeService = {
         "image": options.image,
@@ -224,6 +235,8 @@ def generate_docker_compose_content(options: DockerOptions, port: int) -> Docker
     if options.reset_uid:
         service["user"] = "0:0"
     if options.use_gpu:
+        if not await has_gpu_support():
+            raise AppError("Docker doesn't support GPU on this machine.")
         service["deploy"] = {"resources": {"reservations": {"devices": [{"driver": "nvidia", "count": 1, "capabilities": ["gpu"]}]}}}
     if options.subnet:
         service["networks"] = [options.subnet]
@@ -251,7 +264,7 @@ async def has_docker_compose_difference(docker_compose_file_path: Path, options:
         current_ports = current_service.get("ports", [])
         current_port = int(current_ports[0].split(":")[0])
 
-        desired_config = generate_docker_compose_content(options, current_port)
+        desired_config = await generate_docker_compose_content(options, current_port)
         desired_content = yaml.dump(desired_config, default_flow_style=False, sort_keys=False)
         # Check image, command, environment
         return (current_content != desired_content, current_port)  # noqa: TRY300
@@ -280,7 +293,7 @@ async def render_docker_compose(docker_compose_file_path: Path, options: DockerO
     # Get new port
     if port is None:
         port = ctx.get_free_port()
-    docker_compose_file_content = generate_docker_compose_content(options, port)
+    docker_compose_file_content = await generate_docker_compose_content(options, port)
 
     # Save rendered docker compose as file
     docker_compose_yaml = yaml.dump(docker_compose_file_content, default_flow_style=False, sort_keys=False)

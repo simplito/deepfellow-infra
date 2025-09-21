@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Path, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 
 from server.core.dependencies import auth_admin, get_services_manager
 from server.models.services import (
@@ -17,6 +17,7 @@ from server.models.services import (
     UninstallServiceOut,
 )
 from server.services_manager import ServicesManager
+from server.utils.exceptions import AppError
 
 router = APIRouter(prefix="/admin/services", tags=["Services"])
 
@@ -32,7 +33,10 @@ async def install_service(
     _: Annotated[str, Depends(auth_admin)],
 ) -> InstallServiceOut:
     """Install the service."""
-    await services_manager.install_service(service_id, model)
+    try:
+        await services_manager.install_service(service_id, model)
+    except AppError as e:
+        raise HTTPException(400, str(e)) from e
     return InstallServiceOut(status="OK")
 
 
