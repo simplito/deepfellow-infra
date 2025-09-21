@@ -1,7 +1,9 @@
 """Models for chat completions."""
 
+from abc import abstractmethod
 from typing import Annotated, Any, Literal
 
+from aiohttp import FormData
 from fastapi import File as FastApiFile
 from fastapi import UploadFile
 from pydantic import BaseModel, Field
@@ -324,7 +326,13 @@ class AudioChunkingStrategy(BaseModel):
     )
 
 
-class CreateTranscriptionRequest(BaseModel):
+class FormSerializable(BaseModel):
+    @abstractmethod
+    async def to_form(self, remove_model: bool, rewrite_model_to: str | None) -> FormData:
+        """Serialize to FormData."""
+
+
+class CreateTranscriptionRequest(FormSerializable):
     model: str = Field(..., description="ID of the model to use.")
     file: UploadFile = FastApiFile(
         ...,
@@ -376,6 +384,28 @@ class CreateTranscriptionRequest(BaseModel):
         "Either or both of these options are supported: word, or segment. Note: There is no additional latency for segment timestamps, "
         "but generating word timestamps incurs additional latency.",
     )
+
+    async def to_form(self, remove_model: bool, rewrite_model_to: str | None) -> FormData:
+        """Serialize to FormData."""
+        form = FormData()
+
+        for field_name in CreateTranscriptionRequest.model_fields:
+            if field_name == "file":
+                form.add_field("file", await self.file.read(), filename=self.file.filename, content_type=self.file.content_type)  # type: ignore
+            elif field_name == "model":
+                if not remove_model:
+                    form.add_field("model", rewrite_model_to if rewrite_model_to else self.model)
+            else:
+                field_value = getattr(self, field_name)
+                if field_value:
+                    if isinstance(field_value, list):
+                        for element in field_value:  # pyright: ignore[reportUnknownVariableType]
+                            form.add_field(field_name + "[]", element)
+                    elif isinstance(field_value, bool):
+                        form.add_field(field_name, "true" if field_value else "false")
+                    else:
+                        form.add_field(field_name, field_value)
+        return form
 
 
 type Bias = Annotated[int, Field(ge=-100, le=100)]

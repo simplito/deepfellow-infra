@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import NamedTuple
 from urllib.parse import urljoin
 
-from aiohttp import FormData
+from aiohttp import ClientResponse, FormData, JsonPayload, Payload
 from aiohttp.client import ClientSession
 from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -19,9 +19,10 @@ from server.models.api import (
     CreateSpeechRequest,
     CreateTranscriptionRequest,
     EmbeddingRequest,
+    FormSerializable,
     ImagesRequest,
 )
-from server.models.common import FormFields, JsonSerializable, StarletteResponse
+from server.models.common import StarletteResponse
 from server.utils.exceptions import AppError
 from server.websockets.utils import handle_usage
 
@@ -39,8 +40,18 @@ class ProxyOptions(NamedTuple):
     url: str
     rewrite_model_to: str | None = None
     remove_model: bool = False
-    form: bool = False
     headers: dict[str, str] | None = None
+    allowed_response_headers: list[str] | None = None
+    allowed_request_headers: list[str] | None = None
+
+    def get_request_headers(self, request: Request | None) -> dict[str, str]:
+        """Get request headers."""
+        headers = self.headers or {}
+        if not request:
+            return headers
+        allowed_request_headers = self.allowed_request_headers or []
+        request_headers = {k: v for k, v in dict(request.headers).items() if k in allowed_request_headers}
+        return request_headers | headers
 
 
 class EndpointRegistry:
@@ -76,7 +87,7 @@ class EndpointRegistry:
         """Register chat completion for given model as a proxy."""
 
         async def on_request(body: ChatCompletionRequest, request: Request) -> StreamingResponse:
-            return await proxy(body, options, request)
+            return await post_json(body, options, request)
 
         self.register_chat_completion(model, SimpleEndpoint(on_request=on_request))
 
@@ -95,7 +106,7 @@ class EndpointRegistry:
         """Register completion for given model as a proxy."""
 
         async def on_request(body: CompletionLegacyRequest, request: Request) -> StreamingResponse:
-            return await proxy(body, options, request)
+            return await post_json(body, options, request)
 
         self.register_completion(model, SimpleEndpoint(on_request=on_request))
 
@@ -124,7 +135,7 @@ class EndpointRegistry:
         """Register embeddings for given model as a proxy."""
 
         async def on_request(body: EmbeddingRequest, request: Request) -> StreamingResponse:
-            return await proxy(body, options, request)
+            return await post_json(body, options, request)
 
         self.register_embeddings(model, SimpleEndpoint(on_request=on_request))
 
@@ -147,7 +158,7 @@ class EndpointRegistry:
         """Register audio speech for given model as a proxy."""
 
         async def on_request(body: CreateSpeechRequest, request: Request) -> StreamingResponse:
-            return await proxy(body, options, request)
+            return await post_json(body, options, request)
 
         self.register_audio_speech(model, SimpleEndpoint(on_request=on_request))
 
@@ -172,23 +183,7 @@ class EndpointRegistry:
         """Register audio transcriptions for given model as a proxy."""
 
         async def on_request(body: CreateTranscriptionRequest, request: Request) -> StreamingResponse:
-            form = FormData()
-
-            for field_name in CreateTranscriptionRequest.model_fields:
-                if field_name == "file":
-                    form.add_field("file", await body.file.read(), filename=body.file.filename, content_type=body.file.content_type)
-                else:
-                    field_value = getattr(body, field_name)
-                    if field_value:
-                        if isinstance(field_value, list):
-                            for element in field_value:  # pyright: ignore[reportUnknownVariableType]
-                                form.add_field(field_name + "[]", element)
-                        elif isinstance(field_value, bool):
-                            form.add_field(field_name, "true" if field_value else "false")
-                        else:
-                            form.add_field(field_name, field_value)
-
-            return await proxy(form, options, request)
+            return await post_form(body, options, request)
 
         self.register_audio_transcriptions(model, SimpleEndpoint(on_request=on_request))
 
@@ -209,7 +204,7 @@ class EndpointRegistry:
         """Register image generations for given model as a proxy."""
 
         async def on_request(body: ImagesRequest, request: Request) -> StreamingResponse:
-            return await proxy(body, options, request)
+            return await post_json(body, options, request)
 
         self.register_image_generations(model, SimpleEndpoint(on_request=on_request))
 
@@ -228,17 +223,14 @@ class EndpointRegistry:
         """Register custom endpoint as a proxy."""
 
         async def on_request(_body: None, request: Request) -> StreamingResponse:
-            headers = dict(request.headers)
-            if options.headers:
-                for key, value in options.headers:
-                    headers[key] = value
-            (status_code, media_type, response_headers, generator) = await proxy_request(
-                method=request.method,
-                url=urljoin(options.url, request.url.path[7:]),
-                body=request.stream(),
-                headers=headers,
-            )
-            return StreamingResponse(generator, media_type=media_type, status_code=status_code, headers=response_headers)
+            return (
+                await make_http_request(
+                    url=urljoin(options.url, request.url.path[7:]),
+                    method=request.method,
+                    data=request.stream(),
+                    headers=options.get_request_headers(request),
+                )
+            ).as_streaming_response(options.allowed_response_headers)
 
         self.register_custom_endpoint(url, SimpleEndpoint(on_request=on_request))
 
@@ -273,6 +265,7 @@ class EndpointRegistry:
 
     def has_custom_endpoint(self, url: str) -> bool:
         """Check whether the custom endpoint is registered."""
+        print(url, self.custom_endpoints.keys())
         return url in self.custom_endpoints
 
     @handle_usage
@@ -336,90 +329,71 @@ class EndpointRegistry:
         return await endpoint.on_request(None, request)
 
 
-async def proxy(
-    body: bytes | BaseModel | JsonSerializable | FormFields | FormData,
-    options: ProxyOptions,
-    _request: Request,
-    headers: dict[str, str] | None = None,
-) -> StreamingResponse:
-    """Proxy endpoint."""
-    if not isinstance(body, (FormData | bytes | bytearray | memoryview)):
-        body = body.model_dump(exclude_none=True) if isinstance(body, BaseModel) else body
-        if options.remove_model:
-            del body["model"]
-        if options.rewrite_model_to:
-            body["model"] = options.rewrite_model_to
-
-    (status_code, media_type, response_headers, generator) = await proxy_post_request(
-        options.url,
-        body,
-        headers=(options.headers or {}) | (headers or {}),
-        form=options.form,
-    )
-    return StreamingResponse(generator, media_type=media_type, status_code=status_code, headers=response_headers)
+async def post_json(data: BaseModel, options: ProxyOptions, request: Request | None = None) -> StreamingResponse:
+    """Make HTTP POST request sending data as JSON."""
+    raw = data.model_dump(exclude_none=True)
+    if options.remove_model:
+        del raw["model"]  # pyright: ignore[reportIndexIssue]
+    if options.rewrite_model_to:
+        raw["model"] = options.rewrite_model_to  # pyright: ignore[reportIndexIssue]
+    return (
+        await make_http_request(
+            url=options.url,
+            method="POST",
+            data=JsonPayload(raw),
+            headers=options.get_request_headers(request),
+        )
+    ).as_streaming_response(options.allowed_response_headers)
 
 
-async def proxy_post_request(
+async def post_form(data: FormSerializable, options: ProxyOptions, request: Request | None = None) -> StreamingResponse:
+    """Make HTTP POST request sending data as form."""
+    return (
+        await make_http_request(
+            url=options.url,
+            method="POST",
+            data=await data.to_form(options.remove_model, options.rewrite_model_to),
+            headers=options.get_request_headers(request),
+        )
+    ).as_streaming_response(options.allowed_response_headers)
+
+
+class HttpResponse:
+    def __init__(self, response: ClientResponse, content: AsyncGenerator[bytes]):
+        self.response = response
+        self.content = content
+
+    def as_streaming_response(self, allowed_response_headers: list[str] | None = None) -> StreamingResponse:
+        """Return as StreamingResponse."""
+        allowed_response_headers = allowed_response_headers or []
+        response_headers = {k: v for k, v in dict(self.response.headers).items() if k in allowed_response_headers}
+        return StreamingResponse(
+            self.response.content, media_type=self.response.content_type, status_code=self.response.status, headers=response_headers
+        )
+
+
+async def make_http_request(
     url: str,
-    body: bytes | JsonSerializable | FormFields | FormData,
+    method: str = "GET",
+    data: AsyncGenerator[bytes] | bytes | FormData | Payload | None = None,
     headers: dict[str, str] | None = None,
-    form: bool = False,
-) -> tuple[int, str, dict[str, str], AsyncGenerator[bytes]]:
-    """Make request to given url and stream it."""
+) -> HttpResponse:
+    """Make HTTP request to given url."""
+    headers = headers or {}
     session = ClientSession()
     try:
-        if form:
-            resp = await session.post(url, data=body, headers=headers or {})
-        else:
-            resp = await session.post(url, json=body, headers=headers or {})
-        status_code = resp.status
-        content_type = resp.headers.get("content-type", "application/octet-stream")
-        response_headers = dict(resp.headers)
-        response_headers.pop("Content-Encoding", None)
-        response_headers.pop("Transfer-Encoding", None)
+        response = await session.request(method=method, url=url, data=data, headers=headers)
 
         async def generator() -> AsyncGenerator[bytes]:
             try:
-                async for chunk in resp.content.iter_any():
+                async for chunk in response.content.iter_any():
                     if chunk:
                         yield chunk
             finally:
-                await resp.release()
+                await response.release()
                 await session.close()
 
-        return status_code, content_type, response_headers, generator()
-
-    except Exception:
-        await session.close()
-        raise
-
-
-async def proxy_request(
-    url: str,
-    method: str,
-    body: AsyncGenerator[bytes],
-    headers: dict[str, str] | None = None,
-) -> tuple[int, str, dict[str, str], AsyncGenerator[bytes]]:
-    """Make request to given url and stream it."""
-    session = ClientSession()
-    try:
-        resp = await session.request(method=method, url=url, data=body, headers=headers or {})
-        status_code = resp.status
-        content_type = resp.headers.get("content-type", "application/octet-stream")
-        response_headers = dict(resp.headers)
-        response_headers.pop("Content-Encoding", None)
-        response_headers.pop("Transfer-Encoding", None)
-
-        async def generator() -> AsyncGenerator[bytes]:
-            try:
-                async for chunk in resp.content.iter_any():
-                    if chunk:
-                        yield chunk
-            finally:
-                await resp.release()
-                await session.close()
-
-        return status_code, content_type, response_headers, generator()
+        return HttpResponse(response=response, content=generator())
 
     except Exception:
         await session.close()
