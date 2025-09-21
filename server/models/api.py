@@ -6,7 +6,7 @@ from typing import Annotated, Any, Literal
 from aiohttp import FormData
 from fastapi import File as FastApiFile
 from fastapi import UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ImageUrl(BaseModel):
@@ -297,6 +297,109 @@ class ChatCompletionModels(BaseModel):
 
 type TranscriptionInclude = Literal["logprobs"]
 
+languages = [
+    "af",
+    "am",
+    "ar",
+    "as",
+    "az",
+    "ba",
+    "be",
+    "bg",
+    "bn",
+    "bo",
+    "br",
+    "bs",
+    "ca",
+    "cs",
+    "cy",
+    "da",
+    "de",
+    "el",
+    "en",
+    "es",
+    "et",
+    "eu",
+    "fa",
+    "fi",
+    "fo",
+    "fr",
+    "gl",
+    "gu",
+    "ha",
+    "haw",
+    "he",
+    "hi",
+    "hr",
+    "ht",
+    "hu",
+    "hy",
+    "id",
+    "is",
+    "it",
+    "ja",
+    "jw",
+    "ka",
+    "kk",
+    "km",
+    "kn",
+    "ko",
+    "la",
+    "lb",
+    "ln",
+    "lo",
+    "lt",
+    "lv",
+    "mg",
+    "mi",
+    "mk",
+    "ml",
+    "mn",
+    "mr",
+    "ms",
+    "mt",
+    "my",
+    "ne",
+    "nl",
+    "nn",
+    "no",
+    "oc",
+    "pa",
+    "pl",
+    "ps",
+    "pt",
+    "ro",
+    "ru",
+    "sa",
+    "sd",
+    "si",
+    "sk",
+    "sl",
+    "sn",
+    "so",
+    "sq",
+    "sr",
+    "su",
+    "sv",
+    "sw",
+    "ta",
+    "te",
+    "tg",
+    "th",
+    "tk",
+    "tl",
+    "tr",
+    "tt",
+    "uk",
+    "ur",
+    "uz",
+    "vi",
+    "yi",
+    "yo",
+    "zh",
+    "yue",
+]
+
 
 class AudioChunkingStrategy(BaseModel):
     type: Literal["server_vad"] = Field(..., description="Must be set to 'server_vad' to enable manual chunking using server side VAD")
@@ -385,6 +488,13 @@ class CreateTranscriptionRequest(FormSerializable):
         "but generating word timestamps incurs additional latency.",
     )
 
+    @field_validator("language", mode="after")
+    def _check_language(cls, v: str | None) -> str | None:  # noqa: N805
+        if v is not None and v not in languages:
+            msg = f"Unsupported value, available values: {', '.join(languages)}"
+            raise ValueError(msg)
+        return v
+
     async def to_form(self, remove_model: bool, rewrite_model_to: str | None) -> FormData:
         """Serialize to FormData."""
         form = FormData()
@@ -403,6 +513,8 @@ class CreateTranscriptionRequest(FormSerializable):
                             form.add_field(field_name + "[]", element)
                     elif isinstance(field_value, bool):
                         form.add_field(field_name, "true" if field_value else "false")
+                    elif isinstance(field_value, float):
+                        form.add_field(field_name, str(field_value))
                     else:
                         form.add_field(field_name, field_value)
         return form
