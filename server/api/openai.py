@@ -9,8 +9,8 @@ from fastapi.responses import JSONResponse
 from server.core.dependencies import auth_server, get_endpoint_registry
 from server.endpointregistry import EndpointRegistry, ProxyOptions, post_form, post_json
 from server.models.api import (
-    ChatCompletionModel,
-    ChatCompletionModels,
+    ApiModel,
+    ApiModels,
     ChatCompletionRequest,
     CompletionLegacyRequest,
     CreateSpeechRequest,
@@ -31,9 +31,9 @@ router = APIRouter(prefix="", tags=["AI Endpoints"])
 async def on_models(
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
-) -> ChatCompletionModels:
+) -> ApiModels:
     """Process models request."""
-    return endpoint_registry.get_chat_completions_models()
+    return endpoint_registry.get_models()
 
 
 @router.get("/v1/models/{model_id}")
@@ -41,9 +41,9 @@ async def on_model(
     _: Annotated[str, Depends(auth_server)],
     model_id: Annotated[str, Path(..., description="The ID of the model to use.")],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
-) -> ChatCompletionModel:
+) -> ApiModel:
     """Process model request."""
-    return endpoint_registry.get_chat_completions_model(model_id)
+    return endpoint_registry.get_model(model_id)
 
 
 @router.post("/v1/chat/completions")

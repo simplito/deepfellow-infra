@@ -12,8 +12,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from server.models.api import (
-    ChatCompletionModel,
-    ChatCompletionModels,
+    ApiModel,
+    ApiModels,
     ChatCompletionRequest,
     CompletionLegacyRequest,
     CreateSpeechRequest,
@@ -64,18 +64,31 @@ class EndpointRegistry:
         self.custom_endpoints: dict[str, SimpleEndpoint[None]] = {}
         self.images_generations_endpoints: dict[str, SimpleEndpoint[ImagesRequest]] = {}
 
-    def get_chat_completions_models(self) -> ChatCompletionModels:
+    def get_models(self) -> ApiModels:
         """Get chat completions models."""
-        models: list[ChatCompletionModel] = []
+        models: list[ApiModel] = []
         for model_id in self.chat_completion_endpoints:
-            models.append(ChatCompletionModel(id=model_id, object="model", created=0, owned_by="unknown"))
-        return ChatCompletionModels(data=models)
+            models.append(ApiModel(id=model_id, object="model", created=0, owned_by="unknown"))
+        for model_id in self.completion_endpoints:
+            if model_id not in self.chat_completion_endpoints:
+                models.append(ApiModel(id=model_id, object="model", created=0, owned_by="unknown"))
+        for model_id in self.embeddings_endpoints:
+            models.append(ApiModel(id=model_id, object="model", created=0, owned_by="unknown"))
+        for model_id in self.audio_speech_endpoints:
+            models.append(ApiModel(id=model_id, object="model", created=0, owned_by="unknown"))
+        for model_id in self.audio_transcriptions_endpoints:
+            models.append(ApiModel(id=model_id, object="model", created=0, owned_by="unknown"))
+        for model_id in self.images_generations_endpoints:
+            models.append(ApiModel(id=model_id, object="model", created=0, owned_by="unknown"))
+        return ApiModels(data=models)
 
-    def get_chat_completions_model(self, model_id: str) -> ChatCompletionModel:
+    def get_model(self, model_id: str) -> ApiModel:
         """Get chat completions model."""
-        if model_id not in self.chat_completion_endpoints:
+        models = self.get_models()
+        model = next((x for x in models.data if x.id == model_id), None)
+        if model is None:
             raise HTTPException(404, f"Model not found {model_id}")
-        return ChatCompletionModel(id=model_id, object="model", created=0, owned_by="unknown")
+        return model
 
     def register_chat_completion(self, model: str, endpoint: SimpleEndpoint[ChatCompletionRequest]) -> None:
         """Register chat completion endpoint for given model."""

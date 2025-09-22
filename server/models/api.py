@@ -283,16 +283,16 @@ class CreateSpeechRequest(BaseModel):
     )
 
 
-class ChatCompletionModel(BaseModel):
+class ApiModel(BaseModel):
     id: str
     object: Literal["model"]
     created: int
     owned_by: str
 
 
-class ChatCompletionModels(BaseModel):
+class ApiModels(BaseModel):
     object: Literal["list"] = "list"
-    data: list[ChatCompletionModel]
+    data: list[ApiModel]
 
 
 type TranscriptionInclude = Literal["logprobs"]
