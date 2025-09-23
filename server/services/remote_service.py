@@ -6,7 +6,7 @@ from urllib.parse import urljoin
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-from server.endpointregistry import ProxyOptions
+from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -30,6 +30,8 @@ class ModelInstalledInfo(BaseModel):
     options: InstallModelIn
     completions: bool
     legacy_completions: bool
+    registration_id: RegistrationId
+    alternative_registration_id: RegistrationId
 
 
 class RemoteOptions(BaseModel):
@@ -85,17 +87,17 @@ class RemoteService(Base2Service[InstalledInfo]):
         for model in info.models.copy().values():
             if model.type == "llm":
                 if model.completions:
-                    self.endpoint_registry.unregister_chat_completion(model.registered_name)
+                    self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
                 if model.legacy_completions:
-                    self.endpoint_registry.unregister_completion(model.registered_name)
+                    self.endpoint_registry.unregister_completion(model.registered_name, model.alternative_registration_id)
             if model.type == "tts":
-                self.endpoint_registry.unregister_audio_speech(model.registered_name)
+                self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
             if model.type == "stt":
-                self.endpoint_registry.unregister_audio_transcriptions(model.registered_name)
+                self.endpoint_registry.unregister_audio_transcriptions(model.registered_name, model.registration_id)
             if model.type == "txt2img":
-                self.endpoint_registry.unregister_image_generations(model.registered_name)
+                self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
             if model.type == "embedding":
-                self.endpoint_registry.unregister_embeddings(model.registered_name)
+                self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
         self.installed = None
         if options.purge:
             await self._clear_working_dir()
@@ -130,19 +132,21 @@ class RemoteService(Base2Service[InstalledInfo]):
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
         registered_name = options.alias if options.alias is not None else model_id
-        info.models[model_id] = ModelInstalledInfo(
+        info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
             type=model.type,
             registered_name=registered_name,
             options=options,
             completions=model.completions,
             legacy_completions=model.legacy_completions,
+            registration_id="",
+            alternative_registration_id="",
         )
         url_base = urljoin(info.parsed_options.api_url, self.url_prefix)
         if model.type == "llm":
             if model.completions:
                 url = urljoin(url_base, "chat/completions")
-                self.endpoint_registry.register_chat_completion_as_proxy(
+                model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                     registered_name,
                     ProxyOptions(
                         url=url,
@@ -152,7 +156,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                 )
             if model.legacy_completions:
                 url = urljoin(url_base, "completions")
-                self.endpoint_registry.register_completion_as_proxy(
+                model_info.alternative_registration_id = self.endpoint_registry.register_completion_as_proxy(
                     registered_name,
                     ProxyOptions(
                         url=url,
@@ -162,7 +166,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                 )
         if model.type == "tts":
             url = urljoin(url_base, "v1/audio/speech")
-            self.endpoint_registry.register_audio_speech_as_proxy(
+            model_info.registration_id = self.endpoint_registry.register_audio_speech_as_proxy(
                 registered_name,
                 ProxyOptions(
                     url=url,
@@ -172,7 +176,7 @@ class RemoteService(Base2Service[InstalledInfo]):
             )
         if model.type == "stt":
             url = urljoin(url_base, "v1/audio/transcriptions")
-            self.endpoint_registry.register_audio_transcriptions_as_proxy(
+            model_info.registration_id = self.endpoint_registry.register_audio_transcriptions_as_proxy(
                 registered_name,
                 ProxyOptions(
                     url=url,
@@ -182,7 +186,7 @@ class RemoteService(Base2Service[InstalledInfo]):
             )
         if model.type == "txt2img":
             url = urljoin(url_base, "v1/images/generations")
-            self.endpoint_registry.register_image_generations_as_proxy(
+            model_info.registration_id = self.endpoint_registry.register_image_generations_as_proxy(
                 registered_name,
                 ProxyOptions(
                     url=url,
@@ -192,7 +196,7 @@ class RemoteService(Base2Service[InstalledInfo]):
             )
         if model.type == "embedding":
             url = urljoin(url_base, "v1/embeddings")
-            self.endpoint_registry.register_embeddings_as_proxy(
+            model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
                 registered_name,
                 ProxyOptions(
                     url=url,
@@ -209,17 +213,17 @@ class RemoteService(Base2Service[InstalledInfo]):
         del info.models[model_id]
         if model.type == "llm":
             if model.completions:
-                self.endpoint_registry.unregister_chat_completion(model.registered_name)
+                self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
             if model.legacy_completions:
-                self.endpoint_registry.unregister_completion(model.registered_name)
+                self.endpoint_registry.unregister_completion(model.registered_name, model.alternative_registration_id)
         if model.type == "tts":
-            self.endpoint_registry.unregister_audio_speech(model.registered_name)
+            self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
         if model.type == "stt":
-            self.endpoint_registry.unregister_audio_transcriptions(model.registered_name)
+            self.endpoint_registry.unregister_audio_transcriptions(model.registered_name, model.registration_id)
         if model.type == "txt2img":
-            self.endpoint_registry.unregister_image_generations(model.registered_name)
+            self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
         if model.type == "embedding":
-            self.endpoint_registry.unregister_embeddings(model.registered_name)
+            self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
 
         if options.purge:
             # unsupported

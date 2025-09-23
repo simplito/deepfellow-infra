@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
+from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -68,6 +69,8 @@ class ModelInstalledInfo:
         container_host: str,
         container_port: int,
         docker_exposed_port: int,
+        completions_registration_id: RegistrationId,
+        chat_completions_registration_id: RegistrationId,
     ):
         self.id = id
         self.registered_name = registered_name
@@ -78,6 +81,8 @@ class ModelInstalledInfo:
         self.container_port = container_port
         self.docker_exposed_port = docker_exposed_port
         self.base_url = get_base_url(self.container_host, self.container_port)
+        self.completions_registration_id = completions_registration_id
+        self.chat_completions_registration_id = chat_completions_registration_id
 
 
 class LLamacppOptions(BaseModel):
@@ -184,8 +189,15 @@ class LLamacppService(Base2Service[InstalledInfo]):
             container_host=get_container_host(subnet, docker_options.name),
             container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
             docker_exposed_port=docker_exposed_port,
+            chat_completions_registration_id="",
+            completions_registration_id="",
         )
-        self.endpoint_registry.register_all_completions_as_proxy(registered_name, model_info.base_url)
+        model_info.chat_completions_registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
+            registered_name, ProxyOptions(url=f"{model_info.base_url}/v1/chat/completions", rewrite_model_to=model_id)
+        )
+        model_info.completions_registration_id = self.endpoint_registry.register_completion_as_proxy(
+            registered_name, ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id)
+        )
 
     def _get_image(self, gpu: bool) -> str:
         return _const.image_cpu_arm64 if system() == "Darwin" else _const.image_gpu if gpu else _const.image_cpu
@@ -196,7 +208,8 @@ class LLamacppService(Base2Service[InstalledInfo]):
             return
         model = info.models[model_id]
         del info.models[model_id]
-        self.endpoint_registry.unregister_all_completions(model.registered_name)
+        self.endpoint_registry.unregister_chat_completion(model.registered_name, model.chat_completions_registration_id)
+        self.endpoint_registry.unregister_completion(model.registered_name, model.completions_registration_id)
         await uninstall_docker(self.application_context, model.docker)
         if options.purge:
             model.model_path.unlink()

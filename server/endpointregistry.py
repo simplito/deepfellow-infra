@@ -1,6 +1,7 @@
 """Endpoint registry holds callbacks for given endpoints and models."""
 
 import logging
+import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import NamedTuple
 from urllib.parse import urljoin
@@ -36,6 +37,54 @@ class SimpleEndpoint[T](NamedTuple):
     on_request: EndpointCallback[T]
 
 
+type ModelId = str
+type RegistrationId = str
+
+
+class RegisteredModel[T](NamedTuple):
+    id: RegistrationId
+    endpoint: SimpleEndpoint[T]
+
+
+class Endpoint[T]:
+    def __init__(self):
+        self.models = dict[ModelId, dict[RegistrationId, RegisteredModel[T]]]()
+
+    def add_model(self, model: ModelId, endpoint: SimpleEndpoint[T]) -> RegistrationId:
+        """Add model to registry."""
+        registered_model = RegisteredModel(id=str(uuid.uuid4()), endpoint=endpoint)
+        if model not in self.models:
+            self.models[model] = {}
+        self.models[model][registered_model.id] = registered_model
+        return registered_model.id
+
+    def remove_model(self, model: ModelId, registration_id: RegistrationId) -> None:
+        """Remove model from registry."""
+        if model not in self.models:
+            return
+        if registration_id in self.models[model]:
+            del self.models[model][registration_id]
+        if len(self.models[model]) == 0:
+            del self.models[model]
+
+    def has_model(self, model: str) -> bool:
+        """Have model in registry."""
+        return self.get_model(model) is not None
+
+    def get_model(self, model: str) -> SimpleEndpoint[T] | None:
+        """Get model from registry."""
+        if model not in self.models:
+            return None
+        # TODO make load balancing
+        for x in self.models[model].values():
+            return x.endpoint
+        return None
+
+    def list_models(self) -> list[ApiModel]:
+        """List models from registry."""
+        return [ApiModel(id=model, object="model", created=0, owned_by="unknown") for model in self.models]
+
+
 class ProxyOptions(NamedTuple):
     url: str
     rewrite_model_to: str | None = None
@@ -56,30 +105,30 @@ class ProxyOptions(NamedTuple):
 
 class EndpointRegistry:
     def __init__(self):
-        self.chat_completion_endpoints: dict[str, SimpleEndpoint[ChatCompletionRequest]] = {}
-        self.completion_endpoints: dict[str, SimpleEndpoint[CompletionLegacyRequest]] = {}
-        self.embeddings_endpoints: dict[str, SimpleEndpoint[EmbeddingRequest]] = {}
-        self.audio_speech_endpoints: dict[str, SimpleEndpoint[CreateSpeechRequest]] = {}
-        self.audio_transcriptions_endpoints: dict[str, SimpleEndpoint[CreateTranscriptionRequest]] = {}
-        self.custom_endpoints: dict[str, SimpleEndpoint[None]] = {}
-        self.images_generations_endpoints: dict[str, SimpleEndpoint[ImagesRequest]] = {}
+        self.chat_completion_endpoints = Endpoint[ChatCompletionRequest]()
+        self.completion_endpoints = Endpoint[CompletionLegacyRequest]()
+        self.embeddings_endpoints = Endpoint[EmbeddingRequest]()
+        self.audio_speech_endpoints = Endpoint[CreateSpeechRequest]()
+        self.audio_transcriptions_endpoints = Endpoint[CreateTranscriptionRequest]()
+        self.custom_endpoints = Endpoint[None]()
+        self.images_generations_endpoints = Endpoint[ImagesRequest]()
 
     def get_models(self) -> ApiModels:
         """Get chat completions models."""
         models: list[ApiModel] = []
-        for model_id in self.chat_completion_endpoints:
-            models.append(ApiModel(id=model_id, object="model", created=0, owned_by="unknown"))
-        for model_id in self.completion_endpoints:
-            if model_id not in self.chat_completion_endpoints:
-                models.append(ApiModel(id=model_id, object="model", created=0, owned_by="unknown"))
-        for model_id in self.embeddings_endpoints:
-            models.append(ApiModel(id=model_id, object="model", created=0, owned_by="unknown"))
-        for model_id in self.audio_speech_endpoints:
-            models.append(ApiModel(id=model_id, object="model", created=0, owned_by="unknown"))
-        for model_id in self.audio_transcriptions_endpoints:
-            models.append(ApiModel(id=model_id, object="model", created=0, owned_by="unknown"))
-        for model_id in self.images_generations_endpoints:
-            models.append(ApiModel(id=model_id, object="model", created=0, owned_by="unknown"))
+        for model in self.chat_completion_endpoints.list_models():
+            models.append(model)
+        for model in self.completion_endpoints.list_models():
+            if not self.chat_completion_endpoints.has_model(model.id):
+                models.append(model)
+        for model in self.embeddings_endpoints.list_models():
+            models.append(model)
+        for model in self.audio_speech_endpoints.list_models():
+            models.append(model)
+        for model in self.audio_transcriptions_endpoints.list_models():
+            models.append(model)
+        for model in self.images_generations_endpoints.list_models():
+            models.append(model)
         return ApiModels(data=models)
 
     def get_model(self, model_id: str) -> ApiModel:
@@ -90,149 +139,107 @@ class EndpointRegistry:
             raise HTTPException(404, f"Model not found {model_id}")
         return model
 
-    def register_chat_completion(self, model: str, endpoint: SimpleEndpoint[ChatCompletionRequest]) -> None:
+    def register_chat_completion(self, model: str, endpoint: SimpleEndpoint[ChatCompletionRequest]) -> RegistrationId:
         """Register chat completion endpoint for given model."""
-        if model in self.chat_completion_endpoints:
-            raise AppError("There is already registered endpoint for given model", model)
-        self.chat_completion_endpoints[model] = endpoint
+        return self.chat_completion_endpoints.add_model(model, endpoint)
 
-    def register_chat_completion_as_proxy(self, model: str, options: ProxyOptions) -> None:
+    def register_chat_completion_as_proxy(self, model: str, options: ProxyOptions) -> RegistrationId:
         """Register chat completion for given model as a proxy."""
 
         async def on_request(body: ChatCompletionRequest, request: Request) -> StreamingResponse:
             return await post_json(body, options, request)
 
-        self.register_chat_completion(model, SimpleEndpoint(on_request=on_request))
+        return self.register_chat_completion(model, SimpleEndpoint(on_request=on_request))
 
-    def unregister_chat_completion(self, model: str) -> None:
+    def unregister_chat_completion(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister chat completion for given model."""
-        if model in self.chat_completion_endpoints:
-            del self.chat_completion_endpoints[model]
+        self.chat_completion_endpoints.remove_model(model, registration_id)
 
-    def register_completion(self, model: str, endpoint: SimpleEndpoint[CompletionLegacyRequest]) -> None:
+    def register_completion(self, model: str, endpoint: SimpleEndpoint[CompletionLegacyRequest]) -> RegistrationId:
         """Register completion endpoint for given model."""
-        if model in self.completion_endpoints:
-            raise AppError("There is already registered endpoint for given model", model)
-        self.completion_endpoints[model] = endpoint
+        return self.completion_endpoints.add_model(model, endpoint)
 
-    def register_completion_as_proxy(self, model: str, options: ProxyOptions) -> None:
+    def register_completion_as_proxy(self, model: str, options: ProxyOptions) -> RegistrationId:
         """Register completion for given model as a proxy."""
 
         async def on_request(body: CompletionLegacyRequest, request: Request) -> StreamingResponse:
             return await post_json(body, options, request)
 
-        self.register_completion(model, SimpleEndpoint(on_request=on_request))
+        return self.register_completion(model, SimpleEndpoint(on_request=on_request))
 
-    def unregister_completion(self, model: str) -> None:
+    def unregister_completion(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister completion for given model."""
-        if model in self.completion_endpoints:
-            del self.completion_endpoints[model]
+        self.completion_endpoints.remove_model(model, registration_id)
 
-    def register_all_completions_as_proxy(self, model: str, url: str, rewrite_model_to: str | None = None) -> None:
-        """Register given model to chat completions and legacy completions."""
-        self.register_chat_completion_as_proxy(model, ProxyOptions(url=f"{url}/v1/chat/completions", rewrite_model_to=rewrite_model_to))
-        self.register_completion_as_proxy(model, ProxyOptions(url=f"{url}/v1/completions", rewrite_model_to=rewrite_model_to))
-
-    def unregister_all_completions(self, model: str) -> None:
-        """Unregister given model from chat completions and legacy completions."""
-        self.unregister_chat_completion(model)
-        self.unregister_completion(model)
-
-    def register_embeddings(self, model: str, endpoint: SimpleEndpoint[EmbeddingRequest]) -> None:
+    def register_embeddings(self, model: str, endpoint: SimpleEndpoint[EmbeddingRequest]) -> RegistrationId:
         """Register embeddings endpoint for given model."""
-        if model in self.embeddings_endpoints:
-            raise AppError("There is already registered endpoint for given model", model)
-        self.embeddings_endpoints[model] = endpoint
+        return self.embeddings_endpoints.add_model(model, endpoint)
 
-    def register_embeddings_as_proxy(self, model: str, options: ProxyOptions) -> None:
+    def register_embeddings_as_proxy(self, model: str, options: ProxyOptions) -> RegistrationId:
         """Register embeddings for given model as a proxy."""
 
         async def on_request(body: EmbeddingRequest, request: Request) -> StreamingResponse:
             return await post_json(body, options, request)
 
-        self.register_embeddings(model, SimpleEndpoint(on_request=on_request))
+        return self.register_embeddings(model, SimpleEndpoint(on_request=on_request))
 
-    def unregister_embeddings(self, model: str) -> None:
+    def unregister_embeddings(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister embeddings for given model."""
-        if model in self.embeddings_endpoints:
-            del self.embeddings_endpoints[model]
+        self.embeddings_endpoints.remove_model(model, registration_id)
 
-    def register_audio_speech(self, model: str | list[str], endpoint: SimpleEndpoint[CreateSpeechRequest]) -> None:
+    def register_audio_speech(self, model: str, endpoint: SimpleEndpoint[CreateSpeechRequest]) -> RegistrationId:
         """Register audio speech endpoint for given model."""
-        models = model if isinstance(model, list) else [model]
-        for model in models:
-            if model in self.audio_speech_endpoints:
-                raise AppError("There is already registered endpoint for given model", model)
+        return self.audio_speech_endpoints.add_model(model, endpoint)
 
-        for model in models:
-            self.audio_speech_endpoints[model] = endpoint
-
-    def register_audio_speech_as_proxy(self, model: str | list[str], options: ProxyOptions) -> None:
+    def register_audio_speech_as_proxy(self, model: str, options: ProxyOptions) -> RegistrationId:
         """Register audio speech for given model as a proxy."""
 
         async def on_request(body: CreateSpeechRequest, request: Request) -> StreamingResponse:
             return await post_json(body, options, request)
 
-        self.register_audio_speech(model, SimpleEndpoint(on_request=on_request))
+        return self.register_audio_speech(model, SimpleEndpoint(on_request=on_request))
 
-    def unregister_audio_speech(self, model: str | list[str]) -> None:
+    def unregister_audio_speech(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister audio speech for given model."""
-        models = model if isinstance(model, list) else [model]
-        for model in models:
-            if model in self.audio_speech_endpoints:
-                del self.audio_speech_endpoints[model]
+        self.audio_speech_endpoints.remove_model(model, registration_id)
 
-    def register_audio_transcriptions(self, model: str | list[str], endpoint: SimpleEndpoint[CreateTranscriptionRequest]) -> None:
+    def register_audio_transcriptions(self, model: str, endpoint: SimpleEndpoint[CreateTranscriptionRequest]) -> RegistrationId:
         """Register audio transcriptions endpoint for given model."""
-        models = model if isinstance(model, list) else [model]
-        for model in models:
-            if model in self.audio_transcriptions_endpoints:
-                raise AppError("There is already registered endpoint for given model", model)
+        return self.audio_transcriptions_endpoints.add_model(model, endpoint)
 
-        for model in models:
-            self.audio_transcriptions_endpoints[model] = endpoint
-
-    def register_audio_transcriptions_as_proxy(self, model: str | list[str], options: ProxyOptions) -> None:
+    def register_audio_transcriptions_as_proxy(self, model: str, options: ProxyOptions) -> RegistrationId:
         """Register audio transcriptions for given model as a proxy."""
 
         async def on_request(body: CreateTranscriptionRequest, request: Request) -> StreamingResponse:
             return await post_form(body, options, request)
 
-        self.register_audio_transcriptions(model, SimpleEndpoint(on_request=on_request))
+        return self.register_audio_transcriptions(model, SimpleEndpoint(on_request=on_request))
 
-    def unregister_audio_transcriptions(self, model: str | list[str]) -> None:
+    def unregister_audio_transcriptions(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister audio transcriptions for given model."""
-        models = model if isinstance(model, list) else [model]
-        for model in models:
-            if model in self.audio_transcriptions_endpoints:
-                del self.audio_transcriptions_endpoints[model]
+        self.audio_transcriptions_endpoints.remove_model(model, registration_id)
 
-    def register_image_generations(self, model: str, endpoint: SimpleEndpoint[ImagesRequest]) -> None:
+    def register_image_generations(self, model: str, endpoint: SimpleEndpoint[ImagesRequest]) -> RegistrationId:
         """Register image generations endpoint for given model."""
-        if model in self.images_generations_endpoints:
-            raise AppError("There is already registered endpoint for given model", model)
-        self.images_generations_endpoints[model] = endpoint
+        return self.images_generations_endpoints.add_model(model, endpoint)
 
-    def register_image_generations_as_proxy(self, model: str, options: ProxyOptions) -> None:
+    def register_image_generations_as_proxy(self, model: str, options: ProxyOptions) -> RegistrationId:
         """Register image generations for given model as a proxy."""
 
         async def on_request(body: ImagesRequest, request: Request) -> StreamingResponse:
             return await post_json(body, options, request)
 
-        self.register_image_generations(model, SimpleEndpoint(on_request=on_request))
+        return self.register_image_generations(model, SimpleEndpoint(on_request=on_request))
 
-    def unregister_image_generations(self, model: str) -> None:
+    def unregister_image_generations(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister image generations for given model."""
-        if model in self.images_generations_endpoints:
-            del self.images_generations_endpoints[model]
+        self.images_generations_endpoints.remove_model(model, registration_id)
 
-    def register_custom_endpoint(self, url: str, endpoint: SimpleEndpoint[None]) -> None:
+    def register_custom_endpoint(self, url: str, endpoint: SimpleEndpoint[None]) -> RegistrationId:
         """Register custom endpoint."""
-        if url in self.custom_endpoints:
-            raise AppError("There is already registered endpoint for given url", url)
-        self.custom_endpoints[url] = endpoint
+        return self.custom_endpoints.add_model(url, endpoint)
 
-    def register_custom_endpoint_as_proxy(self, url: str, options: ProxyOptions) -> None:
+    def register_custom_endpoint_as_proxy(self, url: str, options: ProxyOptions) -> RegistrationId:
         """Register custom endpoint as a proxy."""
 
         async def on_request(_body: None, request: Request) -> StreamingResponse:
@@ -245,46 +252,44 @@ class EndpointRegistry:
                 )
             ).as_streaming_response(options.allowed_response_headers)
 
-        self.register_custom_endpoint(url, SimpleEndpoint(on_request=on_request))
+        return self.register_custom_endpoint(url, SimpleEndpoint(on_request=on_request))
 
-    def unregister_custom_endpoint(self, model: str) -> None:
+    def unregister_custom_endpoint(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister custom endpoint."""
-        if model in self.custom_endpoints:
-            del self.custom_endpoints[model]
+        self.custom_endpoints.remove_model(model, registration_id)
 
     def has_chat_completion_model(self, model: str) -> bool:
         """Check whether the chat completion model is registered."""
-        return model in self.chat_completion_endpoints
+        return self.chat_completion_endpoints.has_model(model)
 
     def has_completion_model(self, model: str) -> bool:
         """Check whether the completion model is registered."""
-        return model in self.completion_endpoints
+        return self.completion_endpoints.has_model(model)
 
     def has_embeddings_model(self, model: str) -> bool:
         """Check whether the embeddings model is registered."""
-        return model in self.embeddings_endpoints
+        return self.embeddings_endpoints.has_model(model)
 
     def has_audio_speech_model(self, model: str) -> bool:
         """Check whether the audio speech model is registered."""
-        return model in self.audio_speech_endpoints
+        return self.audio_speech_endpoints.has_model(model)
 
     def has_audio_transcriptions_model(self, model: str) -> bool:
         """Check whether the audio transcriptions model is registered."""
-        return model in self.audio_transcriptions_endpoints
+        return self.audio_transcriptions_endpoints.has_model(model)
 
     def has_image_generations_model(self, model: str) -> bool:
         """Check whether the image generations model is registered."""
-        return model in self.images_generations_endpoints
+        return self.images_generations_endpoints.has_model(model)
 
     def has_custom_endpoint(self, url: str) -> bool:
         """Check whether the custom endpoint is registered."""
-        print(url, self.custom_endpoints.keys())
-        return url in self.custom_endpoints
+        return self.custom_endpoints.has_model(url)
 
     @handle_usage
     async def execute_chat_completion(self, request: Request, model: str, body: ChatCompletionRequest) -> StarletteResponse:
         """Process chat completion request."""
-        endpoint = self.chat_completion_endpoints[model]
+        endpoint = self.chat_completion_endpoints.get_model(model)
         if not endpoint:
             raise AppError("Given model is not supported", model)
         return await endpoint.on_request(body, request)
@@ -292,7 +297,7 @@ class EndpointRegistry:
     @handle_usage
     async def execute_completion(self, request: Request, model: str, body: CompletionLegacyRequest) -> StarletteResponse:
         """Process completion request."""
-        endpoint = self.completion_endpoints[model]
+        endpoint = self.completion_endpoints.get_model(model)
         if not endpoint:
             raise AppError("Given model is not supported", model)
         return await endpoint.on_request(body, request)
@@ -300,7 +305,7 @@ class EndpointRegistry:
     @handle_usage
     async def execute_embeddings(self, request: Request, model: str, body: EmbeddingRequest) -> StarletteResponse:
         """Process embeddings request."""
-        endpoint = self.embeddings_endpoints[model]
+        endpoint = self.embeddings_endpoints.get_model(model)
         if not endpoint:
             raise AppError("Given model is not supported", model)
         return await endpoint.on_request(body, request)
@@ -308,7 +313,7 @@ class EndpointRegistry:
     @handle_usage
     async def execute_images_generations(self, request: Request, model: str, body: ImagesRequest) -> StarletteResponse:
         """Process images generations request."""
-        endpoint = self.images_generations_endpoints[model]
+        endpoint = self.images_generations_endpoints.get_model(model)
         if not endpoint:
             raise AppError("Given model is not supported", model)
         return await endpoint.on_request(body, request)
@@ -316,7 +321,7 @@ class EndpointRegistry:
     @handle_usage
     async def execute_audio_speech(self, request: Request, model: str, body: CreateSpeechRequest) -> StarletteResponse:
         """Process audio speech request."""
-        endpoint = self.audio_speech_endpoints.get(model)
+        endpoint = self.audio_speech_endpoints.get_model(model)
         if not endpoint:
             raise AppError("Given model is not supported", model)
         return await endpoint.on_request(body, request)
@@ -329,14 +334,14 @@ class EndpointRegistry:
         body: CreateTranscriptionRequest,
     ) -> StarletteResponse:
         """Process audio transcriptions request."""
-        endpoint = self.audio_transcriptions_endpoints.get(model)
+        endpoint = self.audio_transcriptions_endpoints.get_model(model)
         if not endpoint:
             raise AppError("Given model is not supported", model)
         return await endpoint.on_request(body, request)
 
     async def execute_custom_endpoints(self, request: Request, url: str) -> StarletteResponse:
         """Process custom endpoint request."""
-        endpoint = self.custom_endpoints[url]
+        endpoint = self.custom_endpoints.get_model(url)
         if not endpoint:
             raise AppError("Given url is not supported", url)
         return await endpoint.on_request(None, request)

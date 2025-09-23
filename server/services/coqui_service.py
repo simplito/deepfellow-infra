@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
-from server.endpointregistry import EndpointCallback, SimpleEndpoint
+from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
 from server.ffmpeg import ffmpeg_audio_convert_async_gen
 from server.models.api import CreateSpeechRequest
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
@@ -57,6 +57,7 @@ class ModelInstalledInfo:
         container_host: str,
         container_port: int,
         docker_exposed_port: int,
+        registration_id: RegistrationId,
     ):
         self.id = id
         self.type = type
@@ -67,6 +68,7 @@ class ModelInstalledInfo:
         self.container_port = container_port
         self.docker_exposed_port = docker_exposed_port
         self.base_url = get_base_url(self.container_host, self.container_port)
+        self.registration_id = registration_id
 
 
 class CoquiOptions(BaseModel):
@@ -192,8 +194,9 @@ class CoquiService(Base2Service[InstalledInfo]):
             container_host=get_container_host(subnet, docker_options.name),
             container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
             docker_exposed_port=docker_exposed_port,
+            registration_id="",
         )
-        self.endpoint_registry.register_audio_speech(
+        model_info.registration_id = self.endpoint_registry.register_audio_speech(
             registered_name,
             SimpleEndpoint(on_request=_create_handler(model_info.base_url, model.default_speaker, model.response_format)),
         )
@@ -234,7 +237,7 @@ class CoquiService(Base2Service[InstalledInfo]):
         model = info.models[model_id]
         del info.models[model_id]
         if model.type == "tts":
-            self.endpoint_registry.unregister_audio_speech(model.registered_name)
+            self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
         await uninstall_docker(self.application_context, model.docker)
         if options.purge:
             # unsupported

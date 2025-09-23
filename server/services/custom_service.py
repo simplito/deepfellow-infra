@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
-from server.endpointregistry import ProxyOptions
+from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -22,6 +22,7 @@ class ModelInstalledInfo:
         container_host: str,
         container_port: int,
         docker_exposed_port: int,
+        registration_id: RegistrationId,
     ):
         self.id = id
         self.options = options
@@ -30,6 +31,7 @@ class ModelInstalledInfo:
         self.container_port = container_port
         self.docker_exposed_port = docker_exposed_port
         self.base_url = get_base_url(self.container_host, self.container_port)
+        self.registration_id = registration_id
 
 
 class InstalledInfo:
@@ -109,8 +111,9 @@ class CustomService(Base2Service[InstalledInfo]):
             container_host=get_container_host(subnet, docker_options.name),
             container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
             docker_exposed_port=docker_exposed_port,
+            registration_id="",
         )
-        self.endpoint_registry.register_custom_endpoint_as_proxy(
+        model_info.registration_id = self.endpoint_registry.register_custom_endpoint_as_proxy(
             model.custom_endpoint, ProxyOptions(url=f"{model_info.base_url}{model.custom_endpoint}")
         )
 
@@ -121,7 +124,7 @@ class CustomService(Base2Service[InstalledInfo]):
         model = info.models[model_id]
         model_const = _const.models[model_id]
         del info.models[model_id]
-        self.endpoint_registry.unregister_custom_endpoint(model_const.custom_endpoint)
+        self.endpoint_registry.unregister_custom_endpoint(model_const.custom_endpoint, model.registration_id)
         await uninstall_docker(self.application_context, model.docker_options)
         if options.purge:
             # unsupported

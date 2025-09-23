@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.config import get_main_dir
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
-from server.endpointregistry import ProxyOptions
+from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -58,6 +58,8 @@ class ModelInstalledInfo(BaseModel):
     registered_name: str
     type: str
     options: InstallModelIn
+    registration_id: RegistrationId
+    alternative_registration_id: RegistrationId
 
 
 class OllamaOptions(BaseModel):
@@ -144,9 +146,10 @@ class OllamaService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         for model in info.models.copy().values():
             if model.type == "llm":
-                self.endpoint_registry.unregister_all_completions(model.registered_name)
+                self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
+                self.endpoint_registry.unregister_completion(model.registered_name, model.alternative_registration_id)
             if model.type == "embedding":
-                self.endpoint_registry.unregister_embeddings(model.registered_name)
+                self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
         self.installed = None
         await uninstall_docker(self.application_context, info.docker)
         if options.purge:
@@ -183,11 +186,25 @@ class OllamaService(Base2Service[InstalledInfo]):
             print("Error when install model in ollama", model_id, res.status_code, res.data)
             raise HTTPException(status_code=400, detail="Model not avaialble")
         registered_name = options.alias if options.alias is not None else model_id
-        info.models[model_id] = ModelInstalledInfo(id=model_id, type=model_type, registered_name=registered_name, options=options)
+        info.models[model_id] = model_info = ModelInstalledInfo(
+            id=model_id,
+            type=model_type,
+            registered_name=registered_name,
+            options=options,
+            registration_id="",
+            alternative_registration_id="",
+        )
         if model_type == "llm":
-            self.endpoint_registry.register_all_completions_as_proxy(registered_name, info.base_url)
+            model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
+                registered_name, ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model_id)
+            )
+            model_info.alternative_registration_id = self.endpoint_registry.register_completion_as_proxy(
+                registered_name, ProxyOptions(url=f"{info.base_url}/v1/completions", rewrite_model_to=model_id)
+            )
         if model_type == "embedding":
-            self.endpoint_registry.register_embeddings_as_proxy(registered_name, ProxyOptions(url=f"{info.base_url}/v1/embeddings"))
+            model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
+                registered_name, ProxyOptions(url=f"{info.base_url}/v1/embeddings")
+            )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
@@ -196,9 +213,10 @@ class OllamaService(Base2Service[InstalledInfo]):
         model = info.models[model_id]
         del info.models[model_id]
         if model.type == "llm":
-            self.endpoint_registry.unregister_all_completions(model.registered_name)
+            self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
+            self.endpoint_registry.unregister_completion(model.registered_name, model.alternative_registration_id)
         if model.type == "embedding":
-            self.endpoint_registry.unregister_embeddings(model.registered_name)
+            self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
 
         if options.purge:
             await fetch_from(f"{info.base_url}/api/delete", "DELETE", {"name": model_id})
