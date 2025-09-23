@@ -25,6 +25,7 @@ class AppSettings(BaseSettings):
     parent_infra: ParentInfra = ParentInfra()
     docker_subnet: str = ""
     storage_dir: str = ""
+    hugging_face_token: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -1,5 +1,7 @@
 """Vllm service."""
 
+from pathlib import Path
+
 from fastapi import HTTPException
 from pydantic import BaseModel
 
@@ -27,23 +29,34 @@ class VllmConst(BaseModel):
     image_gpu: str
     image_cpu: str
     model_type: str
-    hf_token: str | None
     models: dict[str, VllmModel]
 
 
 _const = VllmConst(
-    image_gpu="vllm/vllm-openai:v0.8.4",
-    image_cpu="vllm/vllm-openai:v0.8.4",  # "opea/erag-vllm-cpu:latest",
+    image_gpu="vllm/vllm-openai:v0.10.2",
+    image_cpu="public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.10.2",  # Official docker images based on docs: https://gallery.ecr.aws/q9t5s3a7/vllm-cpu-release-repo
     model_type="llm",
-    hf_token=None,
     models={
-        "speakleash/Bielik-11B-v2.6-Instruct-AWQ": VllmModel(
-            docker_name="speakleash__bielik-11b-v2.6-instruct-awq",
-            hf_id="speakleash/Bielik-11B-v2.6-Instruct-AWQ",
-            env_vars={"PYTORCH_CUDA_ALLOC_CONF": "max_split_size_mb:512"},
-            quantization="awq_marlin",
+        "Qwen/Qwen3-0.6B": VllmModel(
+            docker_name="qwen3:0.6B",
+            hf_id="Qwen/Qwen3-0.6B",
             gpu_memory_utilization=0.95,
+            max_model_len=8192,
+        ),
+        "speakleash/Bielik-4.5B-v3.0-Instruct": VllmModel(
+            docker_name="speakleash--Bielik-4.5B-v3.0-Instruct",
+            hf_id="speakleash/Bielik-4.5B-v3.0-Instruct",
+            max_model_len=8192,
+        ),
+        "speakleash/Bielik-11B-v2.6-Instruct-FP8-Dynamic": VllmModel(
+            docker_name="speakleash--Bielik-11B-v2.6-Instruct-FP8-Dynamic",
+            hf_id="speakleash/Bielik-11B-v2.6-Instruct-FP8-Dynamic",
             max_model_len=4096,
+        ),
+        "google/gemma-3-1b-it": VllmModel(
+            docker_name="google--gemma-3-1b-it",
+            hf_id="google/gemma-3-1b-it",
+            max_model_len=8192,
         ),
     },
 )
@@ -91,6 +104,12 @@ class InstalledInfo:
 
 
 class VllmService(Base2Service[InstalledInfo]):
+    hugging_face_cache_path = "/mnt/hf"
+
+    def get_hf_key(self) -> str:
+        """Return Hugging Face Key."""
+        return self.application_context.config.hugging_face_token
+
     def get_id(self) -> str:
         """Return the service id."""
         return "vllm"
@@ -171,8 +190,14 @@ class VllmService(Base2Service[InstalledInfo]):
         if model.max_model_len:
             vllm_command.extend(["--max-model-len", str(model.max_model_len)])
 
+        if not model.env_vars:
+            model.env_vars = {}
+
+        model.env_vars["HF_HOME"] = self.hugging_face_cache_path
+        model.env_vars["HF_TOKEN"] = self.get_hf_key()
+
         image = self._get_image(info.parsed_options.gpu)
-        volumes = [f"{self._get_working_dir() / 'models'}:/models"]
+        volumes = [f"{self._get_working_dir() / 'models'}:{Path(self.hugging_face_cache_path) / 'hub'}"]
 
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
