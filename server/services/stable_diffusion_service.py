@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
-from server.endpointregistry import EndpointCallback, SimpleEndpoint
+from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
 from server.models.api import ImagesRequest
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
@@ -60,6 +60,7 @@ class ModelInstalledInfo(BaseModel):
     registered_name: str
     options: InstallModelIn
     model_path: Path
+    registration_id: RegistrationId
 
 
 class SDOptions(BaseModel):
@@ -145,7 +146,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         for model in info.models.copy().values():
             if model.type == "txt2img":
-                self.endpoint_registry.unregister_image_generations(model.registered_name)
+                self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
         self.installed = None
         await uninstall_docker(self.application_context, info.docker)
         if options.purge:
@@ -180,11 +181,16 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
 
         local_model_path, _ = await Utils.ensure_model_downloaded(model.url, self._get_working_stable_diffusion_dir(), model.filename)
         registered_name = options.alias if options.alias is not None else model_id
-        info.models[model_id] = ModelInstalledInfo(
-            id=model_id, type=model.type, registered_name=registered_name, options=options, model_path=local_model_path.absolute()
+        info.models[model_id] = model_info = ModelInstalledInfo(
+            id=model_id,
+            type=model.type,
+            registered_name=registered_name,
+            options=options,
+            model_path=local_model_path.absolute(),
+            registration_id="",
         )
         if model.type == "txt2img":
-            self.endpoint_registry.register_image_generations(
+            model_info.registration_id = self.endpoint_registry.register_image_generations(
                 registered_name, SimpleEndpoint(on_request=_stable_diffusion_handler(info.base_url))
             )
 
@@ -195,7 +201,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         model = info.models[model_id]
         del info.models[model_id]
         if model.type == "txt2img":
-            self.endpoint_registry.unregister_image_generations(model.registered_name)
+            self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
 
         if options.purge:
             model.model_path.unlink()

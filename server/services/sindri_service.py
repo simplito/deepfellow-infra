@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
-from server.endpointregistry import ProxyOptions
+from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -34,6 +34,7 @@ class ModelInstalledInfo(BaseModel):
     registered_name: str
     type: str
     options: InstallModelIn
+    registration_id: RegistrationId
 
 
 class SindriOptions(BaseModel):
@@ -128,7 +129,7 @@ sindriClient:
         info = self._check_installed()
         for model in info.models.copy().values():
             if model.type == "llm":
-                self.endpoint_registry.unregister_chat_completion(model.registered_name)
+                self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
         self.installed = None
         await uninstall_docker(self.application_context, info.docker)
         if options.purge:
@@ -161,9 +162,15 @@ sindriClient:
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
         registered_name = options.alias if options.alias is not None else model_id
-        info.models[model_id] = ModelInstalledInfo(id=model_id, type=model.type, registered_name=registered_name, options=options)
+        info.models[model_id] = model_info = ModelInstalledInfo(
+            id=model_id,
+            type=model.type,
+            registered_name=registered_name,
+            options=options,
+            registration_id="",
+        )
         if model.type == "llm":
-            self.endpoint_registry.register_chat_completion_as_proxy(
+            model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                 registered_name,
                 ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model.real_model_name),
             )
@@ -175,7 +182,7 @@ sindriClient:
         model = info.models[model_id]
         del info.models[model_id]
         if model.type == "llm":
-            self.endpoint_registry.unregister_chat_completion(model.registered_name)
+            self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
 
         if options.purge:
             # unsupported
