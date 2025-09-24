@@ -26,9 +26,11 @@ from server.services.stable_diffusion_service import StableDiffusionService
 from server.services.vllm_service import VllmService
 from server.services_manager import ServicesManager
 from server.utils.exceptions import AppStartError
+from server.websockets.infra_websocket_server import InfraWebsocketServer
+from server.websockets.loadbalancer import LoadBalancer
 from server.websockets.models import InfraInfo
-from server.websockets.subinfra import ExternalInfraWsManager, InternalInfraWsManager
-from server.websockets.utils import create_infra_uri
+from server.websockets.parent_infra import ParentInfra, create_infra_uri
+from server.websockets.usage_manager import UsageManager
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -51,16 +53,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         if app.state.config.docker_subnet:
             check_subnet(app.state.config.docker_subnet)
 
-        app.state.internal_ws_manager = InternalInfraWsManager()
-        app.state.external_ws_manager = external_ws_manager = ExternalInfraWsManager(create_infra_uri(config.parent_infra), app.state)
-        app.state.endpoint_registry = endpoint_registry = EndpointRegistry()
         app.state.service_provider = service_provider = ServiceProvider(config)
-        app.state.services_manager = services_manager = ServicesManager(external_ws_manager)
-        app.state.context = context = ApplicationContext(endpoint_registry, config, service_provider, services_manager)
         app.state.tasks = tasks = set[asyncio.Task[None]]()
-        app.state.models_list = dict[str, dict[str, list[str]]]()  # url | type | model
-        app.state.models_usage = dict[str, dict[str, int]]()  # model | url | usage
-        app.state.infra_infos = list[InfraInfo]()
+        app.state.infra_infos = infra_infos = list[InfraInfo]()
+        app.state.parent_infra = parent_infra = ParentInfra(create_infra_uri(config.parent_infra), config)
+        app.state.services_manager = services_manager = ServicesManager(parent_infra)
+        app.state.endpoint_registry = endpoint_registry = EndpointRegistry()
+        app.state.usage_manager = usage_manager = UsageManager(parent_infra, config, endpoint_registry)
+        app.state.infra_websocket_server = InfraWebsocketServer(infra_infos, parent_infra, usage_manager)
+        app.state.load_balancer = LoadBalancer(config, usage_manager)
+        app.state.context = context = ApplicationContext(endpoint_registry, config, service_provider, services_manager)
 
         # Register services
         services_manager.register_service(OllamaService(context, endpoint_registry, service_provider))
@@ -76,7 +78,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
         # Load functions
         await context.load()
-        tasks.add(asyncio.create_task(external_ws_manager.run()))
+        tasks.add(asyncio.create_task(parent_infra.run()))
     except AppStartError as e:
         logger.error(str(e))  # noqa: TRY400
         os._exit(1)

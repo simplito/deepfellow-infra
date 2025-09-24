@@ -6,8 +6,8 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, Form, HTTPException, Path, Request
 from fastapi.responses import JSONResponse
 
-from server.core.dependencies import auth_server, get_endpoint_registry
-from server.endpointregistry import EndpointRegistry, ProxyOptions, post_form, post_json
+from server.core.dependencies import auth_server, get_endpoint_registry, get_load_balancer
+from server.endpointregistry import EndpointRegistry, post_form, post_json
 from server.models.api import (
     ApiModel,
     ApiModels,
@@ -19,7 +19,7 @@ from server.models.api import (
     ImagesRequest,
 )
 from server.models.common import StarletteResponse
-from server.websockets.utils import auth_header, get_lazy_infra, get_proxy_url
+from server.websockets.loadbalancer import LoadBalancer
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -52,19 +52,17 @@ async def on_chat_completions(
     body: Annotated[ChatCompletionRequest, Body(...)],
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+    load_balancer: Annotated[LoadBalancer, Depends(get_load_balancer)],
 ) -> StarletteResponse:
     """Process chat completions request."""
-    model = body.model
-    url, key, is_inside = get_lazy_infra(request, model)
-    if not url:
+    info = load_balancer.get_lazy_infra(body.model)
+    if info is None:
         raise HTTPException(400, "Given model is not found")
 
-    if not is_inside:
-        return await post_json(body, ProxyOptions(url=get_proxy_url(url, request), headers=auth_header(key)), request)
+    if info == "internal":
+        return await endpoint_registry.execute_chat_completion(request, body.model, body)
 
-    if not endpoint_registry.has_chat_completion_model(model):
-        raise HTTPException(400, "Given model is not found")
-    return await endpoint_registry.execute_chat_completion(request, model, body)
+    return await post_json(body, info.get_proxy_options(request.url.path), request)
 
 
 @router.post("/v1/completions")
@@ -73,17 +71,17 @@ async def on_completions(
     body: Annotated[CompletionLegacyRequest, Body(...)],
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+    load_balancer: Annotated[LoadBalancer, Depends(get_load_balancer)],
 ) -> StarletteResponse:
     """Process completions request."""
-    model = body.model
-    url, key, is_inside = get_lazy_infra(request, model)
-    if not url:
+    info = load_balancer.get_lazy_infra(body.model)
+    if info is None:
         raise HTTPException(400, "Given model is not found")
 
-    if not is_inside:
-        return await post_json(body, ProxyOptions(url=get_proxy_url(url, request), headers=auth_header(key)), request)
+    if info == "internal":
+        return await endpoint_registry.execute_completion(request, body.model, body)
 
-    return await endpoint_registry.execute_completion(request, model, body)
+    return await post_json(body, info.get_proxy_options(request.url.path), request)
 
 
 @router.post("/v1/embeddings")
@@ -92,17 +90,17 @@ async def on_embeddings(
     body: Annotated[EmbeddingRequest, Body(...)],
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+    load_balancer: Annotated[LoadBalancer, Depends(get_load_balancer)],
 ) -> StarletteResponse:
     """Process embeddings request."""
-    model = body.model
-    url, key, is_inside = get_lazy_infra(request, model)
-    if not url:
+    info = load_balancer.get_lazy_infra(body.model)
+    if info is None:
         raise HTTPException(400, "Given model is not found")
 
-    if not is_inside:
-        return await post_json(body, ProxyOptions(url=get_proxy_url(url, request), headers=auth_header(key)), request)
+    if info == "internal":
+        return await endpoint_registry.execute_embeddings(request, body.model, body)
 
-    return await endpoint_registry.execute_embeddings(request, model, body)
+    return await post_json(body, info.get_proxy_options(request.url.path), request)
 
 
 @router.post("/v1/audio/speech")
@@ -111,17 +109,17 @@ async def on_audio_speech(
     body: Annotated[CreateSpeechRequest, Body(...)],
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+    load_balancer: Annotated[LoadBalancer, Depends(get_load_balancer)],
 ) -> StarletteResponse:
     """Process audio speech request."""
-    model = body.model
-    url, key, is_inside = get_lazy_infra(request, model)
-    if not url:
+    info = load_balancer.get_lazy_infra(body.model)
+    if info is None:
         raise HTTPException(400, "Given model is not found")
 
-    if not is_inside:
-        return await post_json(body, ProxyOptions(url=get_proxy_url(url, request), headers=auth_header(key)), request)
+    if info == "internal":
+        return await endpoint_registry.execute_audio_speech(request, body.model, body)
 
-    return await endpoint_registry.execute_audio_speech(request, model, body)
+    return await post_json(body, info.get_proxy_options(request.url.path), request)
 
 
 @router.post("/v1/audio/transcriptions")
@@ -130,17 +128,17 @@ async def on_audio_transcriptions(
     body: Annotated[CreateTranscriptionRequest, Form(..., media_type="multipart/form-data")],
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+    load_balancer: Annotated[LoadBalancer, Depends(get_load_balancer)],
 ) -> StarletteResponse:
     """Process audio translation request."""
-    model = body.model
-    url, key, is_inside = get_lazy_infra(request, model)
-    if not url:
+    info = load_balancer.get_lazy_infra(body.model)
+    if info is None:
         raise HTTPException(400, "Given model is not found")
 
-    if not is_inside:
-        return await post_form(body, ProxyOptions(url=get_proxy_url(url, request), headers=auth_header(key)), request)
+    if info == "internal":
+        return await endpoint_registry.execute_audio_transcriptions(request, body.model, body)
 
-    return await endpoint_registry.execute_audio_transcriptions(request, model, body)
+    return await post_form(body, info.get_proxy_options(request.url.path), request)
 
 
 @router.post("/v1/images/generations")
@@ -149,17 +147,17 @@ async def on_images_generations(
     body: Annotated[ImagesRequest, Body(...)],
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+    load_balancer: Annotated[LoadBalancer, Depends(get_load_balancer)],
 ) -> StarletteResponse:
     """Process images genenerations request."""
-    model = body.model
-    url, key, is_inside = get_lazy_infra(request, model)
-    if not url:
+    info = load_balancer.get_lazy_infra(body.model)
+    if info is None:
         raise HTTPException(400, "Given model is not found")
 
-    if not is_inside:
-        return await post_json(body, ProxyOptions(url=get_proxy_url(url, request), headers=auth_header(key)), request)
+    if info == "internal":
+        return await endpoint_registry.execute_images_generations(request, body.model, body)
 
-    return await endpoint_registry.execute_images_generations(request, model, body)
+    return await post_json(body, info.get_proxy_options(request.url.path), request)
 
 
 @router.post("/custom/{full_path:path}")

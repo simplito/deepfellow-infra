@@ -59,7 +59,6 @@ class ModelInstalledInfo(BaseModel):
     type: str
     options: InstallModelIn
     registration_id: RegistrationId
-    alternative_registration_id: RegistrationId
 
 
 class OllamaOptions(BaseModel):
@@ -147,7 +146,6 @@ class OllamaService(Base2Service[InstalledInfo]):
         for model in info.models.copy().values():
             if model.type == "llm":
                 self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
-                self.endpoint_registry.unregister_completion(model.registered_name, model.alternative_registration_id)
             if model.type == "embedding":
                 self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
         self.installed = None
@@ -192,14 +190,12 @@ class OllamaService(Base2Service[InstalledInfo]):
             registered_name=registered_name,
             options=options,
             registration_id="",
-            alternative_registration_id="",
         )
         if model_type == "llm":
             model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
-                registered_name, ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model_id)
-            )
-            model_info.alternative_registration_id = self.endpoint_registry.register_completion_as_proxy(
-                registered_name, ProxyOptions(url=f"{info.base_url}/v1/completions", rewrite_model_to=model_id)
+                model=registered_name,
+                chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
+                completions=ProxyOptions(url=f"{info.base_url}/v1/completions", rewrite_model_to=model_id),
             )
         if model_type == "embedding":
             model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
@@ -214,7 +210,6 @@ class OllamaService(Base2Service[InstalledInfo]):
         del info.models[model_id]
         if model.type == "llm":
             self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
-            self.endpoint_registry.unregister_completion(model.registered_name, model.alternative_registration_id)
         if model.type == "embedding":
             self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
 
