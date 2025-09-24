@@ -72,8 +72,7 @@ class ModelInstalledInfo:
         container_host: str,
         container_port: int,
         docker_exposed_port: int,
-        completions_registration_id: RegistrationId,
-        chat_completions_registration_id: RegistrationId,
+        registration_id: RegistrationId,
     ):
         self.id = id
         self.registered_name = registered_name
@@ -83,8 +82,7 @@ class ModelInstalledInfo:
         self.container_port = container_port
         self.docker_exposed_port = docker_exposed_port
         self.base_url = get_base_url(self.container_host, self.container_port)
-        self.completions_registration_id = completions_registration_id
-        self.chat_completions_registration_id = chat_completions_registration_id
+        self.registration_id = registration_id
 
 
 class VllmOptions(BaseModel):
@@ -223,14 +221,12 @@ class VllmService(Base2Service[InstalledInfo]):
             container_host=get_container_host(subnet, docker_options.name),
             container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
             docker_exposed_port=docker_exposed_port,
-            chat_completions_registration_id="",
-            completions_registration_id="",
+            registration_id="",
         )
-        model_info.chat_completions_registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
-            registered_name, ProxyOptions(url=f"{model_info.base_url}/v1/chat/completions", rewrite_model_to=model_id)
-        )
-        model_info.completions_registration_id = self.endpoint_registry.register_completion_as_proxy(
-            registered_name, ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id)
+        model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
+            model=registered_name,
+            chat_completions=ProxyOptions(url=f"{model_info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
+            completions=ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id),
         )
 
     def _get_image(self, gpu: bool) -> str:
@@ -242,8 +238,7 @@ class VllmService(Base2Service[InstalledInfo]):
             return
         model = info.models[model_id]
         del info.models[model_id]
-        self.endpoint_registry.unregister_chat_completion(model.registered_name, model.chat_completions_registration_id)
-        self.endpoint_registry.unregister_completion(model.registered_name, model.completions_registration_id)
+        self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
         await uninstall_docker(self.application_context, model.docker)
         if options.purge:
             # unsupported

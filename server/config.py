@@ -11,7 +11,7 @@ class ConfigError(SystemExit):
     """Exception raised when there is an error in the configuration."""
 
 
-class ParentInfra(BaseModel):
+class ParentInfraConfig(BaseModel):
     ws_url: str = ""
     api_key: str = ""
 
@@ -22,7 +22,7 @@ class AppSettings(BaseSettings):
     admin_api_key: SecretStr  # key to connect to marketplace
     infra_api_key: SecretStr  # key to connect subinfra through ws
     api_key: SecretStr  # key to call /v1/ endpoints
-    parent_infra: ParentInfra = ParentInfra()
+    parent_infra: ParentInfraConfig = ParentInfraConfig()
     docker_subnet: str = ""
     storage_dir: str = ""
     hugging_face_token: str = ""

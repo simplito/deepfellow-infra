@@ -1,6 +1,6 @@
 """Websocket models."""
 
-from typing import Any, Literal, NamedTuple, TypeVar
+from typing import Any, Literal, TypeVar
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, SecretStr, field_serializer, field_validator
@@ -66,14 +66,18 @@ class InfraConnect(JsonRpcNotificationRequest):
     params: list[InfraInfo]
 
 
+type Models = dict[str, dict[str, list[str]]]  # url | type | models
+type Usages = dict[str, dict[str, int]]  # model | url | usage
+
+
 class ModelsList(JsonRpcNotificationRequest):
     method: Literal["models-list"] = "models-list"  # type: ignore
-    params: dict[str, dict[str, list[str]]]  # url | type | models
+    params: Models
 
 
 class ModelsUsage(JsonRpcNotificationRequest):
     method: Literal["models-usage"] = "models-usage"  # type: ignore
-    params: dict[str, dict[str, int]]  # model | url | usage
+    params: Usages
 
 
 class ModelsClear(JsonRpcNotificationRequest):
@@ -82,12 +86,6 @@ class ModelsClear(JsonRpcNotificationRequest):
 
 
 JsonRpc = ModelsUsage | ModelsList | ModelsClear | InfraConnect
-
-
-class InfraConnectData(NamedTuple):
-    url: str
-    key: str
-    is_inside: bool
 
 
 class WebsocketMsgs(BaseModel):

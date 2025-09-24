@@ -171,8 +171,9 @@ sindriClient:
         )
         if model.type == "llm":
             model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
-                registered_name,
-                ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model.real_model_name),
+                model=registered_name,
+                chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model.real_model_name),
+                completions=None,
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:

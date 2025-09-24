@@ -31,7 +31,6 @@ class ModelInstalledInfo(BaseModel):
     completions: bool
     legacy_completions: bool
     registration_id: RegistrationId
-    alternative_registration_id: RegistrationId
 
 
 class RemoteOptions(BaseModel):
@@ -86,10 +85,7 @@ class RemoteService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         for model in info.models.copy().values():
             if model.type == "llm":
-                if model.completions:
-                    self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
-                if model.legacy_completions:
-                    self.endpoint_registry.unregister_completion(model.registered_name, model.alternative_registration_id)
+                self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
             if model.type == "tts":
                 self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
             if model.type == "stt":
@@ -140,30 +136,26 @@ class RemoteService(Base2Service[InstalledInfo]):
             completions=model.completions,
             legacy_completions=model.legacy_completions,
             registration_id="",
-            alternative_registration_id="",
         )
         url_base = urljoin(info.parsed_options.api_url, self.url_prefix)
         if model.type == "llm":
-            if model.completions:
-                url = urljoin(url_base, "chat/completions")
-                model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
-                    registered_name,
-                    ProxyOptions(
-                        url=url,
-                        rewrite_model_to=model.real_model_name or model_id,
-                        headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
-                    ),
+            model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
+                model=registered_name,
+                chat_completions=ProxyOptions(
+                    url=urljoin(url_base, "chat/completions"),
+                    rewrite_model_to=model.real_model_name or model_id,
+                    headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
                 )
-            if model.legacy_completions:
-                url = urljoin(url_base, "completions")
-                model_info.alternative_registration_id = self.endpoint_registry.register_completion_as_proxy(
-                    registered_name,
-                    ProxyOptions(
-                        url=url,
-                        rewrite_model_to=model.real_model_name,
-                        headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
-                    ),
+                if model.completions
+                else None,
+                completions=ProxyOptions(
+                    url=urljoin(url_base, "completions"),
+                    rewrite_model_to=model.real_model_name,
+                    headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
                 )
+                if model.legacy_completions
+                else None,
+            )
         if model.type == "tts":
             url = urljoin(url_base, "v1/audio/speech")
             model_info.registration_id = self.endpoint_registry.register_audio_speech_as_proxy(
@@ -212,10 +204,7 @@ class RemoteService(Base2Service[InstalledInfo]):
         model = info.models[model_id]
         del info.models[model_id]
         if model.type == "llm":
-            if model.completions:
-                self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
-            if model.legacy_completions:
-                self.endpoint_registry.unregister_completion(model.registered_name, model.alternative_registration_id)
+            self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
         if model.type == "tts":
             self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
         if model.type == "stt":

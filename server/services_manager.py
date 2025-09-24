@@ -14,12 +14,15 @@ from server.models.services import (
 )
 from server.serviceprovider import ServiceRawConfig
 from server.services.base_service import BaseService
-from server.websockets.subinfra import ExternalInfraWsManager
+from server.websockets.parent_infra import ParentInfra
 
 
 class ServicesManager:
-    def __init__(self, external_infra_ws_manager: ExternalInfraWsManager):
-        self.external_infra_ws_manager = external_infra_ws_manager
+    def __init__(
+        self,
+        infra_web_socket_client: ParentInfra,
+    ):
+        self.infra_web_socket_client = infra_web_socket_client
         self.services: dict[str, BaseService] = {}
 
     def register_service(self, service: BaseService) -> None:
@@ -78,9 +81,9 @@ class ServicesManager:
     async def install_model_in_service(self, service_id: str, model_id: str, options: InstallModelIn) -> None:
         """Install the model in service."""
         await self._get_service(service_id).install_model(model_id, options)
-        await self.external_infra_ws_manager.send_models()
+        self.infra_web_socket_client.send_models()
 
     async def uninstall_model_from_service(self, service_id: str, model_id: str, options: UninstallModelIn) -> None:
         """Uninstall the model from service."""
         await self._get_service(service_id).uninstall_model(model_id, options)
-        await self.external_infra_ws_manager.send_models()
+        self.infra_web_socket_client.send_models()
