@@ -201,7 +201,8 @@ class OllamaService(Base2Service[InstalledInfo]):
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
         res = await fetch_from(f"{info.base_url}/api/pull", "POST", {"model": model_id})
-        if res.status_code != 200 and res.status_code != 201:
+        # res.data contains progress it can be streamed!
+        if (res.status_code != 200 and res.status_code != 201) or "error" in res.data:
             print("Error when install model in ollama", model_id, res.status_code, res.data)
             raise HTTPException(status_code=400, detail="Model not avaialble")
         registered_name = options.alias if options.alias is not None else model_id

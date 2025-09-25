@@ -2073,6 +2073,50 @@
     {
       "name": "deepseek-v3.1:671b",
       "size": "404GB"
+    },
+    {
+      "name": "antoniprzybylik/pllum:12b",
+      "size": "25G"
+    },
+    {
+      "name": "antoniprzybylik/pllum:8x7b",
+      "size": "93GB"
+    },
+    {
+      "name": "antoniprzybylik/llama-pllum:8b",
+      "size": "16GB"
+    },
+    {
+      "name": "antoniprzybylik/llama-pllum:70b",
+      "size": "141GB"
+    },
+    {
+      "name": "SpeakLeash/bielik-7b-instruct-v0.1-gguf",
+      "size": "4.1GB"
+    },
+    {
+      "name": "SpeakLeash/bielik-11b-v2.0-instruct:Q4_K_M",
+      "size": "6.7GB"
+    },
+    {
+      "name": "SpeakLeash/bielik-11b-v2.1-instruct:Q4_K_M",
+      "size": "6.7GB"
+    },
+    {
+      "name": "SpeakLeash/bielik-11b-v2.2-instruct:Q4_K_M",
+      "size": "6.7GB"
+    },
+    {
+      "name": "SpeakLeash/bielik-11b-v2.3-instruct:Q4_K_M",
+      "size": "6.7GB"
+    },
+    {
+      "name": "SpeakLeash/bielik-1.5b-v3.0-instruct:Q8_0",
+      "size": "1.7GB"
+    },
+    {
+      "name": "SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0",
+      "size": "5.1GB"
     }
   ]
 }
