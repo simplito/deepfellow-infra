@@ -16,6 +16,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "pydantic-settings>=2.10.1",
     "websockets>=15.0.1",
+    "aiofiles>=24.1.0",
 ]
 
 [dependency-groups]

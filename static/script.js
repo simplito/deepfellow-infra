@@ -116,7 +116,8 @@ async function showServicePage(id) {
         tts: "Text to speech (TTS)",
         stt: "Speech to text (STT)",
         llm: "Large Language Model (LLM)",
-        embedding: "Embedding (embedding)"
+        embedding: "Embedding (embedding)",
+        lora: "LORA (lora)"
     };
     const installedOptions = {
         __all: null,

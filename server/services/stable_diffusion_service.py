@@ -1,5 +1,6 @@
 """Stable diffusion service."""
 
+import asyncio
 import base64
 import io
 import json
@@ -8,26 +9,56 @@ import re
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Literal, NotRequired, TypedDict
+from typing import Any, Literal, NamedTuple, NotRequired, TypedDict
 
+import aiofiles
 from aiohttp import ClientSession
 from fastapi import HTTPException, Request
 from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, get_user_for_docker, has_gpu_support, install_and_run_docker, uninstall_docker
 from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
 from server.models.api import ImagesRequest
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 from server.utils.core import Utils
+from server.utils.exceptions import AppError
 
-ModelType = Literal["txt2img"]
+ModelType = Literal["txt2img", "lora"]
+
+# Type names by sdnext models folders names.
+# Model type must be appropriate folder.
+FileType = Literal[
+    "chaiNNer",
+    "Codeformer",
+    "control",
+    "Diffusers",
+    "embeddings",
+    "ESRGAN",
+    "GFPGAN",
+    "huggingface",
+    "LDSR",
+    "Lora",
+    "ONNX",
+    "REALESGRAN",
+    "SCUNet",
+    "Stable-diffusion",
+    "styles",
+    "SwinIR",
+    "Text-encoder",
+    "tunable",
+    "UNET",
+    "VAE",
+    "wildcards",
+    "YOLO",
+]
 
 
 class StableDiffusionModel(BaseModel):
+    filetype: FileType
     type: ModelType
     url: str
     filename: str
@@ -37,23 +68,65 @@ class StableDiffusionModel(BaseModel):
 
 class StableDiffusionConst(BaseModel):
     image_gpu: DockerImage
-    image_cpu: DockerImage
     models: dict[str, StableDiffusionModel]
 
 
 _const = StableDiffusionConst(
-    image_gpu=DockerImage(name="ghcr.io/ai-dock/stable-diffusion-webui:latest", size="9207.67 MB"),
-    image_cpu=DockerImage(name="ghcr.io/ai-dock/stable-diffusion-webui:v2-cpu-22.04-v1.10.1", size="4336.75 MB"),
+    image_gpu=DockerImage(name="vladmandic/sdnext-cuda:latest", size="5290 MB"),
     models={
-        "HiDream-I1-Full": StableDiffusionModel(
+        "Plant Milk": StableDiffusionModel(
+            filetype="Stable-diffusion",
             type="txt2img",
-            url="https://civitai.com/api/download/models/509959?type=Model&format=SafeTensor&size=pruned&fp=fp16",
-            filename="unstableIllusionPRO_pro.safetensors",
-            model_url="https://civitai.com/models/147687/unstable-illusion-pro?modelVersionId=509959",
-            size="5.5GB",
-        )
+            url="https://civitai.com/api/download/models/1714002?type=Model&format=SafeTensor&size=pruned&fp=fp16",
+            filename="plantMilkModelSuite_walnut.safetensors",
+            model_url="https://civitai.com/models/1162518/plant-milk-model-suite",
+            size="6.46GB",
+        ),
+        "Pixiv Artist Styles": StableDiffusionModel(
+            filetype="Lora",
+            type="lora",
+            url="https://civitai.com/api/download/models/694191?type=Model&format=SafeTensor",
+            filename="AenuaV1.safetensors",
+            model_url="https://civitai.com/models/620966/lora-pixiv-artist-styles-pony",
+            size="435.34MB",
+        ),
+        "Minecraft square style": StableDiffusionModel(
+            filetype="Lora",
+            type="lora",
+            url="https://civitai.com/api/download/models/1145880?type=Model&format=SafeTensor",
+            filename="minecraft filter [IL]_1.safetensors",
+            model_url="https://civitai.com/models/113741/minecraft-square-style",
+            size="54.77MB",
+        ),
+        "SDXL Lighting 8 step": StableDiffusionModel(
+            filetype="Stable-diffusion",
+            type="txt2img",
+            url="https://huggingface.co/ByteDance/SDXL-Lightning/resolve/main/sdxl_lightning_8step.safetensors?download=true",
+            filename="sdxl_lightning_8step.safetensors",
+            model_url="https://huggingface.co/ByteDance/SDXL-Lightning",
+            size="6.94GB",
+        ),
+        "Qwen Image fp8 e4m3fn": StableDiffusionModel(
+            filetype="Stable-diffusion",
+            type="txt2img",
+            url="https://civitai.com/api/download/models/2086298?type=Model&format=SafeTensor&size=pruned&fp=fp8",
+            filename="qwen-image.safetensors",
+            model_url="https://civitai.com/models/1843568?modelVersionId=2086298",
+            size="19.03GB",
+        ),
     },
 )
+
+
+class RemoveBackgroundRequest(BaseModel):
+    input_image: str
+    model: str = "u2net"
+    return_mask: bool = False
+    alpha_matting: bool = False
+    alpha_matting_foreground_threshold: int = 240
+    alpha_matting_background_threshold: int = 10
+    alpha_matting_erode_size: int = 10
+    refine: bool = False
 
 
 class ModelInstalledInfo(BaseModel):
@@ -90,6 +163,13 @@ class InstalledInfo:
         self.base_url = get_base_url(self.container_host, self.container_port)
 
 
+class DefaultSdNextConfig(NamedTuple):
+    samples_format: str = "png"
+    samples_save: bool = False
+    keep_incomplete: bool = False
+    save_selected_only: bool = False
+
+
 class StableDiffusionService(Base2Service[InstalledInfo]):
     def get_id(self) -> str:
         """Return the service id."""
@@ -97,7 +177,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
-        return {"cpu": _const.image_cpu.size, "gpu": _const.image_gpu.size}
+        return {"cpu": "", "gpu": _const.image_gpu.size}
 
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
@@ -114,30 +194,60 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
     def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
         return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
 
+    async def update_config(self) -> None:
+        """Edit SD Next config file."""
+        file_path = self._get_working_data_dir() / "config.json"
+        data = DefaultSdNextConfig()._asdict()
+
+        async def read_file() -> dict[Any, Any]:
+            try:
+                async with aiofiles.open(file_path, encoding="utf-8") as f:
+                    content = await f.read()
+            except FileNotFoundError:
+                content = "{}"
+            try:
+                obj = json.loads(content)
+                return obj if isinstance(obj, dict) else {}  # pyright: ignore[reportUnknownVariableType]
+            except Exception:
+                return {}
+
+        old_content = await read_file()
+
+        async with aiofiles.open(file_path, mode="w+") as f:
+            data.update(old_content)
+            await f.write(json.dumps(data, indent=4))
+
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
         if platform.system() == "Darwin":
             raise NotImplementedError("Stable Diffusion is not supported on macOS")
         parsed_options = SDOptions(**options.spec)
+        if not parsed_options.gpu:
+            raise AppError("StableDiffusion has not the CPU support.")
+        if not await has_gpu_support():
+            raise AppError("Docker doesn't support GPU on this machine.")
         volumes = [
-            f"{self._get_working_stable_diffusion_dir()}:/opt/stable-diffusion-webui/models/Stable-diffusion",
-            f"{self._get_working_lora_dir()}:/opt/stable-diffusion-webui/models/Lora",
+            f"{self._get_working_models_dir()}:/mnt/models",
+            f"{self._get_working_data_dir()}:/mnt/data",
         ]
-        image = _const.image_gpu if parsed_options.gpu else _const.image_cpu
+        image = _const.image_gpu
 
+        await self.update_config()
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name="stable-diffusion",
             image=image.name,
             env_vars={
-                "COMMANDLINE_ARGS": "--listen --api --no-half-vae",  #  --xformers
+                "SD_DOCS": "true",
             },
-            image_port=17860,
+            image_port=7860,
             use_gpu=parsed_options.gpu,
             volumes=volumes,
             restart="unless-stopped",
             subnet=subnet,
+            user=await get_user_for_docker(),
         )
         docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
+
         return InstalledInfo(
             docker=docker_options,
             models={},
@@ -177,6 +287,26 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         installed = model_id in info.models
         return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=model.size)
 
+    async def refresh_checkpoints(self, client: ClientSession, base_url: str) -> None:
+        """Refresh SD Next checkpoints models."""
+        await client.post(base_url + "/sdapi/v1/refresh-checkpoints")  # type: ignore
+
+    async def refresh_vae(self, client: ClientSession, base_url: str) -> None:
+        """Refresh SD Next vae models."""
+        await client.post(base_url + "/sdapi/v1/refresh-vae")  # type: ignore
+
+    async def refresh_loras(self, client: ClientSession, base_url: str) -> None:
+        """Refresh SD Next loras models."""
+        await client.post(base_url + "/sdapi/v1/refresh-loras")  # type: ignore
+
+    async def refresh_models(self) -> None:
+        """Refresh models in SD Next."""
+        info = self._check_installed()
+        async with ClientSession(info.base_url) as client:
+            refresh_functions = [self.refresh_checkpoints, self.refresh_vae, self.refresh_loras]
+            tasks = [asyncio.create_task(f(client, info.base_url)) for f in refresh_functions]
+            await asyncio.gather(*tasks)
+
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
         info = self._check_installed()
         if model_id in info.models:
@@ -185,7 +315,8 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
 
-        local_model_path, _ = await Utils.ensure_model_downloaded(model.url, self._get_working_stable_diffusion_dir(), model.filename)
+        model_dir = self._get_working_models_dir() / model.filetype
+        local_model_path, _ = await Utils.ensure_model_downloaded(model.url, model_dir, model.filename)
         registered_name = options.alias if options.alias is not None else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
@@ -195,10 +326,13 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             model_path=local_model_path.absolute(),
             registration_id="",
         )
+        model_filename = model.filename.split(".")[0]
         if model.type == "txt2img":
             model_info.registration_id = self.endpoint_registry.register_image_generations(
-                registered_name, SimpleEndpoint(on_request=_stable_diffusion_handler(info.base_url))
+                registered_name, SimpleEndpoint(on_request=_stable_diffusion_handler(info.base_url, model_filename))
             )
+
+        await self.refresh_models()
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
@@ -212,13 +346,15 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         if options.purge:
             model.model_path.unlink()
 
-    def _get_working_stable_diffusion_dir(self) -> Path:
-        path = self._get_working_dir() / "models/Stable-diffusion"
+        await self.refresh_models()
+
+    def _get_working_models_dir(self) -> Path:
+        path = self._get_working_dir() / "models"
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    def _get_working_lora_dir(self) -> Path:
-        path = self._get_working_dir() / "models/Lora"
+    def _get_working_data_dir(self) -> Path:
+        path = self._get_working_dir() / "data"
         path.mkdir(parents=True, exist_ok=True)
         return path
 
@@ -250,17 +386,17 @@ class OverrideSettings(BaseModel):
 
 
 class StableDiffusionInputSettings(BaseModel):
+    sd_model_checkpoint: str
     prompt: str = ""  # Consider generate from prompt
     negative_prompt: str = ""  # Consider generate from prompt
     sampler_name: str = "DPM++ 2M"
-    scheduler: str = "Kerras"
+    hr_sampler_name: str = "Kerras"
+    clip_skip: int = 2
     steps: int = Field(default=20, ge=1, le=50)
     n_iter: int = Field(default=1, ge=1, le=4)
     cfg_scale: float = Field(default=7, ge=1, le=30)
     width: int = Field(default=512, ge=64, le=2048)
     height: int = Field(default=512, ge=64, le=2048)
-    override_settings: OverrideSettings = OverrideSettings()
-    override_settings_restore_afterwards: bool = True
 
 
 class QualityLevel(Enum):
@@ -271,6 +407,7 @@ class QualityLevel(Enum):
 
 
 class StableDiffusionOptions(TypedDict):
+    sd_model_checkpoint: NotRequired[str]
     prompt: NotRequired[str]
     n_iter: NotRequired[int]
     width: NotRequired[int]
@@ -417,11 +554,21 @@ def _add_body_config(settings_original: StableDiffusionOptions, body: ImagesRequ
     return settings
 
 
-def _stable_diffusion_handler(base_url: str) -> EndpointCallback[ImagesRequest]:
-    async def handler(body: ImagesRequest, _req: Request) -> ImagesResponse:
-        url = f"{base_url}/sdapi/v1/txt2img/"
+async def remove_background_from_img(base_url: str, img: str) -> str:
+    """Remove background from img."""
+    rm_bg_url = f"{base_url}/rembg/"
+    request_model = RemoveBackgroundRequest(input_image=img)
+    async with ClientSession(rm_bg_url) as client:
+        response = await client.post(rm_bg_url, json=request_model.model_dump(), timeout=600)  # type: ignore
+        response_json = await response.json()
+        return response_json.get("image", "")
 
+
+def _stable_diffusion_handler(base_url: str, model_filename: str) -> EndpointCallback[ImagesRequest]:
+    async def handler(body: ImagesRequest, _req: Request) -> ImagesResponse:
         settings_raw, remaining_text = split_text_to_json_and_prompt(body.prompt)
+        settings_raw["sd_model_checkpoint"] = model_filename
+
         try:
             settings_edited = _add_body_config(settings_raw, body, remaining_text)
         except ValueError as err:
@@ -432,8 +579,9 @@ def _stable_diffusion_handler(base_url: str) -> EndpointCallback[ImagesRequest]:
         except ValidationError:
             raise HTTPException(422, "Incorrect settings.") from None
 
-        async with ClientSession(url) as client:
-            response = await client.post(url, json=settings.model_dump(), timeout=120)  # type: ignore
+        gen_img_url = f"{base_url}/sdapi/v1/txt2img/"
+        async with ClientSession(gen_img_url) as client:
+            response = await client.post(gen_img_url, json=settings.model_dump(), timeout=600)  # type: ignore
 
             if response.status != 200:
                 raise HTTPException(
@@ -445,12 +593,19 @@ def _stable_diffusion_handler(base_url: str) -> EndpointCallback[ImagesRequest]:
             # except Exception:
             #     raise HTTPException(500, "There is no images in Stable Diffusion response.")
 
+        imgs = data_raw["images"]
+
+        if body.background == "transparent" and body.output_format != "jpeg":
+            tasks = [asyncio.create_task(remove_background_from_img(base_url, img)) for img in imgs]
+            new_imgs: list[str] = await asyncio.gather(*tasks)
+            imgs = new_imgs
+
         try:
-            imgs = [_get_in_format(img, body.output_format or "png", body.output_compression or 95) for img in data_raw["images"]]
+            imgs = [_get_in_format(img, body.output_format or "png", body.output_compression or 95) for img in imgs]
         except ValueError:
             raise HTTPException(422, f"Not supported image format: {body.output_format}") from None
         except Exception as exc:
-            raise HTTPException(500, f"Somethign went wrong: {exc}") from None
+            raise HTTPException(500, f"Something went wrong: {exc}") from None
 
         return ImagesResponse(data=[B64Data(b64_json=img, revised_prompt=settings.prompt) for img in imgs])
 
