@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
-from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
+from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 
 
@@ -52,6 +52,10 @@ class InstalledInfo:
 
 class RemoteService(Base2Service[InstalledInfo]):
     url_prefix: str = "v1/"
+
+    def get_size(self) -> ServiceSize:
+        """Return the service size."""
+        return ""
 
     @abstractmethod
     def get_default_url(self) -> str:
@@ -106,7 +110,7 @@ class RemoteService(Base2Service[InstalledInfo]):
         for model_id, model in _const.models.items():
             installed = model_id in info.models
             if filters.installed is None or filters.installed == installed:
-                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed))
+                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=""))
         return ListModelsOut(list=out_list)
 
     async def get_model(self, model_id: str) -> RetrieveModelOut:
@@ -117,7 +121,7 @@ class RemoteService(Base2Service[InstalledInfo]):
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
         installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed)
+        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size="")
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
         info = self._check_installed()

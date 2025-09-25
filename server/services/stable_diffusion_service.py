@@ -16,11 +16,11 @@ from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
 from server.models.api import ImagesRequest
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
-from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
+from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 from server.utils.core import Utils
 
@@ -32,23 +32,25 @@ class StableDiffusionModel(BaseModel):
     url: str
     filename: str
     model_url: str | None = None
+    size: str
 
 
 class StableDiffusionConst(BaseModel):
-    image_gpu: str
-    image_cpu: str
+    image_gpu: DockerImage
+    image_cpu: DockerImage
     models: dict[str, StableDiffusionModel]
 
 
 _const = StableDiffusionConst(
-    image_gpu="ghcr.io/ai-dock/stable-diffusion-webui:latest",
-    image_cpu="ghcr.io/ai-dock/stable-diffusion-webui:v2-cpu-22.04-v1.10.1",
+    image_gpu=DockerImage(name="ghcr.io/ai-dock/stable-diffusion-webui:latest", size="9207.67 MB"),
+    image_cpu=DockerImage(name="ghcr.io/ai-dock/stable-diffusion-webui:v2-cpu-22.04-v1.10.1", size="4336.75 MB"),
     models={
         "HiDream-I1-Full": StableDiffusionModel(
             type="txt2img",
             url="https://civitai.com/api/download/models/509959?type=Model&format=SafeTensor&size=pruned&fp=fp16",
             filename="unstableIllusionPRO_pro.safetensors",
             model_url="https://civitai.com/models/147687/unstable-illusion-pro?modelVersionId=509959",
+            size="5.5GB",
         )
     },
 )
@@ -93,6 +95,10 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "stable-diffusion"
 
+    def get_size(self) -> ServiceSize:
+        """Return the service size."""
+        return {"cpu": _const.image_cpu.size, "gpu": _const.image_gpu.size}
+
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
         return ServiceSpecification(
@@ -121,7 +127,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name="stable-diffusion",
-            image=image,
+            image=image.name,
             env_vars={
                 "COMMANDLINE_ARGS": "--listen --api --no-half-vae",  #  --xformers
             },
@@ -159,7 +165,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         for model_id, model in _const.models.items():
             installed = model_id in info.models
             if filters.installed is None or filters.installed == installed:
-                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed))
+                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=model.size))
         return ListModelsOut(list=out_list)
 
     async def get_model(self, model_id: str) -> RetrieveModelOut:
@@ -169,7 +175,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
         installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed)
+        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=model.size)
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
         info = self._check_installed()

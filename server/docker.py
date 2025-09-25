@@ -103,6 +103,11 @@ class DockerComposeContent(TypedDict):
     networks: NotRequired[dict[str, DockerComposeNetwork]]
 
 
+class DockerImage(BaseModel):
+    name: str
+    size: str
+
+
 _docker_compose_cmd: str | None = None
 _has_gpu_support: bool | None = None
 

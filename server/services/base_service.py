@@ -3,7 +3,14 @@
 from abc import ABC, abstractmethod
 
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
-from server.models.services import InstallServiceIn, RetrieveServiceOut, ServiceOptions, ServiceSpecification, UninstallServiceIn
+from server.models.services import (
+    InstallServiceIn,
+    RetrieveServiceOut,
+    ServiceOptions,
+    ServiceSize,
+    ServiceSpecification,
+    UninstallServiceIn,
+)
 from server.serviceprovider import ServiceRawConfig
 
 
@@ -13,12 +20,16 @@ class BaseService(ABC):
         """Return the service id."""
 
     @abstractmethod
+    def get_size(self) -> ServiceSize:
+        """Return the service size."""
+
+    @abstractmethod
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
 
     def get_info(self) -> RetrieveServiceOut:
         """Return the service info."""
-        return RetrieveServiceOut(id=self.get_id(), installed=self.get_installed_info(), spec=self.get_spec())
+        return RetrieveServiceOut(id=self.get_id(), installed=self.get_installed_info(), spec=self.get_spec(), size=self.get_size())
 
     @abstractmethod
     def is_installed(self) -> bool:

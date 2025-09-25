@@ -9,12 +9,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
 from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
 from server.ffmpeg import ffmpeg_audio_convert_async_gen
 from server.models.api import CreateSpeechRequest
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
-from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
+from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 from server.utils.core import Utils
 
@@ -25,22 +25,24 @@ class CoquiModel(BaseModel):
     response_format: str = "mp3"
     model_type: str
     language: str | None = None
+    size: str
 
 
 class CoquiConst(BaseModel):
-    image_gpu: str
-    image_cpu: str
+    image_gpu: DockerImage
+    image_cpu: DockerImage
     models: dict[str, CoquiModel]
 
 
 _const = CoquiConst(
-    image_gpu="ghcr.io/coqui-ai/tts",
-    image_cpu="ghcr.io/coqui-ai/tts-cpu",
+    image_gpu=DockerImage(name="ghcr.io/coqui-ai/tts", size="10549.64 MB"),
+    image_cpu=DockerImage(name="ghcr.io/coqui-ai/tts-cpu", size="10387.64 MB"),
     models={
         "tts_models/en/vctk/vits": CoquiModel(
             docker_name="en-vctk-vits",
             default_speaker="p225",
             model_type="tts",
+            size="152MB",
         ),
     },
 )
@@ -106,6 +108,10 @@ class CoquiService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "coqui"
 
+    def get_size(self) -> ServiceSize:
+        """Return the service size."""
+        return {"cpu": _const.image_cpu.size, "gpu": _const.image_gpu.size}
+
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
         return ServiceSpecification(
@@ -124,7 +130,7 @@ class CoquiService(Base2Service[InstalledInfo]):
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
         parsed_options = CoquiOptions(**options.spec)
         image = self._get_image(parsed_options.gpu)
-        await docker_pull(image)
+        await docker_pull(image.name)
         return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
@@ -142,7 +148,15 @@ class CoquiService(Base2Service[InstalledInfo]):
         for model_id, model in _const.models.items():
             installed = model_id in info.models
             if filters.installed is None or filters.installed == installed:
-                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.model_type, installed=installed))
+                out_list.append(
+                    RetrieveModelOut(
+                        id=model_id,
+                        service=self.get_id(),
+                        type=model.model_type,
+                        installed=installed,
+                        size=model.size,
+                    )
+                )
         return ListModelsOut(list=out_list)
 
     async def get_model(self, model_id: str) -> RetrieveModelOut:
@@ -152,7 +166,7 @@ class CoquiService(Base2Service[InstalledInfo]):
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
         installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.model_type, installed=installed)
+        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.model_type, installed=installed, size=model.size)
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
         info = self._check_installed()
@@ -167,7 +181,7 @@ class CoquiService(Base2Service[InstalledInfo]):
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name=f"{self.get_id()}-{model.docker_name}",
-            image=image,
+            image=image.name,
             command=self._build_coqui_command(
                 CoquiCmdOptions(
                     model_name=model_id,
@@ -201,7 +215,7 @@ class CoquiService(Base2Service[InstalledInfo]):
             SimpleEndpoint(on_request=_create_handler(model_info.base_url, model.default_speaker, model.response_format)),
         )
 
-    def _get_image(self, gpu: bool) -> str:
+    def _get_image(self, gpu: bool) -> DockerImage:
         return _const.image_gpu if gpu else _const.image_cpu
 
     def _get_working_output_dir(self) -> Path:

@@ -9,7 +9,7 @@ from server.applicationcontext import get_base_url, get_container_host, get_cont
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
-from server.models.services import InstallServiceIn, ServiceOptions, ServiceSpecification, UninstallServiceIn
+from server.models.services import InstallServiceIn, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 
 
@@ -49,6 +49,10 @@ class CustomService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "custom"
 
+    def get_size(self) -> ServiceSize:
+        """Return the service size."""
+        return ""
+
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
         return ServiceSpecification(fields=[])
@@ -79,7 +83,15 @@ class CustomService(Base2Service[InstalledInfo]):
             model = _const.models[model_id]
             installed = model_id in info.models
             if filters.installed is None or filters.installed == installed:
-                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.model_type, installed=installed))
+                out_list.append(
+                    RetrieveModelOut(
+                        id=model_id,
+                        service=self.get_id(),
+                        type=model.model_type,
+                        installed=installed,
+                        size=model.size,
+                    )
+                )
         return ListModelsOut(list=out_list)
 
     async def get_model(self, model_id: str) -> RetrieveModelOut:
@@ -89,7 +101,7 @@ class CustomService(Base2Service[InstalledInfo]):
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
         installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.model_type, installed=installed)
+        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.model_type, installed=installed, size=model.size)
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
         info = self._check_installed()
@@ -153,10 +165,12 @@ class CustomModel:
         self,
         model_type: str,
         custom_endpoint: str,
+        size: str,
         options: DockerOptions | Callable[[CustomService, str | None], DockerOptions],
     ):
         self.model_type = model_type
         self.custom_endpoint = custom_endpoint
+        self.size = size
         self.options = options
 
 
@@ -173,6 +187,7 @@ _const = CustomConst(
         "bentoml/example-summarization": CustomModel(
             model_type="custom",
             custom_endpoint="/summarize",
+            size="12013.49MB",
             options=lambda _, subnet: DockerOptions(
                 image_port=3000,
                 name="bentoml",
@@ -185,6 +200,7 @@ _const = CustomConst(
         "easyOCR": CustomModel(
             model_type="custom",
             custom_endpoint="/v1/ocr",
+            size="10075.38MB",
             options=lambda custom_service, subnet: DockerOptions(
                 image_port=8000,
                 name="easyocr",

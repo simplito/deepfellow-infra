@@ -4,10 +4,10 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
-from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
+from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 
 
@@ -17,12 +17,12 @@ class SindriAiModel(BaseModel):
 
 
 class SindriAiConst(BaseModel):
-    image: str
+    image: DockerImage
     models: dict[str, SindriAiModel]
 
 
 _const = SindriAiConst(
-    image="sindrilabs/evllm-proxy:v0.0.8",
+    image=DockerImage(name="sindrilabs/evllm-proxy:v0.0.8", size="48.11 MB"),
     models={
         "gemma3:27b": SindriAiModel(type="llm", real_model_name="gemma3"),
     },
@@ -68,6 +68,10 @@ class SindriService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "sindri"
 
+    def get_size(self) -> ServiceSize:
+        """Return the service size."""
+        return _const.image.size
+
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
         return ServiceSpecification(
@@ -107,7 +111,7 @@ sindriClient:
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name="sindri",
-            image=_const.image,
+            image=_const.image.name,
             command="serve /config.yaml",
             image_port=8080,
             volumes=volumes,
@@ -142,7 +146,7 @@ sindriClient:
         for model_id, model in _const.models.items():
             installed = model_id in info.models
             if filters.installed is None or filters.installed == installed:
-                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed))
+                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=""))
         return ListModelsOut(list=out_list)
 
     async def get_model(self, model_id: str) -> RetrieveModelOut:
@@ -152,7 +156,7 @@ sindriClient:
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
         installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed)
+        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size="")
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
         info = self._check_installed()

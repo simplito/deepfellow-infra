@@ -1,16 +1,15 @@
 """Llamacpp service."""
 
 from pathlib import Path
-from platform import system
 
 from fastapi import HTTPException
 from pydantic import BaseModel
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
-from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
+from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 from server.utils.core import Utils
 
@@ -18,41 +17,45 @@ from server.utils.core import Utils
 class LlamacppModel(BaseModel):
     docker_name: str
     model_path: str
+    size: str
 
 
 class LlamacppConst(BaseModel):
-    image_gpu: str
-    image_cpu: str
-    image_cpu_arm64: str
+    image_gpu: DockerImage
+    image_cpu: DockerImage
     model_type: str
     models: dict[str, LlamacppModel]
 
 
 _const = LlamacppConst(
-    image_gpu="ghcr.io/ggml-org/llama.cpp:server",
-    image_cpu="ghcr.io/ggml-org/llama.cpp:server-cuda",
-    image_cpu_arm64="deepfellow-llamacpp-arm64:latest",
+    image_gpu=DockerImage(name="ghcr.io/ggml-org/llama.cpp:server-cuda", size="2680.57 MB"),
+    image_cpu=DockerImage(name="ghcr.io/ggml-org/llama.cpp:server", size="99.76 MB"),
     model_type="llm",
     models={
         "bartowski/mistral-community_pixtral-12b": LlamacppModel(
             docker_name="bartowski__mistral-community_pixtral-12b",
             model_path="https://huggingface.co/bartowski/mistral-community_pixtral-12b-GGUF/resolve/main/mistral-community_pixtral-12b-Q5_K_M.gguf",
+            size="8.2GB",
         ),
         "bartowski/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B": LlamacppModel(
             docker_name="bartowski__deepseek-ai_deepseek-r1-0528-qwen3-8b",
             model_path="https://huggingface.co/bartowski/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-GGUF/resolve/main/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-Q5_K_M.gguf",
+            size="5.5GB",
         ),
         "bartowski/Hermes-3-Llama-3.2-3B": LlamacppModel(
             docker_name="bartowski__hermes-3-llama-3_2-3Bb",
             model_path="https://huggingface.co/bartowski/Hermes-3-Llama-3.2-3B-GGUF/resolve/main/Hermes-3-Llama-3.2-3B-Q5_K_M.gguf",
+            size="2.2GB",
         ),
         "bartowski/Meta-Llama-3.1-8B-Instruct": LlamacppModel(
             docker_name="bartowski__meta-llama-3_1-8b-instruct",
             model_path="https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+            size="4.6GB",
         ),
         "mradermacher/PLLuM-12B-instruct": LlamacppModel(
             docker_name="mradermacher__pllum-12b-instruct",
             model_path="https://huggingface.co/mradermacher/PLLuM-12B-instruct-GGUF/resolve/main/PLLuM-12B-instruct.Q4_K_M.gguf",
+            size="7.0GB",
         ),
     },
 )
@@ -104,6 +107,10 @@ class LLamacppService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "llamacpp"
 
+    def get_size(self) -> ServiceSize:
+        """Return the service size."""
+        return {"cpu": _const.image_cpu.size, "gpu": _const.image_gpu.size}
+
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
         return ServiceSpecification(
@@ -122,7 +129,7 @@ class LLamacppService(Base2Service[InstalledInfo]):
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
         parsed_options = LLamacppOptions(**options.spec)
         image = self._get_image(parsed_options.gpu)
-        await docker_pull(image)
+        await docker_pull(image.name)
         return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
@@ -137,10 +144,18 @@ class LLamacppService(Base2Service[InstalledInfo]):
         """List models."""
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
-        for model_id in _const.models:
+        for model_id, model in _const.models.items():
             installed = model_id in info.models
             if filters.installed is None or filters.installed == installed:
-                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=_const.model_type, installed=installed))
+                out_list.append(
+                    RetrieveModelOut(
+                        id=model_id,
+                        service=self.get_id(),
+                        type=_const.model_type,
+                        installed=installed,
+                        size=model.size,
+                    )
+                )
         return ListModelsOut(list=out_list)
 
     async def get_model(self, model_id: str) -> RetrieveModelOut:
@@ -148,8 +163,9 @@ class LLamacppService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
+        model = _const.models[model_id]
         installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=_const.model_type, installed=installed)
+        return RetrieveModelOut(id=model_id, service=self.get_id(), type=_const.model_type, installed=installed, size=model.size)
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
         info = self._check_installed()
@@ -168,7 +184,7 @@ class LLamacppService(Base2Service[InstalledInfo]):
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name=f"{self.get_id()}-{model.docker_name}",
-            image=image,
+            image=image.name,
             command=f"--model {model_in_container} --host 0.0.0.0 --port 8080",
             image_port=8080,
             restart="unless-stopped",
@@ -195,8 +211,8 @@ class LLamacppService(Base2Service[InstalledInfo]):
             completions=ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id),
         )
 
-    def _get_image(self, gpu: bool) -> str:
-        return _const.image_cpu_arm64 if system() == "Darwin" else _const.image_gpu if gpu else _const.image_cpu
+    def _get_image(self, gpu: bool) -> DockerImage:
+        return _const.image_gpu if gpu else _const.image_cpu
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()

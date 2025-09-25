@@ -25,6 +25,14 @@ async function showServicesPage() {
                                 ${s.installed ? "Installed" : "Not installed"}
                             </div>
                         </div>
+                        <div class="box-size service-size">
+                            ${typeof(s.size) == "string" ?
+                                `Size: <span class="size">${s.size ? s.size : "N/A"}</span>` :
+                                Object.keys(s.size).map(key =>
+                                    `<div class="box-size-entry">${key.toUpperCase()}: <span class="size">${s.size[key]}</span></div>`
+                                ).join("")
+                            }
+                        </div>
                         <div class="box-buttons service-buttons">
                             ${!s.installed ? `<button data-action="install-service" data-service-id="${s.id}">Install</button>` : ""}
                             ${s.installed ? `<button data-action="open-service-models" data-service-id="${s.id}">Models</button>`: ""}
@@ -162,6 +170,9 @@ async function showServicePage(id) {
                     </div>
                 </div>
                 <div class="model-type">${types[m.type] || m.type}</div>
+                <div class="box-size model-size">
+                    Size: <span class="size">${m.size ? m.size : "N/A"}</span>
+                </div>
                 <div class="box-buttons model-buttons">
                     ${!m.installed ? `<button data-action="install-model" data-service-id="${id}" data-model-id="${m.id}">Install</button>` : ""}
                     ${m.installed ? `<button data-action="uninstall-model" data-service-id="${id}" data-model-id="${m.id}">Uninstall</button>`: ""}

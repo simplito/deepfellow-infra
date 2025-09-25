@@ -1,13 +1,14 @@
 """Ollama service."""
 
 import json
+from typing import TypedDict
 
 from fastapi import HTTPException
 from pydantic import BaseModel
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.config import get_main_dir
-from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
@@ -30,25 +31,41 @@ def _read_models_from_json() -> dict[str, bool]:  # pyright: ignore[reportUnused
         return map
 
 
-def _read_models() -> dict[str, str]:
+class OllamaModel(BaseModel):
+    id: str
+    size: str
+    type: str
+
+
+class OllamaRegistryEntry(TypedDict):
+    name: str
+    size: str
+
+
+class OllamaRegistry(TypedDict):
+    llms: list[OllamaRegistryEntry]
+    embeddings: list[OllamaRegistryEntry]
+
+
+def _read_models() -> dict[str, OllamaModel]:
     ollama_path = get_main_dir() / "./static/ollama-min.json"
     with ollama_path.open(encoding="utf-8") as f:
-        registry = json.loads(f.read())
-        map: dict[str, str] = {}
+        registry: OllamaRegistry = json.loads(f.read())
+        map: dict[str, OllamaModel] = {}
         for tag in registry["llms"]:
-            map[tag] = "llm"
+            map[tag["name"]] = OllamaModel(id=tag["name"], size=tag["size"], type="llm")
         for tag in registry["embeddings"]:
-            map[tag] = "embedding"
+            map[tag["name"]] = OllamaModel(id=tag["name"], size=tag["size"], type="embedding")
         return map
 
 
 class OllamaAiConst(BaseModel):
-    image: str
-    models: dict[str, str]
+    image: DockerImage
+    models: dict[str, OllamaModel]
 
 
 _const = OllamaAiConst(
-    image="ollama/ollama",
+    image=DockerImage(name="ollama/ollama", size="2306.67 MB"),
     models=_read_models(),
 )
 
@@ -92,6 +109,10 @@ class OllamaService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "ollama"
 
+    def get_size(self) -> str:
+        """Return the service size."""
+        return _const.image.size
+
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
         return ServiceSpecification(
@@ -120,7 +141,7 @@ class OllamaService(Base2Service[InstalledInfo]):
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name="ollama",
-            image=_const.image,
+            image=_const.image.name,
             image_port=11434,
             use_gpu=parsed_options.gpu,
             volumes=volumes,
@@ -157,10 +178,10 @@ class OllamaService(Base2Service[InstalledInfo]):
         """List models."""
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
-        for model_id, model_type in _const.models.items():
+        for model_id, model in _const.models.items():
             installed = model_id in info.models
             if filters.installed is None or filters.installed == installed:
-                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model_type, installed=installed))
+                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=model.size))
         return ListModelsOut(list=out_list)
 
     async def get_model(self, model_id: str) -> RetrieveModelOut:
@@ -168,9 +189,9 @@ class OllamaService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
-        model_type = _const.models[model_id]
+        model = _const.models[model_id]
         installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model_type, installed=installed)
+        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=model.size)
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
         info = self._check_installed()
@@ -178,7 +199,7 @@ class OllamaService(Base2Service[InstalledInfo]):
             return
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
-        model_type = _const.models[model_id]
+        model = _const.models[model_id]
         res = await fetch_from(f"{info.base_url}/api/pull", "POST", {"model": model_id})
         if res.status_code != 200 and res.status_code != 201:
             print("Error when install model in ollama", model_id, res.status_code, res.data)
@@ -186,18 +207,18 @@ class OllamaService(Base2Service[InstalledInfo]):
         registered_name = options.alias if options.alias is not None else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
-            type=model_type,
+            type=model.type,
             registered_name=registered_name,
             options=options,
             registration_id="",
         )
-        if model_type == "llm":
+        if model.type == "llm":
             model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                 model=registered_name,
                 chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
                 completions=ProxyOptions(url=f"{info.base_url}/v1/completions", rewrite_model_to=model_id),
             )
-        if model_type == "embedding":
+        if model.type == "embedding":
             model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
                 registered_name, ProxyOptions(url=f"{info.base_url}/v1/embeddings")
             )
