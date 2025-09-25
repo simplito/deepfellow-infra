@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import shutil
 from pathlib import Path
 from typing import NotRequired, TypedDict
@@ -30,7 +31,7 @@ class DockerOptions:
         shm_size: str | None = None,
         entrypoint: str | None = None,
         healthcheck: str | None = None,
-        reset_uid: bool = False,
+        user: str | None = None,
         subnet: str | None = None,
     ):
         self.name = name
@@ -47,7 +48,7 @@ class DockerOptions:
         self.shm_size = shm_size
         self.entrypoint = entrypoint
         self.healthcheck = healthcheck
-        self.reset_uid = reset_uid
+        self.user = user
         self.subnet = subnet
 
 
@@ -110,6 +111,7 @@ class DockerImage(BaseModel):
 
 _docker_compose_cmd: str | None = None
 _has_gpu_support: bool | None = None
+_is_rootless: bool | None = None
 
 
 def get_docker_compoes_cmd() -> str:
@@ -132,6 +134,20 @@ async def has_gpu_support() -> bool:
         result = await Utils.run_command("docker run --gpus all --rm busybox echo")
         _has_gpu_support = result.exit_code == 0
     return _has_gpu_support
+
+
+async def is_rootless() -> bool:
+    """Return whether docker is running in rootless mode."""
+    global _is_rootless
+    if _is_rootless is None:
+        result = await Utils.run_command("docker info")
+        _is_rootless = result.exit_code == 0 and "rootless" in result.stdout
+    return _is_rootless
+
+
+async def get_user_for_docker() -> str:
+    """Get user for docker."""
+    return "0:0" if await is_rootless() else f"{os.getuid()}:{os.getgid()}"
 
 
 async def start_docker_compose(docker_compose_file_path: Path) -> CommandResult2:
@@ -237,8 +253,8 @@ async def generate_docker_compose_content(options: DockerOptions, port: int) -> 
         service["shm_size"] = options.shm_size
     if options.entrypoint:
         service["entrypoint"] = options.entrypoint
-    if options.reset_uid:
-        service["user"] = "0:0"
+    if options.user:
+        service["user"] = options.user
     if options.use_gpu:
         if not await has_gpu_support():
             raise AppError("Docker doesn't support GPU on this machine.")

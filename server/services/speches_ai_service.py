@@ -424,7 +424,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
                 "ENABLE_UI": "False",
             },
             restart="unless-stopped",
-            reset_uid=True,
+            user="0:0",
             subnet=subnet,
         )
         docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
