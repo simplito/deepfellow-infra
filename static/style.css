@@ -48,6 +48,9 @@ input, textarea {
     position: absolute;
     bottom: 20px;
 }
+.box-size .size {
+    font-family: monospace;
+}
 .badge {
     padding: 2px 5px;
     border-radius: 10px;

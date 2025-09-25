@@ -1,524 +1,2078 @@
 {
   "embeddings": [
-    "nomic-embed-text",
-    "nomic-embed-text:v1.5",
-    "mxbai-embed-large",
-    "mxbai-embed-large:335m",
-    "bge-m3",
-    "bge-m3:567m",
-    "all-minilm",
-    "all-minilm:22m",
-    "all-minilm:33m",
-    "snowflake-arctic-embed",
-    "snowflake-arctic-embed:22m",
-    "snowflake-arctic-embed:33m",
-    "snowflake-arctic-embed:110m",
-    "snowflake-arctic-embed:137m",
-    "snowflake-arctic-embed:335m",
-    "snowflake-arctic-embed2",
-    "snowflake-arctic-embed2:568m",
-    "bge-large",
-    "bge-large:335m",
-    "paraphrase-multilingual",
-    "paraphrase-multilingual:278m",
-    "granite-embedding",
-    "granite-embedding:30m",
-    "granite-embedding:278m"
+    {
+      "name": "nomic-embed-text",
+      "size": "274MB"
+    },
+    {
+      "name": "nomic-embed-text:v1.5",
+      "size": "274MB"
+    },
+    {
+      "name": "mxbai-embed-large",
+      "size": "670MB"
+    },
+    {
+      "name": "mxbai-embed-large:335m",
+      "size": "670MB"
+    },
+    {
+      "name": "bge-m3",
+      "size": "1.2GB"
+    },
+    {
+      "name": "bge-m3:567m",
+      "size": "1.2GB"
+    },
+    {
+      "name": "all-minilm",
+      "size": "46MB"
+    },
+    {
+      "name": "all-minilm:22m",
+      "size": "46MB"
+    },
+    {
+      "name": "all-minilm:33m",
+      "size": "67MB"
+    },
+    {
+      "name": "snowflake-arctic-embed",
+      "size": "669MB"
+    },
+    {
+      "name": "snowflake-arctic-embed:22m",
+      "size": "46MB"
+    },
+    {
+      "name": "snowflake-arctic-embed:33m",
+      "size": "67MB"
+    },
+    {
+      "name": "snowflake-arctic-embed:110m",
+      "size": "219MB"
+    },
+    {
+      "name": "snowflake-arctic-embed:137m",
+      "size": "274MB"
+    },
+    {
+      "name": "snowflake-arctic-embed:335m",
+      "size": "669MB"
+    },
+    {
+      "name": "snowflake-arctic-embed2",
+      "size": "1.2GB"
+    },
+    {
+      "name": "snowflake-arctic-embed2:568m",
+      "size": "1.2GB"
+    },
+    {
+      "name": "bge-large",
+      "size": "671MB"
+    },
+    {
+      "name": "bge-large:335m",
+      "size": "671MB"
+    },
+    {
+      "name": "paraphrase-multilingual",
+      "size": "563MB"
+    },
+    {
+      "name": "paraphrase-multilingual:278m",
+      "size": "563MB"
+    },
+    {
+      "name": "granite-embedding",
+      "size": "63MB"
+    },
+    {
+      "name": "granite-embedding:30m",
+      "size": "63MB"
+    },
+    {
+      "name": "granite-embedding:278m",
+      "size": "563MB"
+    }
   ],
   "llms": [
-    "gpt-oss",
-    "gpt-oss:20b",
-    "gpt-oss:120b",
-    "deepseek-r1",
-    "deepseek-r1:1.5b",
-    "deepseek-r1:7b",
-    "deepseek-r1:8b",
-    "deepseek-r1:14b",
-    "deepseek-r1:32b",
-    "deepseek-r1:70b",
-    "deepseek-r1:671b",
-    "gemma3",
-    "gemma3:270m",
-    "gemma3:1b",
-    "gemma3:4b",
-    "gemma3:12b",
-    "gemma3:27b",
-    "qwen3",
-    "qwen3:0.6b",
-    "qwen3:1.7b",
-    "qwen3:4b",
-    "qwen3:8b",
-    "qwen3:14b",
-    "qwen3:30b",
-    "qwen3:32b",
-    "qwen3:235b",
-    "llama3.1",
-    "llama3.1:8b",
-    "llama3.1:70b",
-    "llama3.1:405b",
-    "llama3.2",
-    "llama3.2:1b",
-    "llama3.2:3b",
-    "mistral",
-    "mistral:7b",
-    "qwen2.5",
-    "qwen2.5:0.5b",
-    "qwen2.5:1.5b",
-    "qwen2.5:3b",
-    "qwen2.5:7b",
-    "qwen2.5:14b",
-    "qwen2.5:32b",
-    "qwen2.5:72b",
-    "llama3",
-    "llama3:8b",
-    "llama3:70b",
-    "llava",
-    "llava:7b",
-    "llava:13b",
-    "llava:34b",
-    "phi3",
-    "phi3:3.8b",
-    "phi3:14b",
-    "gemma2",
-    "gemma2:2b",
-    "gemma2:9b",
-    "gemma2:27b",
-    "qwen2.5-coder",
-    "qwen2.5-coder:0.5b",
-    "qwen2.5-coder:1.5b",
-    "qwen2.5-coder:3b",
-    "qwen2.5-coder:7b",
-    "qwen2.5-coder:14b",
-    "qwen2.5-coder:32b",
-    "gemma",
-    "gemma:2b",
-    "gemma:7b",
-    "qwen",
-    "qwen:0.5b",
-    "qwen:1.8b",
-    "qwen:4b",
-    "qwen:7b",
-    "qwen:14b",
-    "qwen:32b",
-    "qwen:72b",
-    "qwen:110b",
-    "qwen2",
-    "qwen2:0.5b",
-    "qwen2:1.5b",
-    "qwen2:7b",
-    "qwen2:72b",
-    "phi4",
-    "phi4:14b",
-    "llama2",
-    "llama2:7b",
-    "llama2:13b",
-    "llama2:70b",
-    "minicpm-v",
-    "minicpm-v:8b",
-    "codellama",
-    "codellama:7b",
-    "codellama:13b",
-    "codellama:34b",
-    "codellama:70b",
-    "tinyllama",
-    "tinyllama:1.1b",
-    "dolphin3",
-    "dolphin3:8b",
-    "mistral-nemo",
-    "mistral-nemo:12b",
-    "olmo2",
-    "olmo2:7b",
-    "olmo2:13b",
-    "llama3.3",
-    "llama3.3:70b",
-    "llama3.2-vision",
-    "llama3.2-vision:11b",
-    "llama3.2-vision:90b",
-    "deepseek-v3",
-    "deepseek-v3:671b",
-    "qwq",
-    "qwq:32b",
-    "mistral-small",
-    "mistral-small:22b",
-    "mistral-small:24b",
-    "smollm2",
-    "smollm2:135m",
-    "smollm2:360m",
-    "smollm2:1.7b",
-    "llava-llama3",
-    "llava-llama3:8b",
-    "mixtral",
-    "mixtral:8x7b",
-    "mixtral:8x22b",
-    "llama2-uncensored",
-    "llama2-uncensored:7b",
-    "llama2-uncensored:70b",
-    "starcoder2",
-    "starcoder2:3b",
-    "starcoder2:7b",
-    "starcoder2:15b",
-    "deepseek-coder",
-    "deepseek-coder:1.3b",
-    "deepseek-coder:6.7b",
-    "deepseek-coder:33b",
-    "deepseek-coder-v2",
-    "deepseek-coder-v2:16b",
-    "deepseek-coder-v2:236b",
-    "codegemma",
-    "codegemma:2b",
-    "codegemma:7b",
-    "phi",
-    "phi:2.7b",
-    "llama4",
-    "llama4:16x17b",
-    "llama4:128x17b",
-    "dolphin-mixtral",
-    "dolphin-mixtral:8x7b",
-    "dolphin-mixtral:8x22b",
-    "openthinker",
-    "openthinker:7b",
-    "openthinker:32b",
-    "orca-mini",
-    "orca-mini:3b",
-    "orca-mini:7b",
-    "orca-mini:13b",
-    "orca-mini:70b",
-    "qwen2.5vl",
-    "qwen2.5vl:3b",
-    "qwen2.5vl:7b",
-    "qwen2.5vl:32b",
-    "qwen2.5vl:72b",
-    "smollm",
-    "smollm:135m",
-    "smollm:360m",
-    "smollm:1.7b",
-    "codestral",
-    "codestral:22b",
-    "wizardlm2",
-    "wizardlm2:7b",
-    "wizardlm2:8x22b",
-    "dolphin-llama3",
-    "dolphin-llama3:8b",
-    "dolphin-llama3:70b",
-    "gemma3n",
-    "gemma3n:e2b",
-    "gemma3n:e4b",
-    "dolphin-mistral",
-    "dolphin-mistral:7b",
-    "granite3.3",
-    "granite3.3:2b",
-    "granite3.3:8b",
-    "falcon3",
-    "falcon3:1b",
-    "falcon3:3b",
-    "falcon3:7b",
-    "falcon3:10b",
-    "phi4-reasoning",
-    "phi4-reasoning:14b",
-    "granite3.1-moe",
-    "granite3.1-moe:1b",
-    "granite3.1-moe:3b",
-    "command-r",
-    "command-r:35b",
-    "hermes3",
-    "hermes3:3b",
-    "hermes3:8b",
-    "hermes3:70b",
-    "hermes3:405b",
-    "cogito",
-    "cogito:3b",
-    "cogito:8b",
-    "cogito:14b",
-    "cogito:32b",
-    "cogito:70b",
-    "phi3.5",
-    "phi3.5:3.8b",
-    "magistral",
-    "magistral:24b",
-    "qwen3-coder",
-    "qwen3-coder:30b",
-    "qwen3-coder:480b",
-    "phi4-mini",
-    "phi4-mini:3.8b",
-    "devstral",
-    "devstral:24b",
-    "yi",
-    "yi:6b",
-    "yi:9b",
-    "yi:34b",
-    "zephyr",
-    "zephyr:7b",
-    "zephyr:141b",
-    "deepcoder",
-    "deepcoder:1.5b",
-    "deepcoder:14b",
-    "granite3.2-vision",
-    "granite3.2-vision:2b",
-    "mistral-large",
-    "mistral-large:123b",
-    "moondream",
-    "moondream:1.8b",
-    "mistral-small3.1",
-    "mistral-small3.1:24b",
-    "deepscaler",
-    "deepscaler:1.5b",
-    "mistral-small3.2",
-    "mistral-small3.2:24b",
-    "wizard-vicuna-uncensored",
-    "wizard-vicuna-uncensored:7b",
-    "wizard-vicuna-uncensored:13b",
-    "wizard-vicuna-uncensored:30b",
-    "granite-code",
-    "granite-code:3b",
-    "granite-code:8b",
-    "granite-code:20b",
-    "granite-code:34b",
-    "dolphin-phi",
-    "dolphin-phi:2.7b",
-    "starcoder",
-    "starcoder:1b",
-    "starcoder:3b",
-    "starcoder:7b",
-    "starcoder:15b",
-    "deepseek-llm",
-    "deepseek-llm:7b",
-    "deepseek-llm:67b",
-    "vicuna",
-    "vicuna:7b",
-    "vicuna:13b",
-    "vicuna:33b",
-    "openchat",
-    "openchat:7b",
-    "mistral-openorca",
-    "mistral-openorca:7b",
-    "deepseek-v2",
-    "deepseek-v2:16b",
-    "deepseek-v2:236b",
-    "codegeex4",
-    "codegeex4:9b",
-    "openhermes",
-    "openhermes:v2",
-    "openhermes:v2.5",
-    "codeqwen",
-    "codeqwen:7b",
-    "qwen2-math",
-    "qwen2-math:1.5b",
-    "qwen2-math:7b",
-    "qwen2-math:72b",
-    "llama2-chinese",
-    "llama2-chinese:7b",
-    "llama2-chinese:13b",
-    "aya",
-    "aya:8b",
-    "aya:35b",
-    "tinydolphin",
-    "tinydolphin:1.1b",
-    "nous-hermes",
-    "nous-hermes:7b",
-    "nous-hermes:13b",
-    "glm4",
-    "glm4:9b",
-    "stable-code",
-    "stable-code:3b",
-    "granite3.2",
-    "granite3.2:2b",
-    "granite3.2:8b",
-    "exaone-deep",
-    "exaone-deep:2.4b",
-    "exaone-deep:7.8b",
-    "exaone-deep:32b",
-    "nous-hermes2",
-    "nous-hermes2:10.7b",
-    "nous-hermes2:34b",
-    "falcon",
-    "falcon:7b",
-    "falcon:40b",
-    "falcon:180b",
-    "wizardcoder",
-    "wizardcoder:33b",
-    "command-r-plus",
-    "command-r-plus:104b",
-    "neural-chat",
-    "neural-chat:7b",
-    "bakllava",
-    "bakllava:7b",
-    "stablelm2",
-    "stablelm2:1.6b",
-    "stablelm2:12b",
-    "sqlcoder",
-    "sqlcoder:7b",
-    "sqlcoder:15b",
-    "llama3-chatqa",
-    "llama3-chatqa:8b",
-    "llama3-chatqa:70b",
-    "opencoder",
-    "opencoder:1.5b",
-    "opencoder:8b",
-    "llava-phi3",
-    "llava-phi3:3.8b",
-    "yi-coder",
-    "yi-coder:1.5b",
-    "yi-coder:9b",
-    "wizard-math",
-    "wizard-math:7b",
-    "wizard-math:13b",
-    "wizard-math:70b",
-    "reflection",
-    "reflection:70b",
-    "granite3.1-dense",
-    "granite3.1-dense:2b",
-    "granite3.1-dense:8b",
-    "granite3-dense",
-    "granite3-dense:2b",
-    "granite3-dense:8b",
-    "llama3-gradient",
-    "llama3-gradient:8b",
-    "llama3-gradient:70b",
-    "exaone3.5",
-    "exaone3.5:2.4b",
-    "exaone3.5:7.8b",
-    "exaone3.5:32b",
-    "dbrx",
-    "dbrx:132b",
-    "samantha-mistral",
-    "samantha-mistral:7b",
-    "dolphincoder",
-    "dolphincoder:7b",
-    "dolphincoder:15b",
-    "tulu3",
-    "tulu3:8b",
-    "tulu3:70b",
-    "nemotron-mini",
-    "nemotron-mini:4b",
-    "r1-1776",
-    "r1-1776:70b",
-    "r1-1776:671b",
-    "starling-lm",
-    "starling-lm:7b",
-    "phind-codellama",
-    "phind-codellama:34b",
-    "solar",
-    "solar:10.7b",
-    "internlm2",
-    "internlm2:1m",
-    "internlm2:1.8b",
-    "internlm2:7b",
-    "internlm2:20b",
-    "xwinlm",
-    "xwinlm:7b",
-    "xwinlm:13b",
-    "athene-v2",
-    "athene-v2:72b",
-    "nemotron",
-    "nemotron:70b",
-    "yarn-llama2",
-    "yarn-llama2:7b",
-    "yarn-llama2:13b",
-    "llama3-groq-tool-use",
-    "llama3-groq-tool-use:8b",
-    "llama3-groq-tool-use:70b",
-    "meditron",
-    "meditron:7b",
-    "meditron:70b",
-    "granite3-moe",
-    "granite3-moe:1b",
-    "granite3-moe:3b",
-    "wizardlm-uncensored",
-    "wizardlm-uncensored:13b",
-    "aya-expanse",
-    "aya-expanse:8b",
-    "aya-expanse:32b",
-    "wizardlm:7b-q2_K",
-    "wizardlm:7b-q3_K_S",
-    "wizardlm:7b-q3_K_M",
-    "smallthinker",
-    "smallthinker:3b",
-    "llama-guard3",
-    "llama-guard3:1b",
-    "llama-guard3:8b",
-    "orca2",
-    "orca2:7b",
-    "orca2:13b",
-    "medllama2",
-    "medllama2:7b",
-    "nous-hermes2-mixtral",
-    "nous-hermes2-mixtral:8x7b",
-    "stable-beluga",
-    "stable-beluga:7b",
-    "stable-beluga:13b",
-    "stable-beluga:70b",
-    "deepseek-v2.5",
-    "deepseek-v2.5:236b",
-    "reader-lm",
-    "reader-lm:0.5b",
-    "reader-lm:1.5b",
-    "llama-pro",
-    "llama-pro:instruct",
-    "llama-pro:text",
-    "yarn-mistral",
-    "yarn-mistral:7b",
-    "command-r7b",
-    "command-r7b:7b",
-    "shieldgemma",
-    "shieldgemma:2b",
-    "shieldgemma:9b",
-    "shieldgemma:27b",
-    "nexusraven",
-    "nexusraven:13b",
-    "mathstral",
-    "mathstral:7b",
-    "command-a",
-    "command-a:111b",
-    "everythinglm",
-    "everythinglm:13b",
-    "phi4-mini-reasoning",
-    "phi4-mini-reasoning:3.8b",
-    "codeup",
-    "codeup:13b",
-    "marco-o1",
-    "marco-o1:7b",
-    "stablelm-zephyr",
-    "stablelm-zephyr:3b",
-    "solar-pro",
-    "solar-pro:22b",
-    "duckdb-nsql",
-    "duckdb-nsql:7b",
-    "falcon2",
-    "falcon2:11b",
-    "magicoder",
-    "magicoder:7b",
-    "mistrallite",
-    "mistrallite:7b",
-    "codebooga",
-    "codebooga:34b",
-    "bespoke-minicheck",
-    "bespoke-minicheck:7b",
-    "wizard-vicuna",
-    "wizard-vicuna:13b",
-    "nuextract",
-    "nuextract:3.8b",
-    "granite3-guardian",
-    "granite3-guardian:2b",
-    "granite3-guardian:8b",
-    "megadolphin",
-    "megadolphin:120b",
-    "notux",
-    "notux:8x7b",
-    "open-orca-platypus2",
-    "open-orca-platypus2:13b",
-    "notus",
-    "notus:7b",
-    "goliath",
-    "sailor2",
-    "sailor2:1b",
-    "sailor2:8b",
-    "sailor2:20b",
-    "firefunction-v2",
-    "firefunction-v2:70b",
-    "alfred",
-    "alfred:40b",
-    "command-r7b-arabic",
-    "command-r7b-arabic:7b",
-    "deepseek-v3.1:671b"
+    {
+      "name": "gpt-oss",
+      "size": "14GB"
+    },
+    {
+      "name": "gpt-oss:20b",
+      "size": "14GB"
+    },
+    {
+      "name": "gpt-oss:120b",
+      "size": "65GB"
+    },
+    {
+      "name": "deepseek-r1",
+      "size": "5.2GB"
+    },
+    {
+      "name": "deepseek-r1:1.5b",
+      "size": "1.1GB"
+    },
+    {
+      "name": "deepseek-r1:7b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "deepseek-r1:8b",
+      "size": "5.2GB"
+    },
+    {
+      "name": "deepseek-r1:14b",
+      "size": "9.0GB"
+    },
+    {
+      "name": "deepseek-r1:32b",
+      "size": "20GB"
+    },
+    {
+      "name": "deepseek-r1:70b",
+      "size": "43GB"
+    },
+    {
+      "name": "deepseek-r1:671b",
+      "size": "404GB"
+    },
+    {
+      "name": "gemma3",
+      "size": "3.3GB"
+    },
+    {
+      "name": "gemma3:270m",
+      "size": "292MB"
+    },
+    {
+      "name": "gemma3:1b",
+      "size": "815MB"
+    },
+    {
+      "name": "gemma3:4b",
+      "size": "3.3GB"
+    },
+    {
+      "name": "gemma3:12b",
+      "size": "8.1GB"
+    },
+    {
+      "name": "gemma3:27b",
+      "size": "17GB"
+    },
+    {
+      "name": "qwen3",
+      "size": "5.2GB"
+    },
+    {
+      "name": "qwen3:0.6b",
+      "size": "523MB"
+    },
+    {
+      "name": "qwen3:1.7b",
+      "size": "1.4GB"
+    },
+    {
+      "name": "qwen3:4b",
+      "size": "2.5GB"
+    },
+    {
+      "name": "qwen3:8b",
+      "size": "5.2GB"
+    },
+    {
+      "name": "qwen3:14b",
+      "size": "9.3GB"
+    },
+    {
+      "name": "qwen3:30b",
+      "size": "19GB"
+    },
+    {
+      "name": "qwen3:32b",
+      "size": "20GB"
+    },
+    {
+      "name": "qwen3:235b",
+      "size": "142GB"
+    },
+    {
+      "name": "llama3.1",
+      "size": "4.9GB"
+    },
+    {
+      "name": "llama3.1:8b",
+      "size": "4.9GB"
+    },
+    {
+      "name": "llama3.1:70b",
+      "size": "43GB"
+    },
+    {
+      "name": "llama3.1:405b",
+      "size": "243GB"
+    },
+    {
+      "name": "llama3.2",
+      "size": "2.0GB"
+    },
+    {
+      "name": "llama3.2:1b",
+      "size": "1.3GB"
+    },
+    {
+      "name": "llama3.2:3b",
+      "size": "2.0GB"
+    },
+    {
+      "name": "mistral",
+      "size": "4.4GB"
+    },
+    {
+      "name": "mistral:7b",
+      "size": "4.4GB"
+    },
+    {
+      "name": "qwen2.5",
+      "size": "4.7GB"
+    },
+    {
+      "name": "qwen2.5:0.5b",
+      "size": "398MB"
+    },
+    {
+      "name": "qwen2.5:1.5b",
+      "size": "986MB"
+    },
+    {
+      "name": "qwen2.5:3b",
+      "size": "1.9GB"
+    },
+    {
+      "name": "qwen2.5:7b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "qwen2.5:14b",
+      "size": "9.0GB"
+    },
+    {
+      "name": "qwen2.5:32b",
+      "size": "20GB"
+    },
+    {
+      "name": "qwen2.5:72b",
+      "size": "47GB"
+    },
+    {
+      "name": "llama3",
+      "size": "4.7GB"
+    },
+    {
+      "name": "llama3:8b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "llama3:70b",
+      "size": "40GB"
+    },
+    {
+      "name": "llava",
+      "size": "4.7GB"
+    },
+    {
+      "name": "llava:7b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "llava:13b",
+      "size": "8.0GB"
+    },
+    {
+      "name": "llava:34b",
+      "size": "20GB"
+    },
+    {
+      "name": "phi3",
+      "size": "2.2GB"
+    },
+    {
+      "name": "phi3:3.8b",
+      "size": "2.2GB"
+    },
+    {
+      "name": "phi3:14b",
+      "size": "7.9GB"
+    },
+    {
+      "name": "gemma2",
+      "size": "5.4GB"
+    },
+    {
+      "name": "gemma2:2b",
+      "size": "1.6GB"
+    },
+    {
+      "name": "gemma2:9b",
+      "size": "5.4GB"
+    },
+    {
+      "name": "gemma2:27b",
+      "size": "16GB"
+    },
+    {
+      "name": "qwen2.5-coder",
+      "size": "4.7GB"
+    },
+    {
+      "name": "qwen2.5-coder:0.5b",
+      "size": "398MB"
+    },
+    {
+      "name": "qwen2.5-coder:1.5b",
+      "size": "986MB"
+    },
+    {
+      "name": "qwen2.5-coder:3b",
+      "size": "1.9GB"
+    },
+    {
+      "name": "qwen2.5-coder:7b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "qwen2.5-coder:14b",
+      "size": "9.0GB"
+    },
+    {
+      "name": "qwen2.5-coder:32b",
+      "size": "20GB"
+    },
+    {
+      "name": "gemma",
+      "size": "5.0GB"
+    },
+    {
+      "name": "gemma:2b",
+      "size": "1.7GB"
+    },
+    {
+      "name": "gemma:7b",
+      "size": "5.0GB"
+    },
+    {
+      "name": "qwen",
+      "size": "2.3GB"
+    },
+    {
+      "name": "qwen:0.5b",
+      "size": "395MB"
+    },
+    {
+      "name": "qwen:1.8b",
+      "size": "1.1GB"
+    },
+    {
+      "name": "qwen:4b",
+      "size": "2.3GB"
+    },
+    {
+      "name": "qwen:7b",
+      "size": "4.5GB"
+    },
+    {
+      "name": "qwen:14b",
+      "size": "8.2GB"
+    },
+    {
+      "name": "qwen:32b",
+      "size": "18GB"
+    },
+    {
+      "name": "qwen:72b",
+      "size": "41GB"
+    },
+    {
+      "name": "qwen:110b",
+      "size": "63GB"
+    },
+    {
+      "name": "qwen2",
+      "size": "4.4GB"
+    },
+    {
+      "name": "qwen2:0.5b",
+      "size": "352MB"
+    },
+    {
+      "name": "qwen2:1.5b",
+      "size": "935MB"
+    },
+    {
+      "name": "qwen2:7b",
+      "size": "4.4GB"
+    },
+    {
+      "name": "qwen2:72b",
+      "size": "41GB"
+    },
+    {
+      "name": "phi4",
+      "size": "9.1GB"
+    },
+    {
+      "name": "phi4:14b",
+      "size": "9.1GB"
+    },
+    {
+      "name": "llama2",
+      "size": "3.8GB"
+    },
+    {
+      "name": "llama2:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "llama2:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "llama2:70b",
+      "size": "39GB"
+    },
+    {
+      "name": "minicpm-v",
+      "size": "5.5GB"
+    },
+    {
+      "name": "minicpm-v:8b",
+      "size": "5.5GB"
+    },
+    {
+      "name": "codellama",
+      "size": "3.8GB"
+    },
+    {
+      "name": "codellama:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "codellama:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "codellama:34b",
+      "size": "19GB"
+    },
+    {
+      "name": "codellama:70b",
+      "size": "39GB"
+    },
+    {
+      "name": "tinyllama",
+      "size": "638MB"
+    },
+    {
+      "name": "tinyllama:1.1b",
+      "size": "638MB"
+    },
+    {
+      "name": "dolphin3",
+      "size": "4.9GB"
+    },
+    {
+      "name": "dolphin3:8b",
+      "size": "4.9GB"
+    },
+    {
+      "name": "mistral-nemo",
+      "size": "7.1GB"
+    },
+    {
+      "name": "mistral-nemo:12b",
+      "size": "7.1GB"
+    },
+    {
+      "name": "olmo2",
+      "size": "4.5GB"
+    },
+    {
+      "name": "olmo2:7b",
+      "size": "4.5GB"
+    },
+    {
+      "name": "olmo2:13b",
+      "size": "8.4GB"
+    },
+    {
+      "name": "llama3.3",
+      "size": "43GB"
+    },
+    {
+      "name": "llama3.3:70b",
+      "size": "43GB"
+    },
+    {
+      "name": "llama3.2-vision",
+      "size": "7.8GB"
+    },
+    {
+      "name": "llama3.2-vision:11b",
+      "size": "7.8GB"
+    },
+    {
+      "name": "llama3.2-vision:90b",
+      "size": "55GB"
+    },
+    {
+      "name": "deepseek-v3",
+      "size": "404GB"
+    },
+    {
+      "name": "deepseek-v3:671b",
+      "size": "404GB"
+    },
+    {
+      "name": "qwq",
+      "size": "20GB"
+    },
+    {
+      "name": "qwq:32b",
+      "size": "20GB"
+    },
+    {
+      "name": "mistral-small",
+      "size": "14GB"
+    },
+    {
+      "name": "mistral-small:22b",
+      "size": "13GB"
+    },
+    {
+      "name": "mistral-small:24b",
+      "size": "14GB"
+    },
+    {
+      "name": "smollm2",
+      "size": "1.8GB"
+    },
+    {
+      "name": "smollm2:135m",
+      "size": "271MB"
+    },
+    {
+      "name": "smollm2:360m",
+      "size": "726MB"
+    },
+    {
+      "name": "smollm2:1.7b",
+      "size": "1.8GB"
+    },
+    {
+      "name": "llava-llama3",
+      "size": "5.5GB"
+    },
+    {
+      "name": "llava-llama3:8b",
+      "size": "5.5GB"
+    },
+    {
+      "name": "mixtral",
+      "size": "26GB"
+    },
+    {
+      "name": "mixtral:8x7b",
+      "size": "26GB"
+    },
+    {
+      "name": "mixtral:8x22b",
+      "size": "80GB"
+    },
+    {
+      "name": "llama2-uncensored",
+      "size": "3.8GB"
+    },
+    {
+      "name": "llama2-uncensored:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "llama2-uncensored:70b",
+      "size": "39GB"
+    },
+    {
+      "name": "starcoder2",
+      "size": "1.7GB"
+    },
+    {
+      "name": "starcoder2:3b",
+      "size": "1.7GB"
+    },
+    {
+      "name": "starcoder2:7b",
+      "size": "4.0GB"
+    },
+    {
+      "name": "starcoder2:15b",
+      "size": "9.1GB"
+    },
+    {
+      "name": "deepseek-coder",
+      "size": "776MB"
+    },
+    {
+      "name": "deepseek-coder:1.3b",
+      "size": "776MB"
+    },
+    {
+      "name": "deepseek-coder:6.7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "deepseek-coder:33b",
+      "size": "19GB"
+    },
+    {
+      "name": "deepseek-coder-v2",
+      "size": "8.9GB"
+    },
+    {
+      "name": "deepseek-coder-v2:16b",
+      "size": "8.9GB"
+    },
+    {
+      "name": "deepseek-coder-v2:236b",
+      "size": "133GB"
+    },
+    {
+      "name": "codegemma",
+      "size": "5.0GB"
+    },
+    {
+      "name": "codegemma:2b",
+      "size": "1.6GB"
+    },
+    {
+      "name": "codegemma:7b",
+      "size": "5.0GB"
+    },
+    {
+      "name": "phi",
+      "size": "1.6GB"
+    },
+    {
+      "name": "phi:2.7b",
+      "size": "1.6GB"
+    },
+    {
+      "name": "llama4",
+      "size": "67GB"
+    },
+    {
+      "name": "llama4:16x17b",
+      "size": "67GB"
+    },
+    {
+      "name": "llama4:128x17b",
+      "size": "245GB"
+    },
+    {
+      "name": "dolphin-mixtral",
+      "size": "26GB"
+    },
+    {
+      "name": "dolphin-mixtral:8x7b",
+      "size": "26GB"
+    },
+    {
+      "name": "dolphin-mixtral:8x22b",
+      "size": "80GB"
+    },
+    {
+      "name": "openthinker",
+      "size": "4.7GB"
+    },
+    {
+      "name": "openthinker:7b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "openthinker:32b",
+      "size": "20GB"
+    },
+    {
+      "name": "orca-mini",
+      "size": "2.0GB"
+    },
+    {
+      "name": "orca-mini:3b",
+      "size": "2.0GB"
+    },
+    {
+      "name": "orca-mini:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "orca-mini:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "orca-mini:70b",
+      "size": "39GB"
+    },
+    {
+      "name": "qwen2.5vl",
+      "size": "6.0GB"
+    },
+    {
+      "name": "qwen2.5vl:3b",
+      "size": "3.2GB"
+    },
+    {
+      "name": "qwen2.5vl:7b",
+      "size": "6.0GB"
+    },
+    {
+      "name": "qwen2.5vl:32b",
+      "size": "21GB"
+    },
+    {
+      "name": "qwen2.5vl:72b",
+      "size": "49GB"
+    },
+    {
+      "name": "smollm",
+      "size": "991MB"
+    },
+    {
+      "name": "smollm:135m",
+      "size": "92MB"
+    },
+    {
+      "name": "smollm:360m",
+      "size": "229MB"
+    },
+    {
+      "name": "smollm:1.7b",
+      "size": "991MB"
+    },
+    {
+      "name": "codestral",
+      "size": "13GB"
+    },
+    {
+      "name": "codestral:22b",
+      "size": "13GB"
+    },
+    {
+      "name": "wizardlm2",
+      "size": "4.1GB"
+    },
+    {
+      "name": "wizardlm2:7b",
+      "size": "4.1GB"
+    },
+    {
+      "name": "wizardlm2:8x22b",
+      "size": "80GB"
+    },
+    {
+      "name": "dolphin-llama3",
+      "size": "4.7GB"
+    },
+    {
+      "name": "dolphin-llama3:8b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "dolphin-llama3:70b",
+      "size": "40GB"
+    },
+    {
+      "name": "gemma3n",
+      "size": "7.5GB"
+    },
+    {
+      "name": "gemma3n:e2b",
+      "size": "5.6GB"
+    },
+    {
+      "name": "gemma3n:e4b",
+      "size": "7.5GB"
+    },
+    {
+      "name": "dolphin-mistral",
+      "size": "4.1GB"
+    },
+    {
+      "name": "dolphin-mistral:7b",
+      "size": "4.1GB"
+    },
+    {
+      "name": "granite3.3",
+      "size": "4.9GB"
+    },
+    {
+      "name": "granite3.3:2b",
+      "size": "1.5GB"
+    },
+    {
+      "name": "granite3.3:8b",
+      "size": "4.9GB"
+    },
+    {
+      "name": "falcon3",
+      "size": "4.6GB"
+    },
+    {
+      "name": "falcon3:1b",
+      "size": "1.8GB"
+    },
+    {
+      "name": "falcon3:3b",
+      "size": "2.0GB"
+    },
+    {
+      "name": "falcon3:7b",
+      "size": "4.6GB"
+    },
+    {
+      "name": "falcon3:10b",
+      "size": "6.3GB"
+    },
+    {
+      "name": "phi4-reasoning",
+      "size": "11GB"
+    },
+    {
+      "name": "phi4-reasoning:14b",
+      "size": "11GB"
+    },
+    {
+      "name": "granite3.1-moe",
+      "size": "2.0GB"
+    },
+    {
+      "name": "granite3.1-moe:1b",
+      "size": "1.4GB"
+    },
+    {
+      "name": "granite3.1-moe:3b",
+      "size": "2.0GB"
+    },
+    {
+      "name": "command-r",
+      "size": "19GB"
+    },
+    {
+      "name": "command-r:35b",
+      "size": "19GB"
+    },
+    {
+      "name": "hermes3",
+      "size": "4.7GB"
+    },
+    {
+      "name": "hermes3:3b",
+      "size": "2.0GB"
+    },
+    {
+      "name": "hermes3:8b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "hermes3:70b",
+      "size": "40GB"
+    },
+    {
+      "name": "hermes3:405b",
+      "size": "229GB"
+    },
+    {
+      "name": "cogito",
+      "size": "4.9GB"
+    },
+    {
+      "name": "cogito:3b",
+      "size": "2.2GB"
+    },
+    {
+      "name": "cogito:8b",
+      "size": "4.9GB"
+    },
+    {
+      "name": "cogito:14b",
+      "size": "9.0GB"
+    },
+    {
+      "name": "cogito:32b",
+      "size": "20GB"
+    },
+    {
+      "name": "cogito:70b",
+      "size": "43GB"
+    },
+    {
+      "name": "phi3.5",
+      "size": "2.2GB"
+    },
+    {
+      "name": "phi3.5:3.8b",
+      "size": "2.2GB"
+    },
+    {
+      "name": "magistral",
+      "size": "14GB"
+    },
+    {
+      "name": "magistral:24b",
+      "size": "14GB"
+    },
+    {
+      "name": "qwen3-coder",
+      "size": "19GB"
+    },
+    {
+      "name": "qwen3-coder:30b",
+      "size": "19GB"
+    },
+    {
+      "name": "qwen3-coder:480b",
+      "size": "290GB"
+    },
+    {
+      "name": "phi4-mini",
+      "size": "2.5GB"
+    },
+    {
+      "name": "phi4-mini:3.8b",
+      "size": "2.5GB"
+    },
+    {
+      "name": "devstral",
+      "size": "14GB"
+    },
+    {
+      "name": "devstral:24b",
+      "size": "14GB"
+    },
+    {
+      "name": "yi",
+      "size": "3.5GB"
+    },
+    {
+      "name": "yi:6b",
+      "size": "3.5GB"
+    },
+    {
+      "name": "yi:9b",
+      "size": "5.0GB"
+    },
+    {
+      "name": "yi:34b",
+      "size": "19GB"
+    },
+    {
+      "name": "zephyr",
+      "size": "4.1GB"
+    },
+    {
+      "name": "zephyr:7b",
+      "size": "4.1GB"
+    },
+    {
+      "name": "zephyr:141b",
+      "size": "80GB"
+    },
+    {
+      "name": "deepcoder",
+      "size": "9.0GB"
+    },
+    {
+      "name": "deepcoder:1.5b",
+      "size": "1.1GB"
+    },
+    {
+      "name": "deepcoder:14b",
+      "size": "9.0GB"
+    },
+    {
+      "name": "granite3.2-vision",
+      "size": "2.4GB"
+    },
+    {
+      "name": "granite3.2-vision:2b",
+      "size": "2.4GB"
+    },
+    {
+      "name": "mistral-large",
+      "size": "73GB"
+    },
+    {
+      "name": "mistral-large:123b",
+      "size": "73GB"
+    },
+    {
+      "name": "moondream",
+      "size": "1.7GB"
+    },
+    {
+      "name": "moondream:1.8b",
+      "size": "1.7GB"
+    },
+    {
+      "name": "mistral-small3.1",
+      "size": "15GB"
+    },
+    {
+      "name": "mistral-small3.1:24b",
+      "size": "15GB"
+    },
+    {
+      "name": "deepscaler",
+      "size": "3.6GB"
+    },
+    {
+      "name": "deepscaler:1.5b",
+      "size": "3.6GB"
+    },
+    {
+      "name": "mistral-small3.2",
+      "size": "15GB"
+    },
+    {
+      "name": "mistral-small3.2:24b",
+      "size": "15GB"
+    },
+    {
+      "name": "wizard-vicuna-uncensored",
+      "size": "3.8GB"
+    },
+    {
+      "name": "wizard-vicuna-uncensored:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "wizard-vicuna-uncensored:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "wizard-vicuna-uncensored:30b",
+      "size": "18GB"
+    },
+    {
+      "name": "granite-code",
+      "size": "2.0GB"
+    },
+    {
+      "name": "granite-code:3b",
+      "size": "2.0GB"
+    },
+    {
+      "name": "granite-code:8b",
+      "size": "4.6GB"
+    },
+    {
+      "name": "granite-code:20b",
+      "size": "12GB"
+    },
+    {
+      "name": "granite-code:34b",
+      "size": "19GB"
+    },
+    {
+      "name": "dolphin-phi",
+      "size": "1.6GB"
+    },
+    {
+      "name": "dolphin-phi:2.7b",
+      "size": "1.6GB"
+    },
+    {
+      "name": "starcoder",
+      "size": "1.8GB"
+    },
+    {
+      "name": "starcoder:1b",
+      "size": "726MB"
+    },
+    {
+      "name": "starcoder:3b",
+      "size": "1.8GB"
+    },
+    {
+      "name": "starcoder:7b",
+      "size": "4.3GB"
+    },
+    {
+      "name": "starcoder:15b",
+      "size": "9.0GB"
+    },
+    {
+      "name": "deepseek-llm",
+      "size": "4.0GB"
+    },
+    {
+      "name": "deepseek-llm:7b",
+      "size": "4.0GB"
+    },
+    {
+      "name": "deepseek-llm:67b",
+      "size": "38GB"
+    },
+    {
+      "name": "vicuna",
+      "size": "3.8GB"
+    },
+    {
+      "name": "vicuna:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "vicuna:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "vicuna:33b",
+      "size": "18GB"
+    },
+    {
+      "name": "openchat",
+      "size": "4.1GB"
+    },
+    {
+      "name": "openchat:7b",
+      "size": "4.1GB"
+    },
+    {
+      "name": "mistral-openorca",
+      "size": "4.1GB"
+    },
+    {
+      "name": "mistral-openorca:7b",
+      "size": "4.1GB"
+    },
+    {
+      "name": "deepseek-v2",
+      "size": "8.9GB"
+    },
+    {
+      "name": "deepseek-v2:16b",
+      "size": "8.9GB"
+    },
+    {
+      "name": "deepseek-v2:236b",
+      "size": "133GB"
+    },
+    {
+      "name": "codegeex4",
+      "size": "5.5GB"
+    },
+    {
+      "name": "codegeex4:9b",
+      "size": "5.5GB"
+    },
+    {
+      "name": "openhermes",
+      "size": "4.1GB"
+    },
+    {
+      "name": "openhermes:v2",
+      "size": "4.1GB"
+    },
+    {
+      "name": "openhermes:v2.5",
+      "size": "4.1GB"
+    },
+    {
+      "name": "codeqwen",
+      "size": "4.2GB"
+    },
+    {
+      "name": "codeqwen:7b",
+      "size": "4.2GB"
+    },
+    {
+      "name": "qwen2-math",
+      "size": "4.4GB"
+    },
+    {
+      "name": "qwen2-math:1.5b",
+      "size": "935MB"
+    },
+    {
+      "name": "qwen2-math:7b",
+      "size": "4.4GB"
+    },
+    {
+      "name": "qwen2-math:72b",
+      "size": "41GB"
+    },
+    {
+      "name": "llama2-chinese",
+      "size": "3.8GB"
+    },
+    {
+      "name": "llama2-chinese:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "llama2-chinese:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "aya",
+      "size": "4.8GB"
+    },
+    {
+      "name": "aya:8b",
+      "size": "4.8GB"
+    },
+    {
+      "name": "aya:35b",
+      "size": "20GB"
+    },
+    {
+      "name": "tinydolphin",
+      "size": "637MB"
+    },
+    {
+      "name": "tinydolphin:1.1b",
+      "size": "637MB"
+    },
+    {
+      "name": "nous-hermes",
+      "size": "3.8GB"
+    },
+    {
+      "name": "nous-hermes:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "nous-hermes:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "glm4",
+      "size": "5.5GB"
+    },
+    {
+      "name": "glm4:9b",
+      "size": "5.5GB"
+    },
+    {
+      "name": "stable-code",
+      "size": "1.6GB"
+    },
+    {
+      "name": "stable-code:3b",
+      "size": "1.6GB"
+    },
+    {
+      "name": "granite3.2",
+      "size": "4.9GB"
+    },
+    {
+      "name": "granite3.2:2b",
+      "size": "1.5GB"
+    },
+    {
+      "name": "granite3.2:8b",
+      "size": "4.9GB"
+    },
+    {
+      "name": "exaone-deep",
+      "size": "4.8GB"
+    },
+    {
+      "name": "exaone-deep:2.4b",
+      "size": "1.6GB"
+    },
+    {
+      "name": "exaone-deep:7.8b",
+      "size": "4.8GB"
+    },
+    {
+      "name": "exaone-deep:32b",
+      "size": "19GB"
+    },
+    {
+      "name": "nous-hermes2",
+      "size": "6.1GB"
+    },
+    {
+      "name": "nous-hermes2:10.7b",
+      "size": "6.1GB"
+    },
+    {
+      "name": "nous-hermes2:34b",
+      "size": "19GB"
+    },
+    {
+      "name": "falcon",
+      "size": "4.2GB"
+    },
+    {
+      "name": "falcon:7b",
+      "size": "4.2GB"
+    },
+    {
+      "name": "falcon:40b",
+      "size": "24GB"
+    },
+    {
+      "name": "falcon:180b",
+      "size": "101GB"
+    },
+    {
+      "name": "wizardcoder",
+      "size": "3.8GB"
+    },
+    {
+      "name": "wizardcoder:33b",
+      "size": "19GB"
+    },
+    {
+      "name": "command-r-plus",
+      "size": "59GB"
+    },
+    {
+      "name": "command-r-plus:104b",
+      "size": "59GB"
+    },
+    {
+      "name": "neural-chat",
+      "size": "4.1GB"
+    },
+    {
+      "name": "neural-chat:7b",
+      "size": "4.1GB"
+    },
+    {
+      "name": "bakllava",
+      "size": "4.7GB"
+    },
+    {
+      "name": "bakllava:7b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "stablelm2",
+      "size": "983MB"
+    },
+    {
+      "name": "stablelm2:1.6b",
+      "size": "983MB"
+    },
+    {
+      "name": "stablelm2:12b",
+      "size": "7.0GB"
+    },
+    {
+      "name": "sqlcoder",
+      "size": "4.1GB"
+    },
+    {
+      "name": "sqlcoder:7b",
+      "size": "4.1GB"
+    },
+    {
+      "name": "sqlcoder:15b",
+      "size": "9.0GB"
+    },
+    {
+      "name": "llama3-chatqa",
+      "size": "4.7GB"
+    },
+    {
+      "name": "llama3-chatqa:8b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "llama3-chatqa:70b",
+      "size": "40GB"
+    },
+    {
+      "name": "opencoder",
+      "size": "4.7GB"
+    },
+    {
+      "name": "opencoder:1.5b",
+      "size": "1.4GB"
+    },
+    {
+      "name": "opencoder:8b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "llava-phi3",
+      "size": "2.9GB"
+    },
+    {
+      "name": "llava-phi3:3.8b",
+      "size": "2.9GB"
+    },
+    {
+      "name": "yi-coder",
+      "size": "5.0GB"
+    },
+    {
+      "name": "yi-coder:1.5b",
+      "size": "866MB"
+    },
+    {
+      "name": "yi-coder:9b",
+      "size": "5.0GB"
+    },
+    {
+      "name": "wizard-math",
+      "size": "4.1GB"
+    },
+    {
+      "name": "wizard-math:7b",
+      "size": "4.1GB"
+    },
+    {
+      "name": "wizard-math:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "wizard-math:70b",
+      "size": "39GB"
+    },
+    {
+      "name": "reflection",
+      "size": "40GB"
+    },
+    {
+      "name": "reflection:70b",
+      "size": "40GB"
+    },
+    {
+      "name": "granite3.1-dense",
+      "size": "5.0GB"
+    },
+    {
+      "name": "granite3.1-dense:2b",
+      "size": "1.6GB"
+    },
+    {
+      "name": "granite3.1-dense:8b",
+      "size": "5.0GB"
+    },
+    {
+      "name": "granite3-dense",
+      "size": "1.6GB"
+    },
+    {
+      "name": "granite3-dense:2b",
+      "size": "1.6GB"
+    },
+    {
+      "name": "granite3-dense:8b",
+      "size": "4.9GB"
+    },
+    {
+      "name": "llama3-gradient",
+      "size": "4.7GB"
+    },
+    {
+      "name": "llama3-gradient:8b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "llama3-gradient:70b",
+      "size": "40GB"
+    },
+    {
+      "name": "exaone3.5",
+      "size": "4.8GB"
+    },
+    {
+      "name": "exaone3.5:2.4b",
+      "size": "1.6GB"
+    },
+    {
+      "name": "exaone3.5:7.8b",
+      "size": "4.8GB"
+    },
+    {
+      "name": "exaone3.5:32b",
+      "size": "19GB"
+    },
+    {
+      "name": "dbrx",
+      "size": "74GB"
+    },
+    {
+      "name": "dbrx:132b",
+      "size": "74GB"
+    },
+    {
+      "name": "samantha-mistral",
+      "size": "4.1GB"
+    },
+    {
+      "name": "samantha-mistral:7b",
+      "size": "4.1GB"
+    },
+    {
+      "name": "dolphincoder",
+      "size": "4.2GB"
+    },
+    {
+      "name": "dolphincoder:7b",
+      "size": "4.2GB"
+    },
+    {
+      "name": "dolphincoder:15b",
+      "size": "9.1GB"
+    },
+    {
+      "name": "tulu3",
+      "size": "4.9GB"
+    },
+    {
+      "name": "tulu3:8b",
+      "size": "4.9GB"
+    },
+    {
+      "name": "tulu3:70b",
+      "size": "43GB"
+    },
+    {
+      "name": "nemotron-mini",
+      "size": "2.7GB"
+    },
+    {
+      "name": "nemotron-mini:4b",
+      "size": "2.7GB"
+    },
+    {
+      "name": "r1-1776",
+      "size": "43GB"
+    },
+    {
+      "name": "r1-1776:70b",
+      "size": "43GB"
+    },
+    {
+      "name": "r1-1776:671b",
+      "size": "404GB"
+    },
+    {
+      "name": "starling-lm",
+      "size": "4.1GB"
+    },
+    {
+      "name": "starling-lm:7b",
+      "size": "4.1GB"
+    },
+    {
+      "name": "phind-codellama",
+      "size": "19GB"
+    },
+    {
+      "name": "phind-codellama:34b",
+      "size": "19GB"
+    },
+    {
+      "name": "solar",
+      "size": "6.1GB"
+    },
+    {
+      "name": "solar:10.7b",
+      "size": "6.1GB"
+    },
+    {
+      "name": "internlm2",
+      "size": "4.5GB"
+    },
+    {
+      "name": "internlm2:1m",
+      "size": "4.5GB"
+    },
+    {
+      "name": "internlm2:1.8b",
+      "size": "1.1GB"
+    },
+    {
+      "name": "internlm2:7b",
+      "size": "4.5GB"
+    },
+    {
+      "name": "internlm2:20b",
+      "size": "11GB"
+    },
+    {
+      "name": "xwinlm",
+      "size": "3.8GB"
+    },
+    {
+      "name": "xwinlm:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "xwinlm:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "athene-v2",
+      "size": "47GB"
+    },
+    {
+      "name": "athene-v2:72b",
+      "size": "47GB"
+    },
+    {
+      "name": "nemotron",
+      "size": "43GB"
+    },
+    {
+      "name": "nemotron:70b",
+      "size": "43GB"
+    },
+    {
+      "name": "yarn-llama2",
+      "size": "3.8GB"
+    },
+    {
+      "name": "yarn-llama2:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "yarn-llama2:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "llama3-groq-tool-use",
+      "size": "4.7GB"
+    },
+    {
+      "name": "llama3-groq-tool-use:8b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "llama3-groq-tool-use:70b",
+      "size": "40GB"
+    },
+    {
+      "name": "meditron",
+      "size": "3.8GB"
+    },
+    {
+      "name": "meditron:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "meditron:70b",
+      "size": "39GB"
+    },
+    {
+      "name": "granite3-moe",
+      "size": "822MB"
+    },
+    {
+      "name": "granite3-moe:1b",
+      "size": "822MB"
+    },
+    {
+      "name": "granite3-moe:3b",
+      "size": "2.1GB"
+    },
+    {
+      "name": "wizardlm-uncensored",
+      "size": "7.4GB"
+    },
+    {
+      "name": "wizardlm-uncensored:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "aya-expanse",
+      "size": "5.1GB"
+    },
+    {
+      "name": "aya-expanse:8b",
+      "size": "5.1GB"
+    },
+    {
+      "name": "aya-expanse:32b",
+      "size": "20GB"
+    },
+    {
+      "name": "wizardlm:7b-q2_K",
+      "size": "2.8GB"
+    },
+    {
+      "name": "wizardlm:7b-q3_K_S",
+      "size": "2.9GB"
+    },
+    {
+      "name": "wizardlm:7b-q3_K_M",
+      "size": "3.3GB"
+    },
+    {
+      "name": "smallthinker",
+      "size": "3.6GB"
+    },
+    {
+      "name": "smallthinker:3b",
+      "size": "3.6GB"
+    },
+    {
+      "name": "llama-guard3",
+      "size": "4.9GB"
+    },
+    {
+      "name": "llama-guard3:1b",
+      "size": "1.6GB"
+    },
+    {
+      "name": "llama-guard3:8b",
+      "size": "4.9GB"
+    },
+    {
+      "name": "orca2",
+      "size": "3.8GB"
+    },
+    {
+      "name": "orca2:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "orca2:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "medllama2",
+      "size": "3.8GB"
+    },
+    {
+      "name": "medllama2:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "nous-hermes2-mixtral",
+      "size": "26GB"
+    },
+    {
+      "name": "nous-hermes2-mixtral:8x7b",
+      "size": "26GB"
+    },
+    {
+      "name": "stable-beluga",
+      "size": "3.8GB"
+    },
+    {
+      "name": "stable-beluga:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "stable-beluga:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "stable-beluga:70b",
+      "size": "39GB"
+    },
+    {
+      "name": "deepseek-v2.5",
+      "size": "133GB"
+    },
+    {
+      "name": "deepseek-v2.5:236b",
+      "size": "133GB"
+    },
+    {
+      "name": "reader-lm",
+      "size": "935MB"
+    },
+    {
+      "name": "reader-lm:0.5b",
+      "size": "352MB"
+    },
+    {
+      "name": "reader-lm:1.5b",
+      "size": "935MB"
+    },
+    {
+      "name": "llama-pro",
+      "size": "4.7GB"
+    },
+    {
+      "name": "llama-pro:instruct",
+      "size": "4.7GB"
+    },
+    {
+      "name": "llama-pro:text",
+      "size": "4.7GB"
+    },
+    {
+      "name": "yarn-mistral",
+      "size": "4.1GB"
+    },
+    {
+      "name": "yarn-mistral:7b",
+      "size": "4.1GB"
+    },
+    {
+      "name": "command-r7b",
+      "size": "5.1GB"
+    },
+    {
+      "name": "command-r7b:7b",
+      "size": "5.1GB"
+    },
+    {
+      "name": "shieldgemma",
+      "size": "5.8GB"
+    },
+    {
+      "name": "shieldgemma:2b",
+      "size": "1.7GB"
+    },
+    {
+      "name": "shieldgemma:9b",
+      "size": "5.8GB"
+    },
+    {
+      "name": "shieldgemma:27b",
+      "size": "17GB"
+    },
+    {
+      "name": "nexusraven",
+      "size": "7.4GB"
+    },
+    {
+      "name": "nexusraven:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "mathstral",
+      "size": "4.1GB"
+    },
+    {
+      "name": "mathstral:7b",
+      "size": "4.1GB"
+    },
+    {
+      "name": "command-a",
+      "size": "67GB"
+    },
+    {
+      "name": "command-a:111b",
+      "size": "67GB"
+    },
+    {
+      "name": "everythinglm",
+      "size": "7.4GB"
+    },
+    {
+      "name": "everythinglm:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "phi4-mini-reasoning",
+      "size": "3.2GB"
+    },
+    {
+      "name": "phi4-mini-reasoning:3.8b",
+      "size": "3.2GB"
+    },
+    {
+      "name": "codeup",
+      "size": "7.4GB"
+    },
+    {
+      "name": "codeup:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "marco-o1",
+      "size": "4.7GB"
+    },
+    {
+      "name": "marco-o1:7b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "stablelm-zephyr",
+      "size": "1.6GB"
+    },
+    {
+      "name": "stablelm-zephyr:3b",
+      "size": "1.6GB"
+    },
+    {
+      "name": "solar-pro",
+      "size": "13GB"
+    },
+    {
+      "name": "solar-pro:22b",
+      "size": "13GB"
+    },
+    {
+      "name": "duckdb-nsql",
+      "size": "3.8GB"
+    },
+    {
+      "name": "duckdb-nsql:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "falcon2",
+      "size": "6.4GB"
+    },
+    {
+      "name": "falcon2:11b",
+      "size": "6.4GB"
+    },
+    {
+      "name": "magicoder",
+      "size": "3.8GB"
+    },
+    {
+      "name": "magicoder:7b",
+      "size": "3.8GB"
+    },
+    {
+      "name": "mistrallite",
+      "size": "4.1GB"
+    },
+    {
+      "name": "mistrallite:7b",
+      "size": "4.1GB"
+    },
+    {
+      "name": "codebooga",
+      "size": "19GB"
+    },
+    {
+      "name": "codebooga:34b",
+      "size": "19GB"
+    },
+    {
+      "name": "bespoke-minicheck",
+      "size": "4.7GB"
+    },
+    {
+      "name": "bespoke-minicheck:7b",
+      "size": "4.7GB"
+    },
+    {
+      "name": "wizard-vicuna",
+      "size": "7.4GB"
+    },
+    {
+      "name": "wizard-vicuna:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "nuextract",
+      "size": "2.2GB"
+    },
+    {
+      "name": "nuextract:3.8b",
+      "size": "2.2GB"
+    },
+    {
+      "name": "granite3-guardian",
+      "size": "2.7GB"
+    },
+    {
+      "name": "granite3-guardian:2b",
+      "size": "2.7GB"
+    },
+    {
+      "name": "granite3-guardian:8b",
+      "size": "5.8GB"
+    },
+    {
+      "name": "megadolphin",
+      "size": "68GB"
+    },
+    {
+      "name": "megadolphin:120b",
+      "size": "68GB"
+    },
+    {
+      "name": "notux",
+      "size": "26GB"
+    },
+    {
+      "name": "notux:8x7b",
+      "size": "26GB"
+    },
+    {
+      "name": "open-orca-platypus2",
+      "size": "7.4GB"
+    },
+    {
+      "name": "open-orca-platypus2:13b",
+      "size": "7.4GB"
+    },
+    {
+      "name": "notus",
+      "size": "4.1GB"
+    },
+    {
+      "name": "notus:7b",
+      "size": "4.1GB"
+    },
+    {
+      "name": "goliath",
+      "size": "66GB"
+    },
+    {
+      "name": "sailor2",
+      "size": "5.2GB"
+    },
+    {
+      "name": "sailor2:1b",
+      "size": "1.1GB"
+    },
+    {
+      "name": "sailor2:8b",
+      "size": "5.2GB"
+    },
+    {
+      "name": "sailor2:20b",
+      "size": "12GB"
+    },
+    {
+      "name": "firefunction-v2",
+      "size": "40GB"
+    },
+    {
+      "name": "firefunction-v2:70b",
+      "size": "40GB"
+    },
+    {
+      "name": "alfred",
+      "size": "24GB"
+    },
+    {
+      "name": "alfred:40b",
+      "size": "24GB"
+    },
+    {
+      "name": "command-r7b-arabic",
+      "size": "5.1GB"
+    },
+    {
+      "name": "command-r7b-arabic:7b",
+      "size": "5.1GB"
+    },
+    {
+      "name": "deepseek-v3.1:671b",
+      "size": "404GB"
+    }
   ]
 }

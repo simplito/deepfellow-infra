@@ -4,9 +4,12 @@ const ollama = JSON.parse(fs.readFileSync("ollama.json", "utf8"));
 
 const llms = [];
 const embs = [];
-ollama.list.forEach(x => {
-    const mainTags = x.mainTags.map(x => x.includes(":latest") ? x.replace(":latest", "") : x);
-    if (x.capabilities.includes("embedding")) {
+ollama.list.forEach(model => {
+    const mainTags = model.mainTags.map(mainTag => {
+        const tag = model.tags.find(tag => tag.tag == mainTag);
+        return {name: mainTag.includes(":latest") ? mainTag.replace(":latest", "") : mainTag, size: tag.size};
+    });
+    if (model.capabilities.includes("embedding")) {
         embs.push(mainTags);
     }
     else {

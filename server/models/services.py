@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from server.models.models import RetrieveModelOut
 
 type ServiceOptions = dict[str, Any]
+type ServiceSize = dict[str, str] | str
 
 
 class InstallServiceIn(BaseModel):
@@ -40,6 +41,7 @@ class RetrieveServiceOut(BaseModel):
     id: str
     installed: bool | ServiceOptions
     spec: ServiceSpecification
+    size: ServiceSize
 
 
 class ListServicesFilters(BaseModel):

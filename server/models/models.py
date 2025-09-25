@@ -30,6 +30,7 @@ class RetrieveModelOut(BaseModel):
     service: str
     type: str
     installed: bool
+    size: str
 
 
 class ListModelsFilters(BaseModel):
