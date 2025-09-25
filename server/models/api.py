@@ -84,11 +84,11 @@ class ToolCall(BaseModel):
 
 
 class AssistantMessage(BaseModel):
-    content: str | list[str] = []
+    content: str | list[str] | None = None
     role: Literal["assistant"] = "assistant"
-    name: str = ""
-    audio: str = ""
-    refusal: str = ""
+    name: str | None = None
+    audio: str | None = None
+    refusal: str | None = None
     tool_calls: list[ToolCall] = []
 
 
