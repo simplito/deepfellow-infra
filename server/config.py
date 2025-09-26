@@ -26,6 +26,7 @@ class AppSettings(BaseSettings):
     docker_subnet: str = ""
     storage_dir: str = ""
     hugging_face_token: str = ""
+    civitai_token: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

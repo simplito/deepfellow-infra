@@ -154,3 +154,8 @@ async def fetch_from(url: str, method: str = "GET", data: JsonSerializable | Non
     """Make HTTP request to host on given port."""
     async with aiohttp.ClientSession() as session, session.request(method, url, json=data) as response:
         return FetchResult(status_code=response.status, data=await response.text())
+
+
+def add_token_to_civitai(url: str, token: str) -> str:
+    """Add token to civit."""
+    return f"{url}&token={token}"
