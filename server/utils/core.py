@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import quote
 
+import aiofiles
 import aiohttp
 from aiohttp import ClientSession
 from pydantic import BaseModel
@@ -120,13 +121,7 @@ class Utils:
             # Download with and error handling
             try:
                 # Use curl instead of wget for better macOS compatibility
-                result = await Utils.run_command(f"curl -L '{model_url}' -o '{local_path}'")
-
-                if result.exit_code != 0:
-                    # Clean up partial download
-                    if local_path.exists():
-                        local_path.unlink()
-                    raise RuntimeError("Download failed with exit code", (result.exit_code, result.stderr))  # noqa: TRY301
+                await download_file(model_url, local_path)
 
                 # Validate the downloaded file
                 if not local_path.exists() or local_path.stat().st_size == 0:
@@ -148,6 +143,19 @@ class Utils:
 class FetchResult(BaseModel):
     status_code: int
     data: str
+
+
+async def download_file(url: str, file_path: Path) -> None:
+    """Download file from given url and save it under given path."""
+    async with aiohttp.ClientSession() as session, session.get(url) as response:
+        if response.status != 200:
+            body = await response.text()
+            msg = f"Cannot download file from {url} get status code {response.status}, body: {body}"
+            raise RuntimeError(msg)
+
+        async with aiofiles.open(file_path, "wb") as f:
+            async for chunk in response.content.iter_chunked(1024):
+                await f.write(chunk)
 
 
 async def fetch_from(url: str, method: str = "GET", data: JsonSerializable | None = None) -> FetchResult:
