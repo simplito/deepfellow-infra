@@ -24,7 +24,7 @@ from server.models.api import ImagesRequest
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
-from server.utils.core import Utils
+from server.utils.core import Utils, add_token_to_civitai
 from server.utils.exceptions import AppError
 
 ModelType = Literal["txt2img", "lora"]
@@ -106,13 +106,29 @@ _const = StableDiffusionConst(
             model_url="https://huggingface.co/ByteDance/SDXL-Lightning",
             size="6.94GB",
         ),
-        "Qwen Image fp8 e4m3fn": StableDiffusionModel(
+        "Semi-realistic": StableDiffusionModel(
             filetype="Stable-diffusion",
             type="txt2img",
-            url="https://civitai.com/api/download/models/2086298?type=Model&format=SafeTensor&size=pruned&fp=fp8",
-            filename="qwen-image.safetensors",
-            model_url="https://civitai.com/models/1843568?modelVersionId=2086298",
-            size="19.03GB",
+            url="https://civitai.com/api/download/models/2202259?type=Model&format=SafeTensor&size=pruned&fp=fp16",
+            filename="semi-realistic.safetensors",
+            model_url="https://civitai.com/models/1945811/semi-real-illustrious-or-mm",
+            size="6.94GB",
+        ),
+        "CyberRealistic-XL-FP16": StableDiffusionModel(
+            filetype="Stable-diffusion",
+            type="txt2img",
+            url="https://civitai.com/api/download/models/2152184?type=Model&format=SafeTensor&size=pruned&fp=fp16",
+            filename="cyberrealistic-xl-fp16.safetensors",
+            model_url="https://civitai.com/models/312530/cyberrealistic-xl",
+            size="6.46GB",
+        ),
+        "CyberRealistic-XL-FP32": StableDiffusionModel(
+            filetype="Stable-diffusion",
+            type="txt2img",
+            url="https://civitai.com/api/download/models/2152184?type=Model&format=SafeTensor&size=pruned&fp=fp32",
+            filename="cyberrealistic-xl-fp32.safetensors",
+            model_url="https://civitai.com/models/312530/cyberrealistic-xl",
+            size="12.92GB",
         ),
     },
 )
@@ -316,6 +332,11 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         model = _const.models[model_id]
 
         model_dir = self._get_working_models_dir() / model.filetype
+
+        # Handle civitai logged request. We should probably move this code.
+        if model.url.startswith("https://civitai.com") and (token := self.get_civitai_token()):
+            model.url = add_token_to_civitai(model.url, token)
+
         local_model_path, _ = await Utils.ensure_model_downloaded(model.url, model_dir, model.filename)
         registered_name = options.alias if options.alias is not None else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
@@ -409,10 +430,15 @@ class QualityLevel(Enum):
 class StableDiffusionOptions(TypedDict):
     sd_model_checkpoint: NotRequired[str]
     prompt: NotRequired[str]
+    negative_prompt: NotRequired[str]
+    sampler_name: NotRequired[str]
+    hr_sampler_name: NotRequired[str]
+    clip_skip: NotRequired[int]
+    steps: NotRequired[int]
     n_iter: NotRequired[int]
+    cfg_scale: NotRequired[int]
     width: NotRequired[int]
     height: NotRequired[int]
-    steps: NotRequired[int]
 
 
 def split_text_to_json_and_prompt(text: str) -> tuple[StableDiffusionOptions, str]:
@@ -561,7 +587,10 @@ async def remove_background_from_img(base_url: str, img: str) -> str:
     async with ClientSession(rm_bg_url) as client:
         response = await client.post(rm_bg_url, json=request_model.model_dump(), timeout=600)  # type: ignore
         response_json = await response.json()
-        return response_json.get("image", "")
+        try:
+            return response_json.get("image", "")
+        except Exception:
+            return img
 
 
 def _stable_diffusion_handler(base_url: str, model_filename: str) -> EndpointCallback[ImagesRequest]:

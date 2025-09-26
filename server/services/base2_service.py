@@ -122,3 +122,11 @@ class Base2Service[T](BaseService):
         if self.installed is None:
             raise HTTPException(status_code=400, detail=f"Service {self.get_id()} not installed")
         return self.installed
+
+    def get_hugging_face_token(self) -> str:
+        """Return Hugging Face Key."""
+        return self.application_context.config.hugging_face_token
+
+    def get_civitai_token(self) -> str:
+        """Return Civitai Face Key."""
+        return self.application_context.config.civitai_token

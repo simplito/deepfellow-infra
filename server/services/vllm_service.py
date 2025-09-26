@@ -110,10 +110,6 @@ class InstalledInfo:
 class VllmService(Base2Service[InstalledInfo]):
     hugging_face_cache_path = "/mnt/hf"
 
-    def get_hf_key(self) -> str:
-        """Return Hugging Face Key."""
-        return self.application_context.config.hugging_face_token
-
     def get_id(self) -> str:
         """Return the service id."""
         return "vllm"
@@ -205,7 +201,7 @@ class VllmService(Base2Service[InstalledInfo]):
             model.env_vars = {}
 
         model.env_vars["HF_HOME"] = self.hugging_face_cache_path
-        model.env_vars["HF_TOKEN"] = self.get_hf_key()
+        model.env_vars["HF_TOKEN"] = self.get_hugging_face_token()
 
         image = self._get_image(info.parsed_options.gpu)
         volumes = [f"{self._get_working_dir() / 'models'}:{Path(self.hugging_face_cache_path) / 'hub'}"]
