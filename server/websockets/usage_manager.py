@@ -186,7 +186,7 @@ class UsageManager:
         debug_msg = f"Models usage after update usage: {self.models_usage}"
         logger.debug(debug_msg)
 
-    async def with_usage(self, model: str, func: Callable[[], Awaitable[T]]) -> T:
+    async def with_usage(self, model: str, func: Callable[[], Awaitable[T]], log_payload: bool = False) -> T:
         """With usage."""
         self._add_usage(model)
         try:
@@ -199,10 +199,15 @@ class UsageManager:
 
             async def create_generator() -> AsyncGenerator[Any]:
                 """Add usage for response."""
+                chunks = list[bytes]()
                 try:
                     async for chunk in resp.body_iterator:
+                        if log_payload and isinstance(chunk, bytes):
+                            chunks.append(chunk)
                         yield chunk
                 finally:
+                    if log_payload:
+                        logger.info(f"DUMP RESPONSE PAYLOAD {b''.join(chunks).decode('utf-8')}")  # noqa: G004
                     self._remove_usage(model)
 
             return StreamingResponse(create_generator(), media_type=resp.media_type, status_code=resp.status_code, headers=resp.headers)  # pyright: ignore[reportReturnType]

@@ -27,6 +27,7 @@ class AppSettings(BaseSettings):
     storage_dir: str = ""
     hugging_face_token: str = ""
     civitai_token: str = ""
+    log_payloads: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -69,6 +70,10 @@ class AppSettings(BaseSettings):
     def get_storage_dir(self) -> Path:
         """Get storage dir."""
         return Path(self.storage_dir) if self.storage_dir else get_main_dir() / "./storage"
+
+    def is_log_payloads_enabled(self) -> bool:
+        """Is log payloads enabled."""
+        return self.log_payloads == "true"
 
 
 def get_main_dir() -> Path:

@@ -58,7 +58,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         app.state.infra_infos = infra_infos = list[InfraInfo]()
         app.state.parent_infra = parent_infra = ParentInfra(create_infra_uri(config.parent_infra), config)
         app.state.services_manager = services_manager = ServicesManager(parent_infra)
-        app.state.endpoint_registry = endpoint_registry = EndpointRegistry()
+        app.state.endpoint_registry = endpoint_registry = EndpointRegistry(config)
         app.state.usage_manager = usage_manager = UsageManager(parent_infra, config, endpoint_registry)
         app.state.infra_websocket_server = InfraWebsocketServer(infra_infos, parent_infra, usage_manager)
         app.state.load_balancer = LoadBalancer(config, usage_manager)

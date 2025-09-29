@@ -12,6 +12,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from server.config import AppSettings
 from server.models.api import (
     ApiModel,
     ApiModels,
@@ -120,7 +121,9 @@ class EndpointRegistry:
 
     def __init__(
         self,
+        config: AppSettings,
     ):
+        self.config = config
         self.chat_completion_endpoints = Endpoint[ChatCompletionEndpoint]()
         self.embeddings_endpoints = Endpoint[SimpleEndpoint[EmbeddingRequest]]()
         self.audio_speech_endpoints = Endpoint[SimpleEndpoint[CreateSpeechRequest]]()
@@ -316,6 +319,8 @@ class EndpointRegistry:
 
     async def execute_chat_completion(self, request: Request, model: str, body: ChatCompletionRequest) -> StarletteResponse:
         """Process chat completion request."""
+        if self.config.is_log_payloads_enabled():
+            logger.info(f"DUMP REQUEST PAYLOAD /v1/chat/completions {body.model_dump_json(exclude_none=True)}")  # noqa: G004
 
         async def func() -> StarletteResponse:
             endpoint = self.chat_completion_endpoints.get_model(model, lambda x: x.on_chat_completion is not None)
@@ -328,7 +333,7 @@ class EndpointRegistry:
                 raise HTTPException(400, msg)
             return await endpoint.on_chat_completion(body, request)
 
-        return await self.usage_manager.with_usage(model, func)
+        return await self.usage_manager.with_usage(model, func, self.config.is_log_payloads_enabled())
 
     async def execute_completion(self, request: Request, model: str, body: CompletionLegacyRequest) -> StarletteResponse:
         """Process completion request."""
