@@ -68,11 +68,13 @@ class StableDiffusionModel(BaseModel):
 
 class StableDiffusionConst(BaseModel):
     image_gpu: DockerImage
+    image_cpu: DockerImage
     models: dict[str, StableDiffusionModel]
 
 
 _const = StableDiffusionConst(
     image_gpu=DockerImage(name="vladmandic/sdnext-cuda:latest", size="5290 MB"),
+    image_cpu=DockerImage(name="vladmandic/sdnext-cuda:latest", size="5290 MB"),
     models={
         "Plant Milk": StableDiffusionModel(
             filetype="Stable-diffusion",
@@ -193,7 +195,10 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
-        return {"cpu": "", "gpu": _const.image_gpu.size}
+        if _const.image_gpu.name != _const.image_gpu.name:
+            return {"cpu": _const.image_cpu.size, "gpu": _const.image_gpu.size}
+
+        return _const.image_cpu.size
 
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
@@ -237,15 +242,16 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         if platform.system() == "Darwin":
             raise NotImplementedError("Stable Diffusion is not supported on macOS")
         parsed_options = SDOptions(**options.spec)
-        if not parsed_options.gpu:
-            raise AppError("StableDiffusion has not the CPU support.")
-        if not await has_gpu_support():
-            raise AppError("Docker doesn't support GPU on this machine.")
         volumes = [
             f"{self._get_working_models_dir()}:/mnt/models",
             f"{self._get_working_data_dir()}:/mnt/data",
         ]
-        image = _const.image_gpu
+        if parsed_options.gpu:
+            image = _const.image_gpu
+            if not await has_gpu_support():
+                raise AppError("Docker doesn't support GPU on this machine.")
+        else:
+            image = _const.image_cpu
 
         await self.update_config()
         subnet = self.application_context.get_docker_subnet()

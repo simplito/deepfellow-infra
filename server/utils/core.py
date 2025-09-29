@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 import aiofiles
 import aiohttp
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientTimeout
 from pydantic import BaseModel
 
 from server.models.common import JsonSerializable
@@ -147,7 +147,7 @@ class FetchResult(BaseModel):
 
 async def download_file(url: str, file_path: Path) -> None:
     """Download file from given url and save it under given path."""
-    async with aiohttp.ClientSession() as session, session.get(url) as response:
+    async with aiohttp.ClientSession() as session, session.get(url, timeout=ClientTimeout(3600)) as response:
         if response.status != 200:
             body = await response.text()
             msg = f"Cannot download file from {url} get status code {response.status}, body: {body}"
