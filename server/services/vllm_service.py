@@ -35,9 +35,9 @@ class VllmConst(BaseModel):
 
 
 _const = VllmConst(
-    image_gpu=DockerImage(name="vllm/vllm-openai:v0.10.2", size="17514.66 MB"),
+    image_gpu=DockerImage(name="vllm/vllm-openai:v0.10.2", size="21.0 GB"),
     # Official docker images based on docs: https://gallery.ecr.aws/q9t5s3a7/vllm-cpu-release-repo
-    image_cpu=DockerImage(name="public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.10.2", size="3900 MB"),
+    image_cpu=DockerImage(name="public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.10.2", size="3.4 GB"),
     model_type="llm",
     models={
         "Qwen/Qwen3-0.6B": VllmModel(

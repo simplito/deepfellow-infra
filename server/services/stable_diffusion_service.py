@@ -73,8 +73,12 @@ class StableDiffusionConst(BaseModel):
 
 
 _const = StableDiffusionConst(
-    image_gpu=DockerImage(name="vladmandic/sdnext-cuda:latest", size="5290 MB"),
-    image_cpu=DockerImage(name="vladmandic/sdnext-cuda:latest", size="5290 MB"),
+    image_gpu=DockerImage(
+        name="vladmandic/sdnext-cuda:latest@sha256:10f9ab600c245b9ce83be5a55abb64b46e115ef8508f5ffc69eed8fa0fc28ce8", size="9.4 GB"
+    ),
+    image_cpu=DockerImage(
+        name="vladmandic/sdnext-cuda:latest@sha256:10f9ab600c245b9ce83be5a55abb64b46e115ef8508f5ffc69eed8fa0fc28ce8", size="9.4 GB"
+    ),
     models={
         "Plant Milk": StableDiffusionModel(
             filetype="Stable-diffusion",
