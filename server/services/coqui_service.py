@@ -35,8 +35,8 @@ class CoquiConst(BaseModel):
 
 
 _const = CoquiConst(
-    image_gpu=DockerImage(name="ghcr.io/coqui-ai/tts", size="10549.64 MB"),
-    image_cpu=DockerImage(name="ghcr.io/coqui-ai/tts-cpu", size="10387.64 MB"),
+    image_gpu=DockerImage(name="ghcr.io/coqui-ai/tts:dbf1a08a0d4e47fdad6172e433eeb34bc6b13b4e", size="11.0 GB"),
+    image_cpu=DockerImage(name="ghcr.io/coqui-ai/tts-cpu:dbf1a08a0d4e47fdad6172e433eeb34bc6b13b4e", size="11.0 GB"),
     models={
         "tts_models/en/vctk/vits": CoquiModel(
             docker_name="en-vctk-vits",

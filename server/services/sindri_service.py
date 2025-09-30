@@ -23,7 +23,7 @@ class SindriAiConst(BaseModel):
 
 
 _const = SindriAiConst(
-    image=DockerImage(name="sindrilabs/evllm-proxy:v0.0.8", size="48.11 MB"),
+    image=DockerImage(name="sindrilabs/evllm-proxy:v0.0.8", size="0.1 GB"),
     models={
         "gemma3:27b": SindriAiModel(type="llm", real_model_name="gemma3"),
     },
@@ -100,7 +100,7 @@ sindriClient:
   baseURL: {parsed_options.api_url}
   apiKey: {parsed_options.api_key}
   requestTimeoutSeconds: 10
-  
+
   encryption:
     enabled: true
     keySource: ephemeral  # or 'value' or 'file'
