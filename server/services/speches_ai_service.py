@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
+from server.models.api import ModelProps
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -490,11 +491,15 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         )
         if model.type == "tts":
             model_info.registration_id = self.endpoint_registry.register_audio_speech_as_proxy(
-                registered_name, ProxyOptions(url=f"{info.base_url}/v1/audio/speech")
+                model=registered_name,
+                props=ModelProps(private=True),
+                options=ProxyOptions(url=f"{info.base_url}/v1/audio/speech"),
             )
         if model.type == "stt":
             model_info.registration_id = self.endpoint_registry.register_audio_transcriptions_as_proxy(
-                registered_name, ProxyOptions(url=f"{info.base_url}/v1/audio/transcriptions")
+                model=registered_name,
+                props=ModelProps(private=True),
+                options=ProxyOptions(url=f"{info.base_url}/v1/audio/transcriptions"),
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:

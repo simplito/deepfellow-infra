@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
+from server.models.api import ModelProps
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -176,6 +177,7 @@ sindriClient:
         if model.type == "llm":
             model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                 model=registered_name,
+                props=ModelProps(private=True),
                 chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model.real_model_name),
                 completions=None,
             )

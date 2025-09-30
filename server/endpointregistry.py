@@ -23,6 +23,7 @@ from server.models.api import (
     EmbeddingRequest,
     FormSerializable,
     ImagesRequest,
+    ModelProps,
 )
 from server.models.common import StarletteResponse
 
@@ -50,6 +51,7 @@ type RegistrationId = str
 
 class RegisteredModel[T](NamedTuple):
     id: RegistrationId
+    props: ModelProps
     endpoint: T
 
 
@@ -57,9 +59,9 @@ class Endpoint[T]:
     def __init__(self):
         self.models = dict[ModelId, dict[RegistrationId, RegisteredModel[T]]]()
 
-    def add_model(self, model: ModelId, endpoint: T) -> RegistrationId:
+    def add_model(self, model: ModelId, props: ModelProps, endpoint: T) -> RegistrationId:
         """Add model to registry."""
-        registered_model = RegisteredModel(id=str(uuid.uuid4()), endpoint=endpoint)
+        registered_model = RegisteredModel(id=str(uuid.uuid4()), props=props, endpoint=endpoint)
         if model not in self.models:
             self.models[model] = {}
         self.models[model][registered_model.id] = registered_model
@@ -90,7 +92,14 @@ class Endpoint[T]:
 
     def list_models(self) -> list[ApiModel]:
         """List models from registry."""
-        return [ApiModel(id=model, object="model", created=0, owned_by="unknown") for model in self.models]
+        res = list[ApiModel]()
+        for model_id, map in self.models.items():
+            private = False
+            for item in map.values():
+                if item.props.private:
+                    private = True
+            res.append(ApiModel(id=model_id, object="model", created=0, owned_by="unknown", props=ModelProps(private=private)))
+        return res
 
 
 class ProxyOptions(NamedTuple):
@@ -132,7 +141,7 @@ class EndpointRegistry:
         self.images_generations_endpoints = Endpoint[SimpleEndpoint[ImagesRequest]]()
 
     def get_models(self) -> ApiModels:
-        """Get chat completions models."""
+        """Get models for api."""
         models: list[ApiModel] = []
         for model in self.chat_completion_endpoints.list_models():
             models.append(model)
@@ -147,7 +156,7 @@ class EndpointRegistry:
         return ApiModels(data=models)
 
     def get_model(self, model_id: str) -> ApiModel:
-        """Get chat completions model."""
+        """Get model for api."""
         models = self.get_models()
         model = next((x for x in models.data if x.id == model_id), None)
         if model is None:
@@ -155,7 +164,7 @@ class EndpointRegistry:
         return model
 
     def list_models(self) -> list[ModelInfo]:
-        """List models."""
+        """List models for load balancing."""
         models = list[ModelInfo]()
         for model in self.chat_completion_endpoints.list_models():
             models.append(ModelInfo(id=model.id, type="llm"))
@@ -169,13 +178,14 @@ class EndpointRegistry:
             models.append(ModelInfo(id=model.id, type="llm"))
         return models
 
-    def register_chat_completion(self, model: str, endpoint: ChatCompletionEndpoint) -> RegistrationId:
+    def register_chat_completion(self, model: str, props: ModelProps, endpoint: ChatCompletionEndpoint) -> RegistrationId:
         """Register chat completion endpoint for given model."""
-        return self.chat_completion_endpoints.add_model(model, endpoint)
+        return self.chat_completion_endpoints.add_model(model, props, endpoint)
 
     def register_chat_completion_as_proxy(
         self,
         model: str,
+        props: ModelProps,
         chat_completions: ProxyOptions | None,
         completions: ProxyOptions | None,
     ) -> RegistrationId:
@@ -194,81 +204,86 @@ class EndpointRegistry:
 
             endpoint.on_completion = on_completion_request
 
-        return self.register_chat_completion(model, endpoint)
+        return self.register_chat_completion(model, props, endpoint)
 
     def unregister_chat_completion(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister chat completion for given model."""
         self.chat_completion_endpoints.remove_model(model, registration_id)
 
-    def register_embeddings(self, model: str, endpoint: SimpleEndpoint[EmbeddingRequest]) -> RegistrationId:
+    def register_embeddings(self, model: str, props: ModelProps, endpoint: SimpleEndpoint[EmbeddingRequest]) -> RegistrationId:
         """Register embeddings endpoint for given model."""
-        return self.embeddings_endpoints.add_model(model, endpoint)
+        return self.embeddings_endpoints.add_model(model, props, endpoint)
 
-    def register_embeddings_as_proxy(self, model: str, options: ProxyOptions) -> RegistrationId:
+    def register_embeddings_as_proxy(self, model: str, props: ModelProps, options: ProxyOptions) -> RegistrationId:
         """Register embeddings for given model as a proxy."""
 
         async def on_request(body: EmbeddingRequest, request: Request) -> StreamingResponse:
             return await post_json(body, options, request)
 
-        return self.register_embeddings(model, SimpleEndpoint(on_request=on_request))
+        return self.register_embeddings(model, props, SimpleEndpoint(on_request=on_request))
 
     def unregister_embeddings(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister embeddings for given model."""
         self.embeddings_endpoints.remove_model(model, registration_id)
 
-    def register_audio_speech(self, model: str, endpoint: SimpleEndpoint[CreateSpeechRequest]) -> RegistrationId:
+    def register_audio_speech(self, model: str, props: ModelProps, endpoint: SimpleEndpoint[CreateSpeechRequest]) -> RegistrationId:
         """Register audio speech endpoint for given model."""
-        return self.audio_speech_endpoints.add_model(model, endpoint)
+        return self.audio_speech_endpoints.add_model(model, props, endpoint)
 
-    def register_audio_speech_as_proxy(self, model: str, options: ProxyOptions) -> RegistrationId:
+    def register_audio_speech_as_proxy(self, model: str, props: ModelProps, options: ProxyOptions) -> RegistrationId:
         """Register audio speech for given model as a proxy."""
 
         async def on_request(body: CreateSpeechRequest, request: Request) -> StreamingResponse:
             return await post_json(body, options, request)
 
-        return self.register_audio_speech(model, SimpleEndpoint(on_request=on_request))
+        return self.register_audio_speech(model, props, SimpleEndpoint(on_request=on_request))
 
     def unregister_audio_speech(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister audio speech for given model."""
         self.audio_speech_endpoints.remove_model(model, registration_id)
 
-    def register_audio_transcriptions(self, model: str, endpoint: SimpleEndpoint[CreateTranscriptionRequest]) -> RegistrationId:
+    def register_audio_transcriptions(
+        self,
+        model: str,
+        props: ModelProps,
+        endpoint: SimpleEndpoint[CreateTranscriptionRequest],
+    ) -> RegistrationId:
         """Register audio transcriptions endpoint for given model."""
-        return self.audio_transcriptions_endpoints.add_model(model, endpoint)
+        return self.audio_transcriptions_endpoints.add_model(model, props, endpoint)
 
-    def register_audio_transcriptions_as_proxy(self, model: str, options: ProxyOptions) -> RegistrationId:
+    def register_audio_transcriptions_as_proxy(self, model: str, props: ModelProps, options: ProxyOptions) -> RegistrationId:
         """Register audio transcriptions for given model as a proxy."""
 
         async def on_request(body: CreateTranscriptionRequest, request: Request) -> StreamingResponse:
             return await post_form(body, options, request)
 
-        return self.register_audio_transcriptions(model, SimpleEndpoint(on_request=on_request))
+        return self.register_audio_transcriptions(model, props, SimpleEndpoint(on_request=on_request))
 
     def unregister_audio_transcriptions(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister audio transcriptions for given model."""
         self.audio_transcriptions_endpoints.remove_model(model, registration_id)
 
-    def register_image_generations(self, model: str, endpoint: SimpleEndpoint[ImagesRequest]) -> RegistrationId:
+    def register_image_generations(self, model: str, props: ModelProps, endpoint: SimpleEndpoint[ImagesRequest]) -> RegistrationId:
         """Register image generations endpoint for given model."""
-        return self.images_generations_endpoints.add_model(model, endpoint)
+        return self.images_generations_endpoints.add_model(model, props, endpoint)
 
-    def register_image_generations_as_proxy(self, model: str, options: ProxyOptions) -> RegistrationId:
+    def register_image_generations_as_proxy(self, model: str, props: ModelProps, options: ProxyOptions) -> RegistrationId:
         """Register image generations for given model as a proxy."""
 
         async def on_request(body: ImagesRequest, request: Request) -> StreamingResponse:
             return await post_json(body, options, request)
 
-        return self.register_image_generations(model, SimpleEndpoint(on_request=on_request))
+        return self.register_image_generations(model, props, SimpleEndpoint(on_request=on_request))
 
     def unregister_image_generations(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister image generations for given model."""
         self.images_generations_endpoints.remove_model(model, registration_id)
 
-    def register_custom_endpoint(self, url: str, endpoint: SimpleEndpoint[None]) -> RegistrationId:
+    def register_custom_endpoint(self, url: str, props: ModelProps, endpoint: SimpleEndpoint[None]) -> RegistrationId:
         """Register custom endpoint."""
-        return self.custom_endpoints.add_model(url, endpoint)
+        return self.custom_endpoints.add_model(url, props, endpoint)
 
-    def register_custom_endpoint_as_proxy(self, url: str, options: ProxyOptions) -> RegistrationId:
+    def register_custom_endpoint_as_proxy(self, url: str, props: ModelProps, options: ProxyOptions) -> RegistrationId:
         """Register custom endpoint as a proxy."""
 
         async def on_request(_body: None, request: Request) -> StreamingResponse:
@@ -281,7 +296,7 @@ class EndpointRegistry:
                 )
             ).as_streaming_response(options.allowed_response_headers)
 
-        return self.register_custom_endpoint(url, SimpleEndpoint(on_request=on_request))
+        return self.register_custom_endpoint(url, props, SimpleEndpoint(on_request=on_request))
 
     def unregister_custom_endpoint(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister custom endpoint."""
