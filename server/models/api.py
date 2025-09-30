@@ -283,11 +283,16 @@ class CreateSpeechRequest(BaseModel):
     )
 
 
+class ModelProps(BaseModel):
+    private: bool
+
+
 class ApiModel(BaseModel):
     id: str
     object: Literal["model"]
     created: int
     owned_by: str
+    props: ModelProps
 
 
 class ApiModels(BaseModel):

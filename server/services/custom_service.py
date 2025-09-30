@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
+from server.models.api import ModelProps
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -126,7 +127,7 @@ class CustomService(Base2Service[InstalledInfo]):
             registration_id="",
         )
         model_info.registration_id = self.endpoint_registry.register_custom_endpoint_as_proxy(
-            model.custom_endpoint, ProxyOptions(url=f"{model_info.base_url}{model.custom_endpoint}")
+            url=model.custom_endpoint, props=model.model_props, options=ProxyOptions(url=f"{model_info.base_url}{model.custom_endpoint}")
         )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
@@ -163,11 +164,13 @@ class CustomService(Base2Service[InstalledInfo]):
 class CustomModel:
     def __init__(
         self,
+        model_props: ModelProps,
         model_type: str,
         custom_endpoint: str,
         size: str,
         options: DockerOptions | Callable[[CustomService, str | None], DockerOptions],
     ):
+        self.model_props = model_props
         self.model_type = model_type
         self.custom_endpoint = custom_endpoint
         self.size = size
@@ -185,6 +188,7 @@ class CustomConst:
 _const = CustomConst(
     models={
         "bentoml/example-summarization": CustomModel(
+            model_props=ModelProps(private=True),
             model_type="custom",
             custom_endpoint="/summarize",
             size="12013.49MB",
@@ -198,6 +202,7 @@ _const = CustomConst(
             ),
         ),
         "easyOCR": CustomModel(
+            model_props=ModelProps(private=True),
             model_type="custom",
             custom_endpoint="/v1/ocr",
             size="10075.38MB",

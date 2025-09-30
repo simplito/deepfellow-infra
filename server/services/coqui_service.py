@@ -12,7 +12,7 @@ from server.applicationcontext import get_base_url, get_container_host, get_cont
 from server.docker import DockerImage, DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
 from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
 from server.ffmpeg import ffmpeg_audio_convert_async_gen
-from server.models.api import CreateSpeechRequest
+from server.models.api import CreateSpeechRequest, ModelProps
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -211,8 +211,9 @@ class CoquiService(Base2Service[InstalledInfo]):
             registration_id="",
         )
         model_info.registration_id = self.endpoint_registry.register_audio_speech(
-            registered_name,
-            SimpleEndpoint(on_request=_create_handler(model_info.base_url, model.default_speaker, model.response_format)),
+            model=registered_name,
+            props=ModelProps(private=True),
+            endpoint=SimpleEndpoint(on_request=_create_handler(model_info.base_url, model.default_speaker, model.response_format)),
         )
 
     def _get_image(self, gpu: bool) -> DockerImage:

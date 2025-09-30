@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, ValidationError
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerImage, DockerOptions, get_user_for_docker, has_gpu_support, install_and_run_docker, uninstall_docker
 from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
-from server.models.api import ImagesRequest
+from server.models.api import ImagesRequest, ModelProps
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -356,7 +356,9 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         model_filename = model.filename.split(".")[0]
         if model.type == "txt2img":
             model_info.registration_id = self.endpoint_registry.register_image_generations(
-                registered_name, SimpleEndpoint(on_request=_stable_diffusion_handler(info.base_url, model_filename))
+                model=registered_name,
+                props=ModelProps(private=True),
+                endpoint=SimpleEndpoint(on_request=_stable_diffusion_handler(info.base_url, model_filename)),
             )
 
         await self.refresh_models()

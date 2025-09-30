@@ -10,6 +10,7 @@ from server.applicationcontext import get_base_url, get_container_host, get_cont
 from server.config import get_main_dir
 from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
+from server.models.api import ModelProps
 from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
@@ -216,12 +217,13 @@ class OllamaService(Base2Service[InstalledInfo]):
         if model.type == "llm":
             model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                 model=registered_name,
+                props=ModelProps(private=True),
                 chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
                 completions=ProxyOptions(url=f"{info.base_url}/v1/completions", rewrite_model_to=model_id),
             )
         if model.type == "embedding":
             model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
-                registered_name, ProxyOptions(url=f"{info.base_url}/v1/embeddings")
+                model=registered_name, props=ModelProps(private=True), options=ProxyOptions(url=f"{info.base_url}/v1/embeddings")
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
