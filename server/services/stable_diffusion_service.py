@@ -21,7 +21,15 @@ from server.applicationcontext import get_base_url, get_container_host, get_cont
 from server.docker import DockerImage, DockerOptions, get_user_for_docker, has_gpu_support, install_and_run_docker, uninstall_docker
 from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
 from server.models.api import ImagesRequest, ModelProps
-from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
+from server.models.models import (
+    InstallModelIn,
+    ListModelsFilters,
+    ListModelsOut,
+    ModelField,
+    ModelSpecification,
+    RetrieveModelOut,
+    UninstallModelIn,
+)
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 from server.utils.core import Utils, add_token_to_civitai
@@ -164,6 +172,10 @@ class SDOptions(BaseModel):
     gpu: bool
 
 
+class SDModelOptions(BaseModel):
+    alias: str | None = None
+
+
 class InstalledInfo:
     def __init__(
         self,
@@ -209,6 +221,14 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         return ServiceSpecification(
             fields=[
                 ServiceField(type="bool", name="gpu", description="Run on GPU"),
+            ]
+        )
+
+    def get_model_spec(self) -> ModelSpecification:
+        """Return the model specification."""
+        return ModelSpecification(
+            fields=[
+                ModelField(type="text", name="alias", description="Model alias", required=False),
             ]
         )
 
@@ -300,9 +320,18 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
         for model_id, model in _const.models.items():
-            installed = model_id in info.models
+            installed = info.models[model_id].options if model_id in info.models else False
             if filters.installed is None or filters.installed == installed:
-                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=model.size))
+                out_list.append(
+                    RetrieveModelOut(
+                        id=model_id,
+                        service=self.get_id(),
+                        type=model.type,
+                        installed=installed,
+                        size=model.size,
+                        spec=self.get_model_spec(),
+                    )
+                )
         return ListModelsOut(list=out_list)
 
     async def get_model(self, model_id: str) -> RetrieveModelOut:
@@ -311,8 +340,15 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
-        installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=model.size)
+        installed = info.models[model_id].options if model_id in info.models else False
+        return RetrieveModelOut(
+            id=model_id,
+            service=self.get_id(),
+            type=model.type,
+            installed=installed,
+            size=model.size,
+            spec=self.get_model_spec(),
+        )
 
     async def refresh_checkpoints(self, client: ClientSession, base_url: str) -> None:
         """Refresh SD Next checkpoints models."""
@@ -335,6 +371,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             await asyncio.gather(*tasks)
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+        parsed_model_options = SDModelOptions(**options.spec) if options.spec else SDModelOptions()
         info = self._check_installed()
         if model_id in info.models:
             return
@@ -349,7 +386,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             model.url = add_token_to_civitai(model.url, token)
 
         local_model_path, _ = await Utils.ensure_model_downloaded(model.url, model_dir, model.filename)
-        registered_name = options.alias if options.alias is not None else model_id
+        registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
             type=model.type,

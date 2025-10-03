@@ -7,7 +7,15 @@ from server.applicationcontext import get_base_url, get_container_host, get_cont
 from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
-from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
+from server.models.models import (
+    InstallModelIn,
+    ListModelsFilters,
+    ListModelsOut,
+    ModelField,
+    ModelSpecification,
+    RetrieveModelOut,
+    UninstallModelIn,
+)
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 
@@ -41,6 +49,10 @@ class ModelInstalledInfo(BaseModel):
 class SindriOptions(BaseModel):
     api_url: str
     api_key: str
+
+
+class SindriModelOptions(BaseModel):
+    alias: str | None = None
 
 
 class InstalledInfo:
@@ -79,6 +91,14 @@ class SindriService(Base2Service[InstalledInfo]):
             fields=[
                 ServiceField(type="text", name="api_url", description="API URL", default="https://sindri.app/api/ai/v1/openai"),
                 ServiceField(type="password", name="api_key", description="API Key"),
+            ]
+        )
+
+    def get_model_spec(self) -> ModelSpecification:
+        """Return the model specification."""
+        return ModelSpecification(
+            fields=[
+                ModelField(type="text", name="alias", description="Model alias", required=False),
             ]
         )
 
@@ -146,9 +166,18 @@ sindriClient:
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
         for model_id, model in _const.models.items():
-            installed = model_id in info.models
+            installed = info.models[model_id].options if model_id in info.models else False
             if filters.installed is None or filters.installed == installed:
-                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=""))
+                out_list.append(
+                    RetrieveModelOut(
+                        id=model_id,
+                        service=self.get_id(),
+                        type=model.type,
+                        installed=installed,
+                        size="",
+                        spec=self.get_model_spec(),
+                    )
+                )
         return ListModelsOut(list=out_list)
 
     async def get_model(self, model_id: str) -> RetrieveModelOut:
@@ -157,17 +186,25 @@ sindriClient:
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
-        installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size="")
+        installed = info.models[model_id].options if model_id in info.models else False
+        return RetrieveModelOut(
+            id=model_id,
+            service=self.get_id(),
+            type=model.type,
+            installed=installed,
+            size="",
+            spec=self.get_model_spec(),
+        )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+        parsed_model_options = SindriModelOptions(**options.spec) if options.spec else SindriModelOptions()
         info = self._check_installed()
         if model_id in info.models:
             return
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
-        registered_name = options.alias if options.alias is not None else model_id
+        registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
             type=model.type,

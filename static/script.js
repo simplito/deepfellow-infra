@@ -17,28 +17,35 @@ async function showServicesPage() {
         <div class="page services-page">
             <h3>Services</h3>
             <div class="boxes services">
-                ${data.list.map(s => `
-                    <div class="box service">
-                        <div class="box-name service-name">
-                            ${s.id}
-                            <div class="badge ${s.installed ? "badge-installed" : "badge-not-insalled"}">
-                                ${s.installed ? "Installed" : "Not installed"}
+                ${data.list.map(s => {
+                    const values = s.installed ? s.installed : false;
+                    return (
+                        `<div class="box service">
+                            <div class="box-name service-name">
+                                ${s.id}
+                                <div class="badge ${s.installed ? "badge-installed" : "badge-not-insalled"}">
+                                    ${s.installed ? "Installed" : "Not installed"}
+                                </div>
                             </div>
-                        </div>
-                        <div class="box-size service-size">
-                            ${typeof(s.size) == "string" ?
-                                `Size: <span class="size">${s.size ? s.size : "N/A"}</span>` :
-                                Object.keys(s.size).map(key =>
-                                    `<div class="box-size-entry">${key.toUpperCase()}: <span class="size">${s.size[key]}</span></div>`
-                                ).join("")
-                            }
-                        </div>
-                        <div class="box-buttons service-buttons">
-                            ${!s.installed ? `<button data-action="install-service" data-service-id="${s.id}">Install</button>` : ""}
-                            ${s.installed ? `<button data-action="open-service-models" data-service-id="${s.id}">Models</button>`: ""}
-                            ${s.installed ? `<button data-action="uninstall-service" data-service-id="${s.id}">Uninstall</button>`: ""}
-                        </div>
-                    </div>`).join("")}
+                            <div class="box-size service-size">
+                                ${typeof(s.size) == "string" ?
+                                    `Size: <span class="size">${s.size ? s.size : "N/A"}</span>` :
+                                    Object.keys(s.size).map(key =>
+                                        `<div class="box-size-entry">${key.toUpperCase()}: <span class="size">${s.size[key]}</span></div>`
+                                    ).join("")
+                                }
+                            </div>
+                            <div class="box-values">
+                                ${values ? Object.keys(values).map(key => `<div class="box-value">${key} = ${s.spec.fields.find(x => x.name === key)?.type === "password" ? "*****" : (values[key] === null ? "" : values[key])}</div>`).join("") : ""}
+                            </div>
+                            <div class="box-buttons service-buttons">
+                                ${!s.installed ? `<button data-action="install-service" data-service-id="${s.id}">Install</button>` : ""}
+                                ${s.installed ? `<button data-action="open-service-models" data-service-id="${s.id}">Models</button>`: ""}
+                                ${s.installed ? `<button data-action="uninstall-service" data-service-id="${s.id}">Uninstall</button>`: ""}
+                            </div>
+                        </div>`
+                    );
+                }).join("")}
             </div>
         </div>`;
     showHtml(html);
@@ -62,10 +69,10 @@ function showInstallServiceModal(info, onInstall) {
         <form class="fields" data-id="modal-form">
             ${info.spec.fields.map(field => `
                 <div class="field">
-                    <div class="field-label">${field.description}</div>
+                    <div class="field-label">${field.description} ${!field.required ? `<span class="optional">(optional)</span>` : ""}</div>
                     <div class="field-input">${(() => {
                         if (field.type === "text" || field.type === "password" || field.type === "number") {
-                            return `<input type="${field.type}" name="${field.name}" required="required" value="${field.default || ""}" placeholder="${field.description}" />`;
+                            return `<input type="${field.type}" name="${field.name}" ${field.required ? `required="required"` : ""} value="${field.default || ""}" placeholder="${field.placeholder || ""}" />`;
                         }
                         if (field.type === "bool") {
                             return `<input type="checkbox" name="${field.name}" />`;
@@ -93,12 +100,14 @@ function showInstallServiceModal(info, onInstall) {
         }
         const data = {};
         for (const field of div.querySelectorAll("input")) {
-            data[field.name] = field.type == "checkbox" ? field.checked : field.value;
+            data[field.name] = field.type == "checkbox" ? field.checked : field.type == "number" ? field.valueAsNumber : field.value;
         }
         onInstall(data);
         div.remove();
     });
 }
+
+const showInstallModelModal = showInstallServiceModal;
 
 async function showServicePage(id) {
     showLoadingPage();
@@ -162,23 +171,30 @@ async function showServicePage(id) {
             (modelType === "__all" || x.type === modelType) &&
             (installed === null || x.installed === installed)
         );
-        boxes.innerHTML = filtered.length === 0 ? `<div class="empty">No elements</div>` : filtered.map(m => `
-            <div class="box model">
-                <div class="box-name model-name">
-                    ${m.id}
-                    <div class="badge ${m.installed ? "badge-installed" : "badge-not-insalled"}">
-                        ${m.installed ? "Installed" : "Not installed"}
+        boxes.innerHTML = filtered.length === 0 ? `<div class="empty">No elements</div>` : filtered.map(m => {
+            const values = m.installed ? m.installed.spec || {} : false;
+            return (
+                `<div class="box model">
+                    <div class="box-name model-name">
+                        ${m.id}
+                        <div class="badge ${m.installed ? "badge-installed" : "badge-not-insalled"}">
+                            ${m.installed ? "Installed" : "Not installed"}
+                        </div>
                     </div>
-                </div>
-                <div class="model-type">${types[m.type] || m.type}</div>
-                <div class="box-size model-size">
-                    Size: <span class="size">${m.size ? m.size : "N/A"}</span>
-                </div>
-                <div class="box-buttons model-buttons">
-                    ${!m.installed ? `<button data-action="install-model" data-service-id="${id}" data-model-id="${m.id}">Install</button>` : ""}
-                    ${m.installed ? `<button data-action="uninstall-model" data-service-id="${id}" data-model-id="${m.id}">Uninstall</button>`: ""}
-                </div>
-            </div>`).join("")
+                    <div class="model-type">${types[m.type] || m.type}</div>
+                    <div class="box-size model-size">
+                        Size: <span class="size">${m.size ? m.size : "N/A"}</span>
+                    </div>
+                    <div class="box-values">
+                        ${values ? Object.keys(values).map(key => `<div class="box-value">${key} = ${m.spec.fields.find(x => x.name === key)?.type === "password" ? "*****" : values[key]}</div>`).join("") : ""}
+                    </div>
+                    <div class="box-buttons model-buttons">
+                        ${!m.installed ? `<button data-action="install-model" data-service-id="${id}" data-model-id="${m.id}">Install</button>` : ""}
+                        ${m.installed ? `<button data-action="uninstall-model" data-service-id="${id}" data-model-id="${m.id}">Uninstall</button>`: ""}
+                    </div>
+                </div>`
+            );
+        }).join("")
     }
     render();
     const modelFilterEle = document.getElementById("model-filter");
@@ -242,13 +258,21 @@ root.addEventListener("click", async e => {
             showServicePage(serviceId);
         }
         else if (action === "install-model") {
-            showLoadingPage()
-            await fetchX(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
-                method: "POST",
-                body: JSON.stringify({alias: null}),
-                headers: {"Content-Type": "application/json"}
+            const info = await fetchX(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
+                method: "GET"
             });
-            showServicePage(serviceId);
+            showInstallModelModal(info, async data => {
+                showLoadingPage()
+                try {
+                    await fetchX(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
+                        method: "POST",
+                        body: JSON.stringify({spec: data}),
+                        headers: {"Content-Type": "application/json"}
+                    });
+                }
+                catch {}
+                showServicePage(serviceId);
+            });
         }
         else if (action === "uninstall-model") {
             showLoadingPage()

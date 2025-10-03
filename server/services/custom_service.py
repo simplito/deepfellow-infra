@@ -9,7 +9,7 @@ from server.applicationcontext import get_base_url, get_container_host, get_cont
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
-from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
+from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, ModelSpecification, RetrieveModelOut, UninstallModelIn
 from server.models.services import InstallServiceIn, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 
@@ -82,7 +82,7 @@ class CustomService(Base2Service[InstalledInfo]):
         out_list: list[RetrieveModelOut] = []
         for model_id in _const.models:
             model = _const.models[model_id]
-            installed = model_id in info.models
+            installed = info.models[model_id].options if model_id in info.models else False
             if filters.installed is None or filters.installed == installed:
                 out_list.append(
                     RetrieveModelOut(
@@ -91,6 +91,7 @@ class CustomService(Base2Service[InstalledInfo]):
                         type=model.model_type,
                         installed=installed,
                         size=model.size,
+                        spec=model.model_spec,
                     )
                 )
         return ListModelsOut(list=out_list)
@@ -101,8 +102,15 @@ class CustomService(Base2Service[InstalledInfo]):
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
-        installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.model_type, installed=installed, size=model.size)
+        installed = info.models[model_id].options if model_id in info.models else False
+        return RetrieveModelOut(
+            id=model_id,
+            service=self.get_id(),
+            type=model.model_type,
+            installed=installed,
+            size=model.size,
+            spec=model.model_spec,
+        )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
         info = self._check_installed()
@@ -152,12 +160,14 @@ class CustomModel:
     def __init__(
         self,
         model_props: ModelProps,
+        model_spec: ModelSpecification,
         model_type: str,
         custom_endpoint: str,
         size: str,
         options: DockerOptions | Callable[[CustomService, str | None], DockerOptions],
     ):
         self.model_props = model_props
+        self.model_spec = model_spec
         self.model_type = model_type
         self.custom_endpoint = custom_endpoint
         self.size = size
@@ -176,6 +186,7 @@ _const = CustomConst(
     models={
         "bentoml/example-summarization": CustomModel(
             model_props=ModelProps(private=True),
+            model_spec=ModelSpecification(fields=[]),
             model_type="custom",
             custom_endpoint="/summarize",
             size="12013.49MB",
@@ -191,6 +202,7 @@ _const = CustomConst(
         ),
         "easyOCR": CustomModel(
             model_props=ModelProps(private=True),
+            model_spec=ModelSpecification(fields=[]),
             model_type="custom",
             custom_endpoint="/v1/ocr",
             size="10075.38MB",
