@@ -82,6 +82,10 @@ class ModelInstalledInfo(BaseModel):
 class OllamaOptions(BaseModel):
     gpu: bool
     num_parallel: int = 3
+    keep_alive: str = "60m"
+    is_flash_attention: bool = False
+    max_loaded_models: int = 1
+    kv_cache_type: str = "f16"
 
 
 class InstalledInfo:
@@ -149,6 +153,10 @@ class OllamaService(Base2Service[InstalledInfo]):
             volumes=volumes,
             env_vars={
                 "OLLAMA_NUM_PARALLEL": str(parsed_options.num_parallel),
+                "OLLAMA_KEEP_ALIVE": str(parsed_options.keep_alive),
+                "OLLAMA_FLASH_ATTENTION": str(parsed_options.is_flash_attention),
+                "OLLAMA_MAX_LOADED_MODELS": str(parsed_options.max_loaded_models),
+                "OLLAMA_KV_CACHE_TYPE": str(parsed_options.kv_cache_type),
             },
             restart="unless-stopped",
             subnet=subnet,
