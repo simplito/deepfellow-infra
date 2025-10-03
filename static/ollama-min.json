@@ -17,6 +17,10 @@
       "size": "670MB"
     },
     {
+      "name": "embeddinggemma",
+      "size": "622MB"
+    },
+    {
       "name": "bge-m3",
       "size": "1.2GB"
     },
