@@ -25,6 +25,10 @@ class ApplicationContext:
         self.services_manager = services_manager
         self.allocated_ports = set[int]()
 
+    def get_docker_container_name(self, name: str) -> str | None:
+        """Return docker container name."""
+        return self.config.container_name_prefix + name if self.config.container_name_prefix else None
+
     def get_docker_subnet(self) -> str | None:
         """Return docker subnet name or None if it is not set."""
         return self.config.docker_subnet if self.config.docker_subnet else None

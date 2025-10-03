@@ -181,6 +181,7 @@ class CoquiService(Base2Service[InstalledInfo]):
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name=f"{self.get_id()}-{model.docker_name}",
+            container_name=self.application_context.get_docker_container_name(f"{self.get_id()}-{model.docker_name}"),
             image=image.name,
             command=self._build_coqui_command(
                 CoquiCmdOptions(

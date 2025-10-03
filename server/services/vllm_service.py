@@ -210,6 +210,7 @@ class VllmService(Base2Service[InstalledInfo]):
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name=f"{self.get_id()}-{model.docker_name}",
+            container_name=self.application_context.get_docker_container_name(f"{self.get_id()}-{model.docker_name}"),
             image=image.name,
             command=" ".join(vllm_command),
             image_port=8000,

@@ -28,6 +28,7 @@ class AppSettings(BaseSettings):
     hugging_face_token: str = ""
     civitai_token: str = ""
     log_payloads: str = ""
+    container_name_prefix: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

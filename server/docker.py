@@ -19,6 +19,7 @@ class DockerOptions:
     def __init__(
         self,
         name: str,
+        container_name: str | None,
         image: str,
         image_port: int,
         command: str | None = None,
@@ -41,6 +42,7 @@ class DockerOptions:
         self.env_vars = env_vars or {}
         self.api_endpoint = api_endpoint
         self.service_name = Utils.sanitize_service_name(name)
+        self.container_name = container_name
         self.restart = restart
         self.volumes = volumes
         self.use_gpu = use_gpu
@@ -82,6 +84,7 @@ class DockerComposeDeploy(TypedDict):
 
 class DockerComposeService(TypedDict):
     image: str
+    container_name: NotRequired[str]
     ports: NotRequired[list[str]]
     environment: NotRequired[dict[str, str]]
     healthcheck: NotRequired[str]
@@ -239,6 +242,8 @@ async def generate_docker_compose_content(options: DockerOptions, port: int) -> 
         "image": options.image,
         "environment": options.env_vars,
     }
+    if options.container_name:
+        service["container_name"] = options.container_name
     if not options.subnet:
         service["ports"] = [f"{port}:{options.image_port}"]
     if options.healthcheck:

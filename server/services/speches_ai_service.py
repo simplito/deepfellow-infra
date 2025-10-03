@@ -417,6 +417,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name="speaches-ai",
+            container_name=self.application_context.get_docker_container_name("speaches-ai"),
             image=image.name,
             image_port=8000,
             use_gpu=parsed_options.gpu,

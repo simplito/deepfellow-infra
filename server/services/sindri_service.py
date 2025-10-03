@@ -112,6 +112,7 @@ sindriClient:
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name="sindri",
+            container_name=self.application_context.get_docker_container_name("sindri"),
             image=_const.image.name,
             command="serve /config.yaml",
             image_port=8080,

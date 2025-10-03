@@ -261,6 +261,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name="stable-diffusion",
+            container_name=self.application_context.get_docker_container_name("stable-diffusion"),
             image=image.name,
             env_vars={
                 "SD_DOCS": "true",

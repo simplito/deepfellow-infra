@@ -185,6 +185,7 @@ class LLamacppService(Base2Service[InstalledInfo]):
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name=f"{self.get_id()}-{model.docker_name}",
+            container_name=self.application_context.get_docker_container_name(f"{self.get_id()}-{model.docker_name}"),
             image=image.name,
             command=f"--model {model_in_container} --host 0.0.0.0 --port 8080",
             image_port=8080,

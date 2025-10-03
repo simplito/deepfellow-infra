@@ -143,19 +143,6 @@ class CustomService(Base2Service[InstalledInfo]):
             # unsupported
             pass
 
-    def get_docker_options(self) -> DockerOptions:
-        """Return docker options."""
-        return DockerOptions(
-            image_port=8000,
-            name="easyocr",
-            image="gitlab2.simplito.com:5050/df/df-ocr:1.0.0",
-            use_gpu=False,
-            env_vars={},
-            restart="unless-stopped",
-            volumes=[f"{self._get_working_dir()}/easyocr/model:/root/.EasyOCR/model"],
-            subnet=self.application_context.get_docker_subnet(),
-        )
-
     def get_working_dir(self) -> Path:
         """Get working dir."""
         return self._get_working_dir()
@@ -192,9 +179,10 @@ _const = CustomConst(
             model_type="custom",
             custom_endpoint="/summarize",
             size="12013.49MB",
-            options=lambda _, subnet: DockerOptions(
+            options=lambda custom_service, subnet: DockerOptions(
                 image_port=3000,
                 name="bentoml",
+                container_name=custom_service.application_context.get_docker_container_name("bentoml"),
                 image="gitlab2.simplito.com:5050/df/deepfellow-infra/bentomlexample:1.0.0",
                 command="serve",
                 env_vars={},
@@ -209,6 +197,7 @@ _const = CustomConst(
             options=lambda custom_service, subnet: DockerOptions(
                 image_port=8000,
                 name="easyocr",
+                container_name=custom_service.application_context.get_docker_container_name("bentoml"),
                 image="gitlab2.simplito.com:5050/df/df-ocr:1.0.0",
                 use_gpu=False,
                 env_vars={},

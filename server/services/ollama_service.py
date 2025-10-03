@@ -142,6 +142,7 @@ class OllamaService(Base2Service[InstalledInfo]):
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name="ollama",
+            container_name=self.application_context.get_docker_container_name("ollama"),
             image=_const.image.name,
             image_port=11434,
             use_gpu=parsed_options.gpu,
