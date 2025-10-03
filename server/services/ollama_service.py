@@ -1,17 +1,25 @@
 """Ollama service."""
 
 import json
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.config import get_main_dir
 from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
-from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
+from server.models.models import (
+    InstallModelIn,
+    ListModelsFilters,
+    ListModelsOut,
+    ModelField,
+    ModelSpecification,
+    RetrieveModelOut,
+    UninstallModelIn,
+)
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 from server.utils.core import fetch_from
@@ -81,11 +89,16 @@ class ModelInstalledInfo(BaseModel):
 
 class OllamaOptions(BaseModel):
     gpu: bool
-    num_parallel: int = 3
-    keep_alive: str = "60m"
-    is_flash_attention: bool = False
-    max_loaded_models: int = 1
-    kv_cache_type: str = "f16"
+    num_parallel: int | None = None  # 3
+    keep_alive: str = ""  # 60m
+    is_flash_attention: bool | None = None  # False
+    max_loaded_models: int | None = None  # 1
+    kv_cache_type: str = ""  # f16
+
+
+class OllamaModelOptions(BaseModel):
+    alias: str | None = None
+    alive_time: int | Annotated[str, StringConstraints(pattern=r"^(\d+[smh])?$", strict=True)] = ""
 
 
 class InstalledInfo:
@@ -126,8 +139,46 @@ class OllamaService(Base2Service[InstalledInfo]):
                 ServiceField(
                     type="number",
                     name="num_parallel",
-                    description="How many copies of one model can be loaded (OLLAMA_NUM_PARALLEL)",
+                    description="Maximum number of parallel requests (OLLAMA_NUM_PARALLEL)",
                     default="3",
+                ),
+                ServiceField(
+                    type="text",
+                    name="keep_alive",
+                    description="The duration that models stay loaded in memory (default 5m) (OLLAMA_KEEP_ALIVE)",
+                    required=False,
+                ),
+                ServiceField(
+                    type="bool",
+                    name="is_flash_attention",
+                    description="Enabled flash attention (OLLAMA_FLASH_ATTENTION)",
+                    required=False,
+                ),
+                ServiceField(
+                    type="number",
+                    name="max_loaded_models",
+                    description="Maximum number of loaded models per GPU (OLLAMA_MAX_LOADED_MODELS)",
+                    required=False,
+                ),
+                ServiceField(
+                    type="text",
+                    name="kv_cache_type",
+                    description="Quantization type for the K/V cache (default: f16, available: q4_0, q8_0) (OLLAMA_KV_CACHE_TYPE)",
+                    required=False,
+                ),
+            ]
+        )
+
+    def get_model_spec(self) -> ModelSpecification:
+        """Return the model specification."""
+        return ModelSpecification(
+            fields=[
+                ModelField(type="text", name="alias", description="Model alias", required=False),
+                ModelField(
+                    type="text",
+                    name="alive_time",
+                    description="How long should this model last when it isn't used (e.g. 5m)",
+                    required=False,
                 ),
             ]
         )
@@ -144,6 +195,17 @@ class OllamaService(Base2Service[InstalledInfo]):
         volumes = [f"{self._get_working_dir()}/main:/root/.ollama"]
 
         subnet = self.application_context.get_docker_subnet()
+        envs = dict[str, str]()
+        if parsed_options.num_parallel is not None:
+            envs["OLLAMA_NUM_PARALLEL"] = str(parsed_options.num_parallel)
+        if parsed_options.keep_alive:
+            envs["OLLAMA_KEEP_ALIVE"] = str(parsed_options.keep_alive)
+        if parsed_options.is_flash_attention is not None:
+            envs["OLLAMA_FLASH_ATTENTION"] = "1" if parsed_options.is_flash_attention else "0"
+        if parsed_options.max_loaded_models is not None:
+            envs["OLLAMA_MAX_LOADED_MODELS"] = str(parsed_options.max_loaded_models)
+        if parsed_options.kv_cache_type:
+            envs["OLLAMA_KV_CACHE_TYPE"] = str(parsed_options.kv_cache_type)
         docker_options = DockerOptions(
             name="ollama",
             container_name=self.application_context.get_docker_container_name("ollama"),
@@ -151,13 +213,7 @@ class OllamaService(Base2Service[InstalledInfo]):
             image_port=11434,
             use_gpu=parsed_options.gpu,
             volumes=volumes,
-            env_vars={
-                "OLLAMA_NUM_PARALLEL": str(parsed_options.num_parallel),
-                "OLLAMA_KEEP_ALIVE": str(parsed_options.keep_alive),
-                "OLLAMA_FLASH_ATTENTION": str(parsed_options.is_flash_attention),
-                "OLLAMA_MAX_LOADED_MODELS": str(parsed_options.max_loaded_models),
-                "OLLAMA_KV_CACHE_TYPE": str(parsed_options.kv_cache_type),
-            },
+            env_vars=envs,
             restart="unless-stopped",
             subnet=subnet,
         )
@@ -189,9 +245,18 @@ class OllamaService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
         for model_id, model in _const.models.items():
-            installed = model_id in info.models
+            installed = info.models[model_id].options if model_id in info.models else False
             if filters.installed is None or filters.installed == installed:
-                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=model.size))
+                out_list.append(
+                    RetrieveModelOut(
+                        id=model_id,
+                        service=self.get_id(),
+                        type=model.type,
+                        installed=installed,
+                        size=model.size,
+                        spec=self.get_model_spec(),
+                    )
+                )
         return ListModelsOut(list=out_list)
 
     async def get_model(self, model_id: str) -> RetrieveModelOut:
@@ -200,10 +265,18 @@ class OllamaService(Base2Service[InstalledInfo]):
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
-        installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=model.size)
+        installed = info.models[model_id].options if model_id in info.models else False
+        return RetrieveModelOut(
+            id=model_id,
+            service=self.get_id(),
+            type=model.type,
+            installed=installed,
+            size=model.size,
+            spec=self.get_model_spec(),
+        )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+        parsed_model_options = OllamaModelOptions(**options.spec) if options.spec else OllamaModelOptions()
         info = self._check_installed()
         if model_id in info.models:
             return
@@ -214,8 +287,12 @@ class OllamaService(Base2Service[InstalledInfo]):
         # res.data contains progress it can be streamed!
         if (res.status_code != 200 and res.status_code != 201) or "error" in res.data:
             print("Error when install model in ollama", model_id, res.status_code, res.data)
-            raise HTTPException(status_code=400, detail="Model not avaialble")
-        registered_name = options.alias if options.alias is not None else model_id
+            raise HTTPException(status_code=400, detail="Model not available")
+
+        if parsed_model_options.alive_time != "":
+            await fetch_from(f"{info.base_url}/api/generate", "POST", {"model": model_id, "keep_alive": parsed_model_options.alive_time})
+
+        registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
             type=model.type,

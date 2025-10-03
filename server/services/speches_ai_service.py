@@ -9,7 +9,15 @@ from server.applicationcontext import get_base_url, get_container_host, get_cont
 from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
-from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
+from server.models.models import (
+    InstallModelIn,
+    ListModelsFilters,
+    ListModelsOut,
+    ModelField,
+    ModelSpecification,
+    RetrieveModelOut,
+    UninstallModelIn,
+)
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 from server.utils.core import fetch_from
@@ -364,6 +372,10 @@ class SpeachesAIOptions(BaseModel):
     gpu: bool
 
 
+class SpeachesAIModelOptions(BaseModel):
+    alias: str | None = None
+
+
 class InstalledInfo:
     def __init__(
         self,
@@ -399,6 +411,14 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         return ServiceSpecification(
             fields=[
                 ServiceField(type="bool", name="gpu", description="Run on GPU"),
+            ]
+        )
+
+    def get_model_spec(self) -> ModelSpecification:
+        """Return the model specification."""
+        return ModelSpecification(
+            fields=[
+                ModelField(type="text", name="alias", description="Model alias", required=False),
             ]
         )
 
@@ -457,9 +477,18 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
         for model_id, model in _const.models.items():
-            installed = model_id in info.models
+            installed = info.models[model_id].options if model_id in info.models else False
             if filters.installed is None or filters.installed == installed:
-                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=model.size))
+                out_list.append(
+                    RetrieveModelOut(
+                        id=model_id,
+                        service=self.get_id(),
+                        type=model.type,
+                        installed=installed,
+                        size=model.size,
+                        spec=self.get_model_spec(),
+                    )
+                )
         return ListModelsOut(list=out_list)
 
     async def get_model(self, model_id: str) -> RetrieveModelOut:
@@ -468,10 +497,18 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
-        installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=model.size)
+        installed = info.models[model_id].options if model_id in info.models else False
+        return RetrieveModelOut(
+            id=model_id,
+            service=self.get_id(),
+            type=model.type,
+            installed=installed,
+            size=model.size,
+            spec=self.get_model_spec(),
+        )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+        parsed_model_options = SpeachesAIModelOptions(**options.spec) if options.spec else SpeachesAIModelOptions()
         info = self._check_installed()
         if model_id in info.models:
             return
@@ -482,7 +519,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         if res.status_code != 200 and res.status_code != 201:
             print("Error when install model in speaches-ai", model_id, res.status_code, res.data)
             raise HTTPException(status_code=400, detail="Model not avaialble")
-        registered_name = options.alias if options.alias is not None else model_id
+        registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
             type=model.type,

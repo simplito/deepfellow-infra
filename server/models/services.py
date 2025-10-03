@@ -31,6 +31,8 @@ class ServiceField(BaseModel):
     name: str
     description: str
     default: str | None = None
+    placeholder: str | None = None
+    required: bool = True
 
 
 class ServiceSpecification(BaseModel):

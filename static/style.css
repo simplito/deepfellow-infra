@@ -34,11 +34,11 @@ input, textarea {
 }
 .box {
     margin: 20px;
-    width: 300px;
+    width: 350px;
     padding: 20px;
     border: 1px solid #ddd;
     position: relative;
-    height: 200px;
+    height: 250px;
 }
 .box-name {
     font-size: 18px;
@@ -50,6 +50,18 @@ input, textarea {
 }
 .box-size .size {
     font-family: monospace;
+}
+.box-values {
+    font-size: 12px;
+}
+.box-values .box-value {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.optional {
+    color: #999;
+    font-size: 85%;
 }
 .badge {
     padding: 2px 5px;
@@ -90,8 +102,8 @@ input[type=text] {
     position: absolute;
     top: 100px;
     left: 50%;
-    margin-left: -300px;
-    width: 600px;
+    margin-left: -400px;
+    width: 800px;
     border-radius: 5px;
     background-color: #fff;
 }
@@ -107,7 +119,8 @@ input[type=text] {
     margin: 15px 0
 }
 .modal form .field input[type=text],
-.modal form .field input[type=password] {
+.modal form .field input[type=password],
+.modal form .field input[type=number] {
     width: 100%;
     border: 1px solid #ddd;
     padding: 5px 10px;

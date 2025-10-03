@@ -1,16 +1,31 @@
 """Models for models api."""
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
+
+type InstallModelOptions = dict[str, Any]
 
 
 class ModelIdQuery(BaseModel):
     model_id: str
 
 
+class ModelField(BaseModel):
+    type: str
+    name: str
+    description: str
+    default: str | None = None
+    placeholder: str | None = None
+    required: bool = True
+
+
+class ModelSpecification(BaseModel):
+    fields: list[ModelField]
+
+
 class InstallModelIn(BaseModel):
-    alias: str | None = None
+    spec: InstallModelOptions | None = None
 
 
 class InstallModelOut(BaseModel):
@@ -29,8 +44,9 @@ class RetrieveModelOut(BaseModel):
     id: str
     service: str
     type: str
-    installed: bool
+    installed: bool | InstallModelIn
     size: str
+    spec: ModelSpecification
 
 
 class ListModelsFilters(BaseModel):

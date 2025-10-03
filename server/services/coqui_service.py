@@ -13,7 +13,15 @@ from server.docker import DockerImage, DockerOptions, docker_pull, install_and_r
 from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
 from server.ffmpeg import ffmpeg_audio_convert_async_gen
 from server.models.api import CreateSpeechRequest, ModelProps
-from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
+from server.models.models import (
+    InstallModelIn,
+    ListModelsFilters,
+    ListModelsOut,
+    ModelField,
+    ModelSpecification,
+    RetrieveModelOut,
+    UninstallModelIn,
+)
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 from server.utils.core import Utils
@@ -77,6 +85,10 @@ class CoquiOptions(BaseModel):
     gpu: bool
 
 
+class CoquiModelOptions(BaseModel):
+    alias: str | None = None
+
+
 class InstalledInfo:
     def __init__(
         self,
@@ -120,6 +132,14 @@ class CoquiService(Base2Service[InstalledInfo]):
             ]
         )
 
+    def get_model_spec(self) -> ModelSpecification:
+        """Return the model specification."""
+        return ModelSpecification(
+            fields=[
+                ModelField(type="text", name="alias", description="Model alias", required=False),
+            ]
+        )
+
     def get_installed_info(self) -> bool | ServiceOptions:
         """Get service installed info."""
         return False if self.installed is None else self.installed.options.spec
@@ -146,7 +166,7 @@ class CoquiService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
         for model_id, model in _const.models.items():
-            installed = model_id in info.models
+            installed = info.models[model_id].options if model_id in info.models else False
             if filters.installed is None or filters.installed == installed:
                 out_list.append(
                     RetrieveModelOut(
@@ -155,6 +175,7 @@ class CoquiService(Base2Service[InstalledInfo]):
                         type=model.model_type,
                         installed=installed,
                         size=model.size,
+                        spec=self.get_model_spec(),
                     )
                 )
         return ListModelsOut(list=out_list)
@@ -165,10 +186,18 @@ class CoquiService(Base2Service[InstalledInfo]):
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
-        installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.model_type, installed=installed, size=model.size)
+        installed = info.models[model_id].options if model_id in info.models else False
+        return RetrieveModelOut(
+            id=model_id,
+            service=self.get_id(),
+            type=model.model_type,
+            installed=installed,
+            size=model.size,
+            spec=self.get_model_spec(),
+        )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+        parsed_model_options = CoquiModelOptions(**options.spec) if options.spec else CoquiModelOptions()
         info = self._check_installed()
         if model_id in info.models:
             return
@@ -199,7 +228,7 @@ class CoquiService(Base2Service[InstalledInfo]):
             subnet=subnet,
         )
         docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
-        registered_name = options.alias if options.alias is not None else model_id
+        registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
             type=model.model_type,

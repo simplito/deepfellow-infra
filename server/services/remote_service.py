@@ -8,7 +8,15 @@ from pydantic import BaseModel, Field
 
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
-from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
+from server.models.models import (
+    InstallModelIn,
+    ListModelsFilters,
+    ListModelsOut,
+    ModelField,
+    ModelSpecification,
+    RetrieveModelOut,
+    UninstallModelIn,
+)
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 
@@ -38,6 +46,10 @@ class ModelInstalledInfo(BaseModel):
 class RemoteOptions(BaseModel):
     api_url: str
     api_key: str
+
+
+class RemoteModelOptions(BaseModel):
+    alias: str | None = None
 
 
 class InstalledInfo:
@@ -76,6 +88,14 @@ class RemoteService(Base2Service[InstalledInfo]):
             ]
         )
 
+    def get_model_spec(self) -> ModelSpecification:
+        """Return the model specification."""
+        return ModelSpecification(
+            fields=[
+                ModelField(type="text", name="alias", description="Model alias", required=False),
+            ]
+        )
+
     def get_installed_info(self) -> bool | ServiceOptions:
         """Get service installed info."""
         return False if self.installed is None else self.installed.options.spec
@@ -110,9 +130,18 @@ class RemoteService(Base2Service[InstalledInfo]):
         out_list: list[RetrieveModelOut] = []
         _const = self.get_models_registry()
         for model_id, model in _const.models.items():
-            installed = model_id in info.models
+            installed = info.models[model_id].options if model_id in info.models else False
             if filters.installed is None or filters.installed == installed:
-                out_list.append(RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size=""))
+                out_list.append(
+                    RetrieveModelOut(
+                        id=model_id,
+                        service=self.get_id(),
+                        type=model.type,
+                        installed=installed,
+                        size="",
+                        spec=self.get_model_spec(),
+                    )
+                )
         return ListModelsOut(list=out_list)
 
     async def get_model(self, model_id: str) -> RetrieveModelOut:
@@ -122,10 +151,18 @@ class RemoteService(Base2Service[InstalledInfo]):
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
-        installed = model_id in info.models
-        return RetrieveModelOut(id=model_id, service=self.get_id(), type=model.type, installed=installed, size="")
+        installed = info.models[model_id].options if model_id in info.models else False
+        return RetrieveModelOut(
+            id=model_id,
+            service=self.get_id(),
+            type=model.type,
+            installed=installed,
+            size="",
+            spec=self.get_model_spec(),
+        )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+        parsed_model_options = RemoteModelOptions(**options.spec) if options.spec else RemoteModelOptions()
         info = self._check_installed()
         if model_id in info.models:
             return
@@ -133,7 +170,7 @@ class RemoteService(Base2Service[InstalledInfo]):
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
-        registered_name = options.alias if options.alias is not None else model_id
+        registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
             type=model.type,
