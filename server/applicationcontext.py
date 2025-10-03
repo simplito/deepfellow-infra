@@ -1,5 +1,6 @@
 """Application Content module."""
 
+import logging
 import socket
 import time
 from pathlib import Path
@@ -9,6 +10,8 @@ from server.services_manager import ServicesManager
 
 from .endpointregistry import EndpointRegistry
 from .serviceprovider import ServiceProvider
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class ApplicationContext:
@@ -38,8 +41,12 @@ class ApplicationContext:
         info = self.service_provider.load()
         for service_id, service_cfg in info["services"].items():
             start = time.time()
-            await self.services_manager.load_service(service_id, service_cfg)
-            print(f"{service_id} loaded in {round(time.time() - start, 1)}s")
+            logger.info(f"{service_id} loading...")  # noqa: G004
+            try:
+                await self.services_manager.load_service(service_id, service_cfg)
+                logger.info(f"{service_id} fully loaded in {round(time.time() - start, 1)}s")  # noqa: G004
+            except Exception:
+                logger.exception(f"{service_id} error occurs during loading {round(time.time() - start, 1)}s")  # noqa: G004
 
     def get_free_port(self, start: int = 20_000, end: int = 30_000) -> int:
         """Get next free port."""

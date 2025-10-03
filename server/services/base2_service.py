@@ -1,5 +1,6 @@
 """Base2 service."""
 
+import logging
 import shutil
 from abc import abstractmethod
 from pathlib import Path
@@ -28,6 +29,8 @@ class ServiceConfig(BaseModel):
 
 T = TypeVar("T")
 
+logger = logging.getLogger("uvicorn.error")
+
 
 class Base2Service[T](BaseService):
     def __init__(self, application_context: ApplicationContext, endpoint_registry: EndpointRegistry, service_provider: ServiceProvider):
@@ -50,7 +53,9 @@ class Base2Service[T](BaseService):
         """Load service using the config."""
         cfg = ServiceConfig(**config)
         await self._install(cfg.options)
+        logger.info(f"{self.get_id()} service checked")  # noqa: G004
         for model in cfg.models:
+            logger.info(f"{self.get_id()} loading model {model.model_id}")  # noqa: G004
             await self._install_model(model.model_id, model.options)
 
     async def _save(self) -> None:
