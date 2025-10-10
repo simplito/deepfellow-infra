@@ -1,26 +1,25 @@
 """WebSocket Client."""
 
-import ast
 import asyncio
+import logging
 from contextlib import suppress
-from typing import Any, NoReturn
 
 import websockets
-from pydantic import BaseModel
 
-from .models import WebsocketMsgs
+logger = logging.getLogger("uvicorn.error")
 
 
 class WebSocketClient:
-    queue: asyncio.Queue[Any] = asyncio.Queue()
-    uri: str
-    ws: websockets.ClientConnection
-    tasks: set[asyncio.Task[None]]
-    msgs_types: type[WebsocketMsgs] = WebsocketMsgs
-
     def __init__(self, uri: str):
         self.uri = uri
-        self.tasks = set()
+        self.process_loop = True
+        self.ws: tuple[websockets.ClientConnection, asyncio.Queue[str | None]] | None = None
+
+    def send(self, msg: str) -> None:
+        """Send message to websocket."""
+        if not self.ws:
+            raise RuntimeError("Cannot send websocket is disconnected")
+        self.ws[1].put_nowait(msg)
 
     async def run(self) -> None:
         """Manage the websocket connection and send messages from the queue."""
@@ -31,70 +30,64 @@ class WebSocketClient:
         await self.after_loop()
 
     async def before_loop(self) -> bool:
-        """Function before loop.\
-
-        If true on output it continue
-        """  # noqa: D401
+        """Return a value that indicates whether the loop should start or not."""
         return True
 
     async def loop(self) -> None:
         """Loop for external websocket."""
         while True:
-            with suppress(Exception):
-                async with websockets.connect(self.uri) as self.ws:
-                    await self.on_start()
-                    await asyncio.gather(*[self.send_loop(), self.get_loop()])
+            if not self.process_loop:
+                logger.info("WS client loop exit")
+                break
+            try:
+                async with websockets.connect(self.uri) as ws:
+                    logger.info("WS client connected")
+                    queue = asyncio.Queue[str | None]()
+                    send_task = asyncio.create_task(self._sender(ws, queue))
+                    receive_task = asyncio.create_task(self._receive_task(ws))
+                    self.ws = (ws, queue)
+                    try:
+                        await self.on_start()
+                        logger.info("WS client setup finished")
+                        await receive_task
+                    finally:
+                        with suppress(Exception):
+                            await ws.close()
+                        self.ws = None
+                        await queue.put(None)
+                        await send_task
+            except Exception:
+                logger.exception("WS client disconnected")
+            self.on_disconnect()
             await asyncio.sleep(10)
+
+    async def _sender(self, ws: websockets.ClientConnection, queue: asyncio.Queue[str | None]) -> None:
+        """Send message from queue one by one, it is required because websocket lib does not support concurrency write."""
+        while True:
+            message = await queue.get()
+            if message is None:
+                break
+            try:
+                await ws.send(message)
+            except Exception:
+                logger.exception("Error during sending message to websocket")
+
+    async def _receive_task(self, ws: websockets.ClientConnection) -> None:
+        async for msg_raw in ws:
+            try:
+                self.on_message(msg_raw)
+            except Exception:
+                logger.exception("Error during processing web socket message in client")
 
     async def on_start(self) -> None:
         """On start functions."""
 
-    async def send_loop(self) -> NoReturn:
-        """Loop for sending message."""
-        while True:
-            message = await self.queue.get()
-            try:
-                await self.ws.send(message)
-            except websockets.exceptions.ConnectionClosed:
-                await self.queue.put(message)
-                raise
+    def on_message(self, msg: str | bytes) -> None:
+        """Perform action on new message."""
 
-    async def get_loop(self) -> None:
-        """Loop for getting message."""
-        async for msg_raw in self.ws:
-            try:
-                msgs = self.convert_msg(msg_raw)
-                for msg in msgs:
-                    task: asyncio.Task[None] = asyncio.create_task(self.handle_msg(msg))
-                    task.add_done_callback(self.task_done_callback)
-                    self.tasks.add(task)
-            except websockets.exceptions.ConnectionClosed:
-                raise
-            except Exception:
-                continue
-
-    def convert_msg(self, msg: str | bytes) -> list[BaseModel]:
-        """Convert raw messages to pydantics."""
-        msg_str: str = msg.decode() if isinstance(msg, bytes) else msg
-        msgs = ast.literal_eval(msg_str)
-        return self.msgs_types(msgs=msgs).msgs
-
-    async def handle_msg(self, msg: BaseModel) -> None:
-        """Place to handle all msgs from jsonrpc."""
-
-    def task_done_callback(self, task: asyncio.Task[None]) -> None:
-        """Discard task after finish."""
-        self.tasks.discard(task)
+    def on_disconnect(self) -> None:
+        """Perform action on disconnect."""
 
     async def after_loop(self) -> None:
         """Function before loop."""  # noqa: D401
-        return
-
-    async def send_message(self, msg: BaseModel) -> None:
-        """Add the message to the queue."""
-        await self.before_send_msg(msg)
-        await self.queue.put(msg.model_dump_json())
-
-    async def before_send_msg(self, msg: BaseModel) -> None:  # noqa: ARG002
-        """Function before send msg."""  # noqa: D401
         return

@@ -1,13 +1,12 @@
 """Additional dependencies for websocket endpoints."""
 
 import logging
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import Depends, Query, WebSocket
+from fastapi import WebSocket
 
 from server.config import AppSettings
-
-from .exceptions import AuthError
+from server.websockets.infra_websocket_server import InfraWebsocketServer
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -26,12 +25,6 @@ def get_config(ws: WebSocket) -> AppSettings:
     return get_dependency(ws, "config")
 
 
-async def ws_auth(
-    config: Annotated[AppSettings, Depends(get_config)],
-    key: Annotated[str | None, Query()] = None,
-) -> str:
-    """Auth websocket by api key."""
-    if key and key == config.infra_api_key.get_secret_value():
-        return key
-
-    raise AuthError
+def get_infra_websocket_server(websocket: WebSocket) -> InfraWebsocketServer:
+    """Get InfraWebsocketServer from application state."""
+    return get_dependency(websocket, "infra_websocket_server")

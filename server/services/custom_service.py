@@ -135,7 +135,10 @@ class CustomService(Base2Service[InstalledInfo]):
             registration_id="",
         )
         model_info.registration_id = self.endpoint_registry.register_custom_endpoint_as_proxy(
-            url=model.custom_endpoint, props=model.model_props, options=ProxyOptions(url=f"{model_info.base_url}{model.custom_endpoint}")
+            url=model.custom_endpoint,
+            props=model.model_props,
+            options=ProxyOptions(url=model_info.base_url),
+            registration_options=None,
         )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:

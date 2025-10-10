@@ -65,6 +65,16 @@ class ApplicationContext:
             dir.mkdir(parents=True)
         return dir
 
+    def get_docker_compose_file_path(self, name: str) -> Path:
+        """Get docker compose dir."""
+        dir = self.get_docker_compose_dir()
+        if not self.config.compose_prefix:
+            return dir / (name + ".yaml")
+        dir = dir / (self.config.compose_prefix + name)
+        if not dir.is_dir():
+            dir.mkdir(parents=True)
+        return dir / "compose.yaml"
+
     def get_service_dir(self, service: str) -> Path:
         """Get service dir."""
         dir = self.config.get_storage_dir() / f"./services/{service}"

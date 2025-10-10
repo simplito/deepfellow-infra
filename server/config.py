@@ -13,7 +13,7 @@ class ConfigError(SystemExit):
 
 class ParentInfraConfig(BaseModel):
     ws_url: str = ""
-    api_key: str = ""
+    api_key: SecretStr = SecretStr("")
 
 
 class AppSettings(BaseSettings):
@@ -29,6 +29,7 @@ class AppSettings(BaseSettings):
     civitai_token: str = ""
     log_payloads: str = ""
     container_name_prefix: str = ""
+    compose_prefix: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

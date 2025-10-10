@@ -218,6 +218,7 @@ sindriClient:
                 props=ModelProps(private=True),
                 chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model.real_model_name),
                 completions=None,
+                registration_options=None,
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
