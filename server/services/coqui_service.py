@@ -244,6 +244,7 @@ class CoquiService(Base2Service[InstalledInfo]):
             model=registered_name,
             props=ModelProps(private=True),
             endpoint=SimpleEndpoint(on_request=_create_handler(model_info.base_url, model.default_speaker, model.response_format)),
+            registration_options=None,
         )
 
     def _get_image(self, gpu: bool) -> DockerImage:

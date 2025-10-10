@@ -287,6 +287,20 @@ class ModelProps(BaseModel):
     private: bool
 
 
+ModelType = Literal["tts", "stt", "txt2img", "embedding", "llm", "llm-only-v1", "llm-only-v2", "custom"]
+
+type ModelId = str
+type RegistrationId = str
+
+
+class Model(BaseModel):
+    id: RegistrationId
+    name: ModelId
+    type: ModelType
+    props: ModelProps
+    usage: int
+
+
 class ApiModel(BaseModel):
     id: str
     object: Literal["model"]

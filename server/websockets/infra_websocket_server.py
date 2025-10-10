@@ -1,80 +1,102 @@
 """Infra Websocket Server."""
 
 import logging
+from typing import Any, Literal, TypeVar
 
-from fastapi import WebSocket
+from pydantic import BaseModel, ValidationError
 
-from server.websockets.models import InfraConnect, InfraInfo, JsonRpc, ModelsClear, ModelsList, ModelsUsage, SubInfraMsgs, WebsocketMsgs
+from server.config import AppSettings
+from server.endpointregistry import EndpointRegistry
+from server.models.api import Model
+from server.utils.exceptions import ApiError
+from server.utils.json_rpc_server import JsonRpcServer
+from server.websockets.models import InitRequest, UpdateModelsRequest, UsageChangeRequest
 from server.websockets.parent_infra import ParentInfra
-from server.websockets.usage_manager import UsageManager
-from server.websockets.websocket_server import WebSocketServer
+from server.websockets.websocket_server import WebSocketContext, WebSocketServer
 
 logger = logging.getLogger("uvicorn.error")
+T = TypeVar("T")
 
 
-class WebSocketContext:
-    urls: list[str]
+class Authorized(BaseModel):
+    url: str
+    api_key: str
+    models: list[Model]
 
 
-class InfraWebsocketServer(WebSocketServer[WebSocketContext]):
-    msgs_type: type[WebsocketMsgs] = SubInfraMsgs
+class InfraWsData(BaseModel):
+    authorized: Authorized | None
 
+
+InfraWsContext = WebSocketContext[InfraWsData]
+
+
+class InfraWebsocketServer(WebSocketServer[InfraWsData]):
     def __init__(
         self,
-        infra_infos: list[InfraInfo],
+        config: AppSettings,
         parent_infra: ParentInfra,
-        usage_manager: UsageManager,
+        endpoint_registry: EndpointRegistry,
     ):
-        self.infra_infos = infra_infos
+        self.config = config
         self.parent_infra = parent_infra
-        self.usage_manager = usage_manager
+        self.endpoint_registry = endpoint_registry
+        self.server = JsonRpcServer[InfraWsData](lambda method, params, context: self._handle_json_rpc_request(method, params, context))
 
-    async def handle_disconnect(self, ws: WebSocket, context: WebSocketContext) -> None:  # noqa: ARG002
+    def create_bag(self) -> InfraWsData:
+        """Create websocket bag."""
+        return InfraWsData(authorized=None)
+
+    def handle_disconnect(self, context: InfraWsContext) -> None:
         """Clear data from infra."""
-        self.parent_infra.send_clear(context.urls)
-        self.usage_manager.clear_urls(context.urls)
-        debug_msg = f"Infras disconnected: {context.urls}"
-        logger.debug(debug_msg)
+        if context.data.authorized:
+            self.endpoint_registry.update_models(
+                context.data.authorized.models,
+                [],
+                context.data.authorized.url,
+                context.data.authorized.api_key,
+            )
 
-    def handle_models_list_msg(self, msg: JsonRpc, context: WebSocketContext) -> None:
-        """Handle models list msg."""
-        if isinstance(msg, ModelsList):
-            debug_msg = f"Start handling models list: {msg}"
-            logger.debug(debug_msg)
-            self.parent_infra.send_message_in_a_while(msg)
+    async def process_message(self, msg: str, context: InfraWsContext) -> None:
+        """Handle a websocket message."""
+        result = await self.server.process(msg, context.data)
+        if result is not None:
+            context.send(result)
 
-            self.usage_manager.update_models(msg.params, context.urls)
+    async def _handle_json_rpc_request(self, method: str, params: Any, context: InfraWsData) -> Any:  # noqa: ANN401
+        if method == "init":
+            return self._on_init(self._try_parse(params, InitRequest), context)
+        if method == "usage_change":
+            return self._on_usage_change(self._try_parse(params, UsageChangeRequest), context)
+        if method == "update_models":
+            return self._on_update_models(self._try_parse(params, UpdateModelsRequest), context)
+        raise ApiError(code=-32601, message="Method not found", data=method)
 
-    def handle_models_usage_msg(self, msg: JsonRpc) -> None:
-        """Handle models usage msg."""
-        if isinstance(msg, ModelsUsage):
-            debug_msg = f"Start handling models usage: {msg}"
-            logger.debug(debug_msg)
-            self.parent_infra.send_message_in_a_while(msg)
+    def _try_parse(self, data: Any, cls: type[T]) -> T:  # noqa: ANN401
+        try:
+            return cls(**data)
+        except Exception as e:
+            raise ApiError(code=-32602, message="Invalid params", data=e.errors if isinstance(e, ValidationError) else None) from e
 
-            self.usage_manager.update_usage(msg.params)
+    def _on_init(self, params: InitRequest, context: InfraWsData) -> Literal["OK"]:
+        if context.authorized:
+            raise ApiError(code=1, message="Already authorized")
+        if params.auth != self.config.infra_api_key.get_secret_value():
+            raise ApiError(code=2, message="Invalid api key")
+        context.authorized = Authorized(url=params.url, api_key=params.api_key, models=params.models)
+        self.endpoint_registry.update_models([], params.models, params.url, params.api_key)
+        logger.info(f"WS client connected {params.url}")  # noqa: G004
+        return "OK"
 
-    def handle_infra_clear(self, msg: JsonRpc) -> None:
-        """Handle models clear msg."""
-        if isinstance(msg, ModelsClear):
-            debug_msg = f"Start handling models clear: {msg}"
-            logger.debug(debug_msg)
-            self.parent_infra.send_message_in_a_while(msg)
+    def _on_usage_change(self, params: UsageChangeRequest, context: InfraWsData) -> Literal["OK"]:
+        if not context.authorized:
+            raise ApiError(code=3, message="Not authorized")
+        self.endpoint_registry.update_usage(params)
+        return "OK"
 
-            self.usage_manager.clear_urls(msg.params)
-
-    def handle_infra_info(self, msg: JsonRpc) -> None:
-        """Handle infra info msg."""
-        if isinstance(msg, InfraConnect):
-            debug_msg = f"Add infra info: {msg}"
-            logger.debug(debug_msg)
-            self.parent_infra.send_message_in_a_while(msg)
-
-            self.usage_manager.update_infos(msg.params)
-
-    async def handle_msg(self, msg: JsonRpc, context: WebSocketContext) -> None:  # type: ignore
-        """Place to handle all msgs from jsonrpc."""
-        self.handle_models_usage_msg(msg)
-        self.handle_models_list_msg(msg, context)
-        self.handle_infra_clear(msg)
-        self.handle_infra_info(msg)
+    def _on_update_models(self, params: UpdateModelsRequest, context: InfraWsData) -> Literal["OK"]:
+        if not context.authorized:
+            raise ApiError(code=3, message="Not authorized")
+        self.endpoint_registry.update_models(context.authorized.models, params.models, context.authorized.url, context.authorized.api_key)
+        context.authorized.models = params.models
+        return "OK"

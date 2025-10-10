@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import shutil
+from contextlib import suppress
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
@@ -323,7 +324,7 @@ async def render_docker_compose(docker_compose_file_path: Path, options: DockerO
 
     # Save rendered docker compose as file
     docker_compose_yaml = yaml.dump(docker_compose_file_content, default_flow_style=False, sort_keys=False)
-    Utils.save_file(docker_compose_file_path.parent / (options.name + ".yaml"), docker_compose_yaml)
+    Utils.save_file(docker_compose_file_path, docker_compose_yaml)
 
     return port
 
@@ -331,8 +332,7 @@ async def render_docker_compose(docker_compose_file_path: Path, options: DockerO
 async def install_and_run_docker(ctx: ApplicationContext, options: DockerOptions) -> int:
     """Run docker compose and return port under it works."""
     port = None
-    docker_compose_dir = ctx.get_docker_compose_dir()
-    docker_compose_file_path = docker_compose_dir / (options.name + ".yaml")
+    docker_compose_file_path = ctx.get_docker_compose_file_path(options.name)
     service_name = options.service_name
 
     # Check if docker compose is working
@@ -346,8 +346,13 @@ async def install_and_run_docker(ctx: ApplicationContext, options: DockerOptions
 
     # Handle different scenarios based on running state, health, and differences
     if not is_running and not has_difference:
-        # Not running, no difference -> start
-        start_output = await start_docker_compose(docker_compose_file_path)
+        if port is not None and ctx.is_port_available(port):
+            # Not running, no difference -> start
+            start_output = await start_docker_compose(docker_compose_file_path)
+        else:
+            # Old port is taken -> render then start
+            port = await render_docker_compose(docker_compose_file_path, options, ctx)
+            start_output = await start_docker_compose(docker_compose_file_path)
     elif not is_running and has_difference:
         # Not running, has difference -> render then start
         port = await render_docker_compose(docker_compose_file_path, options, ctx)
@@ -391,7 +396,10 @@ async def install_and_run_docker(ctx: ApplicationContext, options: DockerOptions
 async def uninstall_docker(ctx: ApplicationContext, options: DockerOptions) -> None:
     """Stop docker compose and remove the file."""
     docker_compose_cmd = get_docker_compoes_cmd()
-    docker_compose_file = Path(ctx.get_docker_compose_dir() / (options.name + ".yaml"))
+    docker_compose_file = ctx.get_docker_compose_file_path(options.name)
     await Utils.run_command(f"{docker_compose_cmd} -f {docker_compose_file} down")
     if docker_compose_file.is_file():
         docker_compose_file.unlink()
+    if ctx.config.compose_prefix:
+        with suppress(Exception):
+            docker_compose_file.parent.rmdir()

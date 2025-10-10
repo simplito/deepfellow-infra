@@ -199,6 +199,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                 )
                 if model.legacy_completions
                 else None,
+                registration_options=None,
             )
         if model.type == "tts":
             url = urljoin(url_base, "v1/audio/speech")
@@ -210,6 +211,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                     rewrite_model_to=model.real_model_name,
                     headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
                 ),
+                registration_options=None,
             )
         if model.type == "stt":
             url = urljoin(url_base, "v1/audio/transcriptions")
@@ -221,6 +223,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                     rewrite_model_to=model.real_model_name,
                     headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
                 ),
+                registration_options=None,
             )
         if model.type == "txt2img":
             url = urljoin(url_base, "v1/images/generations")
@@ -232,6 +235,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                     rewrite_model_to=model.real_model_name,
                     headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
                 ),
+                registration_options=None,
             )
         if model.type == "embedding":
             url = urljoin(url_base, "v1/embeddings")
@@ -243,6 +247,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                     rewrite_model_to=model.real_model_name,
                     headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
                 ),
+                registration_options=None,
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:

@@ -306,10 +306,14 @@ class OllamaService(Base2Service[InstalledInfo]):
                 props=ModelProps(private=True),
                 chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
                 completions=ProxyOptions(url=f"{info.base_url}/v1/completions", rewrite_model_to=model_id),
+                registration_options=None,
             )
         if model.type == "embedding":
             model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
-                model=registered_name, props=ModelProps(private=True), options=ProxyOptions(url=f"{info.base_url}/v1/embeddings")
+                model=registered_name,
+                props=ModelProps(private=True),
+                options=ProxyOptions(url=f"{info.base_url}/v1/embeddings"),
+                registration_options=None,
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:

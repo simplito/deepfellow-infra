@@ -532,12 +532,14 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
                 model=registered_name,
                 props=ModelProps(private=True),
                 options=ProxyOptions(url=f"{info.base_url}/v1/audio/speech"),
+                registration_options=None,
             )
         if model.type == "stt":
             model_info.registration_id = self.endpoint_registry.register_audio_transcriptions_as_proxy(
                 model=registered_name,
                 props=ModelProps(private=True),
                 options=ProxyOptions(url=f"{info.base_url}/v1/audio/transcriptions"),
+                registration_options=None,
             )
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:

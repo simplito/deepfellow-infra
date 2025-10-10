@@ -241,6 +241,7 @@ class LLamacppService(Base2Service[InstalledInfo]):
             props=ModelProps(private=True),
             chat_completions=ProxyOptions(url=f"{model_info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
             completions=ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id),
+            registration_options=None,
         )
 
     def _get_image(self, gpu: bool) -> DockerImage:

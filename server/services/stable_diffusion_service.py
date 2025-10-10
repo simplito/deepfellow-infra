@@ -401,6 +401,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
                 model=registered_name,
                 props=ModelProps(private=True),
                 endpoint=SimpleEndpoint(on_request=_stable_diffusion_handler(info.base_url, model_filename)),
+                registration_options=None,
             )
 
         await self.refresh_models()

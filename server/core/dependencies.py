@@ -2,19 +2,17 @@
 
 from typing import Annotated, Any
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, WebSocket
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from server.config import AppSettings
 from server.endpointregistry import EndpointRegistry
 from server.services_manager import ServicesManager
-from server.websockets.infra_websocket_server import InfraWebsocketServer
-from server.websockets.loadbalancer import LoadBalancer
 
 oauth2_scheme = HTTPBearer()
 
 
-def get_dependency(request: Request, name: str) -> Any:  # noqa: ANN401
+def get_dependency(request: Request | WebSocket, name: str) -> Any:  # noqa: ANN401
     """Get dependency by given name from application state."""
     dep = getattr(request.app.state, name, None)
     if dep is None:
@@ -28,19 +26,9 @@ def get_endpoint_registry(request: Request) -> EndpointRegistry:
     return get_dependency(request, "endpoint_registry")
 
 
-def get_load_balancer(request: Request) -> LoadBalancer:
-    """Get LoadBalancer instance from application state."""
-    return get_dependency(request, "load_balancer")
-
-
 def get_services_manager(request: Request) -> ServicesManager:
     """Get ServicesManager instance from application state."""
     return get_dependency(request, "services_manager")
-
-
-def get_infra_websocket_server(request: Request) -> InfraWebsocketServer:
-    """Get InfraWebsocketServer from application state."""
-    return get_dependency(request, "infra_websocket_server")
 
 
 def get_config(request: Request) -> AppSettings:
