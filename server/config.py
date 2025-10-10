@@ -29,7 +29,7 @@ class AppSettings(BaseSettings):
     civitai_token: str = ""
     log_payloads: str = ""
     container_name_prefix: str = ""
-    compose_prefix: str = ""
+    compose_prefix: str = "df_"
 
     model_config = SettingsConfigDict(
         env_file=".env",
