@@ -220,6 +220,20 @@ class ChatCompletionRequest(BaseModel):
         description=("A stable identifier for your end-users. Used to boost cache hit rates by better bucketing similar requests."),
     )
 
+    safety_identifier: str | None = Field(
+        None,
+        description=(
+            "A stable identifier used to help detect users of your application that may be violating OpenAI's usage policies. "
+            "The IDs should be a string that uniquely identifies each user. We recommend hashing their username or email address, "
+            "in order to avoid sending us any identifying information."
+        ),
+    )
+
+    prompt_cache_key: str | None = Field(
+        None,
+        description=("Used by OpenAI to cache responses for similar requests to optimize your cache hit rates. Replaces the user field."),
+    )
+
     model_config = {
         "json_schema_extra": {
             "examples": [
