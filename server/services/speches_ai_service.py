@@ -10,6 +10,7 @@ from server.docker import DockerImage, DockerOptions, install_and_run_docker, un
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
+    CustomModelSpecification,
     InstallModelIn,
     ListModelsFilters,
     ListModelsOut,
@@ -20,7 +21,7 @@ from server.models.models import (
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
-from server.utils.core import fetch_from
+from server.utils.core import fetch_from, try_parse_pydantic
 
 ModelType = Literal["tts", "stt"]
 
@@ -422,15 +423,23 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             ]
         )
 
+    def get_custom_model_spec(self) -> CustomModelSpecification | None:
+        """Return the custom model specification or None if custom model is not supported."""
+        return None
+
     def get_installed_info(self) -> bool | ServiceOptions:
         """Get service installed info."""
         return False if self.installed is None else self.installed.options.spec
 
-    def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
-        return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
+    def _generate_config(self, info: InstalledInfo | None) -> ServiceConfig:
+        return ServiceConfig(
+            options=info.options if info else None,
+            models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
+            custom=self.custom,
+        )
 
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
-        parsed_options = SpeachesAIOptions(**options.spec)
+        parsed_options = try_parse_pydantic(SpeachesAIOptions, options.spec)
         volumes = [f"{self._get_working_dir()}/cache:/home/ubuntu/.cache/huggingface/hub"]
         image = _const.image_gpu if parsed_options.gpu else _const.image_cpu
 
@@ -508,7 +517,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
-        parsed_model_options = SpeachesAIModelOptions(**options.spec) if options.spec else SpeachesAIModelOptions()
+        parsed_model_options = try_parse_pydantic(SpeachesAIModelOptions, options.spec) if options.spec else SpeachesAIModelOptions()
         info = self._check_installed()
         if model_id in info.models:
             return

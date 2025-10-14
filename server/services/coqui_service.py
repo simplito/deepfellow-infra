@@ -14,6 +14,7 @@ from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndp
 from server.ffmpeg import ffmpeg_audio_convert_async_gen
 from server.models.api import CreateSpeechRequest, ModelProps
 from server.models.models import (
+    CustomModelSpecification,
     InstallModelIn,
     ListModelsFilters,
     ListModelsOut,
@@ -24,7 +25,7 @@ from server.models.models import (
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
-from server.utils.core import Utils
+from server.utils.core import Utils, try_parse_pydantic
 
 
 class CoquiModel(BaseModel):
@@ -140,15 +141,23 @@ class CoquiService(Base2Service[InstalledInfo]):
             ]
         )
 
+    def get_custom_model_spec(self) -> CustomModelSpecification | None:
+        """Return the custom model specification or None if custom model is not supported."""
+        return None
+
     def get_installed_info(self) -> bool | ServiceOptions:
         """Get service installed info."""
         return False if self.installed is None else self.installed.options.spec
 
-    def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
-        return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
+    def _generate_config(self, info: InstalledInfo | None) -> ServiceConfig:
+        return ServiceConfig(
+            options=info.options if info else None,
+            models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
+            custom=self.custom,
+        )
 
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
-        parsed_options = CoquiOptions(**options.spec)
+        parsed_options = try_parse_pydantic(CoquiOptions, options.spec)
         image = self._get_image(parsed_options.gpu)
         await docker_pull(image.name)
         return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
@@ -197,7 +206,7 @@ class CoquiService(Base2Service[InstalledInfo]):
         )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
-        parsed_model_options = CoquiModelOptions(**options.spec) if options.spec else CoquiModelOptions()
+        parsed_model_options = try_parse_pydantic(CoquiModelOptions, options.spec) if options.spec else CoquiModelOptions()
         info = self._check_installed()
         if model_id in info.models:
             return

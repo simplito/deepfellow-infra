@@ -8,6 +8,7 @@ from server.docker import DockerImage, DockerOptions, install_and_run_docker, un
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
+    CustomModelSpecification,
     InstallModelIn,
     ListModelsFilters,
     ListModelsOut,
@@ -18,6 +19,7 @@ from server.models.models import (
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
+from server.utils.core import try_parse_pydantic
 
 
 class SindriAiModel(BaseModel):
@@ -102,15 +104,23 @@ class SindriService(Base2Service[InstalledInfo]):
             ]
         )
 
+    def get_custom_model_spec(self) -> CustomModelSpecification | None:
+        """Return the custom model specification or None if custom model is not supported."""
+        return None
+
     def get_installed_info(self) -> bool | ServiceOptions:
         """Get service installed info."""
         return False if self.installed is None else self.installed.options.spec
 
-    def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
-        return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
+    def _generate_config(self, info: InstalledInfo | None) -> ServiceConfig:
+        return ServiceConfig(
+            options=info.options if info else None,
+            models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
+            custom=self.custom,
+        )
 
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
-        parsed_options = SindriOptions(**options.spec)
+        parsed_options = try_parse_pydantic(SindriOptions, options.spec)
         config_path = self._get_working_dir() / "config.yaml"
         data = f"""listenAddress: 0.0.0.0
 listenPort: 8080
@@ -197,7 +207,7 @@ sindriClient:
         )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
-        parsed_model_options = SindriModelOptions(**options.spec) if options.spec else SindriModelOptions()
+        parsed_model_options = try_parse_pydantic(SindriModelOptions, options.spec) if options.spec else SindriModelOptions()
         info = self._check_installed()
         if model_id in info.models:
             return

@@ -4,14 +4,67 @@ from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import HTTPException
+from pydantic import BaseModel
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
-from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, ModelSpecification, RetrieveModelOut, UninstallModelIn
+from server.models.models import (
+    CustomModelField,
+    CustomModelId,
+    CustomModelSpecification,
+    InstallModelIn,
+    ListModelsFilters,
+    ListModelsOut,
+    ModelSpecification,
+    RetrieveModelOut,
+    UninstallModelIn,
+)
 from server.models.services import InstallServiceIn, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
-from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
+from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
+from server.utils.core import normalize_name, try_parse_pydantic
+
+
+class SrvCustomModel:
+    def __init__(
+        self,
+        model_props: ModelProps,
+        model_spec: ModelSpecification,
+        model_type: str,
+        custom_endpoint: str,
+        size: str,
+        options: DockerOptions | Callable[["CustomService", str | None], DockerOptions],
+        custom: CustomModelId | None = None,
+    ):
+        self.model_props = model_props
+        self.model_spec = model_spec
+        self.model_type = model_type
+        self.custom_endpoint = custom_endpoint
+        self.size = size
+        self.options = options
+        self.custom = custom
+
+
+class SrvCustomCustomModel(BaseModel):
+    id: str
+    private: bool = True
+    custom_endpoint: str
+    size: str
+    image: str
+    image_port: int
+    command: str | None = None
+    use_gpu: bool = False
+    volumes: list[str] | None = None
+    envs: dict[str, str] | None = None
+
+
+class CustomConst:
+    def __init__(
+        self,
+        models: dict[str, SrvCustomModel],
+    ):
+        self.models = models
 
 
 class ModelInstalledInfo:
@@ -46,6 +99,11 @@ class InstalledInfo:
 
 
 class CustomService(Base2Service[InstalledInfo]):
+    models: dict[str, "SrvCustomModel"]
+
+    def _after_init(self) -> None:
+        self.models = _const.models.copy()
+
     def get_id(self) -> str:
         """Return the service id."""
         return "custom"
@@ -58,12 +116,32 @@ class CustomService(Base2Service[InstalledInfo]):
         """Return the service specification."""
         return ServiceSpecification(fields=[])
 
+    def get_custom_model_spec(self) -> CustomModelSpecification | None:
+        """Return the custom model specification or None if custom model is not supported."""
+        return CustomModelSpecification(
+            fields=[
+                CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
+                CustomModelField(type="bool", name="private", description="Model is private", default="true"),
+                CustomModelField(type="text", name="custom_endpoint", description="Model endpoint", placeholder="/my/model/endpoint"),
+                CustomModelField(type="text", name="size", description="Model size", placeholder="1GB"),
+                CustomModelField(type="text", name="image", description="Docker image", placeholder="company/image"),
+                CustomModelField(type="text", name="image_port", description="Docker image port", placeholder="8000"),
+                CustomModelField(type="text", name="command", description="Docker command", placeholder="/bin/myapp", required=False),
+                CustomModelField(type="list", name="volumes", description="Docker volumes", placeholder="/work/storage"),
+                CustomModelField(type="map", name="envs", description="Docker environment variables"),
+            ]
+        )
+
     def get_installed_info(self) -> bool | ServiceOptions:
         """Get service installed info."""
         return False if self.installed is None else self.installed.options.spec
 
-    def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
-        return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
+    def _generate_config(self, info: InstalledInfo | None) -> ServiceConfig:
+        return ServiceConfig(
+            options=info.options if info else None,
+            models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
+            custom=self.custom,
+        )
 
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
         return InstalledInfo(models={}, options=options)
@@ -76,12 +154,44 @@ class CustomService(Base2Service[InstalledInfo]):
         if options.purge:
             await self._clear_working_dir()
 
+    def _add_custom_model(self, model: CustomModel) -> None:
+        parsed = try_parse_pydantic(SrvCustomCustomModel, model.data)
+        if parsed.id in self.models:
+            raise HTTPException(400, "Model with given id already exists.")
+        name = normalize_name(parsed.id)
+        self.models[parsed.id] = SrvCustomModel(
+            model_props=ModelProps(private=parsed.private),
+            model_spec=ModelSpecification(fields=[]),
+            model_type="custom",
+            custom_endpoint=parsed.custom_endpoint,
+            size=parsed.size,
+            options=lambda custom_service, subnet: DockerOptions(
+                image_port=parsed.image_port,
+                name=name,
+                container_name=custom_service.application_context.get_docker_container_name(name),
+                image=parsed.image,
+                command=parsed.command,
+                use_gpu=parsed.use_gpu,
+                env_vars=parsed.envs,
+                restart="unless-stopped",
+                volumes=[f"{custom_service.get_working_dir()}/{name}/volume_{i}:{volume}" for i, volume in enumerate(parsed.volumes or [])],
+                subnet=subnet,
+            ),
+            custom=model.id,
+        )
+
+    def _remove_custom_model(self, model: CustomModel) -> None:
+        parsed = try_parse_pydantic(SrvCustomCustomModel, model.data)
+        if self.installed and parsed.id in self.installed.models:
+            raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
+        del self.models[parsed.id]
+
     async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
-        for model_id in _const.models:
-            model = _const.models[model_id]
+        for model_id in self.models:
+            model = self.models[model_id]
             installed = info.models[model_id].options if model_id in info.models else False
             if filters.installed is None or filters.installed == installed:
                 out_list.append(
@@ -91,6 +201,7 @@ class CustomService(Base2Service[InstalledInfo]):
                         type=model.model_type,
                         installed=installed,
                         size=model.size,
+                        custom=model.custom,
                         spec=model.model_spec,
                     )
                 )
@@ -99,9 +210,9 @@ class CustomService(Base2Service[InstalledInfo]):
     async def get_model(self, model_id: str) -> RetrieveModelOut:
         """Get the model."""
         info = self._check_installed()
-        if model_id not in _const.models:
+        if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = _const.models[model_id]
+        model = self.models[model_id]
         installed = info.models[model_id].options if model_id in info.models else False
         return RetrieveModelOut(
             id=model_id,
@@ -109,6 +220,7 @@ class CustomService(Base2Service[InstalledInfo]):
             type=model.model_type,
             installed=installed,
             size=model.size,
+            custom=model.custom,
             spec=model.model_spec,
         )
 
@@ -116,9 +228,9 @@ class CustomService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         if model_id in info.models:
             return
-        if model_id not in _const.models:
+        if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = _const.models[model_id]
+        model = self.models[model_id]
         model_dir = self._get_working_dir() / "models"
         model_dir.mkdir(parents=True, exist_ok=True)
 
@@ -143,10 +255,10 @@ class CustomService(Base2Service[InstalledInfo]):
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
-        if (model_id not in info.models) or (model_id not in _const.models):
+        if (model_id not in info.models) or (model_id not in self.models):
             return
         model = info.models[model_id]
-        model_const = _const.models[model_id]
+        model_const = self.models[model_id]
         del info.models[model_id]
         self.endpoint_registry.unregister_custom_endpoint(model_const.custom_endpoint, model.registration_id)
         await uninstall_docker(self.application_context, model.docker_options)
@@ -159,35 +271,9 @@ class CustomService(Base2Service[InstalledInfo]):
         return self._get_working_dir()
 
 
-class CustomModel:
-    def __init__(
-        self,
-        model_props: ModelProps,
-        model_spec: ModelSpecification,
-        model_type: str,
-        custom_endpoint: str,
-        size: str,
-        options: DockerOptions | Callable[[CustomService, str | None], DockerOptions],
-    ):
-        self.model_props = model_props
-        self.model_spec = model_spec
-        self.model_type = model_type
-        self.custom_endpoint = custom_endpoint
-        self.size = size
-        self.options = options
-
-
-class CustomConst:
-    def __init__(
-        self,
-        models: dict[str, CustomModel],
-    ):
-        self.models = models
-
-
 _const = CustomConst(
     models={
-        "bentoml/example-summarization": CustomModel(
+        "bentoml/example-summarization": SrvCustomModel(
             model_props=ModelProps(private=True),
             model_spec=ModelSpecification(fields=[]),
             model_type="custom",
@@ -203,7 +289,7 @@ _const = CustomConst(
                 subnet=subnet,
             ),
         ),
-        "easyOCR": CustomModel(
+        "easyOCR": SrvCustomModel(
             model_props=ModelProps(private=True),
             model_spec=ModelSpecification(fields=[]),
             model_type="custom",
@@ -212,7 +298,7 @@ _const = CustomConst(
             options=lambda custom_service, subnet: DockerOptions(
                 image_port=8000,
                 name="easyocr",
-                container_name=custom_service.application_context.get_docker_container_name("bentoml"),
+                container_name=custom_service.application_context.get_docker_container_name("easyocr"),
                 image="gitlab2.simplito.com:5050/df/df-ocr:1.0.0",
                 use_gpu=False,
                 env_vars={},

@@ -5,6 +5,8 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 type InstallModelOptions = dict[str, Any]
+type CustomModelDefiniton = dict[str, Any]
+type CustomModelId = str
 
 
 class ModelIdQuery(BaseModel):
@@ -22,6 +24,20 @@ class ModelField(BaseModel):
 
 class ModelSpecification(BaseModel):
     fields: list[ModelField]
+
+
+class CustomModelField(BaseModel):
+    type: str
+    name: str
+    description: str
+    default: str | None = None
+    placeholder: str | None = None
+    required: bool = True
+    values: list[str] | None = None
+
+
+class CustomModelSpecification(BaseModel):
+    fields: list[CustomModelField]
 
 
 class InstallModelIn(BaseModel):
@@ -45,6 +61,7 @@ class RetrieveModelOut(BaseModel):
     service: str
     type: str
     installed: bool | InstallModelIn
+    custom: CustomModelId | None = None
     size: str
     spec: ModelSpecification
 
@@ -55,3 +72,15 @@ class ListModelsFilters(BaseModel):
 
 class ListModelsOut(BaseModel):
     list: list[RetrieveModelOut]
+
+
+class AddCustomModelIn(BaseModel):
+    spec: CustomModelDefiniton
+
+
+class AddCustomModelOut(BaseModel):
+    custom_model_id: CustomModelId
+
+
+class RemoveCustomModelOut(BaseModel):
+    status: Literal["OK"]

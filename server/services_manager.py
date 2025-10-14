@@ -2,7 +2,15 @@
 
 from fastapi import HTTPException
 
-from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
+from server.models.models import (
+    AddCustomModelIn,
+    CustomModelId,
+    InstallModelIn,
+    ListModelsFilters,
+    ListModelsOut,
+    RetrieveModelOut,
+    UninstallModelIn,
+)
 from server.models.services import (
     InstallServiceIn,
     ListAllModelsFilters,
@@ -82,3 +90,11 @@ class ServicesManager:
     async def uninstall_model_from_service(self, service_id: str, model_id: str, options: UninstallModelIn) -> None:
         """Uninstall the model from service."""
         await self._get_service(service_id).uninstall_model(model_id, options)
+
+    async def add_custom_model(self, service_id: str, options: AddCustomModelIn) -> CustomModelId:
+        """Add custom model."""
+        return await self._get_service(service_id).add_custom_model(options)
+
+    async def remove_custom_model(self, service_id: str, custom_model_id: CustomModelId) -> None:
+        """Remove custom model."""
+        return await self._get_service(service_id).remove_custom_model(custom_model_id)

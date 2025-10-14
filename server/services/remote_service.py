@@ -1,6 +1,7 @@
 """Remote service."""
 
 from abc import abstractmethod
+from typing import Literal
 from urllib.parse import urljoin
 
 from fastapi import HTTPException
@@ -9,6 +10,9 @@ from pydantic import BaseModel, Field
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
+    CustomModelField,
+    CustomModelId,
+    CustomModelSpecification,
     InstallModelIn,
     ListModelsFilters,
     ListModelsOut,
@@ -18,7 +22,8 @@ from server.models.models import (
     UninstallModelIn,
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
-from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
+from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
+from server.utils.core import try_parse_pydantic
 
 
 class RemoteModel(BaseModel):
@@ -27,6 +32,16 @@ class RemoteModel(BaseModel):
     completions: bool = True
     legacy_completions: bool = True
     props: ModelProps = Field(default_factory=lambda: ModelProps(private=False))
+    custom: CustomModelId | None = None
+
+
+class RemoteCustomModel(BaseModel):
+    id: str
+    type: Literal["llm", "embedding", "stt", "tts", "txt2img"]
+    real_model_name: str | None = None
+    completions: bool = True
+    legacy_completions: bool = True
+    private: bool = False
 
 
 class RemoteConst(BaseModel):
@@ -66,6 +81,10 @@ class InstalledInfo:
 
 class RemoteService(Base2Service[InstalledInfo]):
     url_prefix: str = "v1/"
+    models: dict[str, RemoteModel]
+
+    def _after_init(self) -> None:
+        self.models = self.get_models_registry().models.copy()
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
@@ -96,15 +115,32 @@ class RemoteService(Base2Service[InstalledInfo]):
             ]
         )
 
+    def get_custom_model_spec(self) -> CustomModelSpecification | None:
+        """Return the custom model specification or None if custom model is not supported."""
+        return CustomModelSpecification(
+            fields=[
+                CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
+                CustomModelField(type="oneof", name="type", description="Model Type", values=["llm", "embedding", "stt", "tts", "txt2img"]),
+                CustomModelField(type="text", name="real_model_name", description="Real model name", required=False, placeholder="abc"),
+                CustomModelField(type="bool", name="completions", description="Support /v1/chat/completions", default="true"),
+                CustomModelField(type="bool", name="legacy_completions", description="Support /v1/completions", default="true"),
+                CustomModelField(type="bool", name="private", description="Model is private", default="false"),
+            ]
+        )
+
     def get_installed_info(self) -> bool | ServiceOptions:
         """Get service installed info."""
         return False if self.installed is None else self.installed.options.spec
 
-    def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
-        return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
+    def _generate_config(self, info: InstalledInfo | None) -> ServiceConfig:
+        return ServiceConfig(
+            options=info.options if info else None,
+            models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
+            custom=self.custom,
+        )
 
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
-        parsed_options = RemoteOptions(**options.spec)
+        parsed_options = try_parse_pydantic(RemoteOptions, options.spec)
         return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
@@ -124,12 +160,30 @@ class RemoteService(Base2Service[InstalledInfo]):
         if options.purge:
             await self._clear_working_dir()
 
+    def _add_custom_model(self, model: CustomModel) -> None:
+        parsed = try_parse_pydantic(RemoteCustomModel, model.data)
+        if parsed.id in self.models:
+            raise HTTPException(400, "Model with given id already exists.")
+        self.models[parsed.id] = RemoteModel(
+            type=parsed.type,
+            completions=parsed.completions,
+            legacy_completions=parsed.legacy_completions,
+            real_model_name=parsed.real_model_name,
+            props=ModelProps(private=parsed.private),
+            custom=model.id,
+        )
+
+    def _remove_custom_model(self, model: CustomModel) -> None:
+        parsed = try_parse_pydantic(RemoteCustomModel, model.data)
+        if self.installed and parsed.id in self.installed.models:
+            raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
+        del self.models[parsed.id]
+
     async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
-        _const = self.get_models_registry()
-        for model_id, model in _const.models.items():
+        for model_id, model in self.models.items():
             installed = info.models[model_id].options if model_id in info.models else False
             if filters.installed is None or filters.installed == installed:
                 out_list.append(
@@ -139,6 +193,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                         type=model.type,
                         installed=installed,
                         size="",
+                        custom=model.custom,
                         spec=self.get_model_spec(),
                     )
                 )
@@ -147,10 +202,9 @@ class RemoteService(Base2Service[InstalledInfo]):
     async def get_model(self, model_id: str) -> RetrieveModelOut:
         """Get the model."""
         info = self._check_installed()
-        _const = self.get_models_registry()
-        if model_id not in _const.models:
+        if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = _const.models[model_id]
+        model = self.models[model_id]
         installed = info.models[model_id].options if model_id in info.models else False
         return RetrieveModelOut(
             id=model_id,
@@ -158,18 +212,18 @@ class RemoteService(Base2Service[InstalledInfo]):
             type=model.type,
             installed=installed,
             size="",
+            custom=model.custom,
             spec=self.get_model_spec(),
         )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
-        parsed_model_options = RemoteModelOptions(**options.spec) if options.spec else RemoteModelOptions()
+        parsed_model_options = try_parse_pydantic(RemoteModelOptions, options.spec) if options.spec else RemoteModelOptions()
         info = self._check_installed()
         if model_id in info.models:
             return
-        _const = self.get_models_registry()
-        if model_id not in _const.models:
+        if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = _const.models[model_id]
+        model = self.models[model_id]
         registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,

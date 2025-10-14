@@ -6,11 +6,14 @@ from fastapi import APIRouter, Body, Depends, Path, Query
 
 from server.core.dependencies import auth_admin, get_services_manager
 from server.models.models import (
+    AddCustomModelIn,
+    AddCustomModelOut,
     InstallModelIn,
     InstallModelOut,
     ListModelsFilters,
     ListModelsOut,
     ModelIdQuery,
+    RemoveCustomModelOut,
     RetrieveModelOut,
     UninstallModelIn,
     UninstallModelOut,
@@ -78,3 +81,33 @@ async def list_model(
 ) -> ListModelsOut:
     """List models in the service."""
     return await services_manager.list_models_from_service(service_id, filters)
+
+
+@router.post(
+    "/custom",
+    summary="Add custom model.",
+)
+async def add_custom_model(
+    model: Annotated[AddCustomModelIn, Body()],
+    service_id: Annotated[str, Path(..., description="The ID of the service to use.")],
+    services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
+    _: Annotated[str, Depends(auth_admin)],
+) -> AddCustomModelOut:
+    """List models in the service."""
+    custom_model_id = await services_manager.add_custom_model(service_id, model)
+    return AddCustomModelOut(custom_model_id=custom_model_id)
+
+
+@router.delete(
+    "/custom/{custom_model_id}",
+    summary="Remove custom model.",
+)
+async def remove_custom_model(
+    service_id: Annotated[str, Path(..., description="The ID of the service to use.")],
+    custom_model_id: Annotated[str, Path(..., description="The ID of the custom model to delete.")],
+    services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
+    _: Annotated[str, Depends(auth_admin)],
+) -> RemoveCustomModelOut:
+    """List models in the service."""
+    await services_manager.remove_custom_model(service_id, custom_model_id)
+    return RemoveCustomModelOut(status="OK")

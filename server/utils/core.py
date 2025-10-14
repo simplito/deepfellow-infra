@@ -3,14 +3,15 @@
 import asyncio
 import re
 import shlex
+from http.client import HTTPException
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 from urllib.parse import quote
 
 import aiofiles
 import aiohttp
 from aiohttp import ClientSession, ClientTimeout
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from server.models.common import JsonSerializable
 
@@ -108,7 +109,7 @@ class Utils:
             return local_path, local_path.name
 
         # Get filename from URL (last part after /)
-        filename2 = filename if filename is not None else model_url.split("/")[-1]
+        filename2 = filename if filename is not None else model_url.split("/")[-1].split("?")[0]
         dir = model_dir
         local_path = dir / filename2
 
@@ -167,3 +168,22 @@ async def fetch_from(url: str, method: str = "GET", data: JsonSerializable | Non
 def add_token_to_civitai(url: str, token: str) -> str:
     """Add token to civit."""
     return f"{url}&token={token}"
+
+
+def normalize_name(s: str) -> str:
+    """Normalize name."""
+    result: list[str] = []
+    for ch in s.lower():
+        if ch.isalnum():
+            result.append(ch)
+        else:
+            result.append("_")
+    return "".join(result)
+
+
+def try_parse_pydantic[T](cls: type[T], data: Any) -> T:  # noqa: ANN401
+    """Try parse pydantic, if it fails raise HTTPException with details."""
+    try:
+        return cls(**data)
+    except Exception as e:
+        raise HTTPException(400, e.errors if isinstance(e, ValidationError) else "Unknown") from e

@@ -1,7 +1,7 @@
 """Ollama service."""
 
 import json
-from typing import Annotated, TypedDict
+from typing import Annotated, Literal, TypedDict
 
 from fastapi import HTTPException
 from pydantic import BaseModel, StringConstraints
@@ -12,6 +12,9 @@ from server.docker import DockerImage, DockerOptions, install_and_run_docker, un
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
+    CustomModelField,
+    CustomModelId,
+    CustomModelSpecification,
     InstallModelIn,
     ListModelsFilters,
     ListModelsOut,
@@ -21,8 +24,8 @@ from server.models.models import (
     UninstallModelIn,
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
-from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
-from server.utils.core import fetch_from
+from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
+from server.utils.core import fetch_from, try_parse_pydantic
 
 
 def _read_models_from_json() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
@@ -44,6 +47,13 @@ class OllamaModel(BaseModel):
     id: str
     size: str
     type: str
+    custom: CustomModelId | None = None
+
+
+class OllamaCustomModel(BaseModel):
+    id: str
+    size: str
+    type: Literal["llm", "embedding"]
 
 
 class OllamaRegistryEntry(TypedDict):
@@ -123,6 +133,11 @@ class InstalledInfo:
 
 
 class OllamaService(Base2Service[InstalledInfo]):
+    models: dict[str, OllamaModel]
+
+    def _after_init(self) -> None:
+        self.models = _const.models.copy()
+
     def get_id(self) -> str:
         """Return the service id."""
         return "ollama"
@@ -183,15 +198,29 @@ class OllamaService(Base2Service[InstalledInfo]):
             ]
         )
 
+    def get_custom_model_spec(self) -> CustomModelSpecification | None:
+        """Return the custom model specification or None if custom model is not supported."""
+        return CustomModelSpecification(
+            fields=[
+                CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
+                CustomModelField(type="text", name="size", description="Model size", placeholder="1GB"),
+                CustomModelField(type="oneof", name="type", description="Model type", values=["llm", "embedding"]),
+            ]
+        )
+
     def get_installed_info(self) -> bool | ServiceOptions:
         """Get service installed info."""
         return False if self.installed is None else self.installed.options.spec
 
-    def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
-        return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
+    def _generate_config(self, info: InstalledInfo | None) -> ServiceConfig:
+        return ServiceConfig(
+            options=info.options if info else None,
+            models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
+            custom=self.custom,
+        )
 
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
-        parsed_options = OllamaOptions(**options.spec)
+        parsed_options = try_parse_pydantic(OllamaOptions, options.spec)
         volumes = [f"{self._get_working_dir()}/main:/root/.ollama"]
 
         subnet = self.application_context.get_docker_subnet()
@@ -240,11 +269,23 @@ class OllamaService(Base2Service[InstalledInfo]):
         if options.purge:
             await self._clear_working_dir()
 
+    def _add_custom_model(self, model: CustomModel) -> None:
+        parsed = try_parse_pydantic(OllamaCustomModel, model.data)
+        if parsed.id in self.models:
+            raise HTTPException(400, "Model with given id already exists.")
+        self.models[parsed.id] = OllamaModel(id=parsed.id, size=parsed.size, type=parsed.type, custom=model.id)
+
+    def _remove_custom_model(self, model: CustomModel) -> None:
+        parsed = try_parse_pydantic(OllamaCustomModel, model.data)
+        if self.installed and parsed.id in self.installed.models:
+            raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
+        del self.models[parsed.id]
+
     async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
-        for model_id, model in _const.models.items():
+        for model_id, model in self.models.items():
             installed = info.models[model_id].options if model_id in info.models else False
             if filters.installed is None or filters.installed == installed:
                 out_list.append(
@@ -254,6 +295,7 @@ class OllamaService(Base2Service[InstalledInfo]):
                         type=model.type,
                         installed=installed,
                         size=model.size,
+                        custom=model.custom,
                         spec=self.get_model_spec(),
                     )
                 )
@@ -262,9 +304,9 @@ class OllamaService(Base2Service[InstalledInfo]):
     async def get_model(self, model_id: str) -> RetrieveModelOut:
         """Get the model."""
         info = self._check_installed()
-        if model_id not in _const.models:
+        if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = _const.models[model_id]
+        model = self.models[model_id]
         installed = info.models[model_id].options if model_id in info.models else False
         return RetrieveModelOut(
             id=model_id,
@@ -272,17 +314,18 @@ class OllamaService(Base2Service[InstalledInfo]):
             type=model.type,
             installed=installed,
             size=model.size,
+            custom=model.custom,
             spec=self.get_model_spec(),
         )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
-        parsed_model_options = OllamaModelOptions(**options.spec) if options.spec else OllamaModelOptions()
+        parsed_model_options = try_parse_pydantic(OllamaModelOptions, options.spec) if options.spec else OllamaModelOptions()
         info = self._check_installed()
         if model_id in info.models:
             return
-        if model_id not in _const.models:
+        if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = _const.models[model_id]
+        model = self.models[model_id]
         res = await fetch_from(f"{info.base_url}/api/pull", "POST", {"model": model_id})
         # res.data contains progress it can be streamed!
         if (res.status_code != 200 and res.status_code != 201) or "error" in res.data:

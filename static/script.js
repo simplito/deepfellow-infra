@@ -54,20 +54,22 @@ async function showServicesPage() {
 let modelFilter = "";
 let modelType = "__all";
 let modelInstalled = "__all";
+let modelCustom = "__all"
 
 function resetModelFilters() {
     modelFilter = "";
     modelType = "__all";
     modelInstalled = "__all";
+    modelCustom = "__all";
 }
 
-function showInstallServiceModal(info, onInstall) {
+function showFormModal(title, spec, onInstall) {
     const html = `
 <div class="modal-backdrop">
     <div class="modal">
-        <div class="modal-title">Install ${info.id}</div>
+        <div class="modal-title">${title}</div>
         <form class="fields" data-id="modal-form">
-            ${info.spec.fields.map(field => `
+            ${spec.fields.map(field => `
                 <div class="field">
                     <div class="field-label">${field.description} ${!field.required ? `<span class="optional">(optional)</span>` : ""}</div>
                     <div class="field-input">${(() => {
@@ -75,7 +77,23 @@ function showInstallServiceModal(info, onInstall) {
                             return `<input type="${field.type}" name="${field.name}" ${field.required ? `required="required"` : ""} value="${field.default || ""}" placeholder="${field.placeholder || ""}" />`;
                         }
                         if (field.type === "bool") {
-                            return `<input type="checkbox" name="${field.name}" />`;
+                            return `<input type="checkbox" name="${field.name}" ${field.default == "true" ? `checked="checked"` : ""} />`;
+                        }
+                        if (field.type === "oneof") {
+                            return `<select name="${field.name}" ${field.required ? `required="required"` : ""}>
+                                ${field.values.map(x => `<option value="${x}">${x}</option>`).join("")}
+                            </select>`;
+                        }
+                        if (field.type === "list") {
+                            return [0,1,2,3,4,5].map(() =>
+                                `<input type="text" data-list="${field.name}" placeholder="${field.placeholder || ""}" />`
+                            ).join("<br/>");
+                        }
+                        if (field.type === "map") {
+                            return [0,1,2,3,4,5].map((i) => `
+                                <input type="text" data-map="${field.name}" data-map-key="${i}" placeholder="${field.placeholder || ""}" style="width: 45%" />
+                                <input type="text" data-map="${field.name}" data-map-value="${i}" placeholder="${field.placeholder || ""}" style="width: 45%" />
+                            `).join("<br/>");
                         }
                     })()}</div>
                 </div>
@@ -98,19 +116,58 @@ function showInstallServiceModal(info, onInstall) {
         if (!valid) {
             return;
         }
+        const keyMapping = {};
         const data = {};
-        for (const field of div.querySelectorAll("input")) {
-            data[field.name] = field.type == "checkbox" ? field.checked : field.type == "number" ? field.valueAsNumber : field.value;
+        for (const field of div.querySelectorAll("input,select")) {
+            if (field.name) {
+                data[field.name] = field.type == "checkbox" ? field.checked : field.type == "number" ? field.valueAsNumber : field.value;
+            }
+            else if (field.hasAttribute("data-list") && field.value) {
+                if (!data[field.getAttribute("data-list")]) {
+                    data[field.getAttribute("data-list")] = []
+                }
+                data[field.getAttribute("data-list")].push(field.value)
+            }
+            else if (field.hasAttribute("data-map")) {
+                if (field.hasAttribute("data-map-key") && field.value) {
+                    if (!data[field.getAttribute("data-map")]) {
+                        data[field.getAttribute("data-map")] = {}
+                    }
+                    if (!keyMapping[field.getAttribute("data-map")]) {
+                        keyMapping[field.getAttribute("data-map")] = {}
+                    }
+                    data[field.getAttribute("data-map")][field.value] = "";
+                    keyMapping[field.getAttribute("data-map")][field.getAttribute("data-map-key")] = field.value;
+                }
+                else if (field.hasAttribute("data-map-value")) {
+                    const km = keyMapping[field.getAttribute("data-map")]
+                    const key = km ? km[field.getAttribute("data-map-value")] : null;
+                    if (km && key && data[field.getAttribute("data-map")]) {
+                        data[field.getAttribute("data-map")][key] = field.value;
+                    }
+                }
+            }
         }
         onInstall(data);
         div.remove();
     });
 }
 
-const showInstallModelModal = showInstallServiceModal;
+function showInstallServiceModal(info, onInstall) {
+    return showFormModal(`Install ${info.id}`, info.spec, onInstall);
+}
+
+function showInstallModelModal(info, onInstall) {
+    return showFormModal(`Install ${info.id}`, info.spec, onInstall);
+}
+
+function showAddCustomModelModal(info, onInstall) {
+    return showFormModal(`Add custom model for ${info.id}`, info.custom_model_spec, onInstall);
+}
 
 async function showServicePage(id) {
     showLoadingPage();
+    const serivceInfo = await fetchX(`/admin/services/${id}`);
     const data = await fetchX(`/admin/services/${id}/models`);
     const list = data.list.sort((a, b) => {
         if (a.installed !== b.installed) {
@@ -133,10 +190,16 @@ async function showServicePage(id) {
         installed: true,
         notinstalled: false
     };
+    const customOptions = {
+        __all: null,
+        onlycustom: true,
+        onlynotcustom: false
+    };
     const html = `
         <div class="page service-page">
             <h3>
                 Service: ${id}
+                ${serivceInfo.custom_model_spec ? `<button data-service-id="${id}" data-action="add-custom-model">Add custom model</button> ` : ""}
                 <button data-action="open-services">Back to services</button>
             </h3>
             <div class="search">
@@ -157,6 +220,13 @@ async function showServicePage(id) {
                     <option value="installed">Only installed</option>
                     <option value="notinstalled">Only not installed</option>
                 </select>
+                
+                ${serivceInfo.custom_model_spec ? `<span style="margin-left: 20px;">Custom:</span>
+                <select id="model-custom">
+                    <option value="__all">--ALL--</option>
+                    <option value="onlycustom">Only custom</option>
+                    <option value="onlynotcustom">Only not custom</option>
+                </select>` : ""}
             </div>
             <div class="boxes models">
             </div>
@@ -166,10 +236,12 @@ async function showServicePage(id) {
     function render() {
         const filterl = modelFilter.toLowerCase();
         const installed = installedOptions[modelInstalled];
+        const custom = customOptions[modelCustom];
         const filtered = list.filter(x => 
             (!filterl || x.id.toLowerCase().includes(filterl)) &&
             (modelType === "__all" || x.type === modelType) &&
-            (installed === null || x.installed === installed)
+            (installed === null || x.installed === installed) &&
+            (custom === null || (!!x.custom) === custom)
         );
         boxes.innerHTML = filtered.length === 0 ? `<div class="empty">No elements</div>` : filtered.map(m => {
             const values = m.installed ? m.installed.spec || {} : false;
@@ -180,6 +252,9 @@ async function showServicePage(id) {
                         <div class="badge ${m.installed ? "badge-installed" : "badge-not-insalled"}">
                             ${m.installed ? "Installed" : "Not installed"}
                         </div>
+                        ${m.custom ? `<div class="badge">
+                            Custom
+                        </div>`: ""}
                     </div>
                     <div class="model-type">${types[m.type] || m.type}</div>
                     <div class="box-size model-size">
@@ -191,6 +266,7 @@ async function showServicePage(id) {
                     <div class="box-buttons model-buttons">
                         ${!m.installed ? `<button data-action="install-model" data-service-id="${id}" data-model-id="${m.id}">Install</button>` : ""}
                         ${m.installed ? `<button data-action="uninstall-model" data-service-id="${id}" data-model-id="${m.id}">Uninstall</button>`: ""}
+                        ${!m.installed && m.custom ? `<button data-action="remove-custom-model" data-service-id="${id}" data-model-id="${m.custom}">Remove custom model</button>` : ""}
                     </div>
                 </div>`
             );
@@ -215,6 +291,14 @@ async function showServicePage(id) {
         modelInstalled = modelInstalledEle.value;
         render();
     });
+    const modelCustomEle = document.getElementById("model-custom");
+    if (modelCustomEle) {
+        modelCustomEle.value = modelCustom;
+        modelCustomEle.addEventListener("change", () => {
+            modelCustom = modelCustomEle.value;
+            render();
+        });
+    }
 }
 
 function showLoadingPage() {
@@ -277,6 +361,34 @@ root.addEventListener("click", async e => {
         else if (action === "uninstall-model") {
             showLoadingPage()
             await fetchX(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
+                method: "DELETE",
+                body: JSON.stringify({purge: false}),
+                headers: {"Content-Type": "application/json"}
+            });
+            showServicePage(serviceId);
+        }
+        else if (action === "add-custom-model") {
+            const info = await fetchX(`/admin/services/${serviceId}`, {
+                method: "GET"
+            });
+            showAddCustomModelModal(info, async data => {
+                showLoadingPage()
+                try {
+                    await fetchX(`/admin/services/${serviceId}/models/custom`, {
+                        method: "POST",
+                        body: JSON.stringify({spec: data}),
+                        headers: {"Content-Type": "application/json"}
+                    });
+                }
+                catch {}
+                resetModelFilters()
+                modelFilter = data.id;
+                showServicePage(serviceId);
+            });
+        }
+        else if (action === "remove-custom-model") {
+            showLoadingPage()
+            await fetchX(`/admin/services/${serviceId}/models/custom/${modelId}`, {
                 method: "DELETE",
                 body: JSON.stringify({purge: false}),
                 headers: {"Content-Type": "application/json"}
