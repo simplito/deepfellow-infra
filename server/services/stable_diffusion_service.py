@@ -22,6 +22,9 @@ from server.docker import DockerImage, DockerOptions, get_user_for_docker, has_g
 from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
 from server.models.api import ImagesRequest, ModelProps
 from server.models.models import (
+    CustomModelField,
+    CustomModelId,
+    CustomModelSpecification,
     InstallModelIn,
     ListModelsFilters,
     ListModelsOut,
@@ -31,8 +34,8 @@ from server.models.models import (
     UninstallModelIn,
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
-from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
-from server.utils.core import Utils, add_token_to_civitai
+from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
+from server.utils.core import Utils, add_token_to_civitai, try_parse_pydantic
 from server.utils.exceptions import AppError
 
 ModelType = Literal["txt2img", "lora"]
@@ -72,6 +75,17 @@ class StableDiffusionModel(BaseModel):
     filename: str
     model_url: str | None = None
     size: str
+    custom: CustomModelId | None = None
+
+
+class StableDiffusionCustomModel(BaseModel):
+    id: str
+    filetype: FileType
+    type: ModelType
+    url: str
+    filename: str
+    model_url: str | None = None
+    size: str
 
 
 class StableDiffusionConst(BaseModel):
@@ -88,20 +102,20 @@ _const = StableDiffusionConst(
         name="vladmandic/sdnext-cuda:latest@sha256:10f9ab600c245b9ce83be5a55abb64b46e115ef8508f5ffc69eed8fa0fc28ce8", size="9.4 GB"
     ),
     models={
-        "Plant Milk": StableDiffusionModel(
+        "Plant Milk Walnut": StableDiffusionModel(
             filetype="Stable-diffusion",
             type="txt2img",
             url="https://civitai.com/api/download/models/1714002?type=Model&format=SafeTensor&size=pruned&fp=fp16",
             filename="plantMilkModelSuite_walnut.safetensors",
-            model_url="https://civitai.com/models/1162518/plant-milk-model-suite",
+            model_url="https://civitai.com/models/1162518?modelVersionId=1714002",
             size="6.46GB",
         ),
-        "Pixiv Artist Styles": StableDiffusionModel(
+        "Pixiv AenuaV1": StableDiffusionModel(
             filetype="Lora",
             type="lora",
             url="https://civitai.com/api/download/models/694191?type=Model&format=SafeTensor",
             filename="AenuaV1.safetensors",
-            model_url="https://civitai.com/models/620966/lora-pixiv-artist-styles-pony",
+            model_url="https://civitai.com/models/620966?modelVersionId=694191",
             size="435.34MB",
         ),
         "Minecraft square style": StableDiffusionModel(
@@ -205,6 +219,11 @@ class DefaultSdNextConfig(NamedTuple):
 
 
 class StableDiffusionService(Base2Service[InstalledInfo]):
+    models: dict[str, StableDiffusionModel]
+
+    def _after_init(self) -> None:
+        self.models = _const.models.copy()
+
     def get_id(self) -> str:
         """Return the service id."""
         return "stable-diffusion"
@@ -232,12 +251,41 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             ]
         )
 
+    def get_custom_model_spec(self) -> CustomModelSpecification | None:
+        """Return the custom model specification or None if custom model is not supported."""
+        return CustomModelSpecification(
+            fields=[
+                CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
+                CustomModelField(type="oneof", name="filetype", description="File type", values=["Lora", "Stable-diffusion"]),
+                CustomModelField(type="oneof", name="type", description="Model type", values=["txt2img", "lora"]),
+                CustomModelField(
+                    type="text",
+                    name="url",
+                    description="Model File URL",
+                    placeholder="https://civitai.com/api/download/models/123456789?type=Model&format=SafeTensor&size=pruned&fp=fp16",
+                ),
+                CustomModelField(type="text", name="filename", description="Model filename", placeholder="mymodel.safetensors"),
+                CustomModelField(
+                    type="text",
+                    name="model_url",
+                    description="Model URL",
+                    required=False,
+                    placeholder="https://civitai.com/models/1162518",
+                ),
+                CustomModelField(type="text", name="size", description="Model size", placeholder="1GB"),
+            ]
+        )
+
     def get_installed_info(self) -> bool | ServiceOptions:
         """Get service installed info."""
         return False if self.installed is None else self.installed.options.spec
 
-    def _generate_config(self, info: InstalledInfo) -> ServiceConfig:
-        return ServiceConfig(options=info.options, models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()])
+    def _generate_config(self, info: InstalledInfo | None) -> ServiceConfig:
+        return ServiceConfig(
+            options=info.options if info else None,
+            models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
+            custom=self.custom,
+        )
 
     async def update_config(self) -> None:
         """Edit SD Next config file."""
@@ -265,7 +313,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
         if platform.system() == "Darwin":
             raise NotImplementedError("Stable Diffusion is not supported on macOS")
-        parsed_options = SDOptions(**options.spec)
+        parsed_options = try_parse_pydantic(SDOptions, options.spec)
         volumes = [
             f"{self._get_working_models_dir()}:/mnt/models",
             f"{self._get_working_data_dir()}:/mnt/data",
@@ -315,11 +363,31 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         if options.purge:
             await self._clear_working_dir()
 
+    def _add_custom_model(self, model: CustomModel) -> None:
+        parsed = try_parse_pydantic(StableDiffusionCustomModel, model.data)
+        if parsed.id in self.models:
+            raise HTTPException(400, "Model with given id already exists.")
+        self.models[parsed.id] = StableDiffusionModel(
+            filetype=parsed.filetype,
+            type=parsed.type,
+            url=parsed.url,
+            filename=parsed.filename,
+            model_url=parsed.model_url,
+            size=parsed.size,
+            custom=model.id,
+        )
+
+    def _remove_custom_model(self, model: CustomModel) -> None:
+        parsed = try_parse_pydantic(StableDiffusionCustomModel, model.data)
+        if self.installed and parsed.id in self.installed.models:
+            raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
+        del self.models[parsed.id]
+
     async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
-        for model_id, model in _const.models.items():
+        for model_id, model in self.models.items():
             installed = info.models[model_id].options if model_id in info.models else False
             if filters.installed is None or filters.installed == installed:
                 out_list.append(
@@ -329,6 +397,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
                         type=model.type,
                         installed=installed,
                         size=model.size,
+                        custom=model.custom,
                         spec=self.get_model_spec(),
                     )
                 )
@@ -337,9 +406,9 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
     async def get_model(self, model_id: str) -> RetrieveModelOut:
         """Get the model."""
         info = self._check_installed()
-        if model_id not in _const.models:
+        if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = _const.models[model_id]
+        model = self.models[model_id]
         installed = info.models[model_id].options if model_id in info.models else False
         return RetrieveModelOut(
             id=model_id,
@@ -347,6 +416,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             type=model.type,
             installed=installed,
             size=model.size,
+            custom=model.custom,
             spec=self.get_model_spec(),
         )
 
@@ -371,13 +441,13 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             await asyncio.gather(*tasks)
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
-        parsed_model_options = SDModelOptions(**options.spec) if options.spec else SDModelOptions()
+        parsed_model_options = try_parse_pydantic(SDModelOptions, options.spec) if options.spec else SDModelOptions()
         info = self._check_installed()
         if model_id in info.models:
             return
-        if model_id not in _const.models:
+        if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = _const.models[model_id]
+        model = self.models[model_id]
 
         model_dir = self._get_working_models_dir() / model.filetype
 

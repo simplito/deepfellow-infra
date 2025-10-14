@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from server.models.models import RetrieveModelOut
+from server.models.models import CustomModelSpecification, RetrieveModelOut
 
 type ServiceOptions = dict[str, Any]
 type ServiceSize = dict[str, str] | str
@@ -44,6 +44,7 @@ class RetrieveServiceOut(BaseModel):
     installed: bool | ServiceOptions
     spec: ServiceSpecification
     size: ServiceSize
+    custom_model_spec: CustomModelSpecification | None
 
 
 class ListServicesFilters(BaseModel):

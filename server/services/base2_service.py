@@ -2,6 +2,7 @@
 
 import logging
 import shutil
+import uuid
 from abc import abstractmethod
 from pathlib import Path
 from typing import TypeVar
@@ -11,7 +12,13 @@ from pydantic import BaseModel
 
 from server.applicationcontext import ApplicationContext
 from server.endpointregistry import EndpointRegistry
-from server.models.models import InstallModelIn, UninstallModelIn
+from server.models.models import (
+    AddCustomModelIn,
+    CustomModelDefiniton,
+    CustomModelId,
+    InstallModelIn,
+    UninstallModelIn,
+)
 from server.models.services import InstallServiceIn, UninstallServiceIn
 from server.serviceprovider import ServiceProvider, ServiceRawConfig
 from server.services.base_service import BaseService
@@ -22,9 +29,15 @@ class ModelConfig(BaseModel):
     options: InstallModelIn
 
 
+class CustomModel(BaseModel):
+    id: CustomModelId
+    data: CustomModelDefiniton
+
+
 class ServiceConfig(BaseModel):
-    options: InstallServiceIn
-    models: list[ModelConfig]
+    options: InstallServiceIn | None = None
+    models: list[ModelConfig] | None = None
+    custom: list[CustomModel] | None = None
 
 
 T = TypeVar("T")
@@ -40,6 +53,11 @@ class Base2Service[T](BaseService):
         self.service_provider = service_provider
         self.installed: T | None = None
         self.installing = False
+        self.custom = list[CustomModel]()
+        self._after_init()
+
+    def _after_init(self) -> None:
+        """Do some custom initialization."""
 
     @abstractmethod
     def get_id(self) -> str:
@@ -52,19 +70,23 @@ class Base2Service[T](BaseService):
     async def load(self, config: ServiceRawConfig) -> None:
         """Load service using the config."""
         cfg = ServiceConfig(**config)
+        self.custom = cfg.custom or []
+        for custom in self.custom:
+            self._add_custom_model(custom)
+        if not cfg.options:
+            return
         await self._install(cfg.options)
         logger.info(f"{self.get_id()} service checked")  # noqa: G004
-        for model in cfg.models:
+        for model in cfg.models or []:
             logger.info(f"{self.get_id()} loading model {model.model_id}")  # noqa: G004
             await self._install_model(model.model_id, model.options)
 
     async def _save(self) -> None:
-        info = self._check_installed()
-        cfg = self._generate_config(info)
+        cfg = self._generate_config(self.installed)
         await self.service_provider.save_service_config(self.get_id(), cfg.model_dump())
 
     @abstractmethod
-    def _generate_config(self, info: T) -> ServiceConfig:
+    def _generate_config(self, info: T | None) -> ServiceConfig:
         """Generate config."""
 
     async def install(self, options: InstallServiceIn) -> None:
@@ -91,11 +113,36 @@ class Base2Service[T](BaseService):
     async def uninstall(self, options: UninstallServiceIn) -> None:
         """Uninstall the service."""
         await self._uninstall(options)
-        await self.service_provider.clear_service_config(self.get_id())
+        await self._save()
 
     @abstractmethod
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         """Uninstall service."""
+
+    async def add_custom_model(self, options: AddCustomModelIn) -> CustomModelId:
+        """Add custom model."""
+        model = CustomModel(id=str(uuid.uuid4()), data=options.spec)
+        self._add_custom_model(model)
+        self.custom.append(model)
+        await self._save()
+        return model.id
+
+    def _add_custom_model(self, model: CustomModel) -> None:  # noqa: ARG002
+        """Add custom model."""
+        raise HTTPException(400, "This service does not support custom models.")
+
+    async def remove_custom_model(self, custom_model_id: CustomModelId) -> None:
+        """Remove custom model."""
+        model = next(x for x in self.custom if x.id == custom_model_id)
+        if not model:
+            return
+        self._remove_custom_model(model)
+        self.custom = [x for x in self.custom if x.id != custom_model_id]
+        await self._save()
+
+    def _remove_custom_model(self, model: CustomModel) -> None:  # noqa: ARG002
+        """Remove custom model."""
+        raise HTTPException(400, "This service does not support custom models.")
 
     async def install_model(self, model_id: str, options: InstallModelIn) -> None:
         """Install the model."""

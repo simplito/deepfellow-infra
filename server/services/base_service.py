@@ -2,7 +2,16 @@
 
 from abc import ABC, abstractmethod
 
-from server.models.models import InstallModelIn, ListModelsFilters, ListModelsOut, RetrieveModelOut, UninstallModelIn
+from server.models.models import (
+    AddCustomModelIn,
+    CustomModelId,
+    CustomModelSpecification,
+    InstallModelIn,
+    ListModelsFilters,
+    ListModelsOut,
+    RetrieveModelOut,
+    UninstallModelIn,
+)
 from server.models.services import (
     InstallServiceIn,
     RetrieveServiceOut,
@@ -27,9 +36,19 @@ class BaseService(ABC):
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
 
+    @abstractmethod
+    def get_custom_model_spec(self) -> CustomModelSpecification | None:
+        """Return the custom model specification or None if custom model is not supported."""
+
     def get_info(self) -> RetrieveServiceOut:
         """Return the service info."""
-        return RetrieveServiceOut(id=self.get_id(), installed=self.get_installed_info(), spec=self.get_spec(), size=self.get_size())
+        return RetrieveServiceOut(
+            id=self.get_id(),
+            installed=self.get_installed_info(),
+            spec=self.get_spec(),
+            size=self.get_size(),
+            custom_model_spec=self.get_custom_model_spec(),
+        )
 
     @abstractmethod
     def is_installed(self) -> bool:
@@ -66,3 +85,11 @@ class BaseService(ABC):
     @abstractmethod
     async def uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         """Uninstall the model."""
+
+    @abstractmethod
+    async def add_custom_model(self, options: AddCustomModelIn) -> CustomModelId:
+        """Add custom model."""
+
+    @abstractmethod
+    async def remove_custom_model(self, custom_model_id: CustomModelId) -> None:
+        """Remove custom model."""
