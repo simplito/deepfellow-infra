@@ -355,7 +355,7 @@ class OllamaService(Base2Service[InstalledInfo]):
             model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
                 model=registered_name,
                 props=ModelProps(private=True),
-                options=ProxyOptions(url=f"{info.base_url}/v1/embeddings"),
+                options=ProxyOptions(url=f"{info.base_url}/v1/embeddings", rewrite_model_to=model_id),
                 registration_options=None,
             )
 

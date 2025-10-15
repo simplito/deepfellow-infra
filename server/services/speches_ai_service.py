@@ -540,14 +540,14 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             model_info.registration_id = self.endpoint_registry.register_audio_speech_as_proxy(
                 model=registered_name,
                 props=ModelProps(private=True),
-                options=ProxyOptions(url=f"{info.base_url}/v1/audio/speech"),
+                options=ProxyOptions(url=f"{info.base_url}/v1/audio/speech", rewrite_model_to=model_id),
                 registration_options=None,
             )
         if model.type == "stt":
             model_info.registration_id = self.endpoint_registry.register_audio_transcriptions_as_proxy(
                 model=registered_name,
                 props=ModelProps(private=True),
-                options=ProxyOptions(url=f"{info.base_url}/v1/audio/transcriptions"),
+                options=ProxyOptions(url=f"{info.base_url}/v1/audio/transcriptions", rewrite_model_to=model_id),
                 registration_options=None,
             )
 
