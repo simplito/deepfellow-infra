@@ -33,8 +33,7 @@ todo:
     git grep "# FIX" -- "*.py"
     git grep "# DONE" -- "*.py"
 
-check: 
-    ruff ruff-format pyright
+check: ruff ruff-format pyright
 
 ui-rebuild:
    (cd $(git rev-parse --show-toplevel)/webui && npm run buildx)
