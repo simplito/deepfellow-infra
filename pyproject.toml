@@ -17,6 +17,7 @@ dependencies = [
     "pydantic-settings>=2.10.1",
     "websockets>=15.0.1",
     "aiofiles>=24.1.0",
+    "py-cpuinfo>=9.0.0",
 ]
 
 [dependency-groups]

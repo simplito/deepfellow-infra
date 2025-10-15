@@ -2,11 +2,12 @@
 
 from pathlib import Path
 
+import cpuinfo  # pyright: ignore[reportMissingTypeStubs]
 from fastapi import HTTPException
 from pydantic import BaseModel
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerImage, DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, docker_pull, has_gpu_support, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
@@ -24,6 +25,14 @@ from server.models.models import (
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
 from server.utils.core import normalize_name, try_parse_pydantic
+
+
+def is_avx512_supported() -> bool:
+    """Chech if CPU supports avx512 instructions."""
+    info = cpuinfo.get_cpu_info()
+    flags = info.get("flags", [])
+
+    return any(flag.startswith("avx512") for flag in flags)
 
 
 class VllmModel(BaseModel):
@@ -180,6 +189,10 @@ class VllmService(Base2Service[InstalledInfo]):
 
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
         parsed_options = try_parse_pydantic(VllmOptions, options.spec)
+        if parsed_options.gpu and not await has_gpu_support():
+            raise HTTPException(400, "Docker doesn't support GPU on this machine.")
+        if not parsed_options.gpu and not is_avx512_supported():
+            raise HTTPException(400, "Your CPU does not support AVX 512 instructions")
         image = self._get_image(parsed_options.gpu)
         await docker_pull(image.name)
         return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
@@ -268,14 +281,19 @@ class VllmService(Base2Service[InstalledInfo]):
         if model.quantization:
             vllm_command.extend(["--quantization", model.quantization])
 
-        if model.max_model_len:
+        if model.max_model_len and info.parsed_options.gpu:
             vllm_command.extend(["--max-model-len", str(model.max_model_len)])
+
+        if not info.parsed_options.gpu:
+            vllm_command.extend(["--disable-sliding-window"])
 
         if not model.env_vars:
             model.env_vars = {}
 
         model.env_vars["HF_HOME"] = self.hugging_face_cache_path
         model.env_vars["HF_TOKEN"] = self.get_hugging_face_token()
+        if not info.parsed_options.gpu:
+            model.env_vars["VLLM_USE_V1"] = "1"
 
         image = self._get_image(info.parsed_options.gpu)
         volumes = [f"{self._get_working_dir() / 'models'}:{Path(self.hugging_face_cache_path) / 'hub'}"]
