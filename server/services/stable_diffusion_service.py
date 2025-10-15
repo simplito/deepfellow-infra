@@ -317,6 +317,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         volumes = [
             f"{self._get_working_models_dir()}:/mnt/models",
             f"{self._get_working_data_dir()}:/mnt/data",
+            f"{self._get_working_logs()}:/app/sdnext.log",
         ]
         if parsed_options.gpu:
             image = _const.image_gpu
@@ -499,6 +500,15 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         path = self._get_working_dir() / "data"
         path.mkdir(parents=True, exist_ok=True)
         return path
+
+    def _get_working_logs(self) -> Path:
+        path = self._get_working_dir() / "logs"
+        path.mkdir(parents=True, exist_ok=True)
+        file = path / "sdnext.log"
+        with Path.open(file, "a"):
+            pass
+
+        return file
 
 
 class InputTokensDetails(BaseModel):
