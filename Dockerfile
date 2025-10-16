@@ -5,17 +5,17 @@ COPY --from=ghcr.io/astral-sh/uv:0.8.12 /uv /uvx /bin/
 
 WORKDIR /app
 COPY . .
-RUN uv venv .venv \
-  && uv sync --frozen \
-  && uv run ruff check server/ tests/ \
-  && uv run ruff format server/ tests/ --check \
-  && uv run pyright \
-  && uv run pytest --showlocals --tb=auto -ra --cov server --cov-branch --cov-report=term-missing tests/ \
-  && rm -rf .venv \
-  && uv sync --frozen --no-dev \
-  && rm -rf .venv/lib/python*/site-packages/*/test \
-  && rm -rf .venv/lib/python*/site-packages/*/tests \
-  && rm -rf tests .ruff_cache .pytest_cache
+RUN uv venv .venv
+RUN uv sync --frozen
+RUN uv run ruff check server/ tests/
+RUN uv run ruff format server/ tests/ --check
+RUN PYRIGHT_PYTHON_NODE_VERSION=24.10.0 uv run pyright
+RUN uv run pytest --showlocals --tb=auto -ra --cov server --cov-branch --cov-report=term-missing tests/
+RUN rm -rf .venv
+RUN uv sync --frozen --no-dev
+RUN rm -rf .venv/lib/python*/site-packages/*/test
+RUN rm -rf .venv/lib/python*/site-packages/*/tests
+RUN rm -rf tests .ruff_cache .pytest_cache
 
 FROM base AS runner
 
