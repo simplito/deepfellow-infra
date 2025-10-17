@@ -23,7 +23,7 @@ from server.models.models import (
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
-from server.utils.core import Utils, normalize_name, try_parse_pydantic
+from server.utils.core import normalize_name, try_parse_pydantic
 
 
 class LlamacppModel(BaseModel):
@@ -69,6 +69,18 @@ _const = LlamacppConst(
         "mradermacher/PLLuM-12B-instruct": LlamacppModel(
             url="https://huggingface.co/mradermacher/PLLuM-12B-instruct-GGUF/resolve/main/PLLuM-12B-instruct.Q4_K_M.gguf",
             size="7.0GB",
+        ),
+        "google/gemma-3-1b-it-q8": LlamacppModel(
+            url="https://huggingface.co/brittlewis12/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it.Q8_0.gguf",
+            size="2.0GB",
+        ),
+        "google/gemma-3-1b-it-q4-k-m": LlamacppModel(
+            url="https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF/resolve/main/google_gemma-3-1b-it-Q4_K_M.gguf",
+            size="0.9GB",
+        ),
+        "google/gemma-2b": LlamacppModel(
+            url="https://huggingface.co/google/gemma-2b/resolve/main/gemma-2b.gguf",
+            size="10.0GB",
         ),
     },
 )
@@ -245,18 +257,18 @@ class LLamacppService(Base2Service[InstalledInfo]):
         model = self.models[model_id]
         model_dir = self._get_working_dir() / "models"
         model_dir.mkdir(parents=True, exist_ok=True)
-        local_model_path, model_filename = await Utils.ensure_model_downloaded(model.url, model_dir)
+        local_model_path, model_filename = await self.model_downloader.download(model.url, model_dir)
         model_in_container = f"/models/{model_filename}"
         volumes = [f"{local_model_path.absolute()}:{model_in_container}:ro"]
         image = self._get_image(info.parsed_options.gpu)
-
+        command = " ".join(["--host 0.0.0.0", "--port 8080", f"--model {model_in_container}"])
         subnet = self.application_context.get_docker_subnet()
         service_name = f"{self.get_id()}-{normalize_name(model_id)}"
         docker_options = DockerOptions(
             name=service_name,
             container_name=self.application_context.get_docker_container_name(service_name),
             image=image.name,
-            command=f"--model {model_in_container} --host 0.0.0.0 --port 8080",
+            command=command,
             image_port=8080,
             restart="unless-stopped",
             volumes=volumes,
