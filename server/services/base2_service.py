@@ -22,6 +22,7 @@ from server.models.models import (
 from server.models.services import InstallServiceIn, UninstallServiceIn
 from server.serviceprovider import ServiceProvider, ServiceRawConfig
 from server.services.base_service import BaseService
+from server.utils.model_downloader import ModelDownloader
 
 
 class ModelConfig(BaseModel):
@@ -46,11 +47,18 @@ logger = logging.getLogger("uvicorn.error")
 
 
 class Base2Service[T](BaseService):
-    def __init__(self, application_context: ApplicationContext, endpoint_registry: EndpointRegistry, service_provider: ServiceProvider):
+    def __init__(
+        self,
+        application_context: ApplicationContext,
+        endpoint_registry: EndpointRegistry,
+        service_provider: ServiceProvider,
+        model_downloader: ModelDownloader,
+    ):
         super().__init__()
         self.application_context = application_context
         self.endpoint_registry = endpoint_registry
         self.service_provider = service_provider
+        self.model_downloader = model_downloader
         self.installed: T | None = None
         self.installing = False
         self.custom = list[CustomModel]()

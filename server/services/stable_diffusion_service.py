@@ -35,7 +35,7 @@ from server.models.models import (
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
-from server.utils.core import Utils, add_token_to_civitai, try_parse_pydantic
+from server.utils.core import try_parse_pydantic
 from server.utils.exceptions import AppError
 
 ModelType = Literal["txt2img", "lora"]
@@ -442,11 +442,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
 
         model_dir = self._get_working_models_dir() / model.filetype
 
-        # Handle civitai logged request. We should probably move this code.
-        if model.url.startswith("https://civitai.com") and (token := self.get_civitai_token()):
-            model.url = add_token_to_civitai(model.url, token)
-
-        local_model_path, _ = await Utils.ensure_model_downloaded(model.url, model_dir, model.filename)
+        local_model_path, _ = await self.model_downloader.download(model.url, model_dir, model.filename)
         registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,

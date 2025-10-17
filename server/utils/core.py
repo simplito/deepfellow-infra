@@ -3,17 +3,26 @@
 import asyncio
 import re
 import shlex
-from http.client import HTTPException
 from pathlib import Path
 from typing import Any, NamedTuple
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlencode, urlparse, urlunparse
 
 import aiofiles
 import aiohttp
 from aiohttp import ClientSession, ClientTimeout
+from fastapi import HTTPException
+from multidict import CIMultiDictProxy
 from pydantic import BaseModel, ValidationError
 
 from server.models.common import JsonSerializable
+
+
+class HttpClientError(Exception):
+    def __init__(self, message: str, status_code: int, headers: CIMultiDictProxy[str], body: str):
+        super().__init__(message)
+        self.status_code = status_code
+        self.headers = headers
+        self.body = body
 
 
 class CommandResult(NamedTuple):
@@ -101,8 +110,18 @@ class Utils:
         return quote(text, safe=safe)
 
     @staticmethod
-    async def ensure_model_downloaded(model_url: str, model_dir: Path, filename: str | None = None) -> tuple[Path, str]:
+    def create_bearer_header(key: str) -> dict[str, str]:
+        """Create bearer header."""
+        return {"Authorization": f"Bearer {key}"} if key else {}
+
+    @staticmethod
+    async def ensure_model_downloaded(
+        model_url: str, model_dir: Path, filename: str | None = None, headers: dict[str, str] | None = None
+    ) -> tuple[Path, str]:
         """Download model if it's a URL, return (local_path, filename)."""
+        if headers is None:
+            headers = {}
+
         if not model_url.startswith("https://"):
             # Already a local path
             local_path = Path(model_url)
@@ -122,7 +141,7 @@ class Utils:
             # Download with and error handling
             try:
                 # Use curl instead of wget for better macOS compatibility
-                await download_file(model_url, local_path)
+                await download_file(model_url, local_path, headers)
 
                 # Validate the downloaded file
                 if not local_path.exists() or local_path.stat().st_size == 0:
@@ -132,13 +151,26 @@ class Utils:
 
                 print(f"Successfully downloaded {filename2} ({local_path.stat().st_size} bytes)")
 
-            except Exception as e:
+            except Exception:
                 # Clean up any partial download
                 if local_path.exists():
                     local_path.unlink()
-                raise RuntimeError("Failed to download", filename2) from e
+                raise
 
         return local_path, filename2
+
+    @staticmethod
+    def add_url_parameter_if_missing(url: str, param_name: str, param_value: str) -> str:
+        """Check parameter existance in a URL's query string and adds it if it doesn't."""
+        if param_value:
+            parsed_url = urlparse(url)
+            query_params = parse_qs(parsed_url.query, keep_blank_values=True)
+            if param_name not in query_params:
+                query_params[param_name] = [param_value]
+                new_query = urlencode(query_params, doseq=True)
+                return urlunparse(parsed_url._replace(query=new_query))
+
+        return url
 
 
 class FetchResult(BaseModel):
@@ -146,13 +178,13 @@ class FetchResult(BaseModel):
     data: str
 
 
-async def download_file(url: str, file_path: Path) -> None:
+async def download_file(url: str, file_path: Path, headers: dict[str, str]) -> None:
     """Download file from given url and save it under given path."""
-    async with aiohttp.ClientSession() as session, session.get(url, timeout=ClientTimeout(3600)) as response:
+    async with aiohttp.ClientSession() as session, session.get(url, headers=headers, timeout=ClientTimeout(3600)) as response:
         if response.status != 200:
             body = await response.text()
-            msg = f"Cannot download file from {url} get status code {response.status}, body: {body}"
-            raise RuntimeError(msg)
+            msg = f"Cannot download file from {url} get status code {response.status}, {body}"
+            raise HttpClientError(message=msg, status_code=response.status, headers=response.headers, body=body)
 
         async with aiofiles.open(file_path, "wb") as f:
             async for chunk in response.content.iter_chunked(1024):
