@@ -34,6 +34,7 @@ class CustomModelField(BaseModel):
     placeholder: str | None = None
     required: bool = True
     values: list[str] | None = None
+    display: str | None = None
 
 
 class CustomModelSpecification(BaseModel):
