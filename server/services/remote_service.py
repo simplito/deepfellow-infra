@@ -38,10 +38,8 @@ class RemoteModel(BaseModel):
 class RemoteCustomModel(BaseModel):
     id: str
     type: Literal["llm", "embedding", "stt", "tts", "txt2img"]
-    real_model_name: str | None = None
     completions: bool = True
     legacy_completions: bool = True
-    private: bool = False
 
 
 class RemoteConst(BaseModel):
@@ -121,10 +119,20 @@ class RemoteService(Base2Service[InstalledInfo]):
             fields=[
                 CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
                 CustomModelField(type="oneof", name="type", description="Model Type", values=["llm", "embedding", "stt", "tts", "txt2img"]),
-                CustomModelField(type="text", name="real_model_name", description="Real model name", required=False, placeholder="abc"),
-                CustomModelField(type="bool", name="completions", description="Support /v1/chat/completions", default="true"),
-                CustomModelField(type="bool", name="legacy_completions", description="Support /v1/completions", default="true"),
-                CustomModelField(type="bool", name="private", description="Model is private", default="false"),
+                CustomModelField(
+                    type="bool",
+                    name="completions",
+                    description="Support /v1/chat/completions",
+                    default="true",
+                    display="type=llm",
+                ),
+                CustomModelField(
+                    type="bool",
+                    name="legacy_completions",
+                    description="Support /v1/completions",
+                    default="true",
+                    display="type=llm",
+                ),
             ]
         )
 
@@ -168,8 +176,8 @@ class RemoteService(Base2Service[InstalledInfo]):
             type=parsed.type,
             completions=parsed.completions,
             legacy_completions=parsed.legacy_completions,
-            real_model_name=parsed.real_model_name,
-            props=ModelProps(private=parsed.private),
+            real_model_name=None,
+            props=ModelProps(private=False),
             custom=model.id,
         )
 

@@ -81,10 +81,8 @@ class StableDiffusionModel(BaseModel):
 class StableDiffusionCustomModel(BaseModel):
     id: str
     filetype: FileType
-    type: ModelType
     url: str
     filename: str
-    model_url: str | None = None
     size: str
 
 
@@ -256,8 +254,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         return CustomModelSpecification(
             fields=[
                 CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
-                CustomModelField(type="oneof", name="filetype", description="File type", values=["Lora", "Stable-diffusion"]),
-                CustomModelField(type="oneof", name="type", description="Model type", values=["txt2img", "lora"]),
+                CustomModelField(type="oneof", name="filetype", description="File type", values=["Stable-diffusion", "Lora"]),
                 CustomModelField(
                     type="text",
                     name="url",
@@ -265,13 +262,6 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
                     placeholder="https://civitai.com/api/download/models/123456789?type=Model&format=SafeTensor&size=pruned&fp=fp16",
                 ),
                 CustomModelField(type="text", name="filename", description="Model filename", placeholder="mymodel.safetensors"),
-                CustomModelField(
-                    type="text",
-                    name="model_url",
-                    description="Model URL",
-                    required=False,
-                    placeholder="https://civitai.com/models/1162518",
-                ),
                 CustomModelField(type="text", name="size", description="Model size", placeholder="1GB"),
             ]
         )
@@ -370,10 +360,10 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             raise HTTPException(400, "Model with given id already exists.")
         self.models[parsed.id] = StableDiffusionModel(
             filetype=parsed.filetype,
-            type=parsed.type,
+            type="txt2img" if parsed.filetype == "Stable-diffusion" else "lora",
             url=parsed.url,
             filename=parsed.filename,
-            model_url=parsed.model_url,
+            model_url=None,
             size=parsed.size,
             custom=model.id,
         )

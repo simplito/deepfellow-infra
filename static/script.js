@@ -63,14 +63,14 @@ function resetModelFilters() {
     modelCustom = "__all";
 }
 
-function showFormModal(title, spec, onInstall) {
+function showFormModal(title, mainButtonLabel, spec, onInstall) {
     const html = `
 <div class="modal-backdrop">
     <div class="modal">
         <div class="modal-title">${title}</div>
         <form class="fields" data-id="modal-form">
             ${spec.fields.map(field => `
-                <div class="field">
+                <div class="field" ${field.display ? `data-display="${field.display}"` : ""}>
                     <div class="field-label">${field.description} ${!field.required ? `<span class="optional">(optional)</span>` : ""}</div>
                     <div class="field-input">${(() => {
                         if (field.type === "text" || field.type === "password" || field.type === "number") {
@@ -101,10 +101,25 @@ function showFormModal(title, spec, onInstall) {
         </form>
         <div class="buttons">
             <button data-id="cancel">Cancel</button>
-            <button data-id="install">Install</button>
+            <button data-id="install">${mainButtonLabel}</button>
         </div>
     </div>
 </div>`;
+    function refreshDisplay() {
+        [...div.querySelectorAll("[data-display]")].forEach(field => {
+            const dataDisplay = field.getAttribute("data-display");
+            const values = dataDisplay.split("=");
+            if (values.length != 2) {
+                return;
+            }
+            const [name, value] = values;
+            const ele = div.querySelector(`[name=${name}]`);
+            if (!ele) {
+                return;
+            }
+            field.style.display = ele.value === value ? "block" : "none";
+        });
+    }
     const div = document.createElement("div");
     div.innerHTML = html;
     document.body.append(div);
@@ -151,18 +166,21 @@ function showFormModal(title, spec, onInstall) {
         onInstall(data);
         div.remove();
     });
+    [...div.querySelectorAll("input,select")].forEach(input => {
+        input.addEventListener("change", refreshDisplay);
+    });
 }
 
 function showInstallServiceModal(info, onInstall) {
-    return showFormModal(`Install ${info.id}`, info.spec, onInstall);
+    return showFormModal(`Install ${info.id}`, "Install", info.spec, onInstall);
 }
 
 function showInstallModelModal(info, onInstall) {
-    return showFormModal(`Install ${info.id}`, info.spec, onInstall);
+    return showFormModal(`Install ${info.id}`, "Install", info.spec, onInstall);
 }
 
 function showAddCustomModelModal(info, onInstall) {
-    return showFormModal(`Add custom model for ${info.id}`, info.custom_model_spec, onInstall);
+    return showFormModal(`Add custom model for ${info.id}`, "Add custom model", info.custom_model_spec, onInstall);
 }
 
 async function showServicePage(id) {
