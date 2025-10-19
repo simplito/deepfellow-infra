@@ -174,6 +174,7 @@ class ChatCompletionRequest(BaseModel):
             "If set to `true`, the model response data will be streamed to the client as it is generated using server-sent events."
         ),
     )
+    stream_options: "StreamOptions | None" = None
     max_completion_tokens: int | None = Field(
         None,
         description=(
