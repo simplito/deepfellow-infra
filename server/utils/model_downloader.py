@@ -2,9 +2,11 @@
 
 import json
 from abc import abstractmethod
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from aiohttp import ClientSession
 from fastapi import HTTPException
 
 from server.config import AppSettings
@@ -51,6 +53,72 @@ class StandardModelDownloader(BaseDownloader):
     async def download(self, url: str, model_dir: Path, filename: str | None = None) -> tuple[Path, str]:
         """Download model."""
         return await Utils.ensure_model_downloaded(url, model_dir, filename)
+
+
+class HuggingFaceRepoDownloader(BaseDownloader):
+    header: dict[str, str]
+
+    def __init__(self, key: str):
+        self.headers = Utils.create_bearer_header(key)
+        self.error_msg_modifiers = [
+            (
+                "Invalid credentials in Authorization header",
+                "This model need HuggingFace Token to download. "
+                "Setup DF_HUGGING_FACE_TOKEN env in enviromental variables to download this model. "
+                "if token is set up probably is wrong or expired.",
+            ),
+            (
+                "is restricted. You must have access to it and be authenticated to access it. Please log in.",
+                "is restricted. "
+                "This model need HuggingFace Token to download. "
+                "Account also need access to this project. Check project site for rules approve. "
+                "After that setup DF_HUGGING_FACE_TOKEN env in enviromental variables to download this model. "
+                "if token is set up probably is wrong or expired.",
+            ),
+            (
+                "is restricted and you are not in the authorized list.",
+                "is restricted and you are not in the authorized list. "
+                "Account with your DF_HUGGING_FACE_TOKEN env doesn't have access to this model.",
+            ),
+        ]
+
+    @staticmethod
+    def check_url(url: str) -> bool:
+        """Check is url handled by this downloader."""
+        return not url.startswith("http")
+
+    @staticmethod
+    async def get_filenames(model_id: str) -> list[str]:
+        """Get filenames fro repository."""
+        filenames: list[str] = []
+        url = f"https://huggingface.co/api/models/{model_id}/tree/main"
+        data: list[dict[str, Any]] = []
+        with suppress(Exception):
+            # Adding authentication header in here make error in public repos
+            async with ClientSession() as session, session.get(url) as response:
+                data = await response.json()
+        try:
+            for item in data:
+                # If we find repo with folder we should add support for it.
+                if item.get("type") == "file" and (filename := item.get("path")):
+                    filenames.append(filename)
+        except Exception:
+            filenames = []
+
+        return filenames
+
+    async def download(self, url: str, model_dir: Path, filename: str | None = None) -> tuple[Path, str]:
+        """Download model."""
+        model_id = url
+        filenames = await self.get_filenames(model_id)
+        for filename in filenames:
+            whole_url = f"https://huggingface.co/{model_id}/resolve/main/{filename}"
+            try:
+                await Utils.ensure_model_downloaded(whole_url, model_dir, filename, self.headers)
+            except HttpClientError as e:
+                raise HTTPException(500, self.create_error_msg(e.body)) from e
+
+        return model_dir, ""
 
 
 class HuggingFaceModelDownloader(BaseDownloader):
@@ -134,6 +202,7 @@ class ModelDownloader:
         """Create downloaders."""
         self.standard_downloader = StandardModelDownloader()
         self.custom_downloaders = [
+            HuggingFaceRepoDownloader(self.get_hugging_face_token(config)),
             HuggingFaceModelDownloader(self.get_hugging_face_token(config)),
             CivitaiModelDownloader(self.get_civitai_token(config)),
         ]
