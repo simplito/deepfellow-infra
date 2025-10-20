@@ -85,7 +85,7 @@ _const = VllmConst(
         ),
         "google/gemma-3-1b-it": VllmModel(
             hf_id="google/gemma-3-1b-it",
-            max_model_len=8192,
+            max_model_len=None,
             size="2GB",
         ),
     },
@@ -262,41 +262,51 @@ class VllmService(Base2Service[InstalledInfo]):
         if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = self.models[model_id]
-        model_dir = self._get_working_dir() / "models"
+        model_id_fixed = model_id.replace("/", "-")
+        models_dir = self._get_working_dir() / "models"
+        model_dir = models_dir / model_id_fixed
         model_dir.mkdir(parents=True, exist_ok=True)
+        local_model_path, _ = await self.model_downloader.download(model_id, model_dir)
+        docker_model_path = Path(self.hugging_face_cache_path) / "hub" / model_id_fixed
+        volumes = [f"{local_model_path}:{docker_model_path}"]
 
         vllm_command = [
             "--model",
-            model.hf_id,
+            str(docker_model_path),
             "--host",
             "0.0.0.0",
             "--port",
             "8000",
             "--dtype",
             model.dtype,
-            "--gpu-memory-utilization",
-            str(model.gpu_memory_utilization),
+            "--served-model-name",
+            model_id,
         ]
 
         if model.quantization:
             vllm_command.extend(["--quantization", model.quantization])
 
+        if info.parsed_options.gpu:
+            vllm_command.extend(["--gpu-memory-utilization", str(model.gpu_memory_utilization)])
+
         if model.max_model_len and info.parsed_options.gpu:
             vllm_command.extend(["--max-model-len", str(model.max_model_len)])
 
         if not info.parsed_options.gpu:
-            vllm_command.extend(["--disable-sliding-window"])
+            if model.max_model_len is None:
+                vllm_command.extend(["--disable-sliding-window"])
+            else:
+                vllm_command.extend(["--max-model-len", str(model.max_model_len)])
 
         if not model.env_vars:
             model.env_vars = {}
 
+        model.env_vars["HF_HUB_OFFLINE"] = "1"
         model.env_vars["HF_HOME"] = self.hugging_face_cache_path
-        model.env_vars["HF_TOKEN"] = self.get_hugging_face_token()
         if not info.parsed_options.gpu:
             model.env_vars["VLLM_USE_V1"] = "1"
 
         image = self._get_image(info.parsed_options.gpu)
-        volumes = [f"{self._get_working_dir() / 'models'}:{Path(self.hugging_face_cache_path) / 'hub'}"]
 
         subnet = self.application_context.get_docker_subnet()
         service_name = f"{self.get_id()}-{normalize_name(model_id)}"
