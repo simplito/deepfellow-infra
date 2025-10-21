@@ -108,6 +108,14 @@ _const = StableDiffusionConst(
             model_url="https://civitai.com/models/1162518?modelVersionId=1714002",
             size="6.46GB",
         ),
+        "Fantastic Landscapes": StableDiffusionModel(
+            filetype="Lora",
+            type="lora",
+            url="https://civitai.com/api/download/models/180314?type=Model&format=SafeTensor",
+            filename="FantasticLandscapes.safetensors",
+            model_url="https://civitai.com/models/160272/lora-fantastic-landscapes",
+            size="36.11MB",
+        ),
         "Pixiv AenuaV1": StableDiffusionModel(
             filetype="Lora",
             type="lora",
@@ -155,6 +163,14 @@ _const = StableDiffusionConst(
             filename="cyberrealistic-xl-fp32.safetensors",
             model_url="https://civitai.com/models/312530/cyberrealistic-xl",
             size="12.92GB",
+        ),
+        "yomama-2.5D": StableDiffusionModel(
+            filetype="Stable-diffusion",
+            type="txt2img",
+            url="https://civitai.com/api/download/models/1085088?type=Model&format=SafeTensor&size=pruned&fp=fp16",
+            filename="yomama-25d.safetensors",
+            model_url="https://civitai.com/models/959233/yomama-25d-illustrious-pony?modelVersionId=1085088",
+            size="6.46GB",
         ),
     },
 )
