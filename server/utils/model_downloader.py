@@ -40,7 +40,7 @@ class BaseDownloader:
         return new_msg
 
     @abstractmethod
-    async def download(self, url: str, model_dir: Path, filename: str | None = None) -> tuple[Path, str]:
+    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> tuple[Path, str]:
         """Download model."""
 
 
@@ -50,9 +50,9 @@ class StandardModelDownloader(BaseDownloader):
         """Check is url handled by this downloader."""
         return True
 
-    async def download(self, url: str, model_dir: Path, filename: str | None = None) -> tuple[Path, str]:
+    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> tuple[Path, str]:
         """Download model."""
-        return await Utils.ensure_model_downloaded(url, model_dir, filename)
+        return await Utils.ensure_model_downloaded(url, model_dir, temp_dir, filename)
 
 
 class HuggingFaceRepoDownloader(BaseDownloader):
@@ -107,14 +107,14 @@ class HuggingFaceRepoDownloader(BaseDownloader):
 
         return filenames
 
-    async def download(self, url: str, model_dir: Path, filename: str | None = None) -> tuple[Path, str]:
+    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> tuple[Path, str]:
         """Download model."""
         model_id = url
         filenames = await self.get_filenames(model_id)
         for filename in filenames:
             whole_url = f"https://huggingface.co/{model_id}/resolve/main/{filename}"
             try:
-                await Utils.ensure_model_downloaded(whole_url, model_dir, filename, self.headers)
+                await Utils.ensure_model_downloaded(whole_url, model_dir, temp_dir, filename, self.headers)
             except HttpClientError as e:
                 raise HTTPException(500, self.create_error_msg(e.body)) from e
 
@@ -153,10 +153,10 @@ class HuggingFaceModelDownloader(BaseDownloader):
         """Check is url handled by this downloader."""
         return url.startswith("https://huggingface.co/")
 
-    async def download(self, url: str, model_dir: Path, filename: str | None = None) -> tuple[Path, str]:
+    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> tuple[Path, str]:
         """Download model."""
         try:
-            return await Utils.ensure_model_downloaded(url, model_dir, filename, self.headers)
+            return await Utils.ensure_model_downloaded(url, model_dir, temp_dir, filename, self.headers)
         except HttpClientError as e:
             raise HTTPException(500, self.create_error_msg(e.body)) from e
 
@@ -183,15 +183,16 @@ class CivitaiModelDownloader(BaseDownloader):
         """Add token to url."""
         return Utils.add_url_parameter_if_missing(url, "token", self.token)
 
-    async def download(self, url: str, model_dir: Path, filename: str | None = None) -> tuple[Path, str]:
+    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> tuple[Path, str]:
         """Download model."""
         try:
-            return await Utils.ensure_model_downloaded(self.add_token_to_url(url), model_dir, filename)
+            return await Utils.ensure_model_downloaded(self.add_token_to_url(url), model_dir, temp_dir, filename)
         except HttpClientError as e:
             raise HTTPException(500, self.create_error_msg(e.body)) from e
 
 
 class ModelDownloader:
+    temp_dir: Path
     standard_downloader: StandardModelDownloader
     custom_downloaders: list[BaseDownloader]
 
@@ -200,6 +201,7 @@ class ModelDownloader:
 
     def create_downloaders(self, config: AppSettings) -> None:
         """Create downloaders."""
+        self.temp_dir: Path = config.get_storage_dir() / "temp"
         self.standard_downloader = StandardModelDownloader()
         self.custom_downloaders = [
             HuggingFaceRepoDownloader(self.get_hugging_face_token(config)),
@@ -214,7 +216,7 @@ class ModelDownloader:
             if downloader.check_url(url):
                 specified_downloader = downloader
 
-        return await specified_downloader.download(url, model_dir, filename)
+        return await specified_downloader.download(url, model_dir, self.temp_dir, filename)
 
     def get_hugging_face_token(self, config: AppSettings) -> str:
         """Return Hugging Face Key."""

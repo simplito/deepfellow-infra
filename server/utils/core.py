@@ -6,6 +6,7 @@ import shlex
 from pathlib import Path
 from typing import Any, NamedTuple
 from urllib.parse import parse_qs, quote, urlencode, urlparse, urlunparse
+from uuid import uuid4
 
 import aiofiles
 import aiohttp
@@ -116,7 +117,11 @@ class Utils:
 
     @staticmethod
     async def ensure_model_downloaded(
-        model_url: str, model_dir: Path, filename: str | None = None, headers: dict[str, str] | None = None
+        model_url: str,
+        model_dir: Path,
+        temp_dir: Path,
+        filename: str | None = None,
+        headers: dict[str, str] | None = None,
     ) -> tuple[Path, str]:
         """Download model if it's a URL, return (local_path, filename)."""
         if headers is None:
@@ -136,26 +141,33 @@ class Utils:
             print(f"Downloading {filename2}...")
 
             # Ensure the models directory exists
-            local_path.parent.mkdir(parents=True, exist_ok=True)
+
+            temp_path = temp_dir / str(uuid4())
+
+            temp_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Download with and error handling
             try:
                 # Use curl instead of wget for better macOS compatibility
-                await download_file(model_url, local_path, headers)
+                await download_file(model_url, temp_path, headers)
 
                 # Validate the downloaded file
-                if not local_path.exists() or local_path.stat().st_size == 0:
-                    if local_path.exists():
-                        local_path.unlink()
-                    raise RuntimeError("Downloaded file is empty or missing", local_path)  # noqa: TRY301
-
-                print(f"Successfully downloaded {filename2} ({local_path.stat().st_size} bytes)")
+                if not temp_path.exists() or temp_path.stat().st_size == 0:
+                    if temp_path.exists():
+                        temp_path.unlink()
+                    raise RuntimeError("Downloaded file is empty or missing", temp_path)  # noqa: TRY301
 
             except Exception:
                 # Clean up any partial download
-                if local_path.exists():
-                    local_path.unlink()
+                if temp_path.exists():
+                    temp_path.unlink()
                 raise
+
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+
+            temp_path.rename(local_path)
+
+            print(f"Successfully downloaded {filename2} ({local_path.stat().st_size} bytes)")
 
         return local_path, filename2
 
