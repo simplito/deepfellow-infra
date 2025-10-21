@@ -1,7 +1,7 @@
-FROM simplito/python-docker:3.13.7-docker28.3.3 AS base
+FROM hub.simplito.com/public/python-docker:3.13.7-docker28.3.3 AS base
 
 FROM base AS builder
-COPY --from=ghcr.io/astral-sh/uv:0.8.12 /uv /uvx /bin/
+COPY --from=hub.simplito.com/public/uv:0.8.12 /uv /uvx /bin/
 
 WORKDIR /app
 COPY . .
