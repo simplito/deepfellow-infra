@@ -34,7 +34,7 @@ async def on_models(
     return endpoint_registry.get_models()
 
 
-@router.get("/v1/models/{model_id}")
+@router.get("/v1/models/{model_id:path}")
 async def on_model(
     _: Annotated[str, Depends(auth_server)],
     model_id: Annotated[str, Path(..., description="The ID of the model to use.")],
