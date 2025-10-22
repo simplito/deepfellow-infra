@@ -1,7 +1,7 @@
-FROM hub.simplito.com/public/python-docker:3.13.7-docker28.3.3 AS base
+FROM hub.simplito.com/public/python-docker:3.13.7-docker28.3.3@sha256:de7aca8e8eddc7e4a46add921fc03d2132f3d4a4dae67e4b99c698bed02195e4 AS base
 
 FROM base AS builder
-COPY --from=hub.simplito.com/public/uv:0.8.12 /uv /uvx /bin/
+COPY --from=hub.simplito.com/public/uv:0.8.12@sha256:f64ad69940b634e75d2e4d799eb5238066c5eeda49f76e782d4873c3d014ea33 /uv /uvx /bin/
 
 WORKDIR /app
 COPY . .
