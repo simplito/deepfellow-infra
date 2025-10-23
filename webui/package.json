@@ -1,5 +1,5 @@
 {
-  "name": ".",
+  "name": "deepfellow-infra-webui",
   "private": true,
   "type": "module",
   "scripts": {
