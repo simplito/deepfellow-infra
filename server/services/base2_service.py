@@ -82,7 +82,7 @@ class Base2Service[T](BaseService):
         try:
             await self._install_model(model.model_id, model.options)
         except Exception:
-            logger.exception(f"{self.get_id()} get errot while loading model {model.model_id}")  # noqa: G004
+            logger.exception(f"{self.get_id()} get error while loading model {model.model_id}")  # noqa: G004
 
     async def load(self, config: ServiceRawConfig) -> None:
         """Load service using the config."""
