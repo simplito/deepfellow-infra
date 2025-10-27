@@ -1,6 +1,5 @@
 """Docker backend."""
 
-import asyncio
 import json
 import os
 import shutil
@@ -32,7 +31,7 @@ class DockerOptions:
         ulimits: dict[str, str] | None = None,
         shm_size: str | None = None,
         entrypoint: str | None = None,
-        healthcheck: str | None = None,
+        healthcheck: dict[str, str] | None = None,
         user: str | None = None,
         subnet: str | None = None,
     ):
@@ -88,7 +87,7 @@ class DockerComposeService(TypedDict):
     container_name: NotRequired[str]
     ports: NotRequired[list[str]]
     environment: NotRequired[dict[str, str]]
-    healthcheck: NotRequired[str]
+    healthcheck: NotRequired[dict[str, str]]
     command: NotRequired[str]
     volumes: NotRequired[list[str]]
     restart: NotRequired[str]
@@ -366,25 +365,9 @@ async def install_and_run_docker(ctx: ApplicationContext, options: DockerOptions
 
     # Check if container is healthy after starting
     is_healthy = await is_docker_compose_healthy(docker_compose_file_path, service_name)
-    retry_count = 0
-    max_retries = 3
-    while not is_healthy and retry_count < max_retries:
-        print(
-            f"Container {options.name} wasn't healthy. Restarting and allocating a new port."
-            f"(Attempt {retry_count + 1}/{max_retries})\n Error: {start_output}"
-        )
-        await stop_docker_compose(docker_compose_file_path)
-        port = await render_docker_compose(docker_compose_file_path, options, ctx)
-        start_output = await start_docker_compose(docker_compose_file_path)
-
-        # Wait before checking health again
-        await asyncio.sleep(2)
-
-        is_healthy = await is_docker_compose_healthy(docker_compose_file_path, service_name)
-        retry_count += 1
 
     if not is_healthy:
-        msg = f"Container {options.name} failed to become healthy after {max_retries} attempts"
+        msg = f"Container {options.name} failed to become healthy, output: {start_output}"
         raise AppError(msg)
 
     if port is None:

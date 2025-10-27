@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         services_manager.register_service(GoogleAIService(context, endpoint_registry, service_provider, model_downloader))
 
         # Load functions
-        await context.load()
+        await context.load_services()
         task_manager.add_task(parent_infra.run())
     except AppStartError as e:
         logger.error(str(e))  # noqa: TRY400

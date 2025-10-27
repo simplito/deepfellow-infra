@@ -457,6 +457,13 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             restart="unless-stopped",
             user="0:0",
             subnet=subnet,
+            healthcheck={
+                "test": "curl --fail http://localhost:8000/health || exit 1",
+                "interval": "30s",
+                "timeout": "10s",
+                "retries": "3",
+                "start_period": "5s",
+            },
         )
         docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
         return InstalledInfo(

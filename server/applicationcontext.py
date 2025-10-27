@@ -1,5 +1,6 @@
 """Application Content module."""
 
+import asyncio
 import logging
 import socket
 import time
@@ -9,7 +10,7 @@ from server.config import AppSettings
 from server.services_manager import ServicesManager
 
 from .endpointregistry import EndpointRegistry
-from .serviceprovider import ServiceProvider
+from .serviceprovider import ServiceProvider, ServiceRawConfig
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -36,17 +37,21 @@ class ApplicationContext:
         """Return docker subnet name or None if it is not set."""
         return self.config.docker_subnet if self.config.docker_subnet else None
 
-    async def load(self) -> None:
+    async def load_service(self, service_id: str, service_cfg: ServiceRawConfig) -> None:
+        """Load single service."""
+        start = time.time()
+        logger.info(f"{service_id} loading...")  # noqa: G004
+        try:
+            await self.services_manager.load_service(service_id, service_cfg)
+            logger.info(f"{service_id} fully loaded in {round(time.time() - start, 1)}s")  # noqa: G004
+        except Exception:
+            logger.exception(f"{service_id} error occurs during loading {round(time.time() - start, 1)}s")  # noqa: G004
+
+    async def load_services(self) -> None:
         """Load all service from bootstrap."""
         info = self.service_provider.load()
-        for service_id, service_cfg in info["services"].items():
-            start = time.time()
-            logger.info(f"{service_id} loading...")  # noqa: G004
-            try:
-                await self.services_manager.load_service(service_id, service_cfg)
-                logger.info(f"{service_id} fully loaded in {round(time.time() - start, 1)}s")  # noqa: G004
-            except Exception:
-                logger.exception(f"{service_id} error occurs during loading {round(time.time() - start, 1)}s")  # noqa: G004
+        tasks = [asyncio.create_task(self.load_service(service_id, service_cfg)) for service_id, service_cfg in info["services"].items()]
+        await asyncio.gather(*tasks)
 
     def get_free_port(self, start: int = 20_000, end: int = 30_000) -> int:
         """Get next free port."""

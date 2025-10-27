@@ -69,7 +69,6 @@ _const = VllmConst(
     models={
         "Qwen/Qwen3-0.6B": VllmModel(
             hf_id="Qwen/Qwen3-0.6B",
-            gpu_memory_utilization=0.95,
             max_model_len=8192,
             size="2GB",
         ),
@@ -85,6 +84,7 @@ _const = VllmConst(
         ),
         "google/gemma-3-1b-it": VllmModel(
             hf_id="google/gemma-3-1b-it",
+            gpu_memory_utilization=0.85,
             max_model_len=None,
             size="2GB",
         ),
@@ -323,6 +323,13 @@ class VllmService(Base2Service[InstalledInfo]):
             shm_size=model.shm_size,
             ulimits=model.ulimits,
             subnet=subnet,
+            healthcheck={
+                "test": "curl --fail http://localhost:8000/health || exit 1",
+                "interval": "30s",
+                "timeout": "10s",
+                "retries": "3",
+                "start_period": "60s",
+            },
         )
         docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
         registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id

@@ -245,6 +245,13 @@ class OllamaService(Base2Service[InstalledInfo]):
             env_vars=envs,
             restart="unless-stopped",
             subnet=subnet,
+            healthcheck={
+                "test": "ollama --version && ollama ps || exit 1",
+                "interval": "10s",
+                "timeout": "10s",
+                "retries": "10",
+                "start_period": "10s",
+            },
         )
         docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
         return InstalledInfo(
