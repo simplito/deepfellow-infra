@@ -57,6 +57,8 @@ class SrvCustomCustomModel(BaseModel):
     use_gpu: bool = False
     volumes: list[str] | None = None
     envs: dict[str, str] | None = None
+    healthcheck_cmd: str | None = None
+    healthcheck_start_period: str | None = None  # TODO change to str time
 
 
 class CustomConst:
@@ -127,6 +129,20 @@ class CustomService(Base2Service[InstalledInfo]):
                 CustomModelField(type="text", name="image", description="Docker image", placeholder="company/image"),
                 CustomModelField(type="text", name="image_port", description="Docker image port", placeholder="8000"),
                 CustomModelField(type="text", name="command", description="Docker command", placeholder="/bin/myapp", required=False),
+                CustomModelField(
+                    type="text",
+                    name="healthcheck_cmd",
+                    description="Healthcheck command",
+                    placeholder="curl --fail 127.0.0.1:8000 | exit 1",
+                    required=False,
+                ),
+                CustomModelField(
+                    type="text",
+                    name="healthcheck_start_period",
+                    description="Healthcheck start period",
+                    placeholder="10s",
+                    required=False,
+                ),
                 CustomModelField(type="list", name="volumes", description="Docker volumes", placeholder="/work/storage"),
                 CustomModelField(type="map", name="envs", description="Docker environment variables"),
             ]
@@ -176,6 +192,15 @@ class CustomService(Base2Service[InstalledInfo]):
                 restart="unless-stopped",
                 volumes=[f"{custom_service.get_working_dir()}/{name}/volume_{i}:{volume}" for i, volume in enumerate(parsed.volumes or [])],
                 subnet=subnet,
+                healthcheck={
+                    "test": parsed.healthcheck_cmd,
+                    "interval": "30s",
+                    "timeout": "10s",
+                    "retries": "3",
+                    "start_period": parsed.healthcheck_start_period or "10s",
+                }
+                if parsed.healthcheck_cmd
+                else None,
             ),
             custom=model.id,
         )
@@ -283,7 +308,7 @@ _const = CustomConst(
                 image_port=3000,
                 name="bentoml",
                 container_name=custom_service.application_context.get_docker_container_name("bentoml"),
-                image="gitlab2.simplito.com:5050/df/deepfellow-infra/bentomlexample:1.0.0",
+                image="gitlab2.simplito.com:5050/df/deepfellow-infra/bentomlexample:1.0.1",
                 command="serve",
                 env_vars={},
                 subnet=subnet,

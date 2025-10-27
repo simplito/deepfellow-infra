@@ -1,5 +1,6 @@
 """Base2 service."""
 
+import asyncio
 import logging
 import shutil
 import uuid
@@ -75,6 +76,14 @@ class Base2Service[T](BaseService):
         """Check whether service is installed."""
         return self.installed is not None
 
+    async def load_model(self, model: ModelConfig) -> None:
+        """Load single model."""
+        logger.info(f"{self.get_id()} loading model {model.model_id}")  # noqa: G004
+        try:
+            await self._install_model(model.model_id, model.options)
+        except Exception:
+            logger.exception(f"{self.get_id()} get errot while loading model {model.model_id}")  # noqa: G004
+
     async def load(self, config: ServiceRawConfig) -> None:
         """Load service using the config."""
         cfg = ServiceConfig(**config)
@@ -85,9 +94,8 @@ class Base2Service[T](BaseService):
             return
         await self._install(cfg.options)
         logger.info(f"{self.get_id()} service checked")  # noqa: G004
-        for model in cfg.models or []:
-            logger.info(f"{self.get_id()} loading model {model.model_id}")  # noqa: G004
-            await self._install_model(model.model_id, model.options)
+        tasks = [asyncio.create_task(self.load_model(model)) for model in cfg.models or []]
+        await asyncio.gather(*tasks)
 
     async def _save(self) -> None:
         cfg = self._generate_config(self.installed)

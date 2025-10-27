@@ -149,6 +149,13 @@ sindriClient:
             volumes=volumes,
             restart="unless-stopped",
             subnet=subnet,
+            healthcheck={
+                "test": "wget -q --spider http://localhost:8080",
+                "interval": "30s",
+                "timeout": "10s",
+                "retries": "3",
+                "start_period": "5s",
+            },
         )
         docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
         return InstalledInfo(

@@ -347,6 +347,13 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             restart="unless-stopped",
             subnet=subnet,
             user=await get_user_for_docker(),
+            healthcheck={
+                "test": "curl --fail http://localhost:7860/sdapi/v1/status || exit 1",
+                "interval": "40s",
+                "timeout": "10s",
+                "retries": "3",
+                "start_period": "60s",
+            },
         )
         docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
 
