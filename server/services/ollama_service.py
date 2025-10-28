@@ -1,6 +1,7 @@
 """Ollama service."""
 
 import json
+from pathlib import Path
 from typing import Annotated, Literal, TypedDict
 
 from fastapi import HTTPException
@@ -276,6 +277,19 @@ class OllamaService(Base2Service[InstalledInfo]):
         if options.purge:
             await self._clear_working_dir()
 
+    def get_docker_compose_file_path(self, model_id: str | None) -> Path:
+        """Get docker compose file path."""
+        info = self.installed
+        if not info:
+            raise HTTPException(400, "Service not installed")
+        if model_id:
+            raise HTTPException(400, "Docker is not bound with this object")
+        return self.application_context.get_docker_compose_file_path(info.docker.name)
+
+    def service_has_docker(self) -> bool:
+        """Return true when docker is started when service is installed."""
+        return True
+
     def _add_custom_model(self, model: CustomModel) -> None:
         parsed = try_parse_pydantic(OllamaCustomModel, model.data)
         if parsed.id in self.models:
@@ -304,6 +318,7 @@ class OllamaService(Base2Service[InstalledInfo]):
                         size=model.size,
                         custom=model.custom,
                         spec=self.get_model_spec(),
+                        has_docker=False,
                     )
                 )
         return ListModelsOut(list=out_list)
@@ -323,6 +338,7 @@ class OllamaService(Base2Service[InstalledInfo]):
             size=model.size,
             custom=model.custom,
             spec=self.get_model_spec(),
+            has_docker=False,
         )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:

@@ -12,6 +12,10 @@ from server.models.services import (
     ListAllModelsOut,
     ListServicesFilters,
     ListServicesOut,
+    OptionalModelIdQuery,
+    RestartDockerContainerOut,
+    RetrieveDockerComposeFileOut,
+    RetrieveDockerLogsOut,
     RetrieveServiceOut,
     UninstallServiceIn,
     UninstallServiceOut,
@@ -92,3 +96,48 @@ async def list_service(
 ) -> ListServicesOut:
     """List services."""
     return await services_manager.list_services(filters)
+
+
+@router.get(
+    "/{service_id}/docker/logs",
+    summary="Retrieve docker logs.",
+)
+async def retrieve_docker_logs(
+    service_id: Annotated[str, Path(..., description="The ID of the service")],
+    query: Annotated[OptionalModelIdQuery, Query()],
+    services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
+    _: Annotated[str, Depends(auth_admin)],
+) -> RetrieveDockerLogsOut:
+    """Retrieve docker logs."""
+    logs = await services_manager.get_docker_logs(service_id, query.model_id)
+    return RetrieveDockerLogsOut(logs=logs)
+
+
+@router.get(
+    "/{service_id}/docker/compose",
+    summary="Retrieve docker compose file.",
+)
+async def retrieve_docker_compose_file(
+    service_id: Annotated[str, Path(..., description="The ID of the service")],
+    query: Annotated[OptionalModelIdQuery, Query()],
+    services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
+    _: Annotated[str, Depends(auth_admin)],
+) -> RetrieveDockerComposeFileOut:
+    """Retrieve docker logs."""
+    compose_file = await services_manager.get_docker_compose_file(service_id, query.model_id)
+    return RetrieveDockerComposeFileOut(compose_file=compose_file)
+
+
+@router.post(
+    "/{service_id}/docker/restart",
+    summary="Restart docker container.",
+)
+async def restart_docker_container(
+    service_id: Annotated[str, Path(..., description="The ID of the service")],
+    query: Annotated[OptionalModelIdQuery, Query()],
+    services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
+    _: Annotated[str, Depends(auth_admin)],
+) -> RestartDockerContainerOut:
+    """Retrieve docker logs."""
+    await services_manager.restart_docker(service_id, query.model_id)
+    return RestartDockerContainerOut(status="OK")

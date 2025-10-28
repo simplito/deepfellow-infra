@@ -203,6 +203,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                         size="",
                         custom=model.custom,
                         spec=self.get_model_spec(),
+                        has_docker=False,
                     )
                 )
         return ListModelsOut(list=out_list)
@@ -222,6 +223,7 @@ class RemoteService(Base2Service[InstalledInfo]):
             size="",
             custom=model.custom,
             spec=self.get_model_spec(),
+            has_docker=False,
         )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:

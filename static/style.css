@@ -17,6 +17,14 @@ input, textarea {
     color: #fff;
     padding: 15px 20px;
 }
+.loading-container {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: #ffffff;
+}
 .loading {
     font-size: 20px;
     margin: 100px 0;
@@ -109,6 +117,12 @@ input[type=text] {
     max-height: calc(100vh - 150px);
     overflow: auto;
 }
+.modal.modal-wide {
+    left: 20px;
+    right: 20px;
+    margin-left: 0;
+    width: auto;
+}
 .modal .modal-title {
     margin: 25px 15px 20px 15px;
     font-weight: bold;
@@ -135,4 +149,15 @@ input[type=text] {
     padding: 15px;
     border-top: 1px solid #ddd;
     text-align: right;
+}
+.modal pre.content {
+    background-color: #000;
+    color: #fff;
+    margin: 0 15px;
+    padding: 10px;
+    overflow: auto;
+    max-height: calc(100vh - 300px);
+}
+.modal div.content {
+    margin: 0 15px;
 }

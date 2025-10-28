@@ -169,6 +169,23 @@ async def stop_docker_compose(docker_compose_file_path: Path) -> None:
     await Utils.run_command_for_success(command)
 
 
+async def restart_docker_compose(docker_compose_file_path: Path) -> None:
+    """Restart given docker compose."""
+    docker_compose_cmd = get_docker_compoes_cmd()
+    cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "restart"]
+    command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
+    await Utils.run_command_for_success(command)
+
+
+async def get_docker_compose_logs(docker_compose_file_path: Path) -> str:
+    """Get docker compose logs."""
+    docker_compose_cmd = get_docker_compoes_cmd()
+    cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "logs"]
+    command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
+    result = await Utils.run_command_for_success(command)
+    return result.stdout
+
+
 async def docker_compose_status(docker_compose_file_path: Path) -> DockerComposeStatus:
     """Get status for given docker compose."""
     docker_compose_cmd = get_docker_compoes_cmd()

@@ -48,6 +48,7 @@ class BaseService(ABC):
             spec=self.get_spec(),
             size=self.get_size(),
             custom_model_spec=self.get_custom_model_spec(),
+            has_docker=self.service_has_docker(),
         )
 
     @abstractmethod
@@ -57,6 +58,10 @@ class BaseService(ABC):
     @abstractmethod
     def get_installed_info(self) -> bool | ServiceOptions:
         """Get service installed info."""
+
+    def service_has_docker(self) -> bool:
+        """Return true when docker is started when service is installed."""
+        return False
 
     @abstractmethod
     async def load(self, config: ServiceRawConfig) -> None:
@@ -93,3 +98,15 @@ class BaseService(ABC):
     @abstractmethod
     async def remove_custom_model(self, custom_model_id: CustomModelId) -> None:
         """Remove custom model."""
+
+    @abstractmethod
+    async def get_docker_logs(self, model_id: str | None) -> str:
+        """Get docker logs."""
+
+    @abstractmethod
+    async def get_docker_compose_file(self, model_id: str | None) -> str:
+        """Get docker compose file."""
+
+    @abstractmethod
+    async def restart_docker(self, model_id: str | None) -> None:
+        """Get docker compose file."""

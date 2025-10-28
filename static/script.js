@@ -183,6 +183,26 @@ function showAddCustomModelModal(info, onInstall) {
     return showFormModal(`Add custom model for ${info.id}`, "Add custom model", info.custom_model_spec, onInstall);
 }
 
+function showContentModal(options) {
+    const html = `
+<div class="modal-backdrop">
+    <div class="modal ${options.wide ? "modal-wide" : ""}">
+        <div class="modal-title">${options.title}</div>
+        ${options.pre === false ? `<div class="content"></div>` : `<pre class="content"></pre>`}
+        <div class="buttons">
+            <button data-id="ok">OK</button>
+        </div>
+    </div>
+</div>`;
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    div.querySelector(".content").textContent = options.text;
+    document.body.append(div);
+    div.querySelector("[data-id=ok]").addEventListener("click", () => {
+        div.remove();
+    });
+}
+
 async function showServicePage(id) {
     showLoadingPage();
     const serivceInfo = await fetchX(`/admin/services/${id}`);
@@ -218,6 +238,10 @@ async function showServicePage(id) {
             <h3>
                 Service: ${id}
                 ${serivceInfo.custom_model_spec ? `<button data-service-id="${id}" data-action="add-custom-model">Add custom model</button> ` : ""}
+                ${serivceInfo.has_docker ? `
+                    <button data-service-id="${id}" data-action="show-docker-logs">Show docker logs</button>
+                    <button data-service-id="${id}" data-action="show-docker-compose-file">Show docker compose file</button>
+                    <button data-service-id="${id}" data-action="restart-docker">Restart docker</button>` : ""}
                 <button data-action="open-services">Back to services</button>
             </h3>
             <div class="search">
@@ -284,6 +308,10 @@ async function showServicePage(id) {
                     <div class="box-buttons model-buttons">
                         ${!m.installed ? `<button data-action="install-model" data-service-id="${id}" data-model-id="${m.id}">Install</button>` : ""}
                         ${m.installed ? `<button data-action="uninstall-model" data-service-id="${id}" data-model-id="${m.id}">Uninstall</button>`: ""}
+                        ${m.installed && m.has_docker ? `
+                            <button data-service-id="${id}" data-model-id="${m.id}" data-action="show-docker-logs">Show docker logs</button>
+                            <button data-service-id="${id}" data-model-id="${m.id}" data-action="show-docker-compose-file">Show docker compose file</button>
+                            <button data-service-id="${id}" data-model-id="${m.id}" data-action="restart-docker">Restart docker</button>` : ""}
                         ${!m.installed && m.custom ? `<button data-action="remove-custom-model" data-service-id="${id}" data-model-id="${m.custom}">Remove custom model</button>` : ""}
                     </div>
                 </div>`
@@ -321,6 +349,13 @@ async function showServicePage(id) {
 
 function showLoadingPage() {
     showHtml(`<div class="loading">Loading...</div>`);
+}
+
+function showLoading() {
+    const div = document.createElement("div");
+    div.innerHTML = `<div class="loading-container"><div class="loading">Loading...</div></div>`;
+    document.body.append(div);
+    return div
 }
 
 root.addEventListener("click", async e => {
@@ -415,6 +450,38 @@ root.addEventListener("click", async e => {
         }
         else if (action === "open-services") {
             showServicesPage();
+        }
+        else if (action === "show-docker-logs") {
+            const loading = showLoading();
+            try {
+                const result = await fetchX(`/admin/services/${serviceId}/docker/logs${modelId ? `?model_id=${modelId}` : ""}`);
+                showContentModal({title: "Docker logs", text: result.logs, wide: true});
+            }
+            finally {
+                loading.remove();
+            }
+        }
+        else if (action === "show-docker-compose-file") {
+            const loading = showLoading();
+            try {
+                const result = await fetchX(`/admin/services/${serviceId}/docker/compose${modelId ? `?model_id=${modelId}` : ""}`);
+                showContentModal({title: "Docker compose file", text: result.compose_file, wide: true});
+            }
+            finally {
+                loading.remove();
+            }
+        }
+        else if (action === "restart-docker") {
+            const loading = showLoading();
+            try {
+                await fetchX(`/admin/services/${serviceId}/docker/restart${modelId ? `?model_id=${modelId}` : ""}`, {
+                    method: "POST"
+                });
+                showContentModal({title: "Docker restart", text: "Docker restarted!", pre: false});
+            }
+            finally {
+                loading.remove();
+            }
         }
     }
 });

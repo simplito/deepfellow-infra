@@ -1,5 +1,6 @@
 """Speaches AI service."""
 
+from pathlib import Path
 from typing import Literal
 
 from fastapi import HTTPException
@@ -488,6 +489,19 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         if options.purge:
             await self._clear_working_dir()
 
+    def get_docker_compose_file_path(self, model_id: str | None) -> Path:
+        """Get docker compose file path."""
+        info = self.installed
+        if not info:
+            raise HTTPException(400, "Service not installed")
+        if model_id:
+            raise HTTPException(400, "Docker is not bound with this object")
+        return self.application_context.get_docker_compose_file_path(info.docker.name)
+
+    def service_has_docker(self) -> bool:
+        """Return true when docker is started when service is installed."""
+        return True
+
     async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
         info = self._check_installed()
@@ -503,6 +517,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
                         installed=installed,
                         size=model.size,
                         spec=self.get_model_spec(),
+                        has_docker=False,
                     )
                 )
         return ListModelsOut(list=out_list)
@@ -521,6 +536,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             installed=installed,
             size=model.size,
             spec=self.get_model_spec(),
+            has_docker=False,
         )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
