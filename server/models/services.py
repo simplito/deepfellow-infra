@@ -45,6 +45,7 @@ class RetrieveServiceOut(BaseModel):
     spec: ServiceSpecification
     size: ServiceSize
     custom_model_spec: CustomModelSpecification | None
+    has_docker: bool
 
 
 class ListServicesFilters(BaseModel):
@@ -62,3 +63,19 @@ class ListAllModelsFilters(BaseModel):
 
 class ListAllModelsOut(BaseModel):
     list: list[RetrieveModelOut]
+
+
+class OptionalModelIdQuery(BaseModel):
+    model_id: str | None = None
+
+
+class RetrieveDockerLogsOut(BaseModel):
+    logs: str
+
+
+class RetrieveDockerComposeFileOut(BaseModel):
+    compose_file: str
+
+
+class RestartDockerContainerOut(BaseModel):
+    status: Literal["OK"]

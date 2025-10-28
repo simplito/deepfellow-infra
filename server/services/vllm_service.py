@@ -205,6 +205,18 @@ class VllmService(Base2Service[InstalledInfo]):
         if options.purge:
             await self._clear_working_dir()
 
+    def get_docker_compose_file_path(self, model_id: str | None) -> Path:
+        """Get docker compose file path."""
+        info = self.installed
+        if not info:
+            raise HTTPException(400, "Service not installed")
+        if not model_id:
+            raise HTTPException(400, "Docker is not bound with this object")
+        installed = info.models.get(model_id, None)
+        if not installed:
+            raise HTTPException(status_code=400, detail="Model not installed")
+        return self.application_context.get_docker_compose_file_path(installed.docker.name)
+
     def _add_custom_model(self, model: CustomModel) -> None:
         parsed = try_parse_pydantic(VllmCustomModel, model.data)
         if parsed.id in self.models:
@@ -233,6 +245,7 @@ class VllmService(Base2Service[InstalledInfo]):
                         size=model.size,
                         custom=model.custom,
                         spec=self.get_model_spec(),
+                        has_docker=True,
                     )
                 )
         return ListModelsOut(list=out_list)
@@ -252,6 +265,7 @@ class VllmService(Base2Service[InstalledInfo]):
             size=model.size,
             custom=model.custom,
             spec=self.get_model_spec(),
+            has_docker=True,
         )
 
     async def _install_model(self, model_id: str, options: InstallModelIn) -> None:

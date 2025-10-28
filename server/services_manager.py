@@ -98,3 +98,15 @@ class ServicesManager:
     async def remove_custom_model(self, service_id: str, custom_model_id: CustomModelId) -> None:
         """Remove custom model."""
         return await self._get_service(service_id).remove_custom_model(custom_model_id)
+
+    async def get_docker_logs(self, service_id: str, model_id: str | None) -> str:
+        """Get docker logs."""
+        return await self._get_service(service_id).get_docker_logs(model_id)
+
+    async def get_docker_compose_file(self, service_id: str, model_id: str | None) -> str:
+        """Get docker compose file."""
+        return await self._get_service(service_id).get_docker_compose_file(model_id)
+
+    async def restart_docker(self, service_id: str, model_id: str | None) -> None:
+        """Get docker compose file."""
+        return await self._get_service(service_id).restart_docker(model_id)

@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from server.applicationcontext import ApplicationContext
+from server.docker import get_docker_compose_logs, restart_docker_compose
 from server.endpointregistry import EndpointRegistry
 from server.models.models import (
     AddCustomModelIn,
@@ -23,6 +24,7 @@ from server.models.models import (
 from server.models.services import InstallServiceIn, UninstallServiceIn
 from server.serviceprovider import ServiceProvider, ServiceRawConfig
 from server.services.base_service import BaseService
+from server.utils.core import Utils
 from server.utils.model_downloader import ModelDownloader
 
 
@@ -177,6 +179,27 @@ class Base2Service[T](BaseService):
     @abstractmethod
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         """Uninstall the model."""
+
+    async def get_docker_logs(self, model_id: str | None) -> str:
+        """Get docker logs."""
+        docker_compose_file_path = self.get_docker_compose_file_path(model_id)
+        return await get_docker_compose_logs(docker_compose_file_path)
+
+    async def get_docker_compose_file(self, model_id: str | None) -> str:
+        """Get docker compose file."""
+        docker_compose_file_path = self.get_docker_compose_file_path(model_id)
+        return await Utils.read_file(docker_compose_file_path)
+
+    async def restart_docker(self, model_id: str | None) -> None:
+        """Get docker compose file."""
+        docker_compose_file_path = self.get_docker_compose_file_path(model_id)
+        await restart_docker_compose(docker_compose_file_path)
+
+    def get_docker_compose_file_path(self, model_id: str | None) -> Path:  # noqa: ARG002
+        """Get docker compose file path."""
+        if not self.is_installed():
+            raise HTTPException(400, "Service not installed")
+        raise HTTPException(400, "Docker is not bound with this object")
 
     def _get_working_dir(self) -> Path:
         return self.application_context.get_service_dir(self.get_id())

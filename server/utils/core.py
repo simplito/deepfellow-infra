@@ -91,6 +91,12 @@ class Utils:
             f.write(file_content)
 
     @staticmethod
+    async def read_file(file_path: Path) -> str:
+        """Save given content under given path."""
+        async with aiofiles.open(file_path) as f:
+            return await f.read()
+
+    @staticmethod
     def sanitize_service_name(name: str) -> str:
         """Convert model name to valid Docker service name."""
         name = re.sub(r"[^a-zA-Z0-9_-]", "-", name)

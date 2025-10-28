@@ -65,6 +65,7 @@ class RetrieveModelOut(BaseModel):
     custom: CustomModelId | None = None
     size: str
     spec: ModelSpecification
+    has_docker: bool
 
 
 class ListModelsFilters(BaseModel):
