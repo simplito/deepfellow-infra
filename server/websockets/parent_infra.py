@@ -29,8 +29,8 @@ class ParentInfra(WebSocketClient):
         self.task_manager = task_manager
         self.client = JsonRpcClient(send=lambda x: self._send(x), timeout=30)
         self.infra_client = InfraClient(self.client)
-        self.enabled = self.config.parent_infra.ws_url != ""
-        uri = f"{self.config.parent_infra.ws_url}/ws" if self.enabled else ""
+        self.enabled = self.config.connect_to_mesh_url != ""
+        uri = f"{self.config.connect_to_mesh_url}/ws" if self.enabled else ""
         super().__init__(uri)
 
     async def _send(self, data: str) -> None:
@@ -55,10 +55,10 @@ class ParentInfra(WebSocketClient):
         try:
             await self.infra_client.init(
                 InitRequest(
-                    auth=self.config.parent_infra.api_key.get_secret_value(),
+                    auth=self.config.connect_to_mesh_key.get_secret_value(),
                     name=self.config.name,
                     url=self.config.url,
-                    api_key=self.config.api_key.get_secret_value(),
+                    api_key=self.config.infra_api_key.get_secret_value(),
                     models=self.endpoint_registry.list_models(),
                 )
             )

@@ -81,7 +81,7 @@ class InfraWebsocketServer(WebSocketServer[InfraWsData]):
     def _on_init(self, params: InitRequest, context: InfraWsData) -> Literal["OK"]:
         if context.authorized:
             raise ApiError(code=1, message="Already authorized")
-        if params.auth != self.config.infra_api_key.get_secret_value():
+        if params.auth != self.config.mesh_key.get_secret_value():
             raise ApiError(code=2, message="Invalid api key")
         context.authorized = Authorized(url=params.url, api_key=params.api_key, models=params.models)
         self.endpoint_registry.update_models([], params.models, params.url, params.api_key)

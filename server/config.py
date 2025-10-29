@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from pydantic import BaseModel, SecretStr
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 
@@ -11,18 +11,15 @@ class ConfigError(SystemExit):
     """Exception raised when there is an error in the configuration."""
 
 
-class ParentInfraConfig(BaseModel):
-    ws_url: str = ""
-    api_key: SecretStr = SecretStr("")
-
-
 class AppSettings(BaseSettings):
     name: str
     url: str
-    admin_api_key: SecretStr  # key to connect to marketplace
-    infra_api_key: SecretStr  # key to connect subinfra through ws
-    api_key: SecretStr  # key to call /v1/ endpoints
-    parent_infra: ParentInfraConfig = ParentInfraConfig()
+    infra_admin_api_key: SecretStr  # key to connect to marketplace
+    mesh_key: SecretStr  # key to connect subinfra through ws
+    infra_api_key: SecretStr  # key to call /v1/ endpoints
+    connect_to_mesh_url: str = ""
+    connect_to_mesh_key: SecretStr = SecretStr("")
+
     docker_subnet: str = ""
     storage_dir: str = ""
     hugging_face_token: str = ""
