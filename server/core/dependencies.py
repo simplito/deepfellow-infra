@@ -41,7 +41,7 @@ def auth_server(
     config: Annotated[AppSettings, Depends(get_config)],
 ) -> str:
     """Authenticate an server key."""
-    if api_key.credentials == config.api_key.get_secret_value():
+    if api_key.credentials == config.infra_api_key.get_secret_value():
         return api_key.credentials
 
     raise HTTPException(status_code=401, detail="Unauthorized")
@@ -52,7 +52,7 @@ def auth_admin(
     config: Annotated[AppSettings, Depends(get_config)],
 ) -> str:
     """Authenticate administrator."""
-    if api_key.credentials == config.admin_api_key.get_secret_value():
+    if api_key.credentials == config.infra_admin_api_key.get_secret_value():
         return api_key.credentials
 
     raise HTTPException(status_code=401, detail="Unauthorized")
