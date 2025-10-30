@@ -19,5 +19,5 @@ async def ws(
     ws: WebSocket,
     infra_websocket_server: Annotated[InfraWebsocketServer, Depends(get_infra_websocket_server)],
 ) -> None:
-    """Websocket endpoint to list active datalinks and inform about connection and disconnection of."""
+    """Websocket endpoint."""
     await infra_websocket_server.connect(ws)
