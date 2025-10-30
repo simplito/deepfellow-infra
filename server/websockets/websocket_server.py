@@ -49,7 +49,7 @@ class WebSockerContextImpl[T](WebSocketContext[T]):
 
 class WebSocketServer[T]:
     async def connect(self, websocket: WebSocket) -> None:
-        """Run on connect to datalink websocket."""
+        """Run on connect to websocket."""
         await websocket.accept()
         context = WebSockerContextImpl(websocket, self.create_bag())
         active_tasks = set[asyncio.Task[None]]()
