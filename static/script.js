@@ -27,6 +27,11 @@ async function showServicesPage() {
                                     ${s.installed ? "Installed" : "Not installed"}
                                 </div>
                             </div>
+                            <div class="box-size service-description">
+                                ${typeof(s.description) == "string" && s.description.length > 0 ?
+                                    `${s.description}` : ``
+                                }
+                            </div>
                             <div class="box-size service-size">
                                 ${typeof(s.size) == "string" ?
                                     `Size: <span class="size">${s.size ? s.size : "N/A"}</span>` :

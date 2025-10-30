@@ -41,6 +41,7 @@ class ServiceSpecification(BaseModel):
 
 class RetrieveServiceOut(BaseModel):
     id: str
+    description: str
     installed: bool | ServiceOptions
     spec: ServiceSpecification
     size: ServiceSize

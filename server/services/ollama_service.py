@@ -143,6 +143,10 @@ class OllamaService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "ollama"
 
+    def get_description(self) -> str:
+        """Return the service description."""
+        return "Self-hosted easy to use LLM model runner."
+
     def get_size(self) -> str:
         """Return the service size."""
         return _const.image.size

@@ -150,6 +150,10 @@ class VllmService(Base2Service[InstalledInfo]):
         """Return the service size."""
         return {"cpu": _const.image_cpu.size, "gpu": _const.image_gpu.size}
 
+    def get_description(self) -> str:
+        """Return the service description."""
+        return "Self-hosted LLM high efficient model runner with complex configuration."
+
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
         return ServiceSpecification(

@@ -242,6 +242,10 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "stable-diffusion"
 
+    def get_description(self) -> str:
+        """Return the service description."""
+        return "Self-hosted graphic models runner."
+
     def get_size(self) -> ServiceSize:
         """Return the service size."""
         if _const.image_gpu.name != _const.image_gpu.name:

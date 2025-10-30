@@ -404,6 +404,10 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "speaches-ai"
 
+    def get_description(self) -> str:
+        """Return the service description."""
+        return "Self-hosted Speach-to-Text and Text-to-Speach model runner."
+
     def get_size(self) -> ServiceSize:
         """Return the service size."""
         return {"cpu": _const.image_cpu.size, "gpu": _const.image_gpu.size}

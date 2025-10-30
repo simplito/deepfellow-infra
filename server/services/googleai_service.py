@@ -64,6 +64,10 @@ class GoogleAIService(RemoteService):
         """Return the service id."""
         return "google"
 
+    def get_description(self) -> str:
+        """Return the service description."""
+        return "Remote access to Google AI models."
+
     def get_default_url(self) -> str:
         """Return the default url."""
         return "https://generativelanguage.googleapis.com"

@@ -47,6 +47,10 @@ class OpenAIService(RemoteService):
         """Return the service id."""
         return "openai"
 
+    def get_description(self) -> str:
+        """Return the service description."""
+        return "Remote access to OpenAI models."
+
     def get_default_url(self) -> str:
         """Return the default url."""
         return "https://api.openai.com"
