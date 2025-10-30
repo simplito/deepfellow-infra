@@ -110,6 +110,10 @@ class CustomService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "custom"
 
+    def get_description(self) -> str:
+        """Return the service description."""
+        return "Your option to add custom service."
+
     def get_size(self) -> ServiceSize:
         """Return the service size."""
         return ""

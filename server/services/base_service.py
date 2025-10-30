@@ -29,6 +29,10 @@ class BaseService(ABC):
         """Return the service id."""
 
     @abstractmethod
+    def get_description(self) -> str:
+        """Return the service description."""
+
+    @abstractmethod
     def get_size(self) -> ServiceSize:
         """Return the service size."""
 
@@ -44,6 +48,7 @@ class BaseService(ABC):
         """Return the service info."""
         return RetrieveServiceOut(
             id=self.get_id(),
+            description=self.get_description(),
             installed=self.get_installed_info(),
             spec=self.get_spec(),
             size=self.get_size(),

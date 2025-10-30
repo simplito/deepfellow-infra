@@ -74,6 +74,10 @@ class Base2Service[T](BaseService):
     def get_id(self) -> str:
         """Return the service id."""
 
+    @abstractmethod
+    def get_description(self) -> str:
+        """Return the service description."""
+
     def is_installed(self) -> bool:
         """Check whether service is installed."""
         return self.installed is not None

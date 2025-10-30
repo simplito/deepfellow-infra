@@ -141,6 +141,10 @@ class LLamacppService(Base2Service[InstalledInfo]):
         """Return the service id."""
         return "llamacpp"
 
+    def get_description(self) -> str:
+        """Return the service description."""
+        return "Self-hosted LLM efficient model runner with advanced options."
+
     def get_size(self) -> ServiceSize:
         """Return the service size."""
         return {"cpu": _const.image_cpu.size, "gpu": _const.image_gpu.size}

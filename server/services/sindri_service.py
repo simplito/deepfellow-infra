@@ -89,6 +89,10 @@ class SindriService(Base2Service[InstalledInfo]):
         """Return the service size."""
         return _const.image.size
 
+    def get_description(self) -> str:
+        """Return the service description."""
+        return "Remote encrypted access to Sindri models."
+
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
         return ServiceSpecification(
