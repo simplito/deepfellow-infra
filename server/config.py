@@ -12,11 +12,11 @@
 import os
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 
-class ConfigError(SystemExit):
+class ConfigError(Exception):
     """Exception raised when there is an error in the configuration."""
 
 
@@ -87,3 +87,32 @@ class AppSettings(BaseSettings):
 def get_main_dir() -> Path:
     """Get main dir of the application."""
     return Path(__file__).resolve().parent.parent
+
+
+def load_config() -> AppSettings:
+    """Load config."""
+    try:
+        return AppSettings()  # type: ignore
+    except ValidationError as e:
+        has_unknown = False
+        messages = ["DeepFellow Infra config error:"]
+        for error in e.errors():
+            if error["type"] == "missing":
+                name = get_name_from_loc(error["loc"])
+                messages.append(f"Missing config value for {name}")
+            else:
+                has_unknown = True
+        message = "\n    ".join(messages)
+        if has_unknown:
+            raise ConfigError(message) from e
+        raise ConfigError(message)  # noqa: B904
+
+
+def get_name_from_loc(loc: tuple[int | str, ...]) -> str:
+    """Get the environment variable name for the given location."""
+    name = "DF"
+    first = True
+    for ele in loc:
+        name += ("_" if first else "__") + str(ele).upper()
+        first = False
+    return name
