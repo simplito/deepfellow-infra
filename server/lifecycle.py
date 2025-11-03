@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from server.applicationcontext import ApplicationContext
-from server.config import AppSettings
+from server.config import ConfigError, load_config
 from server.endpointregistry import EndpointRegistry
 from server.serviceprovider import ServiceProvider
 from server.services.coqui_service import CoquiService
@@ -53,7 +53,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # Definitions
     try:
         try:
-            app.state.config = config = AppSettings()  # type: ignore
+            app.state.config = config = load_config()
+        except ConfigError as e:
+            raise AppStartError(str(e))  # noqa: B904
         except Exception as e:
             raise AppStartError("Config error. Have you created the .env file?") from e
 
