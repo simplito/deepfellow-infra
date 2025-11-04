@@ -165,7 +165,7 @@ async def get_user_for_docker() -> str:
 async def start_docker_compose(docker_compose_file_path: Path) -> CommandResult2:
     """Start given docker compose."""
     docker_compose_cmd = get_docker_compoes_cmd()
-    cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "up", "-d"]
+    cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "up", "-d", "--wait"]
     command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
     return await Utils.run_command_for_success(command)
 
@@ -314,7 +314,8 @@ async def has_docker_compose_difference(docker_compose_file_path: Path, options:
         # # Generate desired configuration
         current_service = current_config.get("services", {}).get(options.service_name, {})
         current_ports = current_service.get("ports", [])
-        current_port = int(current_ports[0].split(":")[0])
+        # when -1 is returned that means that there is no port in the original file, so probably it is a subnet and the port can be anything
+        current_port = int(current_ports[0].split(":")[0]) if len(current_ports) > 0 else -1
 
         desired_config = await generate_docker_compose_content(options, current_port)
         desired_content = yaml.dump(desired_config, default_flow_style=False, sort_keys=False)
