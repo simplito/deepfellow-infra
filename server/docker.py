@@ -262,7 +262,7 @@ async def is_docker_compose_healthy(docker_compose_file_path: Path, service_name
         return False
 
 
-async def generate_docker_compose_content(options: DockerOptions, port: int) -> DockerComposeContent:  # noqa: C901
+async def generate_docker_compose_content(options: DockerOptions, port: int | None) -> DockerComposeContent:  # noqa: C901
     """Generate docker compose content."""
     service: DockerComposeService = {
         "image": options.image,
@@ -271,6 +271,8 @@ async def generate_docker_compose_content(options: DockerOptions, port: int) -> 
     if options.container_name:
         service["container_name"] = options.container_name
     if not options.subnet:
+        if not port:
+            raise AppError("Port is required when not in subnet mode")
         service["ports"] = [f"{port}:{options.image_port}"]
     if options.healthcheck:
         service["healthcheck"] = options.healthcheck
@@ -314,8 +316,7 @@ async def has_docker_compose_difference(docker_compose_file_path: Path, options:
         # # Generate desired configuration
         current_service = current_config.get("services", {}).get(options.service_name, {})
         current_ports = current_service.get("ports", [])
-        # when -1 is returned that means that there is no port in the original file, so probably it is a subnet and the port can be anything
-        current_port = int(current_ports[0].split(":")[0]) if len(current_ports) > 0 else -1
+        current_port = int(current_ports[0].split(":")[0]) if len(current_ports) > 0 else None
 
         desired_config = await generate_docker_compose_content(options, current_port)
         desired_content = yaml.dump(desired_config, default_flow_style=False, sort_keys=False)
@@ -397,6 +398,9 @@ async def install_and_run_docker(ctx: ApplicationContext, options: DockerOptions
         msg = f"Container {options.name} failed to become healthy, output: {start_output}"
         raise AppError(msg)
 
+    if not port and options.subnet:
+        # in subnet mode the port is not used so it could be anything, for example -1
+        port = -1
     if port is None:
         raise AppError("Cannot register service.")
 
