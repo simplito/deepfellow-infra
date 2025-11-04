@@ -22,7 +22,7 @@ class ConfigError(Exception):
 
 class AppSettings(BaseSettings):
     name: str
-    url: str
+    infra_url: str
     infra_admin_api_key: SecretStr  # key to connect to marketplace
     mesh_key: SecretStr  # key to connect subinfra through ws
     infra_api_key: SecretStr  # key to call /v1/ endpoints
