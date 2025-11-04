@@ -66,7 +66,7 @@ class ParentInfra(WebSocketClient):
                 InitRequest(
                     auth=self.config.connect_to_mesh_key.get_secret_value(),
                     name=self.config.name,
-                    url=self.config.url,
+                    url=self.config.infra_url,
                     api_key=self.config.infra_api_key.get_secret_value(),
                     models=self.endpoint_registry.list_models(),
                 )
