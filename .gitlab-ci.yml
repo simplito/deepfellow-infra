@@ -26,9 +26,11 @@ build_and_publish_docker_image:
       command: ["--tls=false"]
   script:
     - export IMAGE_ID=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+    - export DEV_IMAGE_ID=$CI_REGISTRY_IMAGE:dev
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker build -t $IMAGE_ID .
+    - docker build -t $IMAGE_ID -t $DEV_IMAGE_ID .
     - docker push $IMAGE_ID
+    - docker push $DEV_IMAGE_ID
   except:
     - tags
   only:
