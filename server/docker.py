@@ -148,6 +148,14 @@ async def has_gpu_support() -> bool:
     return _has_gpu_support
 
 
+def has_gpu_support_sync() -> bool:
+    """Return whether there is GPU support."""
+    global _has_gpu_support
+    if _has_gpu_support is None:
+        raise RuntimeError("Init value calling has_gpu_support first")
+    return _has_gpu_support
+
+
 async def is_rootless() -> bool:
     """Return whether docker is running in rootless mode."""
     global _is_rootless

@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, has_gpu_support_sync, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
@@ -380,7 +380,7 @@ class ModelInstalledInfo(BaseModel):
 
 
 class SpeachesAIOptions(BaseModel):
-    gpu: bool
+    gpu: bool = Field(default_factory=lambda: has_gpu_support_sync())
 
 
 class SpeachesAIModelOptions(BaseModel):
@@ -425,7 +425,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         """Return the service specification."""
         return ServiceSpecification(
             fields=[
-                ServiceField(type="bool", name="gpu", description="Run on GPU"),
+                ServiceField(type="bool", name="gpu", description="Run on GPU", required=False, default=self._has_gpu_for_spec()),
             ]
         )
 

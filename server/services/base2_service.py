@@ -21,7 +21,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from server.applicationcontext import ApplicationContext
-from server.docker import get_docker_compose_logs, restart_docker_compose
+from server.docker import get_docker_compose_logs, has_gpu_support_sync, restart_docker_compose
 from server.endpointregistry import EndpointRegistry
 from server.models.models import (
     AddCustomModelIn,
@@ -234,3 +234,6 @@ class Base2Service[T](BaseService):
     def get_civitai_token(self) -> str:
         """Return Civitai Face Key."""
         return self.application_context.config.civitai_token
+
+    def _has_gpu_for_spec(self) -> str:
+        return "true" if has_gpu_support_sync() else "false"
