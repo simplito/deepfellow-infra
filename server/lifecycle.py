@@ -20,6 +20,7 @@ from fastapi import FastAPI
 
 from server.applicationcontext import ApplicationContext
 from server.config import ConfigError, load_config
+from server.docker import has_gpu_support
 from server.endpointregistry import EndpointRegistry
 from server.serviceprovider import ServiceProvider
 from server.services.coqui_service import CoquiService
@@ -52,6 +53,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """
     # Definitions
     try:
+        await has_gpu_support()
         try:
             app.state.config = config = load_config()
         except ConfigError as e:

@@ -60,7 +60,7 @@ class ModelInstalledInfo(BaseModel):
 
 
 class SindriOptions(BaseModel):
-    api_url: str
+    api_url: str = "https://sindri.app/api/ai/v1/openai"
     api_key: str
 
 
@@ -106,8 +106,10 @@ class SindriService(Base2Service[InstalledInfo]):
         """Return the service specification."""
         return ServiceSpecification(
             fields=[
-                ServiceField(type="text", name="api_url", description="API URL", default="https://sindri.app/api/ai/v1/openai"),
-                ServiceField(type="password", name="api_key", description="API Key"),
+                ServiceField(
+                    type="text", name="api_url", description="API URL", required=False, default="https://sindri.app/api/ai/v1/openai"
+                ),
+                ServiceField(type="password", name="api_key", description="API Key", required=True),
             ]
         )
 

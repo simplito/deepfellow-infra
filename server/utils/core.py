@@ -245,4 +245,4 @@ def try_parse_pydantic[T](cls: type[T], data: Any) -> T:  # noqa: ANN401
     try:
         return cls(**data)
     except Exception as e:
-        raise HTTPException(400, e.errors if isinstance(e, ValidationError) else "Unknown") from e
+        raise HTTPException(400, e.errors() if isinstance(e, ValidationError) else "Unknown") from e

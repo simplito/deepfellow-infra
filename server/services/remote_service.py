@@ -109,8 +109,8 @@ class RemoteService(Base2Service[InstalledInfo]):
         """Return the service specification."""
         return ServiceSpecification(
             fields=[
-                ServiceField(type="text", name="api_url", description="API URL", default=self.get_default_url()),
-                ServiceField(type="password", name="api_key", description="API Key"),
+                ServiceField(type="text", name="api_url", description="API URL", required=False, default=self.get_default_url()),
+                ServiceField(type="password", name="api_key", description="API Key", required=True),
             ]
         )
 
@@ -157,6 +157,8 @@ class RemoteService(Base2Service[InstalledInfo]):
         )
 
     async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
+        if "api_url" not in options.spec:
+            options.spec["api_url"] = self.get_default_url()
         parsed_options = try_parse_pydantic(RemoteOptions, options.spec)
         return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
 

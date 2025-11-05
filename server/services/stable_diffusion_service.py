@@ -27,7 +27,15 @@ from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerImage, DockerOptions, get_user_for_docker, has_gpu_support, install_and_run_docker, uninstall_docker
+from server.docker import (
+    DockerImage,
+    DockerOptions,
+    get_user_for_docker,
+    has_gpu_support,
+    has_gpu_support_sync,
+    install_and_run_docker,
+    uninstall_docker,
+)
 from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
 from server.models.api import ImagesRequest, ModelProps
 from server.models.models import (
@@ -206,7 +214,7 @@ class ModelInstalledInfo(BaseModel):
 
 
 class SDOptions(BaseModel):
-    gpu: bool
+    gpu: bool = Field(default_factory=lambda: has_gpu_support_sync())
 
 
 class SDModelOptions(BaseModel):
@@ -266,7 +274,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         """Return the service specification."""
         return ServiceSpecification(
             fields=[
-                ServiceField(type="bool", name="gpu", description="Run on GPU"),
+                ServiceField(type="bool", name="gpu", description="Run on GPU", required=False, default=self._has_gpu_for_spec()),
             ]
         )
 

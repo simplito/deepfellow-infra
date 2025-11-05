@@ -15,10 +15,10 @@ from pathlib import Path
 from aiohttp import ClientSession
 from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerImage, DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, docker_pull, has_gpu_support_sync, install_and_run_docker, uninstall_docker
 from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
 from server.ffmpeg import ffmpeg_audio_convert_async_gen
 from server.models.api import CreateSpeechRequest, ModelProps
@@ -92,7 +92,7 @@ class ModelInstalledInfo:
 
 
 class CoquiOptions(BaseModel):
-    gpu: bool
+    gpu: bool = Field(default_factory=lambda: has_gpu_support_sync())
 
 
 class CoquiModelOptions(BaseModel):
@@ -142,7 +142,7 @@ class CoquiService(Base2Service[InstalledInfo]):
         """Return the service specification."""
         return ServiceSpecification(
             fields=[
-                ServiceField(type="bool", name="gpu", description="Run on GPU"),
+                ServiceField(type="bool", name="gpu", description="Run on GPU", required=False, default=self._has_gpu_for_spec()),
             ]
         )
 
