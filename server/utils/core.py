@@ -240,9 +240,17 @@ def normalize_name(s: str) -> str:
     return "".join(result)
 
 
+def format_pydantic_errors(exc: ValidationError) -> list[dict[str, str]]:
+    """Convert a Pydantic ValidationError's detailed errors into a user-friendly list of dictionaries."""
+    formatted_errors: list[dict[str, str]] = []
+    for error in exc.errors():
+        formatted_errors.append({"field": str(error["loc"][0]), "message": error["msg"]})
+    return formatted_errors
+
+
 def try_parse_pydantic[T](cls: type[T], data: Any) -> T:  # noqa: ANN401
     """Try parse pydantic, if it fails raise HTTPException with details."""
     try:
         return cls(**data)
     except Exception as e:
-        raise HTTPException(400, e.errors() if isinstance(e, ValidationError) else "Unknown") from e
+        raise HTTPException(400, format_pydantic_errors(e) if isinstance(e, ValidationError) else "Unknown") from e
