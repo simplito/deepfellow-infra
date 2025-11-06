@@ -36,7 +36,7 @@ from server.docker import (
     install_and_run_docker,
     uninstall_docker,
 )
-from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
+from server.endpointregistry import EndpointCallback, ProxyOptions, RegistrationId, SimpleEndpoint
 from server.models.api import ImagesRequest, ModelProps
 from server.models.models import (
     CustomModelField,
@@ -215,6 +215,7 @@ class ModelInstalledInfo(BaseModel):
 
 class SDOptions(BaseModel):
     gpu: bool = Field(default_factory=lambda: has_gpu_support_sync())
+    expose_api_at_prefix: str = Field("", pattern=r"^[a-zA-Z0-9_-]+$")
 
 
 class SDModelOptions(BaseModel):
@@ -231,6 +232,7 @@ class InstalledInfo:
         container_host: str,
         container_port: int,
         docker_exposed_port: int,
+        proxy_registration_id: RegistrationId | None,
     ):
         self.docker = docker
         self.models = models
@@ -240,6 +242,7 @@ class InstalledInfo:
         self.container_port = container_port
         self.docker_exposed_port = docker_exposed_port
         self.base_url = get_base_url(self.container_host, self.container_port)
+        self.proxy_registration_id = proxy_registration_id
 
 
 class DefaultSdNextConfig(NamedTuple):
@@ -275,6 +278,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         return ServiceSpecification(
             fields=[
                 ServiceField(type="bool", name="gpu", description="Run on GPU", required=False, default=self._has_gpu_for_spec()),
+                ServiceField(type="text", name="expose_api_at_prefix", description="Expose SD API at prefix", required=False, default="sd"),
             ]
         )
 
@@ -378,18 +382,38 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         )
         docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
 
+        host = get_container_host(subnet, docker_options.name)
+        port = get_container_port(subnet, docker_exposed_port, docker_options.image_port)
+
+        proxy_registration_id = (
+            self.endpoint_registry.register_custom_endpoint_as_proxy(
+                parsed_options.expose_api_at_prefix,
+                ModelProps(private=False),
+                ProxyOptions(get_base_url(host, port)),
+                registration_options=None,
+            )
+            if parsed_options.expose_api_at_prefix
+            else None
+        )
+
         return InstalledInfo(
             docker=docker_options,
             models={},
             options=options,
             parsed_options=parsed_options,
-            container_host=get_container_host(subnet, docker_options.name),
-            container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+            container_host=host,
+            container_port=port,
             docker_exposed_port=docker_exposed_port,
+            proxy_registration_id=proxy_registration_id,
         )
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
+        if info.parsed_options.expose_api_at_prefix and info.proxy_registration_id:
+            self.endpoint_registry.unregister_custom_endpoint(
+                info.parsed_options.expose_api_at_prefix,
+                info.proxy_registration_id,
+            )
         for model in info.models.copy().values():
             if model.type == "txt2img":
                 self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
