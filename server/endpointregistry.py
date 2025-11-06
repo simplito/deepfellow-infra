@@ -425,9 +425,10 @@ class EndpointRegistry:
         async def on_request(_body: None, request: Request) -> StreamingResponse:
             headers = options.get_request_headers(request)
             headers["content-type"] = request.headers.get("content-type") or "application/octet-stream"
+            full_url = Utils.join_url(options.url, request.path_params["full_path"].split("/", 1)[-1])
             return (
                 await make_http_request(
-                    url=Utils.join_url(options.url, request.url.path[7:]),
+                    url=full_url,
                     method=request.method,
                     data=request.stream(),
                     headers=headers,
@@ -696,7 +697,7 @@ class EndpointRegistry:
 
     async def execute_custom_endpoints(self, request: Request, url: str) -> StarletteResponse:
         """Process custom endpoint request."""
-        endpoint = self.custom_endpoints.get_model(url)
+        endpoint = self.custom_endpoints.get_model(url.split("/")[0])
         if not endpoint:
             raise HTTPException(400, "Given url is not supported")
 

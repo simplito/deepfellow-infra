@@ -119,14 +119,20 @@ async def on_images_generations(
     return await endpoint_registry.execute_images_generations(request, body.model, body)
 
 
-@router.api_route(
-    "/custom/{full_path:path}",
-    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
-)
+# Replacement from router.api_route which is kind bugged in swagger.
+# Also FastAPI creators doesn't recommend using api_route method.
+@router.get("/custom/{full_path:path}")
+@router.post("/custom/{full_path:path}")
+@router.put("/custom/{full_path:path}")
+@router.delete("/custom/{full_path:path}")
+@router.patch("/custom/{full_path:path}")
+@router.head("/custom/{full_path:path}")
+@router.options("/custom/{full_path:path}")
 async def on_custom_endpoint(
     request: Request,
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+    full_path: str,
 ) -> StarletteResponse:
     """Process custom endpoint request."""
-    return await endpoint_registry.execute_custom_endpoints(request, request.url.path[7:])
+    return await endpoint_registry.execute_custom_endpoints(request, full_path)
