@@ -1,12 +1,10 @@
 name: Deploy to dev
 
 on:
-  push:
-    branches:
-      - main
-      - 'hotfix-*'
-    tags:
-      - '*'
+  workflow_run:
+    workflows: ["Docker Build production image", "Tag Docker Image"]
+    types:
+      - completed
 
 permissions:
   contents: read
