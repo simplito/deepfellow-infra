@@ -1,0 +1,70 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  DOCKER_TLS_CERTDIR: ""
+
+build:
+  stage: build
+  image: docker:27.3.1
+  services:
+    - name: docker:27.3.1-dind
+      command: ["--tls=false"]
+  script:
+    - docker build .
+  except:
+    - tags
+    - main
+    - /^hotfix-.*$/
+
+build_and_publish_docker_image:
+  stage: build
+  image: docker:27.3.1
+  services:
+    - name: docker:27.3.1-dind
+      command: ["--tls=false"]
+  script:
+    - export IMAGE_ID=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+    - export DEV_IMAGE_ID=$CI_REGISTRY_IMAGE:dev
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $IMAGE_ID -t $DEV_IMAGE_ID .
+    - docker push $IMAGE_ID
+    - docker push $DEV_IMAGE_ID
+  except:
+    - tags
+  only:
+    - main
+    - /^hotfix-.*$/
+
+tag_docker_image:
+  stage: build
+  image: docker:27.3.1
+  services:
+    - name: docker:27.3.1-dind
+      command: ["--tls=false"]
+  script:
+    - export IMAGE_ID=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+    - export IMAGE_TAG_ID=$CI_REGISTRY_IMAGE:$CI_COMMIT_TAG
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull $IMAGE_ID
+    - docker tag $IMAGE_ID $IMAGE_TAG_ID
+    - docker push $IMAGE_TAG_ID
+  except:
+    - branches
+  only:
+    - tags
+
+deploy_to_dev:
+  stage: deploy
+  image: curlimages/curl:latest
+  script:
+    - export IMAGE_VERSION=${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}
+    - 'curl --fail-with-body -H "X-Token: $DEV_TOKEN" https://apps.test.simplito.com/api/deploy?image_version=$IMAGE_VERSION'
+  only:
+    - main
+    - /^hotfix-.*$/
+    - tags
+  environment:
+    name: dev
+    url: https://dfinfra.test.simplito.com/
