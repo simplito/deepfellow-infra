@@ -1,0 +1,37 @@
+name: Deploy to dev
+
+on:
+  workflow_run:
+    workflows: ["Docker Build production image", "Tag Docker Image"]
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+jobs:
+  deploy_to_dev:
+    name: Deploy to dev environment
+    runs-on: Linux
+
+    steps:
+      - name: Determine image version
+        id: version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            IMAGE_VERSION="${GITHUB_REF_NAME}"
+          else
+            IMAGE_VERSION="${GITHUB_SHA}"
+          fi
+          echo "IMAGE_VERSION=$IMAGE_VERSION" >> $GITHUB_ENV
+          echo "Image version: $IMAGE_VERSION"
+
+      - name: Deploy via cURL
+        env:
+          DEV_TOKEN: ${{ secrets.DEV_TOKEN }}
+          DEPLOY_SERVER: ${{ secrets.DEPLOY_SERVER }}
+        run: |
+          echo "Triggering deployment for version: $IMAGE_VERSION"
+          curl --fail-with-body \
+            -H "X-Token: $DEV_TOKEN" \
+            "https://$DEPLOY_SERVER/api/deploy?image_version=$IMAGE_VERSION"
