@@ -29,12 +29,10 @@ jobs:
           username: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
           password: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
 
-      - name: Retag image via build cache
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          cache-from: type=registry,ref=${{ secrets.DOCKER_REGISTRY }}/${{ secrets.IMAGE_NAME }}:${{ github.sha }}
-          tags: |
-            ${{ secrets.DOCKER_REGISTRY }}/${{ secrets.IMAGE_NAME }}:${{ github.ref_name }}
-          provenance: false
+      - name: Retag multi-arch image
+        env:
+          IMAGE: ${{ secrets.DOCKER_REGISTRY }}/${{ secrets.IMAGE_NAME }}:${{ github.sha }}
+          TAGGED_IMAGE: ${{ secrets.DOCKER_REGISTRY }}/${{ secrets.IMAGE_NAME }}:${{ github.ref_name }}
+        run: |
+          docker buildx imagetools create -t $TAGGED_IMAGE $IMAGE
+          
