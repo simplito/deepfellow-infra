@@ -4,7 +4,7 @@
 
 This document contains information about the legal rules of using DeepFellow Software Framework. It is a binding agreement, which means that as a User of DeepFellow Software Framework, you are obliged to comply with it.
 
-In this document, we use the term DeepFellow Software Framework – a general name describing a software system created by us, consisting of, among others, DeepFellow Server, DeepFellow Infra and DeepFellow Extensions. DeepFellow Server is a server-side component which is used together with DeepFellow Infra - infrastructure servers for AI models deploymenst and DeepFellow Extensions - providing AI workflow pluggabble solutions.
+In this document, we use the term DeepFellow Software Framework – a general name describing a software system created by us, consisting of, among others, DeepFellow Server, DeepFellow Infra and DeepFellow Extensions. DeepFellow Server is a server-side component which is used together with DeepFellow Infra - infrastructure servers for AI models deployments and DeepFellow Extensions - providing AI workflow pluggabble solutions.
 
 ## The contract is concluded between us, that is:
 
@@ -16,7 +16,7 @@ If in this agreement we use terms such as you, your, yours, etc., it refers to t
 
 ## Definition of an Organization
 
-If you conduct any of the activities related to DeepFellow Software Framework, in connection with your activity  in an Organization, such as:
+If you conduct any of the activities related to DeepFellow Software Framework, in connection with your activity in an Organization, such as:
 
 - the use of DeepFellow Software Framework in the process of training, hosting and utilizing AI models within the Organization,
 - the creation of other commercial solutions utilizing DeepFellow Software Framework,
@@ -65,7 +65,7 @@ We have full copyright to DeepFellow Software Framework. We have the right to de
 
 Unless otherwise required by applicable law or otherwise agreed upon in writing, DeepFellow Software Framework is provided on an "as is" basis.
 
-Other than as provided in this agreement, we make no other warranties, express or implied, and hereby disclaim all implied warranties, including the ones regarding the operation of DeepFellow Software Framework. 
+Other than as provided in this agreement, we make no other warranties, express or implied, and hereby disclaim all implied warranties, including the ones regarding the operation of DeepFellow Software Framework.
 
 You are solely responsible for evaluating whether your use of DeepFellow Software Framework is fit for your particular purposes.
 
