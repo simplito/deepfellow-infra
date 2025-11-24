@@ -15,6 +15,7 @@ import io
 import json
 import platform
 import re
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
@@ -30,6 +31,7 @@ from server.applicationcontext import get_base_url, get_container_host, get_cont
 from server.docker import (
     DockerImage,
     DockerOptions,
+    docker_pull,
     get_user_for_docker,
     has_gpu_support,
     has_gpu_support_sync,
@@ -52,8 +54,16 @@ from server.models.models import (
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
-from server.utils.core import try_parse_pydantic
-from server.utils.exceptions import AppError
+from server.utils.core import (
+    StreamChunk,
+    StreamChunkFinish,
+    StreamChunkInstalledInfo,
+    StreamChunkProgress,
+    StreamingError,
+    convert_size_to_bytes,
+    try_parse_pydantic,
+)
+from server.utils.loading import Progress
 
 ModelType = Literal["txt2img", "lora"]
 
@@ -341,7 +351,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             data.update(old_content)
             await f.write(json.dumps(data, indent=4))
 
-    async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
+    async def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
         if platform.system() == "Darwin":
             raise NotImplementedError("Stable Diffusion is not supported on macOS")
         parsed_options = try_parse_pydantic(SDOptions, options.spec)
@@ -353,9 +363,12 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         if parsed_options.gpu:
             image = _const.image_gpu
             if not await has_gpu_support():
-                raise AppError("Docker doesn't support GPU on this machine.")
+                raise StreamingError("Docker doesn't support GPU on this machine.")
         else:
             image = _const.image_cpu
+
+        async for progress in docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
+            yield StreamChunkProgress(type="progress", value=progress * 0.99)
 
         await self.update_config()
         subnet = self.application_context.get_docker_subnet()
@@ -396,7 +409,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             else None
         )
 
-        return InstalledInfo(
+        info = InstalledInfo(
             docker=docker_options,
             models={},
             options=options,
@@ -406,6 +419,10 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             docker_exposed_port=docker_exposed_port,
             proxy_registration_id=proxy_registration_id,
         )
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="installed")
+        yield StreamChunkInstalledInfo(type="installed_info", status="ok", details=info)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -514,18 +531,33 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             tasks = [asyncio.create_task(f(client, info.base_url)) for f in refresh_functions]
             await asyncio.gather(*tasks)
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:
         parsed_model_options = try_parse_pydantic(SDModelOptions, options.spec) if options.spec else SDModelOptions()
         info = self._check_installed()
         if model_id in info.models:
+            yield StreamChunkFinish(type="finish", status="ok", details="Already installed")
             return
         if model_id not in self.models:
-            raise HTTPException(status_code=400, detail="Model not found")
+            raise StreamingError("Model not found")
         model = self.models[model_id]
 
         model_dir = self._get_working_models_dir() / model.filetype
 
-        local_model_path, _ = await self.model_downloader.download(model.url, model_dir, model.filename)
+        progress = Progress(convert_size_to_bytes(model.size) or 0)
+        local_model_path: Path | None = None
+        model_filename = ""
+        async for packet in self.model_downloader.download(model.url, model_dir, model.filename):
+            if packet.local_path and packet.filename and not local_model_path and not model_filename:
+                local_model_path = packet.local_path
+                model_filename = packet.filename
+            elif packet.downloaded_bytes_size != 0:
+                progress.add_to_actual_value(packet.downloaded_bytes_size)
+
+            yield StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99)
+
+        if not local_model_path:
+            raise StreamingError("Something went wrong with downloading")
+
         registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
@@ -545,6 +577,9 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             )
 
         await self.refresh_models()
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="Installed")
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()

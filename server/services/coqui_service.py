@@ -18,7 +18,14 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerImage, DockerOptions, docker_pull, has_gpu_support_sync, install_and_run_docker, uninstall_docker
+from server.docker import (
+    DockerImage,
+    DockerOptions,
+    docker_pull,
+    has_gpu_support_sync,
+    install_and_run_docker,
+    uninstall_docker,
+)
 from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
 from server.ffmpeg import ffmpeg_audio_convert_async_gen
 from server.models.api import CreateSpeechRequest, ModelProps
@@ -34,7 +41,16 @@ from server.models.models import (
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
-from server.utils.core import Utils, try_parse_pydantic
+from server.utils.core import (
+    StreamChunk,
+    StreamChunkFinish,
+    StreamChunkInstalledInfo,
+    StreamChunkProgress,
+    StreamingError,
+    Utils,
+    convert_size_to_bytes,
+    try_parse_pydantic,
+)
 
 
 class CoquiModel(BaseModel):
@@ -169,11 +185,17 @@ class CoquiService(Base2Service[InstalledInfo]):
             custom=self.custom,
         )
 
-    async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
+    async def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
         parsed_options = try_parse_pydantic(CoquiOptions, options.spec)
         image = self._get_image(parsed_options.gpu)
-        await docker_pull(image.name)
-        return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
+        async for chunk in docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
+            yield StreamChunkProgress(type="progress", value=chunk * 0.99)
+
+        info = InstalledInfo(models={}, options=options, parsed_options=parsed_options)
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="installed")
+        yield StreamChunkInstalledInfo(type="installed_info", status="ok", details=info)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -232,13 +254,14 @@ class CoquiService(Base2Service[InstalledInfo]):
             has_docker=True,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:
         parsed_model_options = try_parse_pydantic(CoquiModelOptions, options.spec) if options.spec else CoquiModelOptions()
         info = self._check_installed()
         if model_id in info.models:
+            yield StreamChunkFinish(type="finish", status="ok", details="Already installed")
             return
         if model_id not in _const.models:
-            raise HTTPException(status_code=400, detail="Model not found")
+            raise StreamingError("Model not found")
         model = _const.models[model_id]
         volumes = [f"{self._get_working_output_dir()}:/root/tts-output", f"{self._get_working_dir()}/models:/root/.local/share/tts"]
         image = self._get_image(info.parsed_options.gpu)
@@ -292,6 +315,8 @@ class CoquiService(Base2Service[InstalledInfo]):
             endpoint=SimpleEndpoint(on_request=_create_handler(model_info.base_url, model.default_speaker, model.response_format)),
             registration_options=None,
         )
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="Installed")
 
     def _get_image(self, gpu: bool) -> DockerImage:
         return _const.image_gpu if gpu else _const.image_cpu

@@ -10,10 +10,13 @@
 """Utils module."""
 
 import asyncio
+import json
+import logging
 import re
 import shlex
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple, TypedDict
 from urllib.parse import parse_qs, quote, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
@@ -21,10 +24,13 @@ import aiofiles
 import aiohttp
 from aiohttp import ClientSession, ClientTimeout
 from fastapi import HTTPException
+from fastapi.responses import StreamingResponse
 from multidict import CIMultiDictProxy
 from pydantic import BaseModel, ValidationError
 
 from server.models.common import JsonSerializable
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class HttpClientError(Exception):
@@ -44,6 +50,13 @@ class CommandResult(NamedTuple):
 class CommandResult2(NamedTuple):
     stdout: str
     stderr: str
+
+
+class DownloadPacket(NamedTuple):
+    downloaded_bytes_size: int = 0
+    success: bool = False
+    local_path: Path | None = None
+    filename: str = ""
 
 
 class Utils:
@@ -137,7 +150,7 @@ class Utils:
         temp_dir: Path,
         filename: str | None = None,
         headers: dict[str, str] | None = None,
-    ) -> tuple[Path, str]:
+    ) -> AsyncGenerator[DownloadPacket]:
         """Download model if it's a URL, return (local_path, filename)."""
         if headers is None:
             headers = {}
@@ -145,46 +158,42 @@ class Utils:
         if not model_url.startswith("https://"):
             # Already a local path
             local_path = Path(model_url)
-            return local_path, local_path.name
+            yield DownloadPacket(success=True, local_path=local_path, filename=filename or "")
 
-        # Get filename from URL (last part after /)
-        filename2 = filename if filename is not None else model_url.split("/")[-1].split("?")[0]
-        dir = model_dir
-        local_path = dir / filename2
+        else:
+            # Get filename from URL (last part after /)
+            filename_out = filename if filename is not None else model_url.split("/")[-1].split("?")[0]
+            dir = model_dir
+            local_path = dir / filename_out
 
-        if not local_path.exists():
-            print(f"Downloading {filename2}...")
+            if not local_path.exists():
+                print(f"Downloading {filename_out}...")
+                temp_path = temp_dir / str(uuid4())
+                temp_path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    async for downloaded_bytes_size in download_file(model_url, temp_path, headers):
+                        yield DownloadPacket(downloaded_bytes_size=downloaded_bytes_size)
 
-            # Ensure the models directory exists
-
-            temp_path = temp_dir / str(uuid4())
-
-            temp_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Download with and error handling
-            try:
-                # Use curl instead of wget for better macOS compatibility
-                await download_file(model_url, temp_path, headers)
-
-                # Validate the downloaded file
-                if not temp_path.exists() or temp_path.stat().st_size == 0:
+                except Exception:
+                    # Clean up any partial download
                     if temp_path.exists():
                         temp_path.unlink()
-                    raise RuntimeError("Downloaded file is empty or missing", temp_path)  # noqa: TRY301
+                    raise
 
-            except Exception:
-                # Clean up any partial download
-                if temp_path.exists():
+                # Validate the downloaded file
+                if not temp_path.exists():
+                    raise RuntimeError("Downloaded file is missing", temp_path)
+
+                if temp_path.stat().st_size == 0:
                     temp_path.unlink()
-                raise
+                    raise RuntimeError("Downloaded file is empty", temp_path)
 
-            local_path.parent.mkdir(parents=True, exist_ok=True)
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                temp_path.rename(local_path)
 
-            temp_path.rename(local_path)
+                print(f"Successfully downloaded {filename_out} ({local_path.stat().st_size} bytes)")
 
-            print(f"Successfully downloaded {filename2} ({local_path.stat().st_size} bytes)")
-
-        return local_path, filename2
+            yield DownloadPacket(success=True, local_path=local_path, filename=filename_out)
 
     @staticmethod
     def add_url_parameter_if_missing(url: str, param_name: str, param_value: str) -> str:
@@ -205,7 +214,7 @@ class FetchResult(BaseModel):
     data: str
 
 
-async def download_file(url: str, file_path: Path, headers: dict[str, str]) -> None:
+async def download_file(url: str, file_path: Path, headers: dict[str, str]) -> AsyncGenerator[int]:
     """Download file from given url and save it under given path."""
     async with aiohttp.ClientSession() as session, session.get(url, headers=headers, timeout=ClientTimeout(3600)) as response:
         if response.status != 200:
@@ -214,14 +223,23 @@ async def download_file(url: str, file_path: Path, headers: dict[str, str]) -> N
             raise HttpClientError(message=msg, status_code=response.status, headers=response.headers, body=body)
 
         async with aiofiles.open(file_path, "wb") as f:
-            async for chunk in response.content.iter_chunked(1024):
+            async for chunk in response.content.iter_any():
+                downloaded_bytes_size = len(chunk)
                 await f.write(chunk)
+                yield downloaded_bytes_size
 
 
 async def fetch_from(url: str, method: str = "GET", data: JsonSerializable | None = None) -> FetchResult:
     """Make HTTP request to host on given port."""
     async with aiohttp.ClientSession() as session, session.request(method, url, json=data) as response:
         return FetchResult(status_code=response.status, data=await response.text())
+
+
+async def stream_fetch_from(url: str, method: str = "GET", data: JsonSerializable | None = None) -> AsyncGenerator[FetchResult]:
+    """Make stream HTTP request to host on given port."""
+    async with aiohttp.ClientSession() as session, session.request(method, url, json=data) as response:
+        async for chunk in response.content.iter_any():
+            yield FetchResult(status_code=response.status, data=chunk.decode())
 
 
 def add_token_to_civitai(url: str, token: str) -> str:
@@ -254,3 +272,109 @@ def try_parse_pydantic[T](cls: type[T], data: Any) -> T:  # noqa: ANN401
         return cls(**data)
     except Exception as e:
         raise HTTPException(400, format_pydantic_errors(e) if isinstance(e, ValidationError) else "Unknown") from e
+
+
+def convert_size_to_bytes(size_str: str) -> None | int:
+    """Convert a string representation of a size (e.g., "46MB", "1.2GB", "512K") into an integer number of bytes.
+
+    Args:
+        size_str (str): The size string to convert.
+
+    Returns:
+        int: The size in bytes, or None if the format is invalid.
+    """
+    # 1. Clean and standardize the string
+    size_cleaned: str = size_str.strip().upper().replace(" ", "")
+
+    # 2. Define the multipliers for Kilo, Mega, Giga, and Tera bytes
+    multipliers = {
+        "B": 1,
+        "K": 1000,
+        "KB": 1000,
+        "M": 1000**2,
+        "MB": 1000**2,
+        "G": 1000**3,
+        "GB": 1000**3,
+        "T": 1000**4,
+        "TB": 1000**4,
+    }
+
+    # 3. Find the unit in the string
+    unit = None
+    number_str = ""
+
+    # Iterate backwards to find the unit (e.g., 'MB') and separate the number
+    for u in sorted(multipliers.keys(), key=len, reverse=True):
+        if size_cleaned.endswith(u):
+            unit = u
+            # The number part is everything before the unit
+            number_str = size_cleaned[: -len(u)]
+            break
+
+    if not unit or not number_str:
+        # If no recognizable unit is found, or the number part is empty
+        return None
+
+    # 4. Convert the number part to a float and multiply
+    try:
+        number = float(number_str)
+        multiplier = multipliers.get(unit, 1)  # Default to 1 if something went wrong
+
+        # Calculate the final byte count. Use int() to get a whole number.
+        return int(number * multiplier)
+
+    except ValueError:
+        # Handle cases where the number part (number_str) isn't a valid float
+        return None
+
+
+class StreamChunkInstalledInfo(TypedDict):
+    type: Literal["installed_info"]
+    status: Literal["ok"]
+    details: Any
+
+
+class StreamChunkFinish(TypedDict):
+    type: Literal["finish"]
+    status: Literal["ok", "error"]
+    details: str
+
+
+class StreamChunkProgress(TypedDict):
+    value: float
+    type: Literal["progress"]
+
+
+type StreamChunk = StreamChunkFinish | StreamChunkProgress | StreamChunkInstalledInfo
+
+
+class StreamingError(Exception):
+    pass
+
+
+class Streaming:
+    def __init__(self, generator: AsyncGenerator[StreamChunk]):
+        self.generator = generator
+
+    async def future(self) -> None:
+        """Wait for the end."""
+        async for _ in self.generator:
+            pass
+
+    def as_streaming_response(self) -> StreamingResponse:
+        """Return as streaming response."""
+
+        async def generator() -> AsyncGenerator[str]:
+            try:
+                async for chunk in self.generator:
+                    yield "data: " + json.dumps(chunk) + "\n\n"
+            except Exception as e:
+                logger.exception("Error during generator")
+                chunk: StreamChunk = {
+                    "type": "finish",
+                    "status": "error",
+                    "details": str(e) if isinstance(e, StreamingError) else "<unknown>",
+                }
+                yield "data: " + json.dumps(chunk) + "\n\n"
+
+        return StreamingResponse(content=generator(), media_type="text/event-stream", status_code=200)

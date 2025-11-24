@@ -11,12 +11,12 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Body, Depends, Path, Query
+from fastapi.responses import StreamingResponse
 
 from server.core.dependencies import auth_admin, get_services_manager
 from server.models.services import (
     InstallServiceIn,
-    InstallServiceOut,
     ListAllModelsFilters,
     ListAllModelsOut,
     ListServicesFilters,
@@ -30,7 +30,6 @@ from server.models.services import (
     UninstallServiceOut,
 )
 from server.services_manager import ServicesManager
-from server.utils.exceptions import AppError
 
 router = APIRouter(prefix="/admin/services", tags=["Services"])
 
@@ -44,13 +43,9 @@ async def install_service(
     service_id: Annotated[str, Path(..., description="The ID of the service to install")],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
-) -> InstallServiceOut:
+) -> StreamingResponse:
     """Install the service."""
-    try:
-        await services_manager.install_service(service_id, model)
-    except AppError as e:
-        raise HTTPException(400, str(e)) from e
-    return InstallServiceOut(status="OK")
+    return services_manager.install_service(service_id, model).as_streaming_response()
 
 
 @router.delete(

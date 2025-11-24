@@ -10,6 +10,7 @@
 """Ollama service."""
 
 import json
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Annotated, Literal, TypedDict
 
@@ -18,7 +19,7 @@ from pydantic import BaseModel, Field, StringConstraints
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
 from server.config import get_main_dir
-from server.docker import DockerImage, DockerOptions, has_gpu_support_sync, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, docker_pull, has_gpu_support_sync, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
@@ -35,7 +36,18 @@ from server.models.models import (
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
-from server.utils.core import fetch_from, try_parse_pydantic
+from server.utils.core import (
+    StreamChunk,
+    StreamChunkFinish,
+    StreamChunkInstalledInfo,
+    StreamChunkProgress,
+    StreamingError,
+    convert_size_to_bytes,
+    fetch_from,
+    stream_fetch_from,
+    try_parse_pydantic,
+)
+from server.utils.loading import Progress
 
 
 def _read_models_from_json() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
@@ -234,8 +246,15 @@ class OllamaService(Base2Service[InstalledInfo]):
             custom=self.custom,
         )
 
-    async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
+    def _get_image(self) -> DockerImage:
+        return _const.image
+
+    async def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
         parsed_options = try_parse_pydantic(OllamaOptions, options.spec)
+        image = self._get_image()
+        async for progress in docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
+            yield StreamChunkProgress(type="progress", value=progress * 0.99)
+
         volumes = [f"{self._get_working_dir()}/main:/root/.ollama"]
 
         subnet = self.application_context.get_docker_subnet()
@@ -269,7 +288,7 @@ class OllamaService(Base2Service[InstalledInfo]):
             },
         )
         docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
-        return InstalledInfo(
+        info = InstalledInfo(
             docker=docker_options,
             models={},
             options=options,
@@ -278,6 +297,10 @@ class OllamaService(Base2Service[InstalledInfo]):
             container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
             docker_exposed_port=docker_exposed_port,
         )
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="installed")
+        yield StreamChunkInstalledInfo(type="installed_info", status="ok", details=info)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -355,20 +378,42 @@ class OllamaService(Base2Service[InstalledInfo]):
             has_docker=False,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:  # noqa: C901
         parsed_model_options = try_parse_pydantic(OllamaModelOptions, options.spec) if options.spec else OllamaModelOptions()
         info = self._check_installed()
         if model_id in info.models:
+            yield StreamChunkFinish(type="finish", status="ok", details="Already installed")
             return
         if model_id not in self.models:
-            raise HTTPException(status_code=400, detail="Model not found")
-        model = self.models[model_id]
-        res = await fetch_from(f"{info.base_url}/api/pull", "POST", {"model": model_id})
-        # res.data contains progress it can be streamed!
-        if (res.status_code != 200 and res.status_code != 201) or "error" in res.data:
-            print("Error when install model in ollama", model_id, res.status_code, res.data)
-            raise HTTPException(status_code=400, detail="Model not available")
+            raise StreamingError("Model not found")
 
+        model = self.models[model_id]
+
+        progress = Progress(convert_size_to_bytes(model.size) or 0)
+        last_diggest: str = ""
+        last_value: int = 0
+
+        async for stream in stream_fetch_from(f"{info.base_url}/api/pull", "POST", {"model": model_id}):
+            if (stream.status_code != 200 and stream.status_code != 201) or "error" in stream.data:
+                raise StreamingError("Model not available")
+
+            data_cleared: list[str] = stream.data.rstrip().split("\n")
+            records = [json.loads(s) for s in data_cleared]
+            if progress.max != 0:
+                for record in records:
+                    if value := record.get("completed"):
+                        digest = record.get("digest")
+                        batch_download_bytes_size = value - last_value if digest == last_diggest else value
+                        progress.add_to_actual_value(batch_download_bytes_size)
+                        last_value = value
+                        last_diggest = digest
+
+                    elif record.get("status") == "success":
+                        progress.set_actual_value(progress.max)
+
+                    yield StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99)
+
+        yield StreamChunkProgress(type="progress", value=0.99)
         if parsed_model_options.alive_time != "":
             await fetch_from(f"{info.base_url}/api/generate", "POST", {"model": model_id, "keep_alive": parsed_model_options.alive_time})
 
@@ -395,6 +440,8 @@ class OllamaService(Base2Service[InstalledInfo]):
                 options=ProxyOptions(url=f"{info.base_url}/v1/embeddings", rewrite_model_to=model_id),
                 registration_options=None,
             )
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="Installed")
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()

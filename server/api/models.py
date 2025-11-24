@@ -12,13 +12,13 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Path, Query
+from fastapi.responses import StreamingResponse
 
 from server.core.dependencies import auth_admin, get_services_manager
 from server.models.models import (
     AddCustomModelIn,
     AddCustomModelOut,
     InstallModelIn,
-    InstallModelOut,
     ListModelsFilters,
     ListModelsOut,
     ModelIdQuery,
@@ -42,10 +42,9 @@ async def install_model(
     query: Annotated[ModelIdQuery, Query()],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
-) -> InstallModelOut:
+) -> StreamingResponse:
     """Install the model from the service."""
-    await services_manager.install_model_in_service(service_id, query.model_id, model)
-    return InstallModelOut(status="OK")
+    return services_manager.install_model_in_service(service_id, query.model_id, model).as_streaming_response()
 
 
 @router.delete(

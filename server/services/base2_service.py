@@ -14,6 +14,7 @@ import logging
 import shutil
 import uuid
 from abc import abstractmethod
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import TypeVar
 
@@ -33,7 +34,7 @@ from server.models.models import (
 from server.models.services import InstallServiceIn, UninstallServiceIn
 from server.serviceprovider import ServiceProvider, ServiceRawConfig
 from server.services.base_service import BaseService
-from server.utils.core import Utils
+from server.utils.core import StreamChunk, Streaming, Utils
 from server.utils.model_downloader import ModelDownloader
 
 
@@ -95,7 +96,7 @@ class Base2Service[T](BaseService):
         """Load single model."""
         logger.info(f"{self.get_id()} loading model {model.model_id}")  # noqa: G004
         try:
-            await self._install_model(model.model_id, model.options)
+            await Streaming(self._install_model(model.model_id, model.options)).future()
         except Exception:
             logger.exception(f"{self.get_id()} get error while loading model {model.model_id}")  # noqa: G004
 
@@ -107,7 +108,7 @@ class Base2Service[T](BaseService):
             self._add_custom_model(custom)
         if not cfg.options:
             return
-        await self._install(cfg.options)
+        await Streaming(self._install(cfg.options)).future()
         logger.info(f"{self.get_id()} service checked")  # noqa: G004
         tasks = [asyncio.create_task(self.load_model(model)) for model in cfg.models or []]
         await asyncio.gather(*tasks)
@@ -120,12 +121,17 @@ class Base2Service[T](BaseService):
     def _generate_config(self, info: T | None) -> ServiceConfig:
         """Generate config."""
 
-    async def install(self, options: InstallServiceIn) -> None:
+    def install(self, options: InstallServiceIn) -> Streaming:
         """Install the service."""
-        await self._install(options)
-        await self._save()
 
-    async def _install(self, options: InstallServiceIn) -> None:
+        async def generator() -> AsyncGenerator[StreamChunk]:
+            async for chunk in self._install(options):
+                yield chunk
+            await self._save()
+
+        return Streaming(generator())
+
+    async def _install(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
         if self.installed is not None:
             raise HTTPException(status_code=400, detail=f"Service {self.get_id()} already installed")
         if self.installing:
@@ -133,12 +139,16 @@ class Base2Service[T](BaseService):
 
         self.installing = True
         try:
-            self.installed = await self._install_core(options)
+            async for chunk in self._install_core(options):
+                if chunk["type"] == "installed_info":
+                    self.installed = chunk["details"]
+                else:
+                    yield chunk
         finally:
             self.installing = False
 
     @abstractmethod
-    async def _install_core(self, options: InstallServiceIn) -> T:
+    def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
         """Install service."""
 
     async def uninstall(self, options: UninstallServiceIn) -> None:
@@ -175,13 +185,18 @@ class Base2Service[T](BaseService):
         """Remove custom model."""
         raise HTTPException(400, "This service does not support custom models.")
 
-    async def install_model(self, model_id: str, options: InstallModelIn) -> None:
+    def install_model(self, model_id: str, options: InstallModelIn) -> Streaming:
         """Install the model."""
-        await self._install_model(model_id, options)
-        await self._save()
+
+        async def generator() -> AsyncGenerator[StreamChunk]:
+            async for chunk in self._install_model(model_id, options):
+                yield chunk
+            await self._save()
+
+        return Streaming(generator())
 
     @abstractmethod
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+    def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:
         """Install the model."""
 
     async def uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:

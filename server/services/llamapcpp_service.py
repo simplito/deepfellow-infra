@@ -9,6 +9,7 @@
 
 """Llamacpp service."""
 
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -32,7 +33,17 @@ from server.models.models import (
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
-from server.utils.core import normalize_name, try_parse_pydantic
+from server.utils.core import (
+    StreamChunk,
+    StreamChunkFinish,
+    StreamChunkInstalledInfo,
+    StreamChunkProgress,
+    StreamingError,
+    convert_size_to_bytes,
+    normalize_name,
+    try_parse_pydantic,
+)
+from server.utils.loading import Progress
 
 
 class LlamacppModel(BaseModel):
@@ -197,11 +208,17 @@ class LLamacppService(Base2Service[InstalledInfo]):
             custom=self.custom,
         )
 
-    async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
+    async def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
         parsed_options = try_parse_pydantic(LLamacppOptions, options.spec)
         image = self._get_image(parsed_options.gpu)
-        await docker_pull(image.name)
-        return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
+        async for progress in docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
+            yield StreamChunkProgress(type="progress", value=progress * 0.99)
+
+        info = InstalledInfo(models={}, options=options, parsed_options=parsed_options)
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="installed")
+        yield StreamChunkInstalledInfo(type="installed_info", status="ok", details=info)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -274,17 +291,35 @@ class LLamacppService(Base2Service[InstalledInfo]):
             has_docker=True,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:
         parsed_model_options = try_parse_pydantic(LLamacppModelOptions, options.spec) if options.spec else LLamacppModelOptions()
         info = self._check_installed()
         if model_id in info.models:
+            yield StreamChunkFinish(type="finish", status="ok", details="Already installed")
             return
         if model_id not in self.models:
-            raise HTTPException(status_code=400, detail="Model not found")
+            raise StreamingError("Model not found")
         model = self.models[model_id]
         model_dir = self._get_working_dir() / "models"
         model_dir.mkdir(parents=True, exist_ok=True)
-        local_model_path, model_filename = await self.model_downloader.download(model.url, model_dir)
+
+        progress = Progress(convert_size_to_bytes(model.size) or 0)
+        local_model_path: Path | None = None
+        model_filename: str = ""
+        async for packet in self.model_downloader.download(model.url, model_dir):
+            if packet.local_path and packet.filename:
+                local_model_path = packet.local_path
+                model_filename = packet.filename
+            elif packet.downloaded_bytes_size != 0:
+                progress.add_to_actual_value(packet.downloaded_bytes_size)
+
+            yield StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99)
+
+        if not local_model_path or not model_filename:
+            raise StreamingError("Local model path was not set up and not return by downloader.")
+        if not model_filename:
+            raise StreamingError("Model filename was not set up or and return by downloader.")
+
         model_in_container = f"/models/{model_filename}"
         volumes = [f"{local_model_path.absolute()}:{model_in_container}:ro"]
         image = self._get_image(info.parsed_options.gpu)
@@ -322,6 +357,9 @@ class LLamacppService(Base2Service[InstalledInfo]):
             completions=ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id),
             registration_options=None,
         )
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="Installed")
 
     def _get_image(self, gpu: bool) -> DockerImage:
         return _const.image_gpu if gpu else _const.image_cpu

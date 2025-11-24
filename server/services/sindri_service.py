@@ -9,13 +9,14 @@
 
 """Sindri service."""
 
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from fastapi import HTTPException
 from pydantic import BaseModel
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
@@ -30,7 +31,15 @@ from server.models.models import (
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
-from server.utils.core import try_parse_pydantic
+from server.utils.core import (
+    StreamChunk,
+    StreamChunkFinish,
+    StreamChunkInstalledInfo,
+    StreamChunkProgress,
+    StreamingError,
+    convert_size_to_bytes,
+    try_parse_pydantic,
+)
 
 
 class SindriAiModel(BaseModel):
@@ -136,23 +145,30 @@ class SindriService(Base2Service[InstalledInfo]):
             custom=self.custom,
         )
 
-    async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
+    def _get_image(self) -> DockerImage:
+        return _const.image
+
+    async def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
         parsed_options = try_parse_pydantic(SindriOptions, options.spec)
+        image = self._get_image()
+        async for progress in docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
+            yield StreamChunkProgress(type="progress", value=progress * 0.99)
+
         config_path = self._get_working_dir() / "config.yaml"
-        data = f"""listenAddress: 0.0.0.0
-listenPort: 8080
-appMode: release
-
-sindriClient:
-  baseURL: {parsed_options.api_url}
-  apiKey: {parsed_options.api_key}
-  requestTimeoutSeconds: 10
-
-  encryption:
-    enabled: true
-    keySource: ephemeral  # or 'value' or 'file'
-    # Configure keys if not using ephemeral
-"""
+        data = (
+            "listenAddress: 0.0.0.0\n"
+            "listenPort: 8080\n"
+            "appMode: release\n"
+            "sindriClient:\n"
+            f"  baseURL: {parsed_options.api_url}\n"
+            f"  apiKey: {parsed_options.api_key}\n"
+            "  requestTimeoutSeconds: 10\n"
+            "\n"
+            "  encryption:\n"
+            "    enabled: true\n"
+            "    keySource: ephemeral  # or 'value' or 'file'"
+            "    # Configure keys if not using ephemeral"
+        )
         with config_path.open("w", encoding="utf-8") as f:
             f.write(data)
         volumes = [f"{config_path}:/config.yaml"]
@@ -175,7 +191,7 @@ sindriClient:
             },
         )
         docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
-        return InstalledInfo(
+        info = InstalledInfo(
             docker=docker_options,
             models={},
             options=options,
@@ -184,6 +200,10 @@ sindriClient:
             container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
             docker_exposed_port=docker_exposed_port,
         )
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="installed")
+        yield StreamChunkInstalledInfo(type="installed_info", status="ok", details=info)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -245,13 +265,14 @@ sindriClient:
             has_docker=False,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:
         parsed_model_options = try_parse_pydantic(SindriModelOptions, options.spec) if options.spec else SindriModelOptions()
         info = self._check_installed()
         if model_id in info.models:
+            yield StreamChunkFinish(type="finish", status="ok", details="Already installed")
             return
         if model_id not in _const.models:
-            raise HTTPException(status_code=400, detail="Model not found")
+            raise StreamingError("Model not found")
         model = _const.models[model_id]
         registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
@@ -269,6 +290,9 @@ sindriClient:
                 completions=None,
                 registration_options=None,
             )
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="installed")
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()

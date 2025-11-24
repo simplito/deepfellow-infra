@@ -9,6 +9,9 @@
 
 """Speaches AI service."""
 
+import hashlib
+import shutil
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Literal
 
@@ -16,7 +19,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerImage, DockerOptions, has_gpu_support_sync, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, docker_pull, has_gpu_support_sync, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
@@ -31,7 +34,16 @@ from server.models.models import (
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
-from server.utils.core import fetch_from, try_parse_pydantic
+from server.utils.core import (
+    StreamChunk,
+    StreamChunkFinish,
+    StreamChunkInstalledInfo,
+    StreamChunkProgress,
+    StreamingError,
+    convert_size_to_bytes,
+    try_parse_pydantic,
+)
+from server.utils.loading import Progress
 
 ModelType = Literal["tts", "stt"]
 
@@ -377,6 +389,7 @@ class ModelInstalledInfo(BaseModel):
     registered_name: str
     options: InstallModelIn
     registration_id: RegistrationId
+    model_path: Path
 
 
 class SpeachesAIOptions(BaseModel):
@@ -452,11 +465,15 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             custom=self.custom,
         )
 
-    async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
+    def _get_image(self, gpu: bool) -> DockerImage:
+        return _const.image_gpu if gpu else _const.image_cpu
+
+    async def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
         parsed_options = try_parse_pydantic(SpeachesAIOptions, options.spec)
         volumes = [f"{self._get_working_dir()}/cache:/home/ubuntu/.cache/huggingface/hub"]
-        image = _const.image_gpu if parsed_options.gpu else _const.image_cpu
-
+        image = self._get_image(parsed_options.gpu)
+        async for progress in docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
+            yield StreamChunkProgress(type="progress", value=progress * 0.99)
         subnet = self.application_context.get_docker_subnet()
         docker_options = DockerOptions(
             name="speaches-ai",
@@ -480,7 +497,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             },
         )
         docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
-        return InstalledInfo(
+        info = InstalledInfo(
             docker=docker_options,
             models={},
             options=options,
@@ -489,6 +506,10 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
             docker_exposed_port=docker_exposed_port,
         )
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="installed")
+        yield StreamChunkInstalledInfo(type="installed_info", status="ok", details=info)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -552,18 +573,63 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             has_docker=False,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:  # noqa: C901
         parsed_model_options = try_parse_pydantic(SpeachesAIModelOptions, options.spec) if options.spec else SpeachesAIModelOptions()
         info = self._check_installed()
         if model_id in info.models:
+            yield StreamChunkFinish(type="finish", status="ok", details="Already installed")
             return
         if model_id not in _const.models:
-            raise HTTPException(status_code=400, detail="Model not found")
+            raise StreamingError("Model not found")
+
         model = _const.models[model_id]
-        res = await fetch_from(f"{info.base_url}/v1/models/{model_id}", "POST")
-        if res.status_code != 200 and res.status_code != 201:
-            print("Error when install model in speaches-ai", model_id, res.status_code, res.data)
-            raise HTTPException(status_code=400, detail="Model not avaialble")
+        model_id_fixed = f"models--{model_id.replace('/', '--')}"
+
+        models_dir = self._get_working_dir() / "cache"
+
+        model_dir = models_dir / model_id_fixed
+        model_dir.mkdir(parents=True, exist_ok=True)
+
+        blobs_dir = model_dir / "blobs"
+        blobs_dir.mkdir(parents=True, exist_ok=True)
+
+        snapshot_dir = model_dir / "snapshots" / "0"
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+        refs_dir = model_dir / "refs"
+        refs_dir.mkdir(parents=True, exist_ok=True)
+
+        ref_file = refs_dir / "main"
+        if not ref_file.exists():
+            ref_file.write_text("0")
+
+        progress = Progress(convert_size_to_bytes(model.size) or 0)
+        local_model_path: Path | None = None
+        async for packet in self.model_downloader.download(model_id, snapshot_dir):
+            if packet.local_path and not local_model_path:
+                local_model_path = packet.local_path
+            elif packet.downloaded_bytes_size != 0:
+                progress.add_to_actual_value(packet.downloaded_bytes_size)
+
+            yield StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99)
+
+        for original_file in snapshot_dir.iterdir():
+            if original_file.is_file():
+                file_hash = hashlib.sha256(original_file.name.encode("utf-8")).hexdigest()
+
+                if not file_hash:
+                    continue
+
+                symlink_path = blobs_dir / file_hash
+
+                if symlink_path.exists():
+                    continue
+
+                try:
+                    symlink_path.symlink_to(original_file.resolve(), target_is_directory=False)
+                except OSError as e:
+                    print(f"Failed to create symlink: {e}")
+
         registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
             id=model_id,
@@ -571,6 +637,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             registered_name=registered_name,
             options=options,
             registration_id="",
+            model_path=model_dir,
         )
         if model.type == "tts":
             model_info.registration_id = self.endpoint_registry.register_audio_speech_as_proxy(
@@ -587,6 +654,9 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
                 registration_options=None,
             )
 
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="Installed")
+
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
         if model_id not in info.models:
@@ -599,4 +669,4 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             self.endpoint_registry.unregister_audio_transcriptions(model.registered_name, model.registration_id)
 
         if options.purge:
-            await fetch_from(f"{info.base_url}/v1/models/{model_id}", "DELETE")
+            shutil.rmtree(model.model_path)
