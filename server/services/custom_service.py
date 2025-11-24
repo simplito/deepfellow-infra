@@ -9,7 +9,7 @@
 
 """Custom service."""
 
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -33,7 +33,15 @@ from server.models.models import (
 )
 from server.models.services import InstallServiceIn, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
-from server.utils.core import normalize_name, try_parse_pydantic
+from server.utils.core import (
+    StreamChunk,
+    StreamChunkFinish,
+    StreamChunkInstalledInfo,
+    StreamChunkProgress,
+    StreamingError,
+    normalize_name,
+    try_parse_pydantic,
+)
 
 type SrvCustomModelX = Callable[["CustomService", str | None], SrvCustomModel]
 
@@ -204,8 +212,12 @@ class CustomService(Base2Service[InstalledInfo]):
             custom=self.custom,
         )
 
-    async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
-        return InstalledInfo(models={}, options=options)
+    async def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
+        info = InstalledInfo(models={}, options=options)
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="installed")
+        yield StreamChunkInstalledInfo(type="installed_info", status="ok", details=info)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -309,12 +321,13 @@ class CustomService(Base2Service[InstalledInfo]):
             has_docker=True,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:
         info = self._check_installed()
         if model_id in info.models:
+            yield StreamChunkFinish(type="finish", status="ok", details="Already installed")
             return
         if model_id not in self.models:
-            raise HTTPException(status_code=400, detail="Model not found")
+            raise StreamingError("Model not found")
         model = self.models[model_id]
         if not options.spec:
             options.spec = {}
@@ -343,6 +356,9 @@ class CustomService(Base2Service[InstalledInfo]):
             options=ProxyOptions(url=model_info.base_url),
             registration_options=None,
         )
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="Installed")
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()

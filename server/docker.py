@@ -12,16 +12,19 @@
 import json
 import os
 import shutil
+from collections.abc import AsyncGenerator
 from contextlib import suppress
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
 import yaml
+from aiodocker import Docker
 from pydantic import BaseModel
 
 from server.applicationcontext import ApplicationContext
 from server.utils.core import CommandResult2, Utils
 from server.utils.exceptions import AppError
+from server.utils.loading import Progress
 
 
 class DockerOptions:
@@ -126,7 +129,7 @@ _has_gpu_support: bool | None = None
 _is_rootless: bool | None = None
 
 
-def get_docker_compoes_cmd() -> str:
+def get_docker_compose_cmd() -> str:
     """Return docker compose command."""
     global _docker_compose_cmd
     if _docker_compose_cmd is None:
@@ -172,7 +175,7 @@ async def get_user_for_docker() -> str:
 
 async def start_docker_compose(docker_compose_file_path: Path) -> CommandResult2:
     """Start given docker compose."""
-    docker_compose_cmd = get_docker_compoes_cmd()
+    docker_compose_cmd = get_docker_compose_cmd()
     cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "up", "-d", "--wait"]
     command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
     return await Utils.run_command_for_success(command)
@@ -180,7 +183,7 @@ async def start_docker_compose(docker_compose_file_path: Path) -> CommandResult2
 
 async def stop_docker_compose(docker_compose_file_path: Path) -> None:
     """Stop given docker compose."""
-    docker_compose_cmd = get_docker_compoes_cmd()
+    docker_compose_cmd = get_docker_compose_cmd()
     cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "down", "--remove-orphans"]
     command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
     await Utils.run_command_for_success(command)
@@ -188,7 +191,7 @@ async def stop_docker_compose(docker_compose_file_path: Path) -> None:
 
 async def restart_docker_compose(docker_compose_file_path: Path) -> None:
     """Restart given docker compose."""
-    docker_compose_cmd = get_docker_compoes_cmd()
+    docker_compose_cmd = get_docker_compose_cmd()
     cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "restart"]
     command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
     await Utils.run_command_for_success(command)
@@ -196,7 +199,7 @@ async def restart_docker_compose(docker_compose_file_path: Path) -> None:
 
 async def get_docker_compose_logs(docker_compose_file_path: Path) -> str:
     """Get docker compose logs."""
-    docker_compose_cmd = get_docker_compoes_cmd()
+    docker_compose_cmd = get_docker_compose_cmd()
     cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "logs"]
     command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
     result = await Utils.run_command_for_success(command)
@@ -205,7 +208,7 @@ async def get_docker_compose_logs(docker_compose_file_path: Path) -> str:
 
 async def docker_compose_status(docker_compose_file_path: Path) -> DockerComposeStatus:
     """Get status for given docker compose."""
-    docker_compose_cmd = get_docker_compoes_cmd()
+    docker_compose_cmd = get_docker_compose_cmd()
     res = await Utils.run_command(f"{docker_compose_cmd} -f {docker_compose_file_path} logs")
     if res.exit_code == 1 and res.stderr.strip() == f"Error: file '{docker_compose_file_path}' not found":
         return DockerComposeStatus(success=True, info="not found")
@@ -214,7 +217,7 @@ async def docker_compose_status(docker_compose_file_path: Path) -> DockerCompose
 
 async def is_docker_compose_running(docker_compose_file_path: Path, service_name: str) -> bool:
     """Check whether the service from given docker compose is running."""
-    docker_compose_cmd = get_docker_compoes_cmd()
+    docker_compose_cmd = get_docker_compose_cmd()
     if not docker_compose_file_path.exists():
         return False
     try:
@@ -225,19 +228,22 @@ async def is_docker_compose_running(docker_compose_file_path: Path, service_name
         return False
 
 
-async def docker_pull(image: str) -> bool:
+async def docker_pull(full_image_name: str, image_size: float) -> AsyncGenerator[float]:
     """Pull given docker image."""
-    try:
-        cmd = f"docker pull {image}"
-        result = await Utils.run_command(cmd)
-        return result.exit_code == 0  # noqa: TRY300
-    except Exception:
-        return False
+    progress = Progress(image_size)
+    bytes_per_id: dict[str, float] = {}
+    async with Docker() as docker:
+        async for chunk in docker.images.pull(full_image_name, stream=True, timeout=24 * 60 * 60):
+            if (id := chunk.get("id", "")) and (value := chunk.get("progressDetail", {}).get("current", 0)):
+                bytes_per_id[id] = value
+                image_bytes = sum(bytes_per_id.values())
+                progress.set_actual_value(image_bytes)
+                yield progress.get_percentage()
 
 
 async def is_docker_compose_healthy(docker_compose_file_path: Path, service_name: str) -> bool:
     """Check whether the service from given docker compose is healthy."""
-    docker_compose_cmd = get_docker_compoes_cmd()
+    docker_compose_cmd = get_docker_compose_cmd()
     if not docker_compose_file_path.exists():
         print(f"{docker_compose_file_path} not found")
         return False
@@ -334,8 +340,8 @@ async def has_docker_compose_difference(docker_compose_file_path: Path, options:
         return True, None
 
 
-async def render_docker_compose(docker_compose_file_path: Path, options: DockerOptions, ctx: ApplicationContext) -> int:
-    """Generate docker compose content and save it under given path, it also retrieve free port and returns it."""
+async def get_existing_or_free_port_docker(docker_compose_file_path: Path, options: DockerOptions, ctx: ApplicationContext) -> int:
+    """Return existing or free port."""
     port = None
     # Check if old port is occupied and get a new one if needed
     if docker_compose_file_path.exists():
@@ -355,9 +361,14 @@ async def render_docker_compose(docker_compose_file_path: Path, options: DockerO
     # Get new port
     if port is None:
         port = ctx.get_free_port()
-    docker_compose_file_content = await generate_docker_compose_content(options, port)
 
-    # Save rendered docker compose as file
+    return port
+
+
+async def create_compose_file(docker_compose_file_path: Path, options: DockerOptions, ctx: ApplicationContext) -> int:
+    """Generate docker compose content and save it under given path, it also retrieve free port and returns it."""
+    port = await get_existing_or_free_port_docker(docker_compose_file_path, options, ctx)
+    docker_compose_file_content = await generate_docker_compose_content(options, port)
     docker_compose_yaml = yaml.dump(docker_compose_file_content, default_flow_style=False, sort_keys=False)
     Utils.save_file(docker_compose_file_path, docker_compose_yaml)
 
@@ -386,17 +397,17 @@ async def install_and_run_docker(ctx: ApplicationContext, options: DockerOptions
             start_output = await start_docker_compose(docker_compose_file_path)
         else:
             # Old port is taken -> render then start
-            port = await render_docker_compose(docker_compose_file_path, options, ctx)
+            port = await create_compose_file(docker_compose_file_path, options, ctx)
             start_output = await start_docker_compose(docker_compose_file_path)
     elif not is_running and has_difference:
         # Not running, has difference -> render then start
-        port = await render_docker_compose(docker_compose_file_path, options, ctx)
+        port = await create_compose_file(docker_compose_file_path, options, ctx)
         start_output = await start_docker_compose(docker_compose_file_path)
     elif is_running and has_difference:
         # Running but has difference -> stop -> render -> start
         # print(f"{service_name} config was changed. Restarting...")
         await stop_docker_compose(docker_compose_file_path)
-        port = await render_docker_compose(docker_compose_file_path, options, ctx)
+        port = await create_compose_file(docker_compose_file_path, options, ctx)
         start_output = await start_docker_compose(docker_compose_file_path)
 
     # Check if container is healthy after starting
@@ -417,7 +428,7 @@ async def install_and_run_docker(ctx: ApplicationContext, options: DockerOptions
 
 async def uninstall_docker(ctx: ApplicationContext, options: DockerOptions) -> None:
     """Stop docker compose and remove the file."""
-    docker_compose_cmd = get_docker_compoes_cmd()
+    docker_compose_cmd = get_docker_compose_cmd()
     docker_compose_file = ctx.get_docker_compose_file_path(options.name)
     await Utils.run_command(f"{docker_compose_cmd} -f {docker_compose_file} down")
     if docker_compose_file.is_file():

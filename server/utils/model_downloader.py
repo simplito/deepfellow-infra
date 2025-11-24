@@ -11,6 +11,7 @@
 
 import json
 from abc import abstractmethod
+from collections.abc import AsyncGenerator
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,7 @@ from aiohttp import ClientSession
 from fastapi import HTTPException
 
 from server.config import AppSettings
-from server.utils.core import HttpClientError, Utils
+from server.utils.core import DownloadPacket, HttpClientError, Utils
 
 
 class BaseDownloader:
@@ -49,7 +50,7 @@ class BaseDownloader:
         return new_msg
 
     @abstractmethod
-    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> tuple[Path, str]:
+    def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
 
 
@@ -59,9 +60,10 @@ class StandardModelDownloader(BaseDownloader):
         """Check is url handled by this downloader."""
         return True
 
-    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> tuple[Path, str]:
+    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
-        return await Utils.ensure_model_downloaded(url, model_dir, temp_dir, filename)
+        async for packet in Utils.ensure_model_downloaded(url, model_dir, temp_dir, filename):
+            yield packet
 
 
 class HuggingFaceRepoDownloader(BaseDownloader):
@@ -116,18 +118,19 @@ class HuggingFaceRepoDownloader(BaseDownloader):
 
         return filenames
 
-    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> tuple[Path, str]:
+    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
         model_id = url
         filenames = await self.get_filenames(model_id)
         for filename in filenames:
             whole_url = f"https://huggingface.co/{model_id}/resolve/main/{filename}"
             try:
-                await Utils.ensure_model_downloaded(whole_url, model_dir, temp_dir, filename, self.headers)
+                async for packet in Utils.ensure_model_downloaded(whole_url, model_dir, temp_dir, filename, self.headers):
+                    yield packet
             except HttpClientError as e:
                 raise HTTPException(500, self.create_error_msg(e.body)) from e
 
-        return model_dir, ""
+        yield DownloadPacket(success=True, local_path=model_dir)
 
 
 class HuggingFaceModelDownloader(BaseDownloader):
@@ -162,10 +165,11 @@ class HuggingFaceModelDownloader(BaseDownloader):
         """Check is url handled by this downloader."""
         return url.startswith("https://huggingface.co/")
 
-    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> tuple[Path, str]:
+    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
         try:
-            return await Utils.ensure_model_downloaded(url, model_dir, temp_dir, filename, self.headers)
+            async for packet in Utils.ensure_model_downloaded(url, model_dir, temp_dir, filename, self.headers):
+                yield packet
         except HttpClientError as e:
             raise HTTPException(500, self.create_error_msg(e.body)) from e
 
@@ -192,10 +196,11 @@ class CivitaiModelDownloader(BaseDownloader):
         """Add token to url."""
         return Utils.add_url_parameter_if_missing(url, "token", self.token)
 
-    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> tuple[Path, str]:
+    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
         try:
-            return await Utils.ensure_model_downloaded(self.add_token_to_url(url), model_dir, temp_dir, filename)
+            async for packet in Utils.ensure_model_downloaded(self.add_token_to_url(url), model_dir, temp_dir, filename):
+                yield packet
         except HttpClientError as e:
             raise HTTPException(500, self.create_error_msg(e.body)) from e
 
@@ -218,14 +223,15 @@ class ModelDownloader:
             CivitaiModelDownloader(self.get_civitai_token(config)),
         ]
 
-    async def download(self, url: str, model_dir: Path, filename: str | None = None) -> tuple[Path, str]:
+    async def download(self, url: str, model_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
         specified_downloader = self.standard_downloader
         for downloader in self.custom_downloaders:
             if downloader.check_url(url):
                 specified_downloader = downloader
 
-        return await specified_downloader.download(url, model_dir, self.temp_dir, filename)
+        async for packet in specified_downloader.download(url, model_dir, self.temp_dir, filename):
+            yield packet
 
     def get_hugging_face_token(self, config: AppSettings) -> str:
         """Return Hugging Face Key."""

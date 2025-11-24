@@ -30,6 +30,7 @@ from server.models.services import (
     UninstallServiceIn,
 )
 from server.serviceprovider import ServiceRawConfig
+from server.utils.core import Streaming
 
 
 class BaseService(ABC):
@@ -82,7 +83,7 @@ class BaseService(ABC):
         """Load service using the config."""
 
     @abstractmethod
-    async def install(self, options: InstallServiceIn) -> None:
+    def install(self, options: InstallServiceIn) -> Streaming:
         """Install the service."""
 
     @abstractmethod
@@ -98,7 +99,7 @@ class BaseService(ABC):
         """Get the model."""
 
     @abstractmethod
-    async def install_model(self, model_id: str, options: InstallModelIn) -> None:
+    def install_model(self, model_id: str, options: InstallModelIn) -> Streaming:
         """Install the model."""
 
     @abstractmethod

@@ -22,7 +22,7 @@ function showHtml(html) {
 
 async function showServicesPage() {
     showLoadingPage();
-    const data = await fetchX("/admin/services");
+    const data = await fetchJson("/admin/services");
     const html = `
         <div class="page services-page">
             <h3>Services</h3>
@@ -220,8 +220,8 @@ function showContentModal(options) {
 
 async function showServicePage(id) {
     showLoadingPage();
-    const serivceInfo = await fetchX(`/admin/services/${id}`);
-    const data = await fetchX(`/admin/services/${id}/models`);
+    const serivceInfo = await fetchJson(`/admin/services/${id}`);
+    const data = await fetchJson(`/admin/services/${id}/models`);
     const list = data.list.sort((a, b) => {
         if (a.installed !== b.installed) {
             return a.installed ? -1 : 1;
@@ -363,7 +363,11 @@ async function showServicePage(id) {
 }
 
 function showLoadingPage() {
-    showHtml(`<div class="loading">Loading...</div>`);
+    showHtml(
+        `<div class="loading">
+            <div>Loading...</div>
+            <div id="progress"></div>
+        </div>`);
 }
 
 function showLoading() {
@@ -380,25 +384,27 @@ root.addEventListener("click", async e => {
         const serviceId = dataActionEle.getAttribute("data-service-id");
         const modelId = dataActionEle.getAttribute("data-model-id");
         if (action === "install-service") {
-            const info = await fetchX(`/admin/services/${serviceId}`, {
+            const info = await fetchJson(`/admin/services/${serviceId}`, {
                 method: "GET"
             });
             showInstallServiceModal(info, async data => {
-                showLoadingPage();
+                showLoadingPage()
                 try {
-                    await fetchX(`/admin/services/${serviceId}`, {
+                    const response = await fetchForResponse(`/admin/services/${serviceId}`, {
                         method: "POST",
                         body: JSON.stringify({spec: data}),
                         headers: {"Content-Type": "application/json"}
                     });
+                    readProgress(response, () => {
+                        showServicesPage();
+                    });
                 }
                 catch {}
-                showServicesPage();
             });
         }
         else if (action === "uninstall-service") {
             showLoadingPage()
-            await fetchX(`/admin/services/${serviceId}`, {
+            await fetchJson(`/admin/services/${serviceId}`, {
                 method: "DELETE",
                 body: JSON.stringify({purge: false}),
                 headers: {"Content-Type": "application/json"}
@@ -410,25 +416,27 @@ root.addEventListener("click", async e => {
             showServicePage(serviceId);
         }
         else if (action === "install-model") {
-            const info = await fetchX(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
+            const info = await fetchJson(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
                 method: "GET"
             });
             showInstallModelModal(info, async data => {
                 showLoadingPage()
                 try {
-                    await fetchX(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
+                    const response = await fetchForResponse(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
                         method: "POST",
                         body: JSON.stringify({spec: data}),
                         headers: {"Content-Type": "application/json"}
                     });
+                    readProgress(response, () => {
+                        showServicePage(serviceId);
+                    });
                 }
                 catch {}
-                showServicePage(serviceId);
             });
         }
         else if (action === "uninstall-model") {
             showLoadingPage()
-            await fetchX(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
+            await fetchJson(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
                 method: "DELETE",
                 body: JSON.stringify({purge: false}),
                 headers: {"Content-Type": "application/json"}
@@ -436,13 +444,13 @@ root.addEventListener("click", async e => {
             showServicePage(serviceId);
         }
         else if (action === "add-custom-model") {
-            const info = await fetchX(`/admin/services/${serviceId}`, {
+            const info = await fetchJson(`/admin/services/${serviceId}`, {
                 method: "GET"
             });
             showAddCustomModelModal(info, async data => {
                 showLoadingPage()
                 try {
-                    await fetchX(`/admin/services/${serviceId}/models/custom`, {
+                    await fetchJson(`/admin/services/${serviceId}/models/custom`, {
                         method: "POST",
                         body: JSON.stringify({spec: data}),
                         headers: {"Content-Type": "application/json"}
@@ -456,7 +464,7 @@ root.addEventListener("click", async e => {
         }
         else if (action === "remove-custom-model") {
             showLoadingPage()
-            await fetchX(`/admin/services/${serviceId}/models/custom/${modelId}`, {
+            await fetchJson(`/admin/services/${serviceId}/models/custom/${modelId}`, {
                 method: "DELETE",
                 body: JSON.stringify({purge: false}),
                 headers: {"Content-Type": "application/json"}
@@ -469,7 +477,7 @@ root.addEventListener("click", async e => {
         else if (action === "show-docker-logs") {
             const loading = showLoading();
             try {
-                const result = await fetchX(`/admin/services/${serviceId}/docker/logs${modelId ? `?model_id=${modelId}` : ""}`);
+                const result = await fetchJson(`/admin/services/${serviceId}/docker/logs${modelId ? `?model_id=${modelId}` : ""}`);
                 showContentModal({title: "Docker logs", text: result.logs, wide: true});
             }
             finally {
@@ -479,7 +487,7 @@ root.addEventListener("click", async e => {
         else if (action === "show-docker-compose-file") {
             const loading = showLoading();
             try {
-                const result = await fetchX(`/admin/services/${serviceId}/docker/compose${modelId ? `?model_id=${modelId}` : ""}`);
+                const result = await fetchJson(`/admin/services/${serviceId}/docker/compose${modelId ? `?model_id=${modelId}` : ""}`);
                 showContentModal({title: "Docker compose file", text: result.compose_file, wide: true});
             }
             finally {
@@ -489,7 +497,7 @@ root.addEventListener("click", async e => {
         else if (action === "restart-docker") {
             const loading = showLoading();
             try {
-                await fetchX(`/admin/services/${serviceId}/docker/restart${modelId ? `?model_id=${modelId}` : ""}`, {
+                await fetchJson(`/admin/services/${serviceId}/docker/restart${modelId ? `?model_id=${modelId}` : ""}`, {
                     method: "POST"
                 });
                 showContentModal({title: "Docker restart", text: "Docker restarted!", pre: false});
@@ -503,7 +511,7 @@ root.addEventListener("click", async e => {
 
 const LOCAL_STORAGE_KEY_ADMIN_API_KEY = "admin_api_key";
 
-async function fetchX(url, options) {
+async function fetchForResponse(url, options) {
     const opts = options || {};
     opts.headers = opts.headers || {};
     opts.headers["Authorization"] = "Bearer " + admin_api_key;
@@ -513,12 +521,18 @@ async function fetchX(url, options) {
         document.location.reload();
         throw new Error("Unauthorized");
     }
-    const content = await response.text();
     if (response.status !== 200) {
+        const content = await response.text();
         console.log("Invalid status code", response.status, content);
         alert(`ERROR: Invalid status code ${response.status} - ${content}`);
         throw new Error("Invalid status code");
     }
+    return response;
+}
+
+async function fetchJson(url, options) {
+    const response = await fetchForResponse(url, options);
+    const content = await response.text();
     try {
         return JSON.parse(content);
     }
@@ -526,6 +540,77 @@ async function fetchX(url, options) {
         console.log("JSON parse error", content, e);
         alert(`ERROR: Invalid response, cannot parse JSON - ${content}`)
         throw e;
+    }
+}
+
+function readProgress(response, onFinish) {
+    const progress = document.getElementById("progress");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    const stream = new SSEStream(data => {
+        console.log(data);
+        if (!data) {
+            return;
+        }
+        if (data.type === "progress") {
+            progress.textContent = (Math.floor(data.value * 10000) / 100) + "%";
+        }
+        else if (data.type === "finish") {
+            if (data.status === "ok") {
+                progress.textContent = data.details;
+            }
+            if (data.status === "error") {
+                console.log("Error", data.details);
+                alert("Error: " + data.details);
+            }
+        }
+    });
+
+    function readChunk() {
+        return reader.read().then(({ done, value }) => {
+            if (value) {
+                const chunk = decoder.decode(value, { stream: true });
+                stream.consume(chunk);
+            }
+            if (done) {
+                onFinish();
+                return;
+            }
+            return readChunk();
+        });
+    }
+    readChunk();
+}
+
+class SSEStream {
+    
+    constructor(onProgress) {
+        this.text = "";
+        this.onProgress = onProgress;
+    }
+    
+    consume(txt) {
+        this.text += txt;
+        while (true) {
+            const index = this.text.indexOf("\n\n");
+            if (index === -1) {
+                return;
+            }
+            const chunk = this.text.substring(0, index);
+            this.text = this.text.substring(index + 2);
+            if (chunk.startsWith("data: ")) {
+                const data = chunk.substring(6);
+                try {
+                    this.onProgress(JSON.parse(data));
+                }
+                catch (e) {
+                    console.log("JSON parse error during reading streaming chunk", data);
+                }
+            }
+            else {
+                console.log("Unexpected chunk", chunk);
+            }
+        }
     }
 }
 

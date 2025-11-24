@@ -31,6 +31,7 @@ from server.models.services import (
 )
 from server.serviceprovider import ServiceRawConfig
 from server.services.base_service import BaseService
+from server.utils.core import Streaming
 
 
 class ServicesManager:
@@ -66,9 +67,9 @@ class ServicesManager:
         """Get the service."""
         return self._get_service(service_id).get_info()
 
-    async def install_service(self, service_id: str, options: InstallServiceIn) -> None:
+    def install_service(self, service_id: str, options: InstallServiceIn) -> Streaming:
         """Install the service."""
-        await self._get_service(service_id).install(options)
+        return self._get_service(service_id).install(options)
 
     async def uninstall_service(self, service_id: str, options: UninstallServiceIn) -> None:
         """Uninstall the service."""
@@ -92,9 +93,9 @@ class ServicesManager:
         """Get the model from service."""
         return await self._get_service(service_id).get_model(model_id)
 
-    async def install_model_in_service(self, service_id: str, model_id: str, options: InstallModelIn) -> None:
+    def install_model_in_service(self, service_id: str, model_id: str, options: InstallModelIn) -> Streaming:
         """Install the model in service."""
-        await self._get_service(service_id).install_model(model_id, options)
+        return self._get_service(service_id).install_model(model_id, options)
 
     async def uninstall_model_from_service(self, service_id: str, model_id: str, options: UninstallModelIn) -> None:
         """Uninstall the model from service."""

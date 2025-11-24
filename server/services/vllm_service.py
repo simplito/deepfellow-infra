@@ -9,6 +9,8 @@
 
 """Vllm service."""
 
+import shutil
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import cpuinfo  # pyright: ignore[reportMissingTypeStubs]
@@ -41,7 +43,17 @@ from server.models.models import (
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
-from server.utils.core import normalize_name, try_parse_pydantic
+from server.utils.core import (
+    StreamChunk,
+    StreamChunkFinish,
+    StreamChunkInstalledInfo,
+    StreamChunkProgress,
+    StreamingError,
+    convert_size_to_bytes,
+    normalize_name,
+    try_parse_pydantic,
+)
+from server.utils.loading import Progress
 
 
 def is_avx512_supported() -> bool:
@@ -120,6 +132,7 @@ class ModelInstalledInfo:
         container_port: int,
         docker_exposed_port: int,
         registration_id: RegistrationId,
+        model_path: Path,
     ):
         self.id = id
         self.registered_name = registered_name
@@ -130,6 +143,7 @@ class ModelInstalledInfo:
         self.docker_exposed_port = docker_exposed_port
         self.base_url = get_base_url(self.container_host, self.container_port)
         self.registration_id = registration_id
+        self.model_path = model_path
 
 
 class VllmOptions(BaseModel):
@@ -208,15 +222,22 @@ class VllmService(Base2Service[InstalledInfo]):
             custom=self.custom,
         )
 
-    async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
+    async def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
         parsed_options = try_parse_pydantic(VllmOptions, options.spec)
         if parsed_options.gpu and not await has_gpu_support():
-            raise HTTPException(400, "Docker doesn't support GPU on this machine.")
+            raise StreamingError("Docker doesn't support GPU on this machine.")
         if not parsed_options.gpu and not is_avx512_supported():
-            raise HTTPException(400, "Your CPU does not support AVX 512 instructions")
+            raise StreamingError("Your CPU does not support AVX 512 instructions")
         image = self._get_image(parsed_options.gpu)
-        await docker_pull(image.name)
-        return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
+
+        async for progress in docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
+            yield StreamChunkProgress(type="progress", value=progress * 0.99)
+
+        info = InstalledInfo(models={}, options=options, parsed_options=parsed_options)
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="installed")
+        yield StreamChunkInstalledInfo(type="installed_info", status="ok", details=info)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -289,19 +310,29 @@ class VllmService(Base2Service[InstalledInfo]):
             has_docker=True,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:  # noqa: C901
         parsed_model_options = try_parse_pydantic(VllmModelOptions, options.spec) if options.spec else VllmModelOptions()
         info = self._check_installed()
         if model_id in info.models:
+            yield StreamChunkFinish(type="finish", status="ok", details="Already installed")
             return
         if model_id not in self.models:
-            raise HTTPException(status_code=400, detail="Model not found")
+            raise StreamingError("Model not found")
         model = self.models[model_id]
         model_id_fixed = model_id.replace("/", "-")
         models_dir = self._get_working_dir() / "models"
         model_dir = models_dir / model_id_fixed
         model_dir.mkdir(parents=True, exist_ok=True)
-        local_model_path, _ = await self.model_downloader.download(model_id, model_dir)
+        progress = Progress(convert_size_to_bytes(model.size) or 0)
+        local_model_path: Path | None = None
+        async for packet in self.model_downloader.download(model_id, model_dir):
+            if packet.local_path and not local_model_path:
+                local_model_path = packet.local_path
+            elif packet.downloaded_bytes_size != 0:
+                progress.add_to_actual_value(packet.downloaded_bytes_size)
+
+            yield StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99)
+
         docker_model_path = Path(self.hugging_face_cache_path) / "hub" / model_id_fixed
         volumes = [f"{local_model_path}:{docker_model_path}"]
 
@@ -377,6 +408,7 @@ class VllmService(Base2Service[InstalledInfo]):
             container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
             docker_exposed_port=docker_exposed_port,
             registration_id="",
+            model_path=model_dir,
         )
         model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
             model=registered_name,
@@ -385,6 +417,9 @@ class VllmService(Base2Service[InstalledInfo]):
             completions=ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id),
             registration_options=None,
         )
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="Installed")
 
     def _get_image(self, gpu: bool) -> DockerImage:
         return _const.image_gpu if gpu else _const.image_cpu
@@ -398,5 +433,4 @@ class VllmService(Base2Service[InstalledInfo]):
         self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
         await uninstall_docker(self.application_context, model.docker)
         if options.purge:
-            # unsupported
-            pass
+            shutil.rmtree(model.model_path)

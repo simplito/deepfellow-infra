@@ -10,6 +10,7 @@
 """Remote service."""
 
 from abc import abstractmethod
+from collections.abc import AsyncGenerator
 from typing import Literal
 from urllib.parse import urljoin
 
@@ -32,7 +33,14 @@ from server.models.models import (
 )
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
-from server.utils.core import try_parse_pydantic
+from server.utils.core import (
+    StreamChunk,
+    StreamChunkFinish,
+    StreamChunkInstalledInfo,
+    StreamChunkProgress,
+    StreamingError,
+    try_parse_pydantic,
+)
 
 
 class RemoteModel(BaseModel):
@@ -156,11 +164,16 @@ class RemoteService(Base2Service[InstalledInfo]):
             custom=self.custom,
         )
 
-    async def _install_core(self, options: InstallServiceIn) -> InstalledInfo:
+    async def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
         if "api_url" not in options.spec:
             options.spec["api_url"] = self.get_default_url()
+
         parsed_options = try_parse_pydantic(RemoteOptions, options.spec)
-        return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
+        info = InstalledInfo(models={}, options=options, parsed_options=parsed_options)
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="installed")
+        yield StreamChunkInstalledInfo(type="installed_info", status="ok", details=info)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -237,13 +250,14 @@ class RemoteService(Base2Service[InstalledInfo]):
             has_docker=False,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> None:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:
         parsed_model_options = try_parse_pydantic(RemoteModelOptions, options.spec) if options.spec else RemoteModelOptions()
         info = self._check_installed()
         if model_id in info.models:
+            yield StreamChunkFinish(type="finish", status="ok", details="Already installed")
             return
         if model_id not in self.models:
-            raise HTTPException(status_code=400, detail="Model not found")
+            raise StreamingError("Model not found")
         model = self.models[model_id]
         registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
         info.models[model_id] = model_info = ModelInstalledInfo(
@@ -324,6 +338,9 @@ class RemoteService(Base2Service[InstalledInfo]):
                 ),
                 registration_options=None,
             )
+
+        yield StreamChunkProgress(type="progress", value=1)
+        yield StreamChunkFinish(type="finish", status="ok", details="Installed")
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
