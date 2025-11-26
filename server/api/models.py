@@ -12,7 +12,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Path, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, Response
 
 from server.core.dependencies import auth_admin, get_services_manager
 from server.models.models import (
@@ -28,6 +28,7 @@ from server.models.models import (
     UninstallModelOut,
 )
 from server.services_manager import ServicesManager
+from server.utils.core import convert_promise_with_progress_to_fastapi_response
 
 router = APIRouter(prefix="/admin/services/{service_id}/models", tags=["Services"])
 
@@ -42,9 +43,13 @@ async def install_model(
     query: Annotated[ModelIdQuery, Query()],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
-) -> StreamingResponse:
+) -> Response:
     """Install the model from the service."""
-    return services_manager.install_model_in_service(service_id, query.model_id, model).as_streaming_response()
+    promise = await services_manager.install_model_in_service(service_id, query.model_id, model)
+    if model.stream:
+        return await convert_promise_with_progress_to_fastapi_response(promise)
+    result = await promise.wait()
+    return JSONResponse(result.model_dump())
 
 
 @router.delete(

@@ -9,14 +9,14 @@
 
 """Custom service."""
 
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerOptions, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
@@ -24,6 +24,7 @@ from server.models.models import (
     CustomModelId,
     CustomModelSpecification,
     InstallModelIn,
+    InstallModelOut,
     ListModelsFilters,
     ListModelsOut,
     ModelField,
@@ -34,11 +35,10 @@ from server.models.models import (
 from server.models.services import InstallServiceIn, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
 from server.utils.core import (
+    PromiseWithProgress,
+    Stream,
     StreamChunk,
-    StreamChunkFinish,
-    StreamChunkInstalledInfo,
     StreamChunkProgress,
-    StreamingError,
     normalize_name,
     try_parse_pydantic,
 )
@@ -212,12 +212,13 @@ class CustomService(Base2Service[InstalledInfo]):
             custom=self.custom,
         )
 
-    async def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
-        info = InstalledInfo(models={}, options=options)
+    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+        async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
+            info = InstalledInfo(models={}, options=options)
+            stream.emit(StreamChunkProgress(type="progress", value=1))
+            return info
 
-        yield StreamChunkProgress(type="progress", value=1)
-        yield StreamChunkFinish(type="finish", status="ok", details="installed")
-        yield StreamChunkInstalledInfo(type="installed_info", status="ok", details=info)
+        return PromiseWithProgress(func=func)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -321,44 +322,46 @@ class CustomService(Base2Service[InstalledInfo]):
             has_docker=True,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         info = self._check_installed()
         if model_id in info.models:
-            yield StreamChunkFinish(type="finish", status="ok", details="Already installed")
-            return
+            return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
         if model_id not in self.models:
-            raise StreamingError("Model not found")
+            raise HTTPException(400, "Model not found")
         model = self.models[model_id]
         if not options.spec:
             options.spec = {}
         if "prefix" not in options.spec:
             options.spec["prefix"] = model.default_prefix
         parsed_model_options = try_parse_pydantic(CustomModelOptions, options.spec)
-        model_dir = self._get_working_dir() / "models"
-        model_dir.mkdir(parents=True, exist_ok=True)
 
-        subnet = self.application_context.get_docker_subnet()
-        docker_options = model.options
-        docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
-        info.models[model_id] = model_info = ModelInstalledInfo(
-            id=model_id,
-            options=options,
-            docker_options=docker_options,
-            container_host=get_container_host(subnet, docker_options.name),
-            container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
-            docker_exposed_port=docker_exposed_port,
-            registration_id="",
-            prefix=parsed_model_options.prefix,
-        )
-        model_info.registration_id = self.endpoint_registry.register_custom_endpoint_as_proxy(
-            url=model_info.prefix,
-            props=model.model_props,
-            options=ProxyOptions(url=model_info.base_url),
-            registration_options=None,
-        )
+        async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
+            model_dir = self._get_working_dir() / "models"
+            model_dir.mkdir(parents=True, exist_ok=True)
+            subnet = self.application_context.get_docker_subnet()
+            docker_options = model.options
+            await self._docker_pull(DockerImage(name=docker_options.image, size=model.size), stream)
+            docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
+            info.models[model_id] = model_info = ModelInstalledInfo(
+                id=model_id,
+                options=options,
+                docker_options=docker_options,
+                container_host=get_container_host(subnet, docker_options.name),
+                container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                docker_exposed_port=docker_exposed_port,
+                registration_id="",
+                prefix=parsed_model_options.prefix,
+            )
+            model_info.registration_id = self.endpoint_registry.register_custom_endpoint_as_proxy(
+                url=model_info.prefix,
+                props=model.model_props,
+                options=ProxyOptions(url=model_info.base_url),
+                registration_options=None,
+            )
+            stream.emit(StreamChunkProgress(type="progress", value=1))
+            return InstallModelOut(status="OK", details="Installed")
 
-        yield StreamChunkProgress(type="progress", value=1)
-        yield StreamChunkFinish(type="finish", status="ok", details="Installed")
+        return PromiseWithProgress(func=func)
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()

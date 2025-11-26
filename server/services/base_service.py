@@ -16,6 +16,7 @@ from server.models.models import (
     CustomModelId,
     CustomModelSpecification,
     InstallModelIn,
+    InstallModelOut,
     ListModelsFilters,
     ListModelsOut,
     RetrieveModelOut,
@@ -23,6 +24,7 @@ from server.models.models import (
 )
 from server.models.services import (
     InstallServiceIn,
+    InstallServiceOut,
     RetrieveServiceOut,
     ServiceOptions,
     ServiceSize,
@@ -30,7 +32,7 @@ from server.models.services import (
     UninstallServiceIn,
 )
 from server.serviceprovider import ServiceRawConfig
-from server.utils.core import Streaming
+from server.utils.core import PromiseWithProgress, StreamChunk
 
 
 class BaseService(ABC):
@@ -83,7 +85,7 @@ class BaseService(ABC):
         """Load service using the config."""
 
     @abstractmethod
-    def install(self, options: InstallServiceIn) -> Streaming:
+    async def install(self, options: InstallServiceIn) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
         """Install the service."""
 
     @abstractmethod
@@ -99,7 +101,7 @@ class BaseService(ABC):
         """Get the model."""
 
     @abstractmethod
-    def install_model(self, model_id: str, options: InstallModelIn) -> Streaming:
+    async def install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         """Install the model."""
 
     @abstractmethod

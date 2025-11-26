@@ -51,11 +51,13 @@ class CustomModelSpecification(BaseModel):
 
 
 class InstallModelIn(BaseModel):
+    stream: bool = False
     spec: InstallModelOptions | None = None
 
 
 class InstallModelOut(BaseModel):
     status: Literal["OK"]
+    details: str
 
 
 class UninstallModelIn(BaseModel):

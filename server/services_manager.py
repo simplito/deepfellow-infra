@@ -15,6 +15,7 @@ from server.models.models import (
     AddCustomModelIn,
     CustomModelId,
     InstallModelIn,
+    InstallModelOut,
     ListModelsFilters,
     ListModelsOut,
     RetrieveModelOut,
@@ -22,6 +23,7 @@ from server.models.models import (
 )
 from server.models.services import (
     InstallServiceIn,
+    InstallServiceOut,
     ListAllModelsFilters,
     ListAllModelsOut,
     ListServicesFilters,
@@ -31,7 +33,7 @@ from server.models.services import (
 )
 from server.serviceprovider import ServiceRawConfig
 from server.services.base_service import BaseService
-from server.utils.core import Streaming
+from server.utils.core import PromiseWithProgress, StreamChunk
 
 
 class ServicesManager:
@@ -67,9 +69,9 @@ class ServicesManager:
         """Get the service."""
         return self._get_service(service_id).get_info()
 
-    def install_service(self, service_id: str, options: InstallServiceIn) -> Streaming:
+    async def install_service(self, service_id: str, options: InstallServiceIn) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
         """Install the service."""
-        return self._get_service(service_id).install(options)
+        return await self._get_service(service_id).install(options)
 
     async def uninstall_service(self, service_id: str, options: UninstallServiceIn) -> None:
         """Uninstall the service."""
@@ -93,9 +95,14 @@ class ServicesManager:
         """Get the model from service."""
         return await self._get_service(service_id).get_model(model_id)
 
-    def install_model_in_service(self, service_id: str, model_id: str, options: InstallModelIn) -> Streaming:
+    async def install_model_in_service(
+        self,
+        service_id: str,
+        model_id: str,
+        options: InstallModelIn,
+    ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         """Install the model in service."""
-        return self._get_service(service_id).install_model(model_id, options)
+        return await self._get_service(service_id).install_model(model_id, options)
 
     async def uninstall_model_from_service(self, service_id: str, model_id: str, options: UninstallModelIn) -> None:
         """Uninstall the model from service."""

@@ -14,7 +14,7 @@ import json
 import logging
 import re
 import shlex
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from pathlib import Path
 from typing import Any, Literal, NamedTuple, TypedDict
 from urllib.parse import parse_qs, quote, urlencode, urlparse, urlunparse
@@ -24,7 +24,7 @@ import aiofiles
 import aiohttp
 from aiohttp import ClientSession, ClientTimeout
 from fastapi import HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from multidict import CIMultiDictProxy
 from pydantic import BaseModel, ValidationError
 
@@ -328,16 +328,10 @@ def convert_size_to_bytes(size_str: str) -> None | int:
         return None
 
 
-class StreamChunkInstalledInfo(TypedDict):
-    type: Literal["installed_info"]
-    status: Literal["ok"]
-    details: Any
-
-
 class StreamChunkFinish(TypedDict):
     type: Literal["finish"]
     status: Literal["ok", "error"]
-    details: str
+    details: Any
 
 
 class StreamChunkProgress(TypedDict):
@@ -345,36 +339,113 @@ class StreamChunkProgress(TypedDict):
     type: Literal["progress"]
 
 
-type StreamChunk = StreamChunkFinish | StreamChunkProgress | StreamChunkInstalledInfo
+type StreamChunk = StreamChunkFinish | StreamChunkProgress
 
 
-class StreamingError(Exception):
-    pass
+class Stream[T]:
+    def __init__(self):
+        self.queue = asyncio.Queue[T | None]()
+        self.closed = False
+        self.consumed = False
+
+    def emit(self, data: T) -> None:
+        """Emit event."""
+        if not self.closed:
+            self.queue.put_nowait(data)
+
+    def close(self) -> None:
+        """Close stream."""
+        if not self.closed:
+            self.closed = True
+            self.queue.put_nowait(None)
+
+    async def as_generator(self) -> AsyncGenerator[T]:
+        """Convert to generator."""
+        if self.consumed:
+            raise RuntimeError("Stream already consumed")
+        self.consumed = True
+        if self.closed:
+            return
+        while True:
+            item = await self.queue.get()
+            if item is None:
+                break
+            yield item
+
+    def pipe(self, stream: "Stream[T]") -> None:
+        """Send all events to given stream."""
+
+        async def proxy() -> None:
+            async for data in self.as_generator():
+                stream.emit(data)
+            stream.close()
+
+        self.pipe_task = asyncio.create_task(proxy())
 
 
-class Streaming:
-    def __init__(self, generator: AsyncGenerator[StreamChunk]):
-        self.generator = generator
+class PromiseWithProgress[T, U]:
+    def __init__(self, value: T | None = None, func: Callable[[Stream[U]], Awaitable[T]] | None = None):
+        self._future = asyncio.get_running_loop().create_future()
+        self.progress = Stream[U]()
 
-    async def future(self) -> None:
-        """Wait for the end."""
-        async for _ in self.generator:
-            pass
+        if value is not None:
+            self.has_stream = False
+            self._future.set_result(value)
 
-    def as_streaming_response(self) -> StreamingResponse:
-        """Return as streaming response."""
+        if func is not None:
+            self.has_stream = True
 
-        async def generator() -> AsyncGenerator[str]:
-            try:
-                async for chunk in self.generator:
-                    yield "data: " + json.dumps(chunk) + "\n\n"
-            except Exception as e:
-                logger.exception("Error during generator")
-                chunk: StreamChunk = {
-                    "type": "finish",
-                    "status": "error",
-                    "details": str(e) if isinstance(e, StreamingError) else "<unknown>",
-                }
-                yield "data: " + json.dumps(chunk) + "\n\n"
+            async def the_func() -> None:
+                try:
+                    result = await func(self.progress)
+                    self._future.set_result(result)
+                except Exception as e:
+                    self._future.set_exception(e)
+                finally:
+                    self.progress.close()
 
-        return StreamingResponse(content=generator(), media_type="text/event-stream", status_code=200)
+            self.task = asyncio.create_task(the_func())
+
+    async def wait(self) -> T:
+        """Wait for the result."""
+        return await self._future
+
+    def next[Z](self, func: Callable[[T], Awaitable[Z]]) -> "PromiseWithProgress[Z, U]":
+        """Add next step."""
+
+        async def the_func(_stream: Stream[U]) -> Z:
+            res = await self.wait()
+            return await func(res)
+
+        promise = PromiseWithProgress[Z, U](func=the_func)
+        promise.progress = self.progress
+        return promise
+
+
+async def convert_promise_with_progress_to_fastapi_response(promise: PromiseWithProgress[BaseModel, StreamChunk]) -> Response:
+    """Convert to StreamingResult."""
+    if not promise.has_stream:
+        model = await promise.wait()
+        return JSONResponse(model.model_dump())
+
+    async def generator() -> AsyncGenerator[str]:
+        try:
+            async for data in promise.progress.as_generator():
+                yield "data: " + json.dumps(data) + "\n\n"
+            result = await promise.wait()
+            chunk: StreamChunk = {
+                "type": "finish",
+                "status": "ok",
+                "details": result.model_dump(),
+            }
+            yield "data: " + json.dumps(chunk) + "\n\n"
+        except Exception as e:
+            logger.exception("Error during generator")
+            chunk: StreamChunk = {
+                "type": "finish",
+                "status": "error",
+                "details": f"{e.status_code} {e.detail}" if isinstance(e, HTTPException) else "<unknown>",
+            }
+            yield "data: " + json.dumps(chunk) + "\n\n"
+
+    return StreamingResponse(content=generator(), media_type="text/event-stream")

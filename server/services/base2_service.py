@@ -14,7 +14,6 @@ import logging
 import shutil
 import uuid
 from abc import abstractmethod
-from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import TypeVar
 
@@ -22,19 +21,27 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 from server.applicationcontext import ApplicationContext
-from server.docker import get_docker_compose_logs, has_gpu_support_sync, restart_docker_compose
+from server.docker import (
+    DockerImage,
+    docker_pull,
+    get_docker_compose_logs,
+    has_gpu_support_sync,
+    is_docker_image_pulled,
+    restart_docker_compose,
+)
 from server.endpointregistry import EndpointRegistry
 from server.models.models import (
     AddCustomModelIn,
     CustomModelDefiniton,
     CustomModelId,
     InstallModelIn,
+    InstallModelOut,
     UninstallModelIn,
 )
-from server.models.services import InstallServiceIn, UninstallServiceIn
+from server.models.services import InstallServiceIn, InstallServiceOut, UninstallServiceIn
 from server.serviceprovider import ServiceProvider, ServiceRawConfig
 from server.services.base_service import BaseService
-from server.utils.core import StreamChunk, Streaming, Utils
+from server.utils.core import PromiseWithProgress, Stream, StreamChunk, StreamChunkProgress, Utils, convert_size_to_bytes
 from server.utils.model_downloader import ModelDownloader
 
 
@@ -96,7 +103,7 @@ class Base2Service[T](BaseService):
         """Load single model."""
         logger.info(f"{self.get_id()} loading model {model.model_id}")  # noqa: G004
         try:
-            await Streaming(self._install_model(model.model_id, model.options)).future()
+            await (await self._install_model(model.model_id, model.options)).wait()
         except Exception:
             logger.exception(f"{self.get_id()} get error while loading model {model.model_id}")  # noqa: G004
 
@@ -108,7 +115,8 @@ class Base2Service[T](BaseService):
             self._add_custom_model(custom)
         if not cfg.options:
             return
-        await Streaming(self._install(cfg.options)).future()
+        promise = await self.install(cfg.options, save=False)
+        await promise.wait()
         logger.info(f"{self.get_id()} service checked")  # noqa: G004
         tasks = [asyncio.create_task(self.load_model(model)) for model in cfg.models or []]
         await asyncio.gather(*tasks)
@@ -121,34 +129,29 @@ class Base2Service[T](BaseService):
     def _generate_config(self, info: T | None) -> ServiceConfig:
         """Generate config."""
 
-    def install(self, options: InstallServiceIn) -> Streaming:
+    async def install(self, options: InstallServiceIn, save: bool = True) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
         """Install the service."""
-
-        async def generator() -> AsyncGenerator[StreamChunk]:
-            async for chunk in self._install(options):
-                yield chunk
-            await self._save()
-
-        return Streaming(generator())
-
-    async def _install(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
         if self.installed is not None:
             raise HTTPException(status_code=400, detail=f"Service {self.get_id()} already installed")
         if self.installing:
             raise HTTPException(status_code=400, detail=f"Service {self.get_id()} already installing")
 
-        self.installing = True
-        try:
-            async for chunk in self._install_core(options):
-                if chunk["type"] == "installed_info":
-                    self.installed = chunk["details"]
-                else:
-                    yield chunk
-        finally:
-            self.installing = False
+        async def func(stream: Stream[StreamChunk]) -> InstallServiceOut:
+            self.installing = True
+            try:
+                promise = await self._install_core(options)
+                promise.progress.pipe(stream)
+                self.installed = await promise.wait()
+                if save:
+                    await self._save()
+                return InstallServiceOut(status="OK")
+            finally:
+                self.installing = False
+
+        return PromiseWithProgress(func=func)
 
     @abstractmethod
-    def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
+    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[T, StreamChunk]:
         """Install service."""
 
     async def uninstall(self, options: UninstallServiceIn) -> None:
@@ -185,18 +188,17 @@ class Base2Service[T](BaseService):
         """Remove custom model."""
         raise HTTPException(400, "This service does not support custom models.")
 
-    def install_model(self, model_id: str, options: InstallModelIn) -> Streaming:
+    async def install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         """Install the model."""
 
-        async def generator() -> AsyncGenerator[StreamChunk]:
-            async for chunk in self._install_model(model_id, options):
-                yield chunk
+        async def func(data: InstallModelOut) -> InstallModelOut:
             await self._save()
+            return data
 
-        return Streaming(generator())
+        return (await self._install_model(model_id, options)).next(func)
 
     @abstractmethod
-    def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         """Install the model."""
 
     async def uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
@@ -252,3 +254,18 @@ class Base2Service[T](BaseService):
 
     def _has_gpu_for_spec(self) -> str:
         return "true" if has_gpu_support_sync() else "false"
+
+    async def _docker_pull(
+        self,
+        image: DockerImage,
+        stream: Stream[StreamChunk],
+        start_percentage: float = 0,
+        end_percentage: float = 0.99,
+    ) -> None:
+        """Docker pull only if image does not exist."""
+        multiplier = end_percentage - start_percentage
+        stream.emit(StreamChunkProgress(type="progress", value=start_percentage))
+        if not await is_docker_image_pulled(image.name):
+            async for progress in docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
+                stream.emit(StreamChunkProgress(type="progress", value=progress * multiplier))
+        stream.emit(StreamChunkProgress(type="progress", value=end_percentage))
