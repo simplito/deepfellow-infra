@@ -20,6 +20,7 @@ type ServiceSize = dict[str, str] | str
 
 
 class InstallServiceIn(BaseModel):
+    stream: bool = False
     spec: ServiceOptions
 
 

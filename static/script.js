@@ -389,17 +389,14 @@ root.addEventListener("click", async e => {
             });
             showInstallServiceModal(info, async data => {
                 showLoadingPage()
-                try {
-                    const response = await fetchForResponse(`/admin/services/${serviceId}`, {
-                        method: "POST",
-                        body: JSON.stringify({spec: data}),
-                        headers: {"Content-Type": "application/json"}
-                    });
-                    readProgress(response, () => {
-                        showServicesPage();
-                    });
-                }
-                catch {}
+                const response = await fetchForResponse(`/admin/services/${serviceId}`, {
+                    method: "POST",
+                    body: JSON.stringify({stream: true, spec: data}),
+                    headers: {"Content-Type": "application/json"}
+                });
+                readProgress(response, () => {
+                    showServicesPage();
+                });
             });
         }
         else if (action === "uninstall-service") {
@@ -421,17 +418,14 @@ root.addEventListener("click", async e => {
             });
             showInstallModelModal(info, async data => {
                 showLoadingPage()
-                try {
-                    const response = await fetchForResponse(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
-                        method: "POST",
-                        body: JSON.stringify({spec: data}),
-                        headers: {"Content-Type": "application/json"}
-                    });
-                    readProgress(response, () => {
-                        showServicePage(serviceId);
-                    });
-                }
-                catch {}
+                const response = await fetchForResponse(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
+                    method: "POST",
+                    body: JSON.stringify({stream: true, spec: data}),
+                    headers: {"Content-Type": "application/json"}
+                });
+                readProgress(response, () => {
+                    showServicePage(serviceId);
+                });
             });
         }
         else if (action === "uninstall-model") {
@@ -544,6 +538,23 @@ async function fetchJson(url, options) {
 }
 
 function readProgress(response, onFinish) {
+    const contentType = (response.headers.get("content-type") || "").split(";")[0].trim();
+    if (contentType !== "text/event-stream") {
+        (async () => {
+            const content = await response.text();
+            try {
+                return JSON.parse(content);
+            }
+            catch (e) {
+                console.log("JSON parse error", content, e);
+                alert(`ERROR: Invalid response, cannot parse JSON - ${content}`)
+                throw e;
+            }
+            finally {
+                onFinish();
+            }
+        })()
+    }
     const progress = document.getElementById("progress");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();

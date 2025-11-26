@@ -21,7 +21,6 @@ from server.applicationcontext import get_base_url, get_container_host, get_cont
 from server.docker import (
     DockerImage,
     DockerOptions,
-    docker_pull,
     has_gpu_support_sync,
     install_and_run_docker,
     uninstall_docker,
@@ -32,6 +31,7 @@ from server.models.api import CreateSpeechRequest, ModelProps
 from server.models.models import (
     CustomModelSpecification,
     InstallModelIn,
+    InstallModelOut,
     ListModelsFilters,
     ListModelsOut,
     ModelField,
@@ -42,13 +42,11 @@ from server.models.models import (
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 from server.utils.core import (
+    PromiseWithProgress,
+    Stream,
     StreamChunk,
-    StreamChunkFinish,
-    StreamChunkInstalledInfo,
     StreamChunkProgress,
-    StreamingError,
     Utils,
-    convert_size_to_bytes,
     try_parse_pydantic,
 )
 
@@ -185,17 +183,17 @@ class CoquiService(Base2Service[InstalledInfo]):
             custom=self.custom,
         )
 
-    async def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
+    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
         parsed_options = try_parse_pydantic(CoquiOptions, options.spec)
         image = self._get_image(parsed_options.gpu)
-        async for chunk in docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
-            yield StreamChunkProgress(type="progress", value=chunk * 0.99)
 
-        info = InstalledInfo(models={}, options=options, parsed_options=parsed_options)
+        async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
+            await self._docker_pull(image, stream)
+            info = InstalledInfo(models={}, options=options, parsed_options=parsed_options)
+            stream.emit(StreamChunkProgress(type="progress", value=1))
+            return info
 
-        yield StreamChunkProgress(type="progress", value=1)
-        yield StreamChunkFinish(type="finish", status="ok", details="installed")
-        yield StreamChunkInstalledInfo(type="installed_info", status="ok", details=info)
+        return PromiseWithProgress(func=func)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -254,69 +252,72 @@ class CoquiService(Base2Service[InstalledInfo]):
             has_docker=True,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         parsed_model_options = try_parse_pydantic(CoquiModelOptions, options.spec) if options.spec else CoquiModelOptions()
         info = self._check_installed()
         if model_id in info.models:
-            yield StreamChunkFinish(type="finish", status="ok", details="Already installed")
-            return
+            return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
         if model_id not in _const.models:
-            raise StreamingError("Model not found")
+            raise HTTPException(400, "Model not found")
         model = _const.models[model_id]
-        volumes = [f"{self._get_working_output_dir()}:/root/tts-output", f"{self._get_working_dir()}/models:/root/.local/share/tts"]
-        image = self._get_image(info.parsed_options.gpu)
 
-        subnet = self.application_context.get_docker_subnet()
-        docker_options = DockerOptions(
-            name=f"{self.get_id()}-{model.docker_name}",
-            container_name=self.application_context.get_docker_container_name(f"{self.get_id()}-{model.docker_name}"),
-            image=image.name,
-            command=self._build_coqui_command(
-                CoquiCmdOptions(
-                    model_name=model_id,
-                    model_path=None,
-                    cuda=info.parsed_options.gpu,
-                    language=model.language,
-                )
-            ),
-            entrypoint="/bin/bash",
-            image_port=5002,
-            restart="unless-stopped",
-            volumes=volumes,
-            use_gpu=info.parsed_options.gpu,
-            subnet=subnet,
-            healthcheck={
-                "test": (
-                    """python3 -c 'import requests, sys; r = requests.get("http://localhost:5002");"""
-                    """ r.raise_for_status(); print("Success");'"""
+        async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
+            volumes = [f"{self._get_working_output_dir()}:/root/tts-output", f"{self._get_working_dir()}/models:/root/.local/share/tts"]
+            image = self._get_image(info.parsed_options.gpu)
+
+            subnet = self.application_context.get_docker_subnet()
+            docker_options = DockerOptions(
+                name=f"{self.get_id()}-{model.docker_name}",
+                container_name=self.application_context.get_docker_container_name(f"{self.get_id()}-{model.docker_name}"),
+                image=image.name,
+                command=self._build_coqui_command(
+                    CoquiCmdOptions(
+                        model_name=model_id,
+                        model_path=None,
+                        cuda=info.parsed_options.gpu,
+                        language=model.language,
+                    )
                 ),
-                "interval": "30s",
-                "timeout": "10s",
-                "retries": "3",
-                "start_period": "5s",
-            },
-        )
-        docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
-        registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
-        info.models[model_id] = model_info = ModelInstalledInfo(
-            id=model_id,
-            type=model.model_type,
-            registered_name=registered_name,
-            options=options,
-            docker=docker_options,
-            container_host=get_container_host(subnet, docker_options.name),
-            container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
-            docker_exposed_port=docker_exposed_port,
-            registration_id="",
-        )
-        model_info.registration_id = self.endpoint_registry.register_audio_speech(
-            model=registered_name,
-            props=ModelProps(private=True),
-            endpoint=SimpleEndpoint(on_request=_create_handler(model_info.base_url, model.default_speaker, model.response_format)),
-            registration_options=None,
-        )
-        yield StreamChunkProgress(type="progress", value=1)
-        yield StreamChunkFinish(type="finish", status="ok", details="Installed")
+                entrypoint="/bin/bash",
+                image_port=5002,
+                restart="unless-stopped",
+                volumes=volumes,
+                use_gpu=info.parsed_options.gpu,
+                subnet=subnet,
+                healthcheck={
+                    "test": (
+                        """python3 -c 'import requests, sys; r = requests.get("http://localhost:5002");"""
+                        """ r.raise_for_status(); print("Success");'"""
+                    ),
+                    "interval": "30s",
+                    "timeout": "10s",
+                    "retries": "3",
+                    "start_period": "5s",
+                },
+            )
+            docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
+            registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
+            info.models[model_id] = model_info = ModelInstalledInfo(
+                id=model_id,
+                type=model.model_type,
+                registered_name=registered_name,
+                options=options,
+                docker=docker_options,
+                container_host=get_container_host(subnet, docker_options.name),
+                container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                docker_exposed_port=docker_exposed_port,
+                registration_id="",
+            )
+            model_info.registration_id = self.endpoint_registry.register_audio_speech(
+                model=registered_name,
+                props=ModelProps(private=True),
+                endpoint=SimpleEndpoint(on_request=_create_handler(model_info.base_url, model.default_speaker, model.response_format)),
+                registration_options=None,
+            )
+            stream.emit(StreamChunkProgress(type="progress", value=1))
+            return InstallModelOut(status="OK", details="Installed")
+
+        return PromiseWithProgress(func=func)
 
     def _get_image(self, gpu: bool) -> DockerImage:
         return _const.image_gpu if gpu else _const.image_cpu

@@ -10,7 +10,6 @@
 """Vllm service."""
 
 import shutil
-from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import cpuinfo  # pyright: ignore[reportMissingTypeStubs]
@@ -21,7 +20,6 @@ from server.applicationcontext import get_base_url, get_container_host, get_cont
 from server.docker import (
     DockerImage,
     DockerOptions,
-    docker_pull,
     has_gpu_support,
     has_gpu_support_sync,
     install_and_run_docker,
@@ -34,6 +32,7 @@ from server.models.models import (
     CustomModelId,
     CustomModelSpecification,
     InstallModelIn,
+    InstallModelOut,
     ListModelsFilters,
     ListModelsOut,
     ModelField,
@@ -44,11 +43,10 @@ from server.models.models import (
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
 from server.utils.core import (
+    PromiseWithProgress,
+    Stream,
     StreamChunk,
-    StreamChunkFinish,
-    StreamChunkInstalledInfo,
     StreamChunkProgress,
-    StreamingError,
     convert_size_to_bytes,
     normalize_name,
     try_parse_pydantic,
@@ -222,22 +220,21 @@ class VllmService(Base2Service[InstalledInfo]):
             custom=self.custom,
         )
 
-    async def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
+    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
         parsed_options = try_parse_pydantic(VllmOptions, options.spec)
         if parsed_options.gpu and not await has_gpu_support():
-            raise StreamingError("Docker doesn't support GPU on this machine.")
+            raise HTTPException(400, "Docker doesn't support GPU on this machine.")
         if not parsed_options.gpu and not is_avx512_supported():
-            raise StreamingError("Your CPU does not support AVX 512 instructions")
+            raise HTTPException(400, "Your CPU does not support AVX 512 instructions")
         image = self._get_image(parsed_options.gpu)
 
-        async for progress in docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
-            yield StreamChunkProgress(type="progress", value=progress * 0.99)
+        async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
+            await self._docker_pull(image, stream)
+            info = InstalledInfo(models={}, options=options, parsed_options=parsed_options)
+            stream.emit(StreamChunkProgress(type="progress", value=1))
+            return info
 
-        info = InstalledInfo(models={}, options=options, parsed_options=parsed_options)
-
-        yield StreamChunkProgress(type="progress", value=1)
-        yield StreamChunkFinish(type="finish", status="ok", details="installed")
-        yield StreamChunkInstalledInfo(type="installed_info", status="ok", details=info)
+        return PromiseWithProgress(func=func)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -310,116 +307,118 @@ class VllmService(Base2Service[InstalledInfo]):
             has_docker=True,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:  # noqa: C901
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:  # noqa: C901
         parsed_model_options = try_parse_pydantic(VllmModelOptions, options.spec) if options.spec else VllmModelOptions()
         info = self._check_installed()
         if model_id in info.models:
-            yield StreamChunkFinish(type="finish", status="ok", details="Already installed")
-            return
+            return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
         if model_id not in self.models:
-            raise StreamingError("Model not found")
+            raise HTTPException(400, "Model not found")
         model = self.models[model_id]
-        model_id_fixed = model_id.replace("/", "-")
-        models_dir = self._get_working_dir() / "models"
-        model_dir = models_dir / model_id_fixed
-        model_dir.mkdir(parents=True, exist_ok=True)
-        progress = Progress(convert_size_to_bytes(model.size) or 0)
-        local_model_path: Path | None = None
-        async for packet in self.model_downloader.download(model_id, model_dir):
-            if packet.local_path and not local_model_path:
-                local_model_path = packet.local_path
-            elif packet.downloaded_bytes_size != 0:
-                progress.add_to_actual_value(packet.downloaded_bytes_size)
 
-            yield StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99)
+        async def func(stream: Stream[StreamChunk]) -> InstallModelOut:  # noqa: C901
+            model_id_fixed = model_id.replace("/", "-")
+            models_dir = self._get_working_dir() / "models"
+            model_dir = models_dir / model_id_fixed
+            model_dir.mkdir(parents=True, exist_ok=True)
+            progress = Progress(convert_size_to_bytes(model.size) or 0)
+            local_model_path: Path | None = None
+            async for packet in self.model_downloader.download(model_id, model_dir):
+                if packet.local_path and not local_model_path:
+                    local_model_path = packet.local_path
+                elif packet.downloaded_bytes_size != 0:
+                    progress.add_to_actual_value(packet.downloaded_bytes_size)
 
-        docker_model_path = Path(self.hugging_face_cache_path) / "hub" / model_id_fixed
-        volumes = [f"{local_model_path}:{docker_model_path}"]
+                stream.emit(StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99))
 
-        vllm_command = [
-            "--model",
-            str(docker_model_path),
-            "--host",
-            "0.0.0.0",
-            "--port",
-            "8000",
-            "--dtype",
-            model.dtype,
-            "--served-model-name",
-            model_id,
-        ]
+            docker_model_path = Path(self.hugging_face_cache_path) / "hub" / model_id_fixed
+            volumes = [f"{local_model_path}:{docker_model_path}"]
 
-        if model.quantization:
-            vllm_command.extend(["--quantization", model.quantization])
+            vllm_command = [
+                "--model",
+                str(docker_model_path),
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8000",
+                "--dtype",
+                model.dtype,
+                "--served-model-name",
+                model_id,
+            ]
 
-        if info.parsed_options.gpu:
-            vllm_command.extend(["--gpu-memory-utilization", str(model.gpu_memory_utilization)])
+            if model.quantization:
+                vllm_command.extend(["--quantization", model.quantization])
 
-        if model.max_model_len and info.parsed_options.gpu:
-            vllm_command.extend(["--max-model-len", str(model.max_model_len)])
+            if info.parsed_options.gpu:
+                vllm_command.extend(["--gpu-memory-utilization", str(model.gpu_memory_utilization)])
 
-        if not info.parsed_options.gpu:
-            if model.max_model_len is None:
-                vllm_command.extend(["--disable-sliding-window"])
-            else:
+            if model.max_model_len and info.parsed_options.gpu:
                 vllm_command.extend(["--max-model-len", str(model.max_model_len)])
 
-        if not model.env_vars:
-            model.env_vars = {}
+            if not info.parsed_options.gpu:
+                if model.max_model_len is None:
+                    vllm_command.extend(["--disable-sliding-window"])
+                else:
+                    vllm_command.extend(["--max-model-len", str(model.max_model_len)])
 
-        model.env_vars["HF_HUB_OFFLINE"] = "1"
-        model.env_vars["HF_HOME"] = self.hugging_face_cache_path
-        if not info.parsed_options.gpu:
-            model.env_vars["VLLM_USE_V1"] = "1"
+            if not model.env_vars:
+                model.env_vars = {}
 
-        image = self._get_image(info.parsed_options.gpu)
+            model.env_vars["HF_HUB_OFFLINE"] = "1"
+            model.env_vars["HF_HOME"] = self.hugging_face_cache_path
+            if not info.parsed_options.gpu:
+                model.env_vars["VLLM_USE_V1"] = "1"
 
-        subnet = self.application_context.get_docker_subnet()
-        service_name = f"{self.get_id()}-{normalize_name(model_id)}"
-        docker_options = DockerOptions(
-            name=service_name,
-            container_name=self.application_context.get_docker_container_name(service_name),
-            image=image.name,
-            command=" ".join(vllm_command),
-            image_port=8000,
-            env_vars=model.env_vars,
-            restart="unless-stopped",
-            volumes=volumes,
-            use_gpu=info.parsed_options.gpu,
-            shm_size=model.shm_size,
-            ulimits=model.ulimits,
-            subnet=subnet,
-            healthcheck={
-                "test": "curl --fail http://localhost:8000/health || exit 1",
-                "interval": "30s",
-                "timeout": "10s",
-                "retries": "3",
-                "start_period": "60s",
-            },
-        )
-        docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
-        registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
-        info.models[model_id] = model_info = ModelInstalledInfo(
-            id=model_id,
-            registered_name=registered_name,
-            options=options,
-            docker=docker_options,
-            container_host=get_container_host(subnet, docker_options.name),
-            container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
-            docker_exposed_port=docker_exposed_port,
-            registration_id="",
-            model_path=model_dir,
-        )
-        model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
-            model=registered_name,
-            props=ModelProps(private=True),
-            chat_completions=ProxyOptions(url=f"{model_info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
-            completions=ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id),
-            registration_options=None,
-        )
+            image = self._get_image(info.parsed_options.gpu)
 
-        yield StreamChunkProgress(type="progress", value=1)
-        yield StreamChunkFinish(type="finish", status="ok", details="Installed")
+            subnet = self.application_context.get_docker_subnet()
+            service_name = f"{self.get_id()}-{normalize_name(model_id)}"
+            docker_options = DockerOptions(
+                name=service_name,
+                container_name=self.application_context.get_docker_container_name(service_name),
+                image=image.name,
+                command=" ".join(vllm_command),
+                image_port=8000,
+                env_vars=model.env_vars,
+                restart="unless-stopped",
+                volumes=volumes,
+                use_gpu=info.parsed_options.gpu,
+                shm_size=model.shm_size,
+                ulimits=model.ulimits,
+                subnet=subnet,
+                healthcheck={
+                    "test": "curl --fail http://localhost:8000/health || exit 1",
+                    "interval": "30s",
+                    "timeout": "10s",
+                    "retries": "3",
+                    "start_period": "60s",
+                },
+            )
+            docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
+            registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
+            info.models[model_id] = model_info = ModelInstalledInfo(
+                id=model_id,
+                registered_name=registered_name,
+                options=options,
+                docker=docker_options,
+                container_host=get_container_host(subnet, docker_options.name),
+                container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                docker_exposed_port=docker_exposed_port,
+                registration_id="",
+                model_path=model_dir,
+            )
+            model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
+                model=registered_name,
+                props=ModelProps(private=True),
+                chat_completions=ProxyOptions(url=f"{model_info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
+                completions=ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id),
+                registration_options=None,
+            )
+            stream.emit(StreamChunkProgress(type="progress", value=1))
+            return InstallModelOut(status="OK", details="Installed")
+
+        return PromiseWithProgress(func=func)
 
     def _get_image(self, gpu: bool) -> DockerImage:
         return _const.image_gpu if gpu else _const.image_cpu

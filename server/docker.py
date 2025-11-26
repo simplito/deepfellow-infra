@@ -228,6 +228,16 @@ async def is_docker_compose_running(docker_compose_file_path: Path, service_name
         return False
 
 
+async def is_docker_image_pulled(full_image_name: str) -> bool:
+    """Check whether given image is pulled."""
+    try:
+        cmd = f"docker image history {full_image_name}"
+        result = await Utils.run_command(cmd)
+        return result.exit_code == 0  # noqa: TRY300
+    except Exception:
+        return False
+
+
 async def docker_pull(full_image_name: str, image_size: float) -> AsyncGenerator[float]:
     """Pull given docker image."""
     progress = Progress(image_size)

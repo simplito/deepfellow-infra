@@ -11,7 +11,6 @@
 
 import hashlib
 import shutil
-from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Literal
 
@@ -19,12 +18,13 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerImage, DockerOptions, docker_pull, has_gpu_support_sync, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, has_gpu_support_sync, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
     CustomModelSpecification,
     InstallModelIn,
+    InstallModelOut,
     ListModelsFilters,
     ListModelsOut,
     ModelField,
@@ -35,11 +35,10 @@ from server.models.models import (
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 from server.utils.core import (
+    PromiseWithProgress,
+    Stream,
     StreamChunk,
-    StreamChunkFinish,
-    StreamChunkInstalledInfo,
     StreamChunkProgress,
-    StreamingError,
     convert_size_to_bytes,
     try_parse_pydantic,
 )
@@ -468,48 +467,49 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
     def _get_image(self, gpu: bool) -> DockerImage:
         return _const.image_gpu if gpu else _const.image_cpu
 
-    async def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
+    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
         parsed_options = try_parse_pydantic(SpeachesAIOptions, options.spec)
         volumes = [f"{self._get_working_dir()}/cache:/home/ubuntu/.cache/huggingface/hub"]
         image = self._get_image(parsed_options.gpu)
-        async for progress in docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
-            yield StreamChunkProgress(type="progress", value=progress * 0.99)
-        subnet = self.application_context.get_docker_subnet()
-        docker_options = DockerOptions(
-            name="speaches-ai",
-            container_name=self.application_context.get_docker_container_name("speaches-ai"),
-            image=image.name,
-            image_port=8000,
-            use_gpu=parsed_options.gpu,
-            volumes=volumes,
-            env_vars={
-                "ENABLE_UI": "False",
-            },
-            restart="unless-stopped",
-            user="0:0",
-            subnet=subnet,
-            healthcheck={
-                "test": "curl --fail http://localhost:8000/health || exit 1",
-                "interval": "30s",
-                "timeout": "10s",
-                "retries": "3",
-                "start_period": "5s",
-            },
-        )
-        docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
-        info = InstalledInfo(
-            docker=docker_options,
-            models={},
-            options=options,
-            parsed_options=parsed_options,
-            container_host=get_container_host(subnet, docker_options.name),
-            container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
-            docker_exposed_port=docker_exposed_port,
-        )
 
-        yield StreamChunkProgress(type="progress", value=1)
-        yield StreamChunkFinish(type="finish", status="ok", details="installed")
-        yield StreamChunkInstalledInfo(type="installed_info", status="ok", details=info)
+        async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
+            await self._docker_pull(image, stream)
+            subnet = self.application_context.get_docker_subnet()
+            docker_options = DockerOptions(
+                name="speaches-ai",
+                container_name=self.application_context.get_docker_container_name("speaches-ai"),
+                image=image.name,
+                image_port=8000,
+                use_gpu=parsed_options.gpu,
+                volumes=volumes,
+                env_vars={
+                    "ENABLE_UI": "False",
+                },
+                restart="unless-stopped",
+                user="0:0",
+                subnet=subnet,
+                healthcheck={
+                    "test": "curl --fail http://localhost:8000/health || exit 1",
+                    "interval": "30s",
+                    "timeout": "10s",
+                    "retries": "3",
+                    "start_period": "5s",
+                },
+            )
+            docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
+            info = InstalledInfo(
+                docker=docker_options,
+                models={},
+                options=options,
+                parsed_options=parsed_options,
+                container_host=get_container_host(subnet, docker_options.name),
+                container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                docker_exposed_port=docker_exposed_port,
+            )
+            stream.emit(StreamChunkProgress(type="progress", value=1))
+            return info
+
+        return PromiseWithProgress(func=func)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -573,89 +573,90 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             has_docker=False,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:  # noqa: C901
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:  # noqa: C901
         parsed_model_options = try_parse_pydantic(SpeachesAIModelOptions, options.spec) if options.spec else SpeachesAIModelOptions()
         info = self._check_installed()
         if model_id in info.models:
-            yield StreamChunkFinish(type="finish", status="ok", details="Already installed")
-            return
+            return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
         if model_id not in _const.models:
-            raise StreamingError("Model not found")
-
+            raise HTTPException(400, "Model not found")
         model = _const.models[model_id]
-        model_id_fixed = f"models--{model_id.replace('/', '--')}"
 
-        models_dir = self._get_working_dir() / "cache"
+        async def func(stream: Stream[StreamChunk]) -> InstallModelOut:  # noqa: C901
+            model_id_fixed = f"models--{model_id.replace('/', '--')}"
 
-        model_dir = models_dir / model_id_fixed
-        model_dir.mkdir(parents=True, exist_ok=True)
+            models_dir = self._get_working_dir() / "cache"
 
-        blobs_dir = model_dir / "blobs"
-        blobs_dir.mkdir(parents=True, exist_ok=True)
+            model_dir = models_dir / model_id_fixed
+            model_dir.mkdir(parents=True, exist_ok=True)
 
-        snapshot_dir = model_dir / "snapshots" / "0"
-        snapshot_dir.mkdir(parents=True, exist_ok=True)
+            blobs_dir = model_dir / "blobs"
+            blobs_dir.mkdir(parents=True, exist_ok=True)
 
-        refs_dir = model_dir / "refs"
-        refs_dir.mkdir(parents=True, exist_ok=True)
+            snapshot_dir = model_dir / "snapshots" / "0"
+            snapshot_dir.mkdir(parents=True, exist_ok=True)
 
-        ref_file = refs_dir / "main"
-        if not ref_file.exists():
-            ref_file.write_text("0")
+            refs_dir = model_dir / "refs"
+            refs_dir.mkdir(parents=True, exist_ok=True)
 
-        progress = Progress(convert_size_to_bytes(model.size) or 0)
-        local_model_path: Path | None = None
-        async for packet in self.model_downloader.download(model_id, snapshot_dir):
-            if packet.local_path and not local_model_path:
-                local_model_path = packet.local_path
-            elif packet.downloaded_bytes_size != 0:
-                progress.add_to_actual_value(packet.downloaded_bytes_size)
+            ref_file = refs_dir / "main"
+            if not ref_file.exists():
+                ref_file.write_text("0")
 
-            yield StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99)
+            progress = Progress(convert_size_to_bytes(model.size) or 0)
+            local_model_path: Path | None = None
+            async for packet in self.model_downloader.download(model_id, snapshot_dir):
+                if packet.local_path and not local_model_path:
+                    local_model_path = packet.local_path
+                elif packet.downloaded_bytes_size != 0:
+                    progress.add_to_actual_value(packet.downloaded_bytes_size)
 
-        for original_file in snapshot_dir.iterdir():
-            if original_file.is_file():
-                file_hash = hashlib.sha256(original_file.name.encode("utf-8")).hexdigest()
+                stream.emit(StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99))
 
-                if not file_hash:
-                    continue
+            for original_file in snapshot_dir.iterdir():
+                if original_file.is_file():
+                    file_hash = hashlib.sha256(original_file.name.encode("utf-8")).hexdigest()
 
-                symlink_path = blobs_dir / file_hash
+                    if not file_hash:
+                        continue
 
-                if symlink_path.exists():
-                    continue
+                    symlink_path = blobs_dir / file_hash
 
-                try:
-                    symlink_path.symlink_to(original_file.resolve(), target_is_directory=False)
-                except OSError as e:
-                    print(f"Failed to create symlink: {e}")
+                    if symlink_path.exists():
+                        continue
 
-        registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
-        info.models[model_id] = model_info = ModelInstalledInfo(
-            id=model_id,
-            type=model.type,
-            registered_name=registered_name,
-            options=options,
-            registration_id="",
-            model_path=model_dir,
-        )
-        if model.type == "tts":
-            model_info.registration_id = self.endpoint_registry.register_audio_speech_as_proxy(
-                model=registered_name,
-                props=ModelProps(private=True),
-                options=ProxyOptions(url=f"{info.base_url}/v1/audio/speech", rewrite_model_to=model_id),
-                registration_options=None,
+                    try:
+                        symlink_path.symlink_to(original_file.resolve(), target_is_directory=False)
+                    except OSError as e:
+                        print(f"Failed to create symlink: {e}")
+
+            registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
+            info.models[model_id] = model_info = ModelInstalledInfo(
+                id=model_id,
+                type=model.type,
+                registered_name=registered_name,
+                options=options,
+                registration_id="",
+                model_path=model_dir,
             )
-        if model.type == "stt":
-            model_info.registration_id = self.endpoint_registry.register_audio_transcriptions_as_proxy(
-                model=registered_name,
-                props=ModelProps(private=True),
-                options=ProxyOptions(url=f"{info.base_url}/v1/audio/transcriptions", rewrite_model_to=model_id),
-                registration_options=None,
-            )
+            if model.type == "tts":
+                model_info.registration_id = self.endpoint_registry.register_audio_speech_as_proxy(
+                    model=registered_name,
+                    props=ModelProps(private=True),
+                    options=ProxyOptions(url=f"{info.base_url}/v1/audio/speech", rewrite_model_to=model_id),
+                    registration_options=None,
+                )
+            if model.type == "stt":
+                model_info.registration_id = self.endpoint_registry.register_audio_transcriptions_as_proxy(
+                    model=registered_name,
+                    props=ModelProps(private=True),
+                    options=ProxyOptions(url=f"{info.base_url}/v1/audio/transcriptions", rewrite_model_to=model_id),
+                    registration_options=None,
+                )
+            stream.emit(StreamChunkProgress(type="progress", value=1))
+            return InstallModelOut(status="OK", details="Installed")
 
-        yield StreamChunkProgress(type="progress", value=1)
-        yield StreamChunkFinish(type="finish", status="ok", details="Installed")
+        return PromiseWithProgress(func=func)
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()

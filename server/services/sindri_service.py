@@ -9,19 +9,19 @@
 
 """Sindri service."""
 
-from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from fastapi import HTTPException
 from pydantic import BaseModel
 
 from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerImage, DockerOptions, docker_pull, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
     CustomModelSpecification,
     InstallModelIn,
+    InstallModelOut,
     ListModelsFilters,
     ListModelsOut,
     ModelField,
@@ -32,12 +32,10 @@ from server.models.models import (
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
 from server.utils.core import (
+    PromiseWithProgress,
+    Stream,
     StreamChunk,
-    StreamChunkFinish,
-    StreamChunkInstalledInfo,
     StreamChunkProgress,
-    StreamingError,
-    convert_size_to_bytes,
     try_parse_pydantic,
 )
 
@@ -148,62 +146,62 @@ class SindriService(Base2Service[InstalledInfo]):
     def _get_image(self) -> DockerImage:
         return _const.image
 
-    async def _install_core(self, options: InstallServiceIn) -> AsyncGenerator[StreamChunk]:
+    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
         parsed_options = try_parse_pydantic(SindriOptions, options.spec)
         image = self._get_image()
-        async for progress in docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
-            yield StreamChunkProgress(type="progress", value=progress * 0.99)
 
-        config_path = self._get_working_dir() / "config.yaml"
-        data = (
-            "listenAddress: 0.0.0.0\n"
-            "listenPort: 8080\n"
-            "appMode: release\n"
-            "sindriClient:\n"
-            f"  baseURL: {parsed_options.api_url}\n"
-            f"  apiKey: {parsed_options.api_key}\n"
-            "  requestTimeoutSeconds: 10\n"
-            "\n"
-            "  encryption:\n"
-            "    enabled: true\n"
-            "    keySource: ephemeral  # or 'value' or 'file'"
-            "    # Configure keys if not using ephemeral"
-        )
-        with config_path.open("w", encoding="utf-8") as f:
-            f.write(data)
-        volumes = [f"{config_path}:/config.yaml"]
-        subnet = self.application_context.get_docker_subnet()
-        docker_options = DockerOptions(
-            name="sindri",
-            container_name=self.application_context.get_docker_container_name("sindri"),
-            image=_const.image.name,
-            command="serve /config.yaml",
-            image_port=8080,
-            volumes=volumes,
-            restart="unless-stopped",
-            subnet=subnet,
-            healthcheck={
-                "test": "wget -q --spider http://localhost:8080",
-                "interval": "30s",
-                "timeout": "10s",
-                "retries": "3",
-                "start_period": "5s",
-            },
-        )
-        docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
-        info = InstalledInfo(
-            docker=docker_options,
-            models={},
-            options=options,
-            parsed_options=parsed_options,
-            container_host=get_container_host(subnet, docker_options.name),
-            container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
-            docker_exposed_port=docker_exposed_port,
-        )
+        async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
+            await self._docker_pull(image, stream)
+            config_path = self._get_working_dir() / "config.yaml"
+            data = (
+                "listenAddress: 0.0.0.0\n"
+                "listenPort: 8080\n"
+                "appMode: release\n"
+                "sindriClient:\n"
+                f"  baseURL: {parsed_options.api_url}\n"
+                f"  apiKey: {parsed_options.api_key}\n"
+                "  requestTimeoutSeconds: 10\n"
+                "\n"
+                "  encryption:\n"
+                "    enabled: true\n"
+                "    keySource: ephemeral  # or 'value' or 'file'"
+                "    # Configure keys if not using ephemeral"
+            )
+            with config_path.open("w", encoding="utf-8") as f:
+                f.write(data)
+            volumes = [f"{config_path}:/config.yaml"]
+            subnet = self.application_context.get_docker_subnet()
+            docker_options = DockerOptions(
+                name="sindri",
+                container_name=self.application_context.get_docker_container_name("sindri"),
+                image=_const.image.name,
+                command="serve /config.yaml",
+                image_port=8080,
+                volumes=volumes,
+                restart="unless-stopped",
+                subnet=subnet,
+                healthcheck={
+                    "test": "wget -q --spider http://localhost:8080",
+                    "interval": "30s",
+                    "timeout": "10s",
+                    "retries": "3",
+                    "start_period": "5s",
+                },
+            )
+            docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
+            info = InstalledInfo(
+                docker=docker_options,
+                models={},
+                options=options,
+                parsed_options=parsed_options,
+                container_host=get_container_host(subnet, docker_options.name),
+                container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                docker_exposed_port=docker_exposed_port,
+            )
+            stream.emit(StreamChunkProgress(type="progress", value=1))
+            return info
 
-        yield StreamChunkProgress(type="progress", value=1)
-        yield StreamChunkFinish(type="finish", status="ok", details="installed")
-        yield StreamChunkInstalledInfo(type="installed_info", status="ok", details=info)
+        return PromiseWithProgress(func=func)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
         info = self._check_installed()
@@ -265,34 +263,36 @@ class SindriService(Base2Service[InstalledInfo]):
             has_docker=False,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> AsyncGenerator[StreamChunk]:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         parsed_model_options = try_parse_pydantic(SindriModelOptions, options.spec) if options.spec else SindriModelOptions()
         info = self._check_installed()
         if model_id in info.models:
-            yield StreamChunkFinish(type="finish", status="ok", details="Already installed")
-            return
+            return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
         if model_id not in _const.models:
-            raise StreamingError("Model not found")
+            raise HTTPException(400, "Model not found")
         model = _const.models[model_id]
-        registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
-        info.models[model_id] = model_info = ModelInstalledInfo(
-            id=model_id,
-            type=model.type,
-            registered_name=registered_name,
-            options=options,
-            registration_id="",
-        )
-        if model.type == "llm":
-            model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
-                model=registered_name,
-                props=ModelProps(private=True),
-                chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model.real_model_name),
-                completions=None,
-                registration_options=None,
-            )
 
-        yield StreamChunkProgress(type="progress", value=1)
-        yield StreamChunkFinish(type="finish", status="ok", details="installed")
+        async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
+            registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
+            info.models[model_id] = model_info = ModelInstalledInfo(
+                id=model_id,
+                type=model.type,
+                registered_name=registered_name,
+                options=options,
+                registration_id="",
+            )
+            if model.type == "llm":
+                model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
+                    model=registered_name,
+                    props=ModelProps(private=True),
+                    chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model.real_model_name),
+                    completions=None,
+                    registration_options=None,
+                )
+            stream.emit(StreamChunkProgress(type="progress", value=1))
+            return InstallModelOut(status="OK", details="Installed")
+
+        return PromiseWithProgress(func=func)
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
