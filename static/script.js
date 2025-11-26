@@ -564,7 +564,7 @@ function readProgress(response, onFinish) {
             return;
         }
         if (data.type === "progress") {
-            progress.textContent = (Math.floor(data.value * 10000) / 100) + "%";
+            progress.textContent = (Math.floor(data.value * 10000) / 100).toFixed(2) + "%";
         }
         else if (data.type === "finish") {
             if (data.status === "ok") {
