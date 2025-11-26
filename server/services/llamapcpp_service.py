@@ -101,6 +101,14 @@ _const = LlamacppConst(
             url="https://huggingface.co/google/gemma-2b/resolve/main/gemma-2b.gguf",
             size="10.0GB",
         ),
+        "speakleash/Bielik-11B-v2.5-Instruct": LlamacppModel(
+            url="https://huggingface.co/speakleash/Bielik-11B-v2.5-Instruct-GGUF/resolve/main/Bielik-11B-v2.5-Instruct.Q4_K_M.gguf",
+            size="6.7GB",
+        ),
+        "speakleash/Bielik-11B-v2.6-Instruct": LlamacppModel(
+            url="https://huggingface.co/speakleash/Bielik-11B-v2.6-Instruct-GGUF/resolve/main/Bielik-11B-v2.6-Instruct.Q4_K_M.gguf",
+            size="6.7GB",
+        ),
     },
 )
 
