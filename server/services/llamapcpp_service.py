@@ -49,6 +49,7 @@ class LlamacppModel(BaseModel):
     url: str
     size: str
     custom: CustomModelId | None = None
+    jinja: bool = False
 
 
 class LlamacppCustomModel(BaseModel):
@@ -104,10 +105,12 @@ _const = LlamacppConst(
         "speakleash/Bielik-11B-v2.5-Instruct": LlamacppModel(
             url="https://huggingface.co/speakleash/Bielik-11B-v2.5-Instruct-GGUF/resolve/main/Bielik-11B-v2.5-Instruct.Q4_K_M.gguf",
             size="6.7GB",
+            jinja=True,
         ),
         "speakleash/Bielik-11B-v2.6-Instruct": LlamacppModel(
             url="https://huggingface.co/speakleash/Bielik-11B-v2.6-Instruct-GGUF/resolve/main/Bielik-11B-v2.6-Instruct.Q4_K_M.gguf",
             size="6.7GB",
+            jinja=True,
         ),
     },
 )
@@ -330,7 +333,10 @@ class LLamacppService(Base2Service[InstalledInfo]):
             model_in_container = f"/models/{model_filename}"
             volumes = [f"{local_model_path.absolute()}:{model_in_container}:ro"]
             image = self._get_image(info.parsed_options.gpu)
-            command = " ".join(["--host 0.0.0.0", "--port 8080", f"--model {model_in_container}"])
+            command_options = ["--host 0.0.0.0", "--port 8080", f"--model {model_in_container}"]
+            if model.jinja:
+                command_options.append("--jinja")
+            command = " ".join(command_options)
             subnet = self.application_context.get_docker_subnet()
             service_name = f"{self.get_id()}-{normalize_name(model_id)}"
             docker_options = DockerOptions(
