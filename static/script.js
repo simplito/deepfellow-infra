@@ -25,7 +25,10 @@ async function showServicesPage() {
     const data = await fetchJson("/admin/services");
     const html = `
         <div class="page services-page">
-            <h3>Services</h3>
+            <h3>
+                Services
+                <button data-action="show-mesh-info">Show mesh info</button>
+            </h3>
             <div class="boxes services">
                 ${data.list.map(s => {
                     const values = s.installed ? s.installed : false;
@@ -495,6 +498,16 @@ root.addEventListener("click", async e => {
                     method: "POST"
                 });
                 showContentModal({title: "Docker restart", text: "Docker restarted!", pre: false});
+            }
+            finally {
+                loading.remove();
+            }
+        }
+        else if (action === "show-mesh-info") {
+            const loading = showLoading();
+            try {
+                const result = await fetchJson("/admin/mesh/info");
+                showContentModal({title: "Mesh info", text: JSON.stringify(result, null, 2)});
             }
             finally {
                 loading.remove();

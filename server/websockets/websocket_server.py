@@ -57,10 +57,14 @@ class WebSockerContextImpl[T](WebSocketContext[T]):
 
 
 class WebSocketServer[T]:
+    def __init__(self):
+        self.connections = set[WebSocketContext[T]]()
+
     async def connect(self, websocket: WebSocket) -> None:
         """Run on connect to websocket."""
         await websocket.accept()
         context = WebSockerContextImpl(websocket, self.create_bag())
+        self.connections.add(context)
         active_tasks = set[asyncio.Task[None]]()
 
         try:
@@ -77,6 +81,7 @@ class WebSocketServer[T]:
             logger.exception("Error during reading websocket")
         finally:
             await context.close()
+            self.connections.remove(context)
             if active_tasks:
                 await asyncio.gather(*active_tasks, return_exceptions=True)
 

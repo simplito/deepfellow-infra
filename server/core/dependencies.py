@@ -17,6 +17,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from server.config import AppSettings
 from server.endpointregistry import EndpointRegistry
 from server.services_manager import ServicesManager
+from server.websockets.infra_websocket_server import InfraWebsocketServer
 
 oauth2_scheme = HTTPBearer()
 
@@ -43,6 +44,11 @@ def get_services_manager(request: Request) -> ServicesManager:
 def get_config(request: Request) -> AppSettings:
     """Get AppSettings from application state."""
     return get_dependency(request, "config")
+
+
+def get_infra_websocket_server(request: Request) -> InfraWebsocketServer:
+    """Get InfraWebsocketServer from application state."""
+    return get_dependency(request, "infra_websocket_server")
 
 
 def auth_server(
