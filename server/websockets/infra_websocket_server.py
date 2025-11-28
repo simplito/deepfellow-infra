@@ -17,6 +17,7 @@ from pydantic import BaseModel, ValidationError
 from server.config import AppSettings
 from server.endpointregistry import EndpointRegistry
 from server.models.api import Model
+from server.models.mesh import MeshInfo, MeshInfoInfra, MeshInfoModel
 from server.utils.exceptions import ApiError
 from server.utils.json_rpc_server import JsonRpcServer
 from server.websockets.models import InitRequest, UpdateModelsRequest, UsageChangeRequest
@@ -28,6 +29,7 @@ T = TypeVar("T")
 
 
 class Authorized(BaseModel):
+    name: str
     url: str
     api_key: str
     models: list[Model]
@@ -47,6 +49,7 @@ class InfraWebsocketServer(WebSocketServer[InfraWsData]):
         parent_infra: ParentInfra,
         endpoint_registry: EndpointRegistry,
     ):
+        super().__init__()
         self.config = config
         self.parent_infra = parent_infra
         self.endpoint_registry = endpoint_registry
@@ -92,7 +95,7 @@ class InfraWebsocketServer(WebSocketServer[InfraWsData]):
             raise ApiError(code=1, message="Already authorized")
         if params.auth != self.config.mesh_key.get_secret_value():
             raise ApiError(code=2, message="Invalid api key")
-        context.authorized = Authorized(url=params.url, api_key=params.api_key, models=params.models)
+        context.authorized = Authorized(name=params.name, url=params.url, api_key=params.api_key, models=params.models)
         self.endpoint_registry.update_models([], params.models, params.url, params.api_key)
         logger.info(f"WS client connected {params.url}")  # noqa: G004
         return "OK"
@@ -109,3 +112,16 @@ class InfraWebsocketServer(WebSocketServer[InfraWsData]):
         self.endpoint_registry.update_models(context.authorized.models, params.models, context.authorized.url, context.authorized.api_key)
         context.authorized.models = params.models
         return "OK"
+
+    def get_mesh_info(self) -> MeshInfo:
+        """Get mesh info."""
+        connections = [
+            MeshInfoInfra(
+                name=connection.data.authorized.name,
+                url=connection.data.authorized.url,
+                models=[MeshInfoModel(name=model.name, type=model.type) for model in connection.data.authorized.models],
+            )
+            for connection in self.connections
+            if connection.data.authorized
+        ]
+        return MeshInfo(connections=connections)
