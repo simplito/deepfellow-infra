@@ -20,14 +20,10 @@ from typing import TypeVar
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-from server.applicationcontext import ApplicationContext
+from server.config import AppSettings
 from server.docker import (
     DockerImage,
-    docker_pull,
-    get_docker_compose_logs,
-    has_gpu_support_sync,
-    is_docker_image_pulled,
-    restart_docker_compose,
+    DockerService,
 )
 from server.endpointregistry import EndpointRegistry
 from server.models.models import (
@@ -69,16 +65,18 @@ logger = logging.getLogger("uvicorn.error")
 class Base2Service[T](BaseService):
     def __init__(
         self,
-        application_context: ApplicationContext,
+        config: AppSettings,
         endpoint_registry: EndpointRegistry,
         service_provider: ServiceProvider,
         model_downloader: ModelDownloader,
+        docker_service: DockerService,
     ):
         super().__init__()
-        self.application_context = application_context
+        self.config = config
         self.endpoint_registry = endpoint_registry
         self.service_provider = service_provider
         self.model_downloader = model_downloader
+        self.docker_service = docker_service
         self.installed: T | None = None
         self.installing = False
         self.custom = list[CustomModel]()
@@ -213,7 +211,7 @@ class Base2Service[T](BaseService):
     async def get_docker_logs(self, model_id: str | None) -> str:
         """Get docker logs."""
         docker_compose_file_path = self.get_docker_compose_file_path(model_id)
-        return await get_docker_compose_logs(docker_compose_file_path)
+        return await self.docker_service.get_docker_compose_logs(docker_compose_file_path)
 
     async def get_docker_compose_file(self, model_id: str | None) -> str:
         """Get docker compose file."""
@@ -223,7 +221,7 @@ class Base2Service[T](BaseService):
     async def restart_docker(self, model_id: str | None) -> None:
         """Get docker compose file."""
         docker_compose_file_path = self.get_docker_compose_file_path(model_id)
-        await restart_docker_compose(docker_compose_file_path)
+        await self.docker_service.restart_docker_compose(docker_compose_file_path)
 
     def get_docker_compose_file_path(self, model_id: str | None) -> Path:  # noqa: ARG002
         """Get docker compose file path."""
@@ -232,7 +230,14 @@ class Base2Service[T](BaseService):
         raise HTTPException(400, "Docker is not bound with this object")
 
     def _get_working_dir(self) -> Path:
-        return self.application_context.get_service_dir(self.get_id())
+        return self._get_service_dir(self.get_id())
+
+    def _get_service_dir(self, service: str) -> Path:
+        """Get service dir."""
+        dir = self.config.get_storage_dir() / f"./services/{service}"
+        if not dir.is_dir():
+            dir.mkdir(parents=True)
+        return dir
 
     async def _clear_working_dir(self) -> None:
         working_dir = self._get_working_dir()
@@ -246,14 +251,14 @@ class Base2Service[T](BaseService):
 
     def get_hugging_face_token(self) -> str:
         """Return Hugging Face Key."""
-        return self.application_context.config.hugging_face_token
+        return self.config.hugging_face_token
 
     def get_civitai_token(self) -> str:
         """Return Civitai Face Key."""
-        return self.application_context.config.civitai_token
+        return self.config.civitai_token
 
     def _has_gpu_for_spec(self) -> str:
-        return "true" if has_gpu_support_sync() else "false"
+        return "true" if self.docker_service.has_gpu_support else "false"
 
     async def _docker_pull(
         self,
@@ -265,7 +270,7 @@ class Base2Service[T](BaseService):
         """Docker pull only if image does not exist."""
         multiplier = end_percentage - start_percentage
         stream.emit(StreamChunkProgress(type="progress", value=start_percentage))
-        if not await is_docker_image_pulled(image.name):
-            async for progress in docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
+        if not await self.docker_service.is_docker_image_pulled(image.name):
+            async for progress in self.docker_service.docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
                 stream.emit(StreamChunkProgress(type="progress", value=progress * multiplier))
         stream.emit(StreamChunkProgress(type="progress", value=end_percentage))

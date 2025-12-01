@@ -41,7 +41,7 @@ router = APIRouter(prefix="/admin/services", tags=["Services"])
 )
 async def install_service(
     model: Annotated[InstallServiceIn, Body()],
-    service_id: Annotated[str, Path(..., description="The ID of the service to install")],
+    service_id: Annotated[str, Path(description="The ID of the service to install")],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
 ) -> Response:
@@ -59,7 +59,7 @@ async def install_service(
 )
 async def uninstall_service(
     model: Annotated[UninstallServiceIn, Body()],
-    service_id: Annotated[str, Path(..., description="The ID of the service to uninstall")],
+    service_id: Annotated[str, Path(description="The ID of the service to uninstall")],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
 ) -> UninstallServiceOut:
@@ -86,7 +86,7 @@ async def list_models(
     summary="Retrieve the service.",
 )
 async def retrieve_service(
-    service_id: Annotated[str, Path(..., description="The ID of the service to retrieve")],
+    service_id: Annotated[str, Path(description="The ID of the service to retrieve")],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
 ) -> RetrieveServiceOut:
@@ -112,7 +112,7 @@ async def list_service(
     summary="Retrieve docker logs.",
 )
 async def retrieve_docker_logs(
-    service_id: Annotated[str, Path(..., description="The ID of the service")],
+    service_id: Annotated[str, Path(description="The ID of the service")],
     query: Annotated[OptionalModelIdQuery, Query()],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
@@ -127,7 +127,7 @@ async def retrieve_docker_logs(
     summary="Retrieve docker compose file.",
 )
 async def retrieve_docker_compose_file(
-    service_id: Annotated[str, Path(..., description="The ID of the service")],
+    service_id: Annotated[str, Path(description="The ID of the service")],
     query: Annotated[OptionalModelIdQuery, Query()],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
@@ -142,7 +142,7 @@ async def retrieve_docker_compose_file(
     summary="Restart docker container.",
 )
 async def restart_docker_container(
-    service_id: Annotated[str, Path(..., description="The ID of the service")],
+    service_id: Annotated[str, Path(description="The ID of the service")],
     query: Annotated[OptionalModelIdQuery, Query()],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],

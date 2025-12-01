@@ -14,16 +14,12 @@ from pathlib import Path
 
 import cpuinfo  # pyright: ignore[reportMissingTypeStubs]
 from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from server.applicationcontext import get_base_url, get_container_host, get_container_port
+from server.applicationcontext import get_base_url
 from server.docker import (
     DockerImage,
     DockerOptions,
-    has_gpu_support,
-    has_gpu_support_sync,
-    install_and_run_docker,
-    uninstall_docker,
 )
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
@@ -145,7 +141,7 @@ class ModelInstalledInfo:
 
 
 class VllmOptions(BaseModel):
-    gpu: bool = Field(default_factory=lambda: has_gpu_support_sync())
+    gpu: bool
 
 
 class VllmModelOptions(BaseModel):
@@ -221,8 +217,10 @@ class VllmService(Base2Service[InstalledInfo]):
         )
 
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+        if "gpu" not in options.spec:
+            options.spec["gpu"] = self.docker_service.has_gpu_support
         parsed_options = try_parse_pydantic(VllmOptions, options.spec)
-        if parsed_options.gpu and not await has_gpu_support():
+        if parsed_options.gpu and not self.docker_service.has_gpu_support:
             raise HTTPException(400, "Docker doesn't support GPU on this machine.")
         if not parsed_options.gpu and not is_avx512_supported():
             raise HTTPException(400, "Your CPU does not support AVX 512 instructions")
@@ -254,7 +252,7 @@ class VllmService(Base2Service[InstalledInfo]):
         installed = info.models.get(model_id, None)
         if not installed:
             raise HTTPException(status_code=400, detail="Model not installed")
-        return self.application_context.get_docker_compose_file_path(installed.docker.name)
+        return self.docker_service.get_docker_compose_file_path(installed.docker.name)
 
     def _add_custom_model(self, model: CustomModel) -> None:
         parsed = try_parse_pydantic(VllmCustomModel, model.data)
@@ -372,11 +370,11 @@ class VllmService(Base2Service[InstalledInfo]):
 
             image = self._get_image(info.parsed_options.gpu)
 
-            subnet = self.application_context.get_docker_subnet()
+            subnet = self.docker_service.get_docker_subnet()
             service_name = f"{self.get_id()}-{normalize_name(model_id)}"
             docker_options = DockerOptions(
                 name=service_name,
-                container_name=self.application_context.get_docker_container_name(service_name),
+                container_name=self.docker_service.get_docker_container_name(service_name),
                 image=image.name,
                 command=" ".join(vllm_command),
                 image_port=8000,
@@ -395,15 +393,15 @@ class VllmService(Base2Service[InstalledInfo]):
                     "start_period": "60s",
                 },
             )
-            docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
+            docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
                 registered_name=registered_name,
                 options=options,
                 docker=docker_options,
-                container_host=get_container_host(subnet, docker_options.name),
-                container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                container_host=self.docker_service.get_container_host(subnet, docker_options.name),
+                container_port=self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port),
                 docker_exposed_port=docker_exposed_port,
                 registration_id="",
                 model_path=model_dir,
@@ -430,6 +428,6 @@ class VllmService(Base2Service[InstalledInfo]):
         model = info.models[model_id]
         del info.models[model_id]
         self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
-        await uninstall_docker(self.application_context, model.docker)
+        await self.docker_service.uninstall_docker(model.docker)
         if options.purge:
             shutil.rmtree(model.model_path)

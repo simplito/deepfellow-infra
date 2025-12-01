@@ -18,7 +18,7 @@ import re
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Literal, NamedTuple, NotRequired, TypedDict
+from typing import Annotated, Any, Literal, NamedTuple, NotRequired, TypedDict
 
 import aiofiles
 from aiohttp import ClientSession
@@ -26,15 +26,10 @@ from fastapi import HTTPException, Request
 from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 
-from server.applicationcontext import get_base_url, get_container_host, get_container_port
+from server.applicationcontext import get_base_url
 from server.docker import (
     DockerImage,
     DockerOptions,
-    get_user_for_docker,
-    has_gpu_support,
-    has_gpu_support_sync,
-    install_and_run_docker,
-    uninstall_docker,
 )
 from server.endpointregistry import EndpointCallback, ProxyOptions, RegistrationId, SimpleEndpoint
 from server.models.api import ImagesRequest, ModelProps
@@ -222,8 +217,8 @@ class ModelInstalledInfo(BaseModel):
 
 
 class SDOptions(BaseModel):
-    gpu: bool = Field(default_factory=lambda: has_gpu_support_sync())
-    expose_api_at_prefix: str = Field("", pattern=r"^[a-zA-Z0-9_-]+$")
+    gpu: bool
+    expose_api_at_prefix: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]+$")] = ""
 
 
 class SDModelOptions(BaseModel):
@@ -350,6 +345,8 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             await f.write(json.dumps(data, indent=4))
 
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+        if "gpu" not in options.spec:
+            options.spec["gpu"] = self.docker_service.has_gpu_support
         if platform.system() == "Darwin":
             raise HTTPException(400, "Stable Diffusion is not supported on macOS")
         parsed_options = try_parse_pydantic(SDOptions, options.spec)
@@ -360,7 +357,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         ]
         if parsed_options.gpu:
             image = _const.image_gpu
-            if not await has_gpu_support():
+            if not self.docker_service.has_gpu_support:
                 raise HTTPException(400, "Docker doesn't support GPU on this machine.")
         else:
             image = _const.image_cpu
@@ -370,10 +367,10 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             await self._docker_pull(image, stream)
             stream.emit(StreamChunkProgress(type="progress", value=0.99))
             await self.update_config()
-            subnet = self.application_context.get_docker_subnet()
+            subnet = self.docker_service.get_docker_subnet()
             docker_options = DockerOptions(
                 name="stable-diffusion",
-                container_name=self.application_context.get_docker_container_name("stable-diffusion"),
+                container_name=self.docker_service.get_docker_container_name("stable-diffusion"),
                 image=image.name,
                 env_vars={
                     "SD_DOCS": "true",
@@ -383,7 +380,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
                 volumes=volumes,
                 restart="unless-stopped",
                 subnet=subnet,
-                user=await get_user_for_docker(),
+                user=await self.docker_service.get_user_for_docker(),
                 healthcheck={
                     "test": "curl --fail http://localhost:7860/sdapi/v1/status || exit 1",
                     "interval": "40s",
@@ -392,10 +389,10 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
                     "start_period": "60s",
                 },
             )
-            docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
+            docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
 
-            host = get_container_host(subnet, docker_options.name)
-            port = get_container_port(subnet, docker_exposed_port, docker_options.image_port)
+            host = self.docker_service.get_container_host(subnet, docker_options.name)
+            port = self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port)
 
             proxy_registration_id = (
                 self.endpoint_registry.register_custom_endpoint_as_proxy(
@@ -434,7 +431,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             if model.type == "txt2img":
                 self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
         self.installed = None
-        await uninstall_docker(self.application_context, info.docker)
+        await self.docker_service.uninstall_docker(info.docker)
         if options.purge:
             await self._clear_working_dir()
 
@@ -445,7 +442,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             raise HTTPException(400, "Service not installed")
         if model_id:
             raise HTTPException(400, "Docker is not bound with this object")
-        return self.application_context.get_docker_compose_file_path(info.docker.name)
+        return self.docker_service.get_docker_compose_file_path(info.docker.name)
 
     def service_has_docker(self) -> bool:
         """Return true when docker is started when service is installed."""
@@ -633,7 +630,7 @@ class B64Data(BaseModel):
 
 class ImagesResponse(BaseModel):
     data: list[B64Data]
-    created: int = Field(default_factory=lambda: int(datetime.now(UTC).timestamp()))
+    created: int = int(datetime.now(UTC).timestamp())
 
 
 class OverrideSettings(BaseModel):
@@ -647,11 +644,11 @@ class StableDiffusionInputSettings(BaseModel):
     sampler_name: str = "DPM++ 2M"
     hr_sampler_name: str = "Kerras"
     clip_skip: int = 2
-    steps: int = Field(default=20, ge=1, le=50)
-    n_iter: int = Field(default=1, ge=1, le=4)
-    cfg_scale: float = Field(default=7, ge=1, le=30)
-    width: int = Field(default=512, ge=64, le=2048)
-    height: int = Field(default=512, ge=64, le=2048)
+    steps: Annotated[int, Field(ge=1, le=50)] = 20
+    n_iter: Annotated[int, Field(ge=1, le=4)] = 1
+    cfg_scale: Annotated[float, Field(ge=1, le=30)] = 7
+    width: Annotated[int, Field(ge=64, le=2048)] = 512
+    height: Annotated[int, Field(ge=64, le=2048)] = 512
 
 
 class QualityLevel(Enum):

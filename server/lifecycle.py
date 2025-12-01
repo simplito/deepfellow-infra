@@ -20,8 +20,9 @@ from fastapi import FastAPI
 
 from server.applicationcontext import ApplicationContext
 from server.config import ConfigError, load_config
-from server.docker import has_gpu_support
+from server.docker import create_docker_service
 from server.endpointregistry import EndpointRegistry
+from server.portservice import PortService
 from server.serviceprovider import ServiceProvider
 from server.services.coqui_service import CoquiService
 from server.services.custom_service import CustomService
@@ -53,7 +54,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """
     # Definitions
     try:
-        await has_gpu_support()
         try:
             app.state.config = config = load_config()
         except ConfigError as e:
@@ -71,19 +71,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         app.state.endpoint_registry = endpoint_registry = EndpointRegistry(config, parent_infra)
         app.state.infra_websocket_server = InfraWebsocketServer(config, parent_infra, endpoint_registry)
         app.state.context = context = ApplicationContext(endpoint_registry, config, service_provider, services_manager)
+        app.state.port_service = port_service = PortService()
+        app.state.docker_service = docker_service = await create_docker_service(port_service, config)
         app.state.model_downloader = model_downloader = ModelDownloader(app.state.config)
 
+        model_input = (config, endpoint_registry, service_provider, model_downloader, docker_service)
+
         # Register services
-        services_manager.register_service(OllamaService(context, endpoint_registry, service_provider, model_downloader))
-        services_manager.register_service(SpeachesAIService(context, endpoint_registry, service_provider, model_downloader))
-        services_manager.register_service(StableDiffusionService(context, endpoint_registry, service_provider, model_downloader))
-        services_manager.register_service(LLamacppService(context, endpoint_registry, service_provider, model_downloader))
-        services_manager.register_service(VllmService(context, endpoint_registry, service_provider, model_downloader))
-        services_manager.register_service(CustomService(context, endpoint_registry, service_provider, model_downloader))
-        services_manager.register_service(CoquiService(context, endpoint_registry, service_provider, model_downloader))
-        services_manager.register_service(SindriService(context, endpoint_registry, service_provider, model_downloader))
-        services_manager.register_service(OpenAIService(context, endpoint_registry, service_provider, model_downloader))
-        services_manager.register_service(GoogleAIService(context, endpoint_registry, service_provider, model_downloader))
+        services_manager.register_service(OllamaService(*model_input))
+        services_manager.register_service(SpeachesAIService(*model_input))
+        services_manager.register_service(StableDiffusionService(*model_input))
+        services_manager.register_service(LLamacppService(*model_input))
+        services_manager.register_service(VllmService(*model_input))
+        services_manager.register_service(CustomService(*model_input))
+        services_manager.register_service(CoquiService(*model_input))
+        services_manager.register_service(SindriService(*model_input))
+        services_manager.register_service(OpenAIService(*model_input))
+        services_manager.register_service(GoogleAIService(*model_input))
 
         # Load functions
         await context.load_services()

@@ -39,7 +39,7 @@ router = APIRouter(prefix="/admin/services/{service_id}/models", tags=["Services
 )
 async def install_model(
     model: Annotated[InstallModelIn, Body()],
-    service_id: Annotated[str, Path(..., description="The ID of the service to use.")],
+    service_id: Annotated[str, Path(description="The ID of the service to use.")],
     query: Annotated[ModelIdQuery, Query()],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
@@ -58,7 +58,7 @@ async def install_model(
 )
 async def uninstall_model(
     model: Annotated[UninstallModelIn, Body()],
-    service_id: Annotated[str, Path(..., description="The ID of the service to use.")],
+    service_id: Annotated[str, Path(description="The ID of the service to use.")],
     query: Annotated[ModelIdQuery, Query()],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
@@ -73,7 +73,7 @@ async def uninstall_model(
     summary="Retrieve the model from the service.",
 )
 async def retrieve_model(
-    service_id: Annotated[str, Path(..., description="The ID of the service to use.")],
+    service_id: Annotated[str, Path(description="The ID of the service to use.")],
     query: Annotated[ModelIdQuery, Query()],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
@@ -88,7 +88,7 @@ async def retrieve_model(
 )
 async def list_model(
     filters: Annotated[ListModelsFilters, Query()],
-    service_id: Annotated[str, Path(..., description="The ID of the service to use.")],
+    service_id: Annotated[str, Path(description="The ID of the service to use.")],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
 ) -> ListModelsOut:
@@ -102,7 +102,7 @@ async def list_model(
 )
 async def add_custom_model(
     model: Annotated[AddCustomModelIn, Body()],
-    service_id: Annotated[str, Path(..., description="The ID of the service to use.")],
+    service_id: Annotated[str, Path(description="The ID of the service to use.")],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
 ) -> AddCustomModelOut:
@@ -116,8 +116,8 @@ async def add_custom_model(
     summary="Remove custom model.",
 )
 async def remove_custom_model(
-    service_id: Annotated[str, Path(..., description="The ID of the service to use.")],
-    custom_model_id: Annotated[str, Path(..., description="The ID of the custom model to delete.")],
+    service_id: Annotated[str, Path(description="The ID of the service to use.")],
+    custom_model_id: Annotated[str, Path(description="The ID of the custom model to delete.")],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
 ) -> RemoveCustomModelOut:

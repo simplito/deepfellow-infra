@@ -11,12 +11,13 @@
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
-from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
+from server.applicationcontext import get_base_url
+from server.docker import DockerImage, DockerOptions
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
@@ -69,7 +70,7 @@ class SrvCustomModel:
 class SrvCustomCustomModel(BaseModel):
     id: str
     private: bool = True
-    default_prefix: str = Field(..., pattern=r"^[a-zA-Z0-9_-]+$")
+    default_prefix: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]+$")]
     size: str
     image: str
     image_port: int
@@ -90,7 +91,7 @@ class CustomConst:
 
 
 class CustomModelOptions(BaseModel):
-    prefix: str = Field(..., pattern=r"^[a-zA-Z0-9_-]+$")
+    prefix: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]+$")]
 
 
 class ModelInstalledInfo:
@@ -131,7 +132,7 @@ class CustomService(Base2Service[InstalledInfo]):
 
     def _after_init(self) -> None:
         self.models = dict[str, "SrvCustomModel"]()
-        subnet = self.application_context.get_docker_subnet()
+        subnet = self.docker_service.get_docker_subnet()
         for model in _const.models.copy():
             self.models[model] = _const.models[model](self, subnet)
 
@@ -238,14 +239,14 @@ class CustomService(Base2Service[InstalledInfo]):
         installed = info.models.get(model_id, None)
         if not installed:
             raise HTTPException(status_code=400, detail="Model not installed")
-        return self.application_context.get_docker_compose_file_path(installed.docker_options.name)
+        return self.docker_service.get_docker_compose_file_path(installed.docker_options.name)
 
     def _add_custom_model(self, model: CustomModel) -> None:
         parsed = try_parse_pydantic(SrvCustomCustomModel, model.data)
         if parsed.id in self.models:
             raise HTTPException(400, "Model with given id already exists.")
         name = normalize_name(parsed.id)
-        subnet = self.application_context.get_docker_subnet()
+        subnet = self.docker_service.get_docker_subnet()
         self.models[parsed.id] = SrvCustomModel(
             model_props=ModelProps(private=parsed.private),
             model_spec=self.get_defaut_model_spec(parsed.default_prefix),
@@ -255,7 +256,7 @@ class CustomService(Base2Service[InstalledInfo]):
             options=DockerOptions(
                 image_port=parsed.image_port,
                 name=name,
-                container_name=self.application_context.get_docker_container_name(name),
+                container_name=self.docker_service.get_docker_container_name(name),
                 image=parsed.image,
                 command=parsed.command,
                 use_gpu=parsed.use_gpu,
@@ -338,16 +339,16 @@ class CustomService(Base2Service[InstalledInfo]):
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
             model_dir = self._get_working_dir() / "models"
             model_dir.mkdir(parents=True, exist_ok=True)
-            subnet = self.application_context.get_docker_subnet()
+            subnet = self.docker_service.get_docker_subnet()
             docker_options = model.options
             await self._docker_pull(DockerImage(name=docker_options.image, size=model.size), stream)
-            docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
+            docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
                 options=options,
                 docker_options=docker_options,
-                container_host=get_container_host(subnet, docker_options.name),
-                container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                container_host=self.docker_service.get_container_host(subnet, docker_options.name),
+                container_port=self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port),
                 docker_exposed_port=docker_exposed_port,
                 registration_id="",
                 prefix=parsed_model_options.prefix,
@@ -370,7 +371,7 @@ class CustomService(Base2Service[InstalledInfo]):
         model = info.models[model_id]
         del info.models[model_id]
         self.endpoint_registry.unregister_custom_endpoint(model.prefix, model.registration_id)
-        await uninstall_docker(self.application_context, model.docker_options)
+        await self.docker_service.uninstall_docker(model.docker_options)
         if options.purge:
             # unsupported
             pass
@@ -391,7 +392,7 @@ _const = CustomConst(
             options=DockerOptions(
                 image_port=3000,
                 name="bentoml",
-                container_name=custom_service.application_context.get_docker_container_name("bentoml"),
+                container_name=custom_service.docker_service.get_docker_container_name("bentoml"),
                 image="gitlab2.simplito.com:5050/df/deepfellow-infra/bentomlexample:1.0.1",
                 command="serve",
                 env_vars={},
@@ -407,7 +408,7 @@ _const = CustomConst(
             options=DockerOptions(
                 image_port=8000,
                 name="easyocr",
-                container_name=custom_service.application_context.get_docker_container_name("easyocr"),
+                container_name=custom_service.docker_service.get_docker_container_name("easyocr"),
                 image="gitlab2.simplito.com:5050/df/df-ocr:1.0.1",
                 use_gpu=False,
                 env_vars={},

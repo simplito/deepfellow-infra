@@ -15,15 +15,12 @@ from pathlib import Path
 from aiohttp import ClientSession
 from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from server.applicationcontext import get_base_url, get_container_host, get_container_port
+from server.applicationcontext import get_base_url
 from server.docker import (
     DockerImage,
     DockerOptions,
-    has_gpu_support_sync,
-    install_and_run_docker,
-    uninstall_docker,
 )
 from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
 from server.ffmpeg import ffmpeg_audio_convert_async_gen
@@ -106,7 +103,7 @@ class ModelInstalledInfo:
 
 
 class CoquiOptions(BaseModel):
-    gpu: bool = Field(default_factory=lambda: has_gpu_support_sync())
+    gpu: bool
 
 
 class CoquiModelOptions(BaseModel):
@@ -184,6 +181,8 @@ class CoquiService(Base2Service[InstalledInfo]):
         )
 
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+        if "gpu" not in options.spec:
+            options.spec["gpu"] = self.docker_service.has_gpu_support
         parsed_options = try_parse_pydantic(CoquiOptions, options.spec)
         image = self._get_image(parsed_options.gpu)
 
@@ -213,7 +212,7 @@ class CoquiService(Base2Service[InstalledInfo]):
         installed = info.models.get(model_id, None)
         if not installed:
             raise HTTPException(status_code=400, detail="Model not installed")
-        return self.application_context.get_docker_compose_file_path(installed.docker.name)
+        return self.docker_service.get_docker_compose_file_path(installed.docker.name)
 
     async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
@@ -265,10 +264,10 @@ class CoquiService(Base2Service[InstalledInfo]):
             volumes = [f"{self._get_working_output_dir()}:/root/tts-output", f"{self._get_working_dir()}/models:/root/.local/share/tts"]
             image = self._get_image(info.parsed_options.gpu)
 
-            subnet = self.application_context.get_docker_subnet()
+            subnet = self.docker_service.get_docker_subnet()
             docker_options = DockerOptions(
                 name=f"{self.get_id()}-{model.docker_name}",
-                container_name=self.application_context.get_docker_container_name(f"{self.get_id()}-{model.docker_name}"),
+                container_name=self.docker_service.get_docker_container_name(f"{self.get_id()}-{model.docker_name}"),
                 image=image.name,
                 command=self._build_coqui_command(
                     CoquiCmdOptions(
@@ -295,7 +294,7 @@ class CoquiService(Base2Service[InstalledInfo]):
                     "start_period": "5s",
                 },
             )
-            docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
+            docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
@@ -303,8 +302,8 @@ class CoquiService(Base2Service[InstalledInfo]):
                 registered_name=registered_name,
                 options=options,
                 docker=docker_options,
-                container_host=get_container_host(subnet, docker_options.name),
-                container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                container_host=self.docker_service.get_container_host(subnet, docker_options.name),
+                container_port=self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port),
                 docker_exposed_port=docker_exposed_port,
                 registration_id="",
             )
@@ -356,7 +355,7 @@ class CoquiService(Base2Service[InstalledInfo]):
         del info.models[model_id]
         if model.type == "tts":
             self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
-        await uninstall_docker(self.application_context, model.docker)
+        await self.docker_service.uninstall_docker(model.docker)
         if options.purge:
             # unsupported
             pass

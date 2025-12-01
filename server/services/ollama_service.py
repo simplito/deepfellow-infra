@@ -14,11 +14,11 @@ from pathlib import Path
 from typing import Annotated, Literal, TypedDict
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, StringConstraints
 
-from server.applicationcontext import get_base_url, get_container_host, get_container_port
+from server.applicationcontext import get_base_url
 from server.config import get_main_dir
-from server.docker import DockerImage, DockerOptions, has_gpu_support_sync, install_and_run_docker, uninstall_docker
+from server.docker import DockerImage, DockerOptions
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
@@ -119,7 +119,7 @@ class ModelInstalledInfo(BaseModel):
 
 
 class OllamaOptions(BaseModel):
-    gpu: bool = Field(default_factory=lambda: has_gpu_support_sync())
+    gpu: bool
     num_parallel: int | None = None  # 3
     keep_alive: str = ""  # 60m
     is_flash_attention: bool | None = None  # False
@@ -249,13 +249,15 @@ class OllamaService(Base2Service[InstalledInfo]):
         return _const.image
 
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+        if "gpu" not in options.spec:
+            options.spec["gpu"] = self.docker_service.has_gpu_support
         parsed_options = try_parse_pydantic(OllamaOptions, options.spec)
         image = self._get_image()
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)
             volumes = [f"{self._get_working_dir()}/main:/root/.ollama"]
-            subnet = self.application_context.get_docker_subnet()
+            subnet = self.docker_service.get_docker_subnet()
             envs = dict[str, str]()
             if parsed_options.num_parallel is not None:
                 envs["OLLAMA_NUM_PARALLEL"] = str(parsed_options.num_parallel)
@@ -269,7 +271,7 @@ class OllamaService(Base2Service[InstalledInfo]):
                 envs["OLLAMA_KV_CACHE_TYPE"] = str(parsed_options.kv_cache_type)
             docker_options = DockerOptions(
                 name="ollama",
-                container_name=self.application_context.get_docker_container_name("ollama"),
+                container_name=self.docker_service.get_docker_container_name("ollama"),
                 image=_const.image.name,
                 image_port=11434,
                 use_gpu=parsed_options.gpu,
@@ -285,14 +287,14 @@ class OllamaService(Base2Service[InstalledInfo]):
                     "start_period": "10s",
                 },
             )
-            docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
+            docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
             info = InstalledInfo(
                 docker=docker_options,
                 models={},
                 options=options,
                 parsed_options=parsed_options,
-                container_host=get_container_host(subnet, docker_options.name),
-                container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                container_host=self.docker_service.get_container_host(subnet, docker_options.name),
+                container_port=self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port),
                 docker_exposed_port=docker_exposed_port,
             )
             stream.emit(StreamChunkProgress(type="progress", value=1))
@@ -308,7 +310,7 @@ class OllamaService(Base2Service[InstalledInfo]):
             if model.type == "embedding":
                 self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
         self.installed = None
-        await uninstall_docker(self.application_context, info.docker)
+        await self.docker_service.uninstall_docker(info.docker)
         if options.purge:
             await self._clear_working_dir()
 
@@ -319,7 +321,7 @@ class OllamaService(Base2Service[InstalledInfo]):
             raise HTTPException(400, "Service not installed")
         if model_id:
             raise HTTPException(400, "Docker is not bound with this object")
-        return self.application_context.get_docker_compose_file_path(info.docker.name)
+        return self.docker_service.get_docker_compose_file_path(info.docker.name)
 
     def service_has_docker(self) -> bool:
         """Return true when docker is started when service is installed."""

@@ -14,8 +14,8 @@ from pathlib import Path
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerImage, DockerOptions, install_and_run_docker, uninstall_docker
+from server.applicationcontext import get_base_url
+from server.docker import DockerImage, DockerOptions
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
@@ -170,10 +170,10 @@ class SindriService(Base2Service[InstalledInfo]):
             with config_path.open("w", encoding="utf-8") as f:
                 f.write(data)
             volumes = [f"{config_path}:/config.yaml"]
-            subnet = self.application_context.get_docker_subnet()
+            subnet = self.docker_service.get_docker_subnet()
             docker_options = DockerOptions(
                 name="sindri",
-                container_name=self.application_context.get_docker_container_name("sindri"),
+                container_name=self.docker_service.get_docker_container_name("sindri"),
                 image=_const.image.name,
                 command="serve /config.yaml",
                 image_port=8080,
@@ -188,14 +188,14 @@ class SindriService(Base2Service[InstalledInfo]):
                     "start_period": "5s",
                 },
             )
-            docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
+            docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
             info = InstalledInfo(
                 docker=docker_options,
                 models={},
                 options=options,
                 parsed_options=parsed_options,
-                container_host=get_container_host(subnet, docker_options.name),
-                container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                container_host=self.docker_service.get_container_host(subnet, docker_options.name),
+                container_port=self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port),
                 docker_exposed_port=docker_exposed_port,
             )
             stream.emit(StreamChunkProgress(type="progress", value=1))
@@ -209,7 +209,7 @@ class SindriService(Base2Service[InstalledInfo]):
             if model.type == "llm":
                 self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
         self.installed = None
-        await uninstall_docker(self.application_context, info.docker)
+        await self.docker_service.uninstall_docker(info.docker)
         if options.purge:
             await self._clear_working_dir()
 
@@ -220,7 +220,7 @@ class SindriService(Base2Service[InstalledInfo]):
             raise HTTPException(400, "Service not installed")
         if model_id:
             raise HTTPException(400, "Docker is not bound with this object")
-        return self.application_context.get_docker_compose_file_path(info.docker.name)
+        return self.docker_service.get_docker_compose_file_path(info.docker.name)
 
     def service_has_docker(self) -> bool:
         """Return true when docker is started when service is installed."""
