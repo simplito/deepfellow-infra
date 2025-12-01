@@ -14,7 +14,7 @@ from typing import Literal
 from urllib.parse import urljoin
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
@@ -47,7 +47,7 @@ class RemoteModel(BaseModel):
     real_model_name: str | None = None
     completions: bool = True
     legacy_completions: bool = True
-    props: ModelProps = Field(default_factory=lambda: ModelProps(private=False))
+    props: ModelProps = ModelProps(private=False)
     custom: CustomModelId | None = None
 
 

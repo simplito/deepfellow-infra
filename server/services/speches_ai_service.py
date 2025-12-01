@@ -15,10 +15,10 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerImage, DockerOptions, has_gpu_support_sync, install_and_run_docker, uninstall_docker
+from server.applicationcontext import get_base_url
+from server.docker import DockerImage, DockerOptions
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
@@ -392,7 +392,7 @@ class ModelInstalledInfo(BaseModel):
 
 
 class SpeachesAIOptions(BaseModel):
-    gpu: bool = Field(default_factory=lambda: has_gpu_support_sync())
+    gpu: bool
 
 
 class SpeachesAIModelOptions(BaseModel):
@@ -468,16 +468,18 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         return _const.image_gpu if gpu else _const.image_cpu
 
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+        if "gpu" not in options.spec:
+            options.spec["gpu"] = self.docker_service.has_gpu_support
         parsed_options = try_parse_pydantic(SpeachesAIOptions, options.spec)
         volumes = [f"{self._get_working_dir()}/cache:/home/ubuntu/.cache/huggingface/hub"]
         image = self._get_image(parsed_options.gpu)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)
-            subnet = self.application_context.get_docker_subnet()
+            subnet = self.docker_service.get_docker_subnet()
             docker_options = DockerOptions(
                 name="speaches-ai",
-                container_name=self.application_context.get_docker_container_name("speaches-ai"),
+                container_name=self.docker_service.get_docker_container_name("speaches-ai"),
                 image=image.name,
                 image_port=8000,
                 use_gpu=parsed_options.gpu,
@@ -496,14 +498,14 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
                     "start_period": "5s",
                 },
             )
-            docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
+            docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
             info = InstalledInfo(
                 docker=docker_options,
                 models={},
                 options=options,
                 parsed_options=parsed_options,
-                container_host=get_container_host(subnet, docker_options.name),
-                container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                container_host=self.docker_service.get_container_host(subnet, docker_options.name),
+                container_port=self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port),
                 docker_exposed_port=docker_exposed_port,
             )
             stream.emit(StreamChunkProgress(type="progress", value=1))
@@ -519,7 +521,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             if model.type == "stt":
                 self.endpoint_registry.unregister_audio_transcriptions(model.registered_name, model.registration_id)
         self.installed = None
-        await uninstall_docker(self.application_context, info.docker)
+        await self.docker_service.uninstall_docker(info.docker)
         if options.purge:
             await self._clear_working_dir()
 
@@ -530,7 +532,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             raise HTTPException(400, "Service not installed")
         if model_id:
             raise HTTPException(400, "Docker is not bound with this object")
-        return self.application_context.get_docker_compose_file_path(info.docker.name)
+        return self.docker_service.get_docker_compose_file_path(info.docker.name)
 
     def service_has_docker(self) -> bool:
         """Return true when docker is started when service is installed."""

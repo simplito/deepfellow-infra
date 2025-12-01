@@ -111,138 +111,173 @@ ChatMessage = DeveloperMessage | SystemMessage | UserMessage | BaseMessage | Ass
 
 
 class ToolFunction(BaseModel):
-    name: str = Field(..., description="The name of the function to be called")
-    description: str = Field("", description="A description of what the function does")
-    parameters: dict[str, Any] = Field(..., description="The parameters the function accepts")
+    name: Annotated[str, Field(description="The name of the function to be called")]
+    description: Annotated[str, Field(description="A description of what the function does")] = ""
+    parameters: Annotated[dict[str, Any], Field(description="The parameters the function accepts")]
     strict: bool = False
 
 
 class ToolChat(BaseModel):
     type: Literal["function"] = "function"
-    function: ToolFunction = Field(..., description="The function definition")
+    function: Annotated[ToolFunction, Field(description="The function definition")]
 
 
 class ResponseFormat(BaseModel):
-    type: str = Field("text", description="The format type, either 'text' or 'json_object'")
+    type: Annotated[str, Field(description="The format type, either 'text' or 'json_object'")] = "text"
 
 
 class ChatCompletionRequest(BaseModel):
-    messages: list[ChatMessage] = Field(
-        ...,
-        description="A list of messages comprising the conversation so far. Depending on the model you use,"
-        "different message types (modalities) are supported, like text, images, and audio.",
-    )
-    model: str = Field(
-        ...,
-        description="Model ID used to generate the response, like llama3 or deepseek-r1. "
-        "Deepfellow supports a wide range of models with different capabilities, and performance "
-        "characteristics.",
-    )
-    tools: list[ToolChat] | None = Field(
-        None,
-        description=(
-            "A list of tools the model may call. Currently, only functions are supported as a tool. Use this to "
-            "provide a list of functions the model may generate JSON inputs for."
+    messages: Annotated[
+        list[ChatMessage],
+        Field(
+            description=(
+                "A list of messages comprising the conversation so far. Depending on the model you use, "
+                "different message types (modalities) are supported, like text, images, and audio."
+            )
         ),
-    )
-    tool_choice: str | dict[str, Any] | None = Field(
-        None,
-        description=(
-            "Controls which (if any) tool is called by the model. `null` means the model will not call any tool "
-            "and instead generates a message. `auto` means the model can pick between generating a message or calling "
-            "one or more tools. `required` means the model must call one or more tools. Specifying a particular tool "
-            'via `{"type": "function", "function": {"name": "my_function"}}` forces the model to call that tool.\n\n'
-            "`none` is the default when no tools are present. `auto` is the default if tools are present."
+    ]
+    model: Annotated[
+        str,
+        Field(
+            description=(
+                "Model ID used to generate the response, like llama3 or deepseek-r1. "
+                "Deepfellow supports a wide range of models with different capabilities, and performance "
+                "characteristics."
+            )
         ),
-    )
-    temperature: float | None = Field(
-        None,
-        description=(
-            "What sampling temperature to use, between `0` and `2`. Higher values like `0.8` will make the output more "
-            "random, while lower values like `0.2` will make it more focused and deterministic. We generally recommend "
-            "altering this or `top_p` but not both."
+    ]
+    tools: Annotated[
+        list[ToolChat] | None,
+        Field(
+            description=(
+                "A list of tools the model may call. Currently, only functions are supported as a tool. Use this to "
+                "provide a list of functions the model may generate JSON inputs for."
+            )
         ),
-    )
-    top_p: float | None = Field(
-        None,
-        description=(
-            "An alternative to sampling with temperature, called nucleus sampling, where the model considers the "
-            "results of the tokens with `top_p` probability mass. So `0.1` means only the tokens comprising the top "
-            "10% probability mass are considered. We generally recommend altering this or `temperature` but not both."
+    ] = None
+    tool_choice: Annotated[
+        str | dict[str, Any] | None,
+        Field(
+            description=(
+                "Controls which (if any) tool is called by the model. `null` means the model will not call any tool "
+                "and instead generates a message. `auto` means the model can pick between generating a message or calling "
+                "one or more tools. `required` means the model must call one or more tools. Specifying a particular tool "
+                'via `{"type": "function", "function": {"name": "my_function"}}` forces the model to call that tool.'
+                "`none` is the default when no tools are present. `auto` is the default if tools are present."
+            )
         ),
-    )
-    n: int | None = Field(
-        None,
-        description=(
-            "How many chat completion choices to generate for each input message. Keep `n` as `1` to receive one choice per input message."
+    ] = None
+    temperature: Annotated[
+        float | None,
+        Field(
+            description=(
+                "What sampling temperature to use, between `0` and `2`. Higher values like `0.8` will make the output more "
+                "random, while lower values like `0.2` will make it more focused and deterministic. We generally recommend "
+                "altering this or `top_p` but not both."
+            )
         ),
-    )
-    stream: bool | None = Field(
-        None,
-        description=(
-            "If set to `true`, the model response data will be streamed to the client as it is generated using server-sent events."
+    ] = None
+    top_p: Annotated[
+        float | None,
+        Field(
+            description=(
+                "An alternative to sampling with temperature, called nucleus sampling, where the model considers the "
+                "results of the tokens with `top_p` probability mass. So `0.1` means only the tokens comprising the top "
+                "10% probability mass are considered. We generally recommend altering this or `temperature` but not both."
+            )
         ),
-    )
+    ] = None
+    n: Annotated[
+        int | None,
+        Field(
+            description=(
+                "How many chat completion choices to generate for each input message."
+                "Keep `n` as `1` to receive one choice per input message."
+            )
+        ),
+    ] = None
+    stream: Annotated[
+        bool | None,
+        Field(
+            description=(
+                "If set to `true`, the model response data will be streamed to the client as it is generated using server-sent events."
+            )
+        ),
+    ] = None
     stream_options: "StreamOptions | None" = None
-    max_completion_tokens: int | None = Field(
-        None,
-        description=(
-            "An upper bound for the number of tokens that can be generated for a completion, including visible "
-            "output tokens and reasoning tokens."
+    max_completion_tokens: Annotated[
+        int | None,
+        Field(
+            description=(
+                "An upper bound for the number of tokens that can be generated for a completion, including visible "
+                "output tokens and reasoning tokens."
+            )
         ),
-    )
-    max_tokens: int | None = Field(
-        None,
-        description=(
-            "The maximum number of tokens that can be generated in the chat completion. This value can be "
-            "used to control costs for text generated via API.\n\n This value is now deprecated in favor of "
-            "`max_completion_tokens`, and is not compatible with o-series models."
+    ] = None
+    max_tokens: Annotated[
+        int | None,
+        Field(
+            description=(
+                "The maximum number of tokens that can be generated in the chat completion. This value can be "
+                "used to control costs for text generated via API. This value is now deprecated in favor of "
+                "`max_completion_tokens`, and is not compatible with o-series models."
+            ),
+            deprecated=True,
         ),
-        deprecated=True,
-    )
-    response_format: ResponseFormat | None = Field(
-        None,
-        description=(
-            "An object specifying the format that the model must output.\n\n Setting to "
-            '`{"type": "json_schema", "json_schema": {...}}` enables Structured Outputs which ensures the model will '
-            'match your supplied JSON schema. \n\n Setting to `{"type": "json_object"}` enables the older JSON mode, '
-            "which ensures the message the model generates is valid JSON. Using `json_schema` is preferred for "
-            "models that support it."
+    ] = None
+    response_format: Annotated[
+        ResponseFormat | None,
+        Field(
+            description=(
+                "An object specifying the format that the model must output. Setting to "
+                '`{"type": "json_schema", "json_schema": {...}}` enables Structured Outputs which ensures the model will '
+                'match your supplied JSON schema. Setting to `{"type": "json_object"}` enables the older JSON mode, '
+                "which ensures the message the model generates is valid JSON. Using `json_schema` is preferred for "
+                "models that support it."
+            )
         ),
-    )
-    seed: int | None = Field(
-        None,
-        description=(
-            "If specified, our system will make a best effort to sample deterministically, such that repeated "
-            "requests with the same seed and parameters should return the same result. Determinism is not guaranteed, "
-            "and you should refer to the `system_fingerprint` response parameter to monitor changes in the backend."
+    ] = None
+    seed: Annotated[
+        int | None,
+        Field(
+            description=(
+                "If specified, our system will make a best effort to sample deterministically, such that repeated "
+                "requests with the same seed and parameters should return the same result. Determinism is not guaranteed, "
+                "and you should refer to the `system_fingerprint` response parameter to monitor changes in the backend."
+            )
         ),
-    )
-    stop: str | list[str] | None = Field(
-        None,
-        description=(
-            "Might not be supported with latest reasoning models like `o3` and `o4-mini`.\n\n Up to 4 sequences where "
-            "the API will stop generating further tokens. The returned text will not contain the stop sequence."
+    ] = None
+    stop: Annotated[
+        str | list[str] | None,
+        Field(
+            description=(
+                "Might not be supported with latest reasoning models like `o3` and `o4-mini`. Up to 4 sequences where "
+                "the API will stop generating further tokens. The returned text will not contain the stop sequence."
+            )
         ),
-    )
-    user: str | None = Field(
-        None,
-        description=("A stable identifier for your end-users. Used to boost cache hit rates by better bucketing similar requests."),
-    )
-
-    safety_identifier: str | None = Field(
-        None,
-        description=(
-            "A stable identifier used to help detect users of your application that may be violating OpenAI's usage policies. "
-            "The IDs should be a string that uniquely identifies each user. We recommend hashing their username or email address, "
-            "in order to avoid sending us any identifying information."
+    ] = None
+    user: Annotated[
+        str | None,
+        Field(description=("A stable identifier for your end-users. Used to boost cache hit rates by better bucketing similar requests.")),
+    ] = None
+    safety_identifier: Annotated[
+        str | None,
+        Field(
+            description=(
+                "A stable identifier used to help detect users of your application that may be violating OpenAI's usage policies. "
+                "The IDs should be a string that uniquely identifies each user. We recommend hashing their username or email address, "
+                "in order to avoid sending us any identifying information."
+            )
         ),
-    )
-
-    prompt_cache_key: str | None = Field(
-        None,
-        description=("Used by OpenAI to cache responses for similar requests to optimize your cache hit rates. Replaces the user field."),
-    )
+    ] = None
+    prompt_cache_key: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Used by OpenAI to cache responses for similar requests to optimize your cache hit rates. Replaces the user field."
+            )
+        ),
+    ] = None
 
     model_config = {
         "json_schema_extra": {
@@ -263,48 +298,53 @@ class ChatCompletionRequest(BaseModel):
 
 
 class EmbeddingRequest(BaseModel):
-    input: str | list[str] = Field(description="The input text(s) to embed")
-    model: str = Field(description="ID of the model to use for embedding", examples=["llama3"])
-    dimensions: int | None = Field(None, description="The number of dimensions to return for each embedding")
-    encoding_format: str | None = Field(None, description="The encoding format of the embeddings", examples=["float"])
-    user: str | None = Field(None, description="A unique identifier for the end-user", examples=["user123"])
+    input: Annotated[str | list[str], Field(description="The input text(s) to embed")]
+    model: Annotated[str, Field(description="ID of the model to use for embedding", examples=["llama3"])]
+    dimensions: Annotated[int | None, Field(description="The number of dimensions to return for each embedding")] = None
+    encoding_format: Annotated[str | None, Field(description="The encoding format of the embeddings", examples=["float"])] = None
+    user: Annotated[str | None, Field(description="A unique identifier for the end-user", examples=["user123"])] = None
 
     model_config = {"json_schema_extra": {"examples": [{"input": "Hello, how are you?", "model": "llama3", "encoding_format": "float"}]}}
 
 
 class ImagesRequest(BaseModel):
-    prompt: str = Field()
-    background: Literal["auto", "transparent", "opaque"] | None = Field(default=None)
-    model: str = Field()
-    moderation: str | None = Field(default=None)
-    n: int | None = Field(None, ge=1, le=4)
-    output_compression: int | None = Field(95, ge=0, le=100)
-    output_format: Literal["png", "webp", "jpeg"] | None = Field(default=None)
-    quality: Literal["low", "medium", "high", "auto"] | None = Field(default=None)
-    response_format: Literal["url", "b64_json"] | None = Field(default=None)
-    size: str | None = Field(default=None)
-    style: str | None = Field(default=None)
-    user: str | None = Field(default=None)
-    partial_images: int | None = Field(default=None)
-    stream: bool | None = Field(default=None)
+    prompt: str
+    background: Literal["auto", "transparent", "opaque"] | None = None
+    model: str
+    moderation: str | None = None
+    n: Annotated[int | None, Field(ge=1, le=4)] = None
+    output_compression: Annotated[int | None, Field(ge=0, le=100)] = 95
+    output_format: Literal["png", "webp", "jpeg"] | None = None
+    quality: Literal["low", "medium", "high", "auto"] | None = None
+    response_format: Literal["url", "b64_json"] | None = None
+    size: str | None = None
+    style: str | None = None
+    user: str | None = None
+    partial_images: int | None = None
+    stream: bool | None = None
 
 
 class CreateSpeechRequest(BaseModel):
-    input: str = Field(..., max_length=4096, description="The text to generate audio for. The maximum length is 4096 characters.")
-    model: str = Field(..., description="One of the available TTS models.")
-    voice: str | None = Field(default=None, description="The voice to use when generating the audio.")
-    instructions: str | None = Field(default=None, description="Control the voice of your generated audio with additional instructions.")
-    format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] | None = Field(
-        default=None,
-        description="The format to audio in. Supported formats are mp3, opus, aac, flac, wav, and pcm.",
-    )
-    speed: float | None = Field(
-        default=None, ge=0.25, le=4.0, description="The speed of the generated audio. Select a value from 0.25 to 4.0. 1.0 is the default."
-    )
-    stream_format: Literal["sse", "audio"] | None = Field(
-        default=None,
-        description="The format to stream the audio in. Supported formats are sse and audio. sse is not supported for tts-1 or tts-1-hd.",
-    )
+    input: Annotated[str, Field(max_length=4096, description="The text to generate audio for. The maximum length is 4096 characters.")]
+    model: Annotated[str, Field(description="One of the available TTS models.")]
+    voice: Annotated[str | None, Field(description="The voice to use when generating the audio.")] = None
+    instructions: Annotated[str | None, Field(description="Control the voice of your generated audio with additional instructions.")] = None
+    format: Annotated[
+        Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] | None,
+        Field(description="The format to audio in. Supported formats are mp3, opus, aac, flac, wav, and pcm."),
+    ] = None
+    speed: Annotated[
+        float | None,
+        Field(ge=0.25, le=4.0, description="The speed of the generated audio. Select a value from 0.25 to 4.0. 1.0 is the default."),
+    ] = None
+    stream_format: Annotated[
+        Literal["sse", "audio"] | None,
+        Field(
+            description=(
+                "The format to stream the audio in. Supported formats are sse and audio. sse is not supported for tts-1 or tts-1-hd."
+            )
+        ),
+    ] = None
 
 
 class ModelProps(BaseModel):
@@ -445,31 +485,43 @@ languages = [
 
 
 class AudioChunkingStrategy(BaseModel):
-    type: Literal["server_vad"] = Field(..., description="Must be set to 'server_vad' to enable manual chunking using server side VAD")
+    type: Annotated[Literal["server_vad"], Field(description="Must be set to 'server_vad' to enable manual chunking using server side VAD")]
 
-    prefix_padding_ms: int | None = Field(
-        default=None,
-        ge=0,
-        description="Amount of audio to include before the VAD detected speech (in milliseconds). "
-        "This ensures the beginning of speech is not cut off.",
-    )
+    prefix_padding_ms: Annotated[
+        int | None,
+        Field(
+            ge=0,
+            description=(
+                "Amount of audio to include before the VAD detected speech (in milliseconds). "
+                "This ensures the beginning of speech is not cut off."
+            ),
+        ),
+    ] = None
 
-    silence_duration_ms: int | None = Field(
-        default=None,
-        ge=0,
-        description="Duration of silence to detect speech stop (in milliseconds). "
-        "With shorter values the model will respond more quickly, "
-        "but may jump in on short pauses from the user.",
-    )
+    silence_duration_ms: Annotated[
+        int | None,
+        Field(
+            ge=0,
+            description=(
+                "Duration of silence to detect speech stop (in milliseconds). "
+                "With shorter values the model will respond more quickly, "
+                "but may jump in on short pauses from the user."
+            ),
+        ),
+    ] = None
 
-    threshold: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Sensitivity threshold (0.0 to 1.0) for voice activity detection. "
-        "A higher threshold will require louder audio to activate the model, "
-        "and thus might perform better in noisy environments.",
-    )
+    threshold: Annotated[
+        float | None,
+        Field(
+            ge=0.0,
+            le=1.0,
+            description=(
+                "Sensitivity threshold (0.0 to 1.0) for voice activity detection. "
+                "A higher threshold will require louder audio to activate the model, "
+                "and thus might perform better in noisy environments."
+            ),
+        ),
+    ] = None
 
 
 class FormSerializable(BaseModel):
@@ -479,57 +531,85 @@ class FormSerializable(BaseModel):
 
 
 class CreateTranscriptionRequest(FormSerializable):
-    model: str = Field(..., description="ID of the model to use.")
+    model: Annotated[str, Field(description="ID of the model to use.")]
     file: UploadFile = FastApiFile(
-        ...,
         description="The audio file object (not file name) in one of these formats: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, or webm.",
     )
-    temperature: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="The sampling temperature, between 0 and 1. Higher values like 0.8 will make the output more random, "
-        "while lower values like 0.2 will make it more focused and deterministic. If set to 0, the model will use log probability "
-        "to automatically increase the temperature until certain thresholds are hit.",
-    )
-    type: str | None = Field(default=None, description="The format type, either 'text' or 'json_object'")
-    chunking_strategy: Literal["auto"] | AudioChunkingStrategy | None = Field(
-        default=None,
-        description="Controls how the audio is cut into chunks."
-        'When set to "auto", the server first normalizes loudness and'
-        " then uses voice activity detection (VAD) to choose boundaries."
-        " server_vad object can be provided to tweak VAD detection parameters manually."
-        " If unset, the audio is transcribed as a single block.",
-    )
-    include: list[TranscriptionInclude] | None = Field(
-        default=None,
-        alias="include[]",
-        description="Additional information to include in the transcription response. "
-        "logprobs will return the log probabilities of the tokens in the response to "
-        "understand the model's confidence in the transcription.",
-    )
-    language: str | None = Field(
-        default=None,
-        description="The language of the input audio. Supplying the input language in ISO-639-1 (e.g. en) "
-        "format will improve accuracy and latency.",
-    )
-    prompt: str | None = Field(
-        default=None,
-        description="An optional text to guide the model's style or continue a previous audio segment. "
-        "The prompt should match the audio language.",
-    )
-    stream: bool | None = Field(
-        default=None,
-        description="If set to true, the model response data will be streamed to the client as it is generated using server-sent events.",
-    )
-    timestamp_granularities: list[Literal["word", "segment"]] | None = Field(
-        default=None,
-        alias="timestamp_granularities[]",
-        description="The timestamp granularities to populate for this transcription. response_format must be set verbose_json to use "
-        "timestamp granularities. "
-        "Either or both of these options are supported: word, or segment. Note: There is no additional latency for segment timestamps, "
-        "but generating word timestamps incurs additional latency.",
-    )
+    temperature: Annotated[
+        float | None,
+        Field(
+            ge=0.0,
+            le=1.0,
+            description=(
+                "The sampling temperature, between 0 and 1. Higher values like 0.8 will make the output more random, "
+                "while lower values like 0.2 will make it more focused and deterministic. If set to 0, the model will use log probability "
+                "to automatically increase the temperature until certain thresholds are hit."
+            ),
+        ),
+    ] = None
+    type: Annotated[str | None, Field(description="The format type, either 'text' or 'json_object'")] = None
+    chunking_strategy: Annotated[
+        Literal["auto"] | AudioChunkingStrategy | None,
+        Field(
+            description=(
+                "Controls how the audio is cut into chunks."
+                'When set to "auto", the server first normalizes loudness and'
+                " then uses voice activity detection (VAD) to choose boundaries."
+                " server_vad object can be provided to tweak VAD detection parameters manually."
+                " If unset, the audio is transcribed as a single block."
+            )
+        ),
+    ] = None
+    include: Annotated[
+        list[TranscriptionInclude] | None,
+        Field(
+            alias="include[]",
+            description=(
+                "Additional information to include in the transcription response. "
+                "logprobs will return the log probabilities of the tokens in the response to "
+                "understand the model's confidence in the transcription."
+            ),
+        ),
+    ] = None
+    language: Annotated[
+        str | None,
+        Field(
+            description=(
+                "The language of the input audio. Supplying the input language in ISO-639-1 (e.g. en) "
+                "format will improve accuracy and latency."
+            )
+        ),
+    ] = None
+    prompt: Annotated[
+        str | None,
+        Field(
+            description=(
+                "An optional text to guide the model's style or continue a previous audio segment. "
+                "The prompt should match the audio language."
+            )
+        ),
+    ] = None
+    stream: Annotated[
+        bool | None,
+        Field(
+            description=(
+                "If set to true, the model response data will be streamed to the client as it is generated using server-sent events."
+            )
+        ),
+    ] = None
+    timestamp_granularities: Annotated[
+        list[Literal["word", "segment"]] | None,
+        Field(
+            alias="timestamp_granularities[]",
+            description=(
+                "The timestamp granularities to populate for this transcription. response_format must be set verbose_json to use "
+                "timestamp granularities. "
+                "Either or both of these options are supported: word, or segment."
+                "Note: There is no additional latency for segment timestamps, "
+                "but generating word timestamps incurs additional latency."
+            ),
+        ),
+    ] = None
 
     @field_validator("language", mode="after")
     def _check_language(cls, v: str | None) -> str | None:  # noqa: N805
@@ -570,60 +650,46 @@ type StopSequenceList = Annotated[list[str], Field(max_length=4)]
 class StreamOptions(BaseModel):
     """Options for streaming response."""
 
-    include_obfuscation: bool | None = Field(
-        default=None, description="Enable stream obfuscation to normalize payload sizes as mitigation for side-channel attacks."
-    )
-    include_usage: bool | None = Field(default=None, description="Include token usage statistics in the stream.")
+    include_obfuscation: Annotated[
+        bool | None, Field(description="Enable stream obfuscation to normalize payload sizes as mitigation for side-channel attacks.")
+    ] = None
+    include_usage: Annotated[bool | None, Field(description="Include token usage statistics in the stream.")] = None
 
 
 class CompletionLegacyRequest(BaseModel):
-    model: str = Field(description="ID of the model to use.")
-
-    prompt: str | list[str] | list[int] | list[list[int]] = Field(
-        default=...,
-        description="The prompt(s) to generate completions for - can be string, array of strings, tokens, or token arrays.",
+    model: Annotated[str, Field(description="ID of the model to use.")]
+    prompt: Annotated[
+        str | list[str] | list[int] | list[list[int]],
+        Field(description="The prompt(s) to generate completions for - can be string, array of strings, tokens, or token arrays."),
+    ]
+    best_of: Annotated[
+        int | None, Field(ge=1, description="Generate best_of completions and return the best one. Must be greater than n if both are set.")
+    ] = None
+    echo: Annotated[bool | None, Field(description="Echo back the prompt in addition to the completion.")] = None
+    frequency_penalty: Annotated[
+        float | None, Field(ge=-2.0, le=2.0, description="Penalize new tokens based on their existing frequency (-2.0 to 2.0).")
+    ] = None
+    logit_bias: Annotated[
+        dict[str, Bias] | None, Field(description="Modify likelihood of specified tokens appearing (token ID -> bias from -100 to 100).")
+    ] = None
+    logprobs: Annotated[int | None, Field(ge=0, le=5, description="Include log probabilities on the most likely tokens (max 5).")] = None
+    max_tokens: Annotated[int | None, Field(ge=1, description="Maximum number of tokens to generate in the completion.")] = None
+    n: Annotated[int | None, Field(ge=1, description="How many completions to generate for each prompt.")] = None
+    presence_penalty: Annotated[
+        float | None,
+        Field(ge=-2.0, le=2.0, description="Penalize new tokens based on whether they appear in the text so far (-2.0 to 2.0)."),
+    ] = None
+    seed: Annotated[int | None, Field(description="Seed for deterministic sampling (best effort, not guaranteed).")] = None
+    stop: Annotated[str | StopSequenceList | None, Field(description="Up to 4 sequences where the API will stop generating.")] = None
+    stream: Annotated[bool | None, Field(description="Stream back partial progress as server-sent events.")] = None
+    stream_options: Annotated[StreamOptions | None, Field(description="Options for streaming response (only used when stream=True).")] = (
+        None
     )
-
-    best_of: int | None = Field(
-        default=None, ge=1, description="Generate best_of completions and return the best one. Must be greater than n if both are set."
-    )
-
-    echo: bool | None = Field(default=None, description="Echo back the prompt in addition to the completion.")
-
-    frequency_penalty: float | None = Field(
-        default=None, ge=-2.0, le=2.0, description="Penalize new tokens based on their existing frequency (-2.0 to 2.0)."
-    )
-
-    logit_bias: dict[str, Bias] | None = Field(
-        default=None, description="Modify likelihood of specified tokens appearing (token ID -> bias from -100 to 100)."
-    )
-
-    logprobs: int | None = Field(default=None, ge=0, le=5, description="Include log probabilities on the most likely tokens (max 5).")
-
-    max_tokens: int | None = Field(default=None, ge=1, description="Maximum number of tokens to generate in the completion.")
-
-    n: int | None = Field(default=None, ge=1, description="How many completions to generate for each prompt.")
-
-    presence_penalty: float | None = Field(
-        default=None, ge=-2.0, le=2.0, description="Penalize new tokens based on whether they appear in the text so far (-2.0 to 2.0)."
-    )
-
-    seed: int | None = Field(default=None, description="Seed for deterministic sampling (best effort, not guaranteed).")
-
-    stop: str | StopSequenceList | None = Field(default=None, description="Up to 4 sequences where the API will stop generating.")
-
-    stream: bool | None = Field(default=None, description="Stream back partial progress as server-sent events.")
-
-    stream_options: StreamOptions | None = Field(default=None, description="Options for streaming response (only used when stream=True).")
-
-    suffix: str | None = Field(default=None, description="Suffix after completion of inserted text.")
-
-    temperature: float | None = Field(
-        default=None, ge=0.0, le=2.0, description="Sampling temperature (0-2). Higher = more random, lower = more deterministic."
-    )
-
-    top_p: float | None = Field(
-        default=None, ge=0.0, le=1.0, description="Nucleus sampling - consider tokens with top_p probability mass (0-1)."
-    )
-
-    user: str | None = Field(default=None, description="Unique identifier for end-user to help monitor and detect abuse.")
+    suffix: Annotated[str | None, Field(description="Suffix after completion of inserted text.")] = None
+    temperature: Annotated[
+        float | None, Field(ge=0.0, le=2.0, description="Sampling temperature (0-2). Higher = more random, lower = more deterministic.")
+    ] = None
+    top_p: Annotated[
+        float | None, Field(ge=0.0, le=1.0, description="Nucleus sampling - consider tokens with top_p probability mass (0-1).")
+    ] = None
+    user: Annotated[str | None, Field(description="Unique identifier for end-user to help monitor and detect abuse.")] = None

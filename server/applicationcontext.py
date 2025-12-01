@@ -11,9 +11,7 @@
 
 import asyncio
 import logging
-import socket
 import time
-from pathlib import Path
 
 from server.config import AppSettings
 from server.services_manager import ServicesManager
@@ -38,15 +36,7 @@ class ApplicationContext:
         self.services_manager = services_manager
         self.allocated_ports = set[int]()
 
-    def get_docker_container_name(self, name: str) -> str | None:
-        """Return docker container name."""
-        return self.config.container_name_prefix + name if self.config.container_name_prefix else None
-
-    def get_docker_subnet(self) -> str | None:
-        """Return docker subnet name or None if it is not set."""
-        return self.config.docker_subnet if self.config.docker_subnet else None
-
-    async def load_service(self, service_id: str, service_cfg: ServiceRawConfig) -> None:
+    async def _load_service(self, service_id: str, service_cfg: ServiceRawConfig) -> None:
         """Load single service."""
         start = time.time()
         logger.info(f"{service_id} loading...")  # noqa: G004
@@ -59,65 +49,10 @@ class ApplicationContext:
     async def load_services(self) -> None:
         """Load all service from bootstrap."""
         info = self.service_provider.load()
-        tasks = [asyncio.create_task(self.load_service(service_id, service_cfg)) for service_id, service_cfg in info["services"].items()]
+        tasks = [asyncio.create_task(self._load_service(service_id, service_cfg)) for service_id, service_cfg in info["services"].items()]
         await asyncio.gather(*tasks)
-
-    def get_free_port(self, start: int = 20_000, end: int = 30_000) -> int:
-        """Get next free port."""
-        for port in range(start, end + 1):
-            if port in self.allocated_ports:
-                continue
-            if self.is_port_available(port):
-                self.allocated_ports.add(port)
-                return port
-        raise RuntimeError("No free port in range", (start, end))
-
-    def get_docker_compose_dir(self) -> Path:
-        """Get docker compose dir."""
-        dir = self.config.get_storage_dir() / "./config"
-        if not dir.is_dir():
-            dir.mkdir(parents=True)
-        return dir
-
-    def get_docker_compose_file_path(self, name: str) -> Path:
-        """Get docker compose dir."""
-        dir = self.get_docker_compose_dir()
-        if not self.config.compose_prefix:
-            return dir / (name + ".yaml")
-        dir = dir / (self.config.compose_prefix + name)
-        if not dir.is_dir():
-            dir.mkdir(parents=True)
-        return dir / "compose.yaml"
-
-    def get_service_dir(self, service: str) -> Path:
-        """Get service dir."""
-        dir = self.config.get_storage_dir() / f"./services/{service}"
-        if not dir.is_dir():
-            dir.mkdir(parents=True)
-        return dir
-
-    def is_port_available(self, port: int) -> bool:
-        """Check whether port is available."""
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind(("", port))
-            sock.close()
-            return True  # noqa: TRY300
-        except OSError:
-            return False
 
 
 def get_base_url(host: str, port: int) -> str:
     """Get base url."""
     return f"http://{host}:{port}"
-
-
-def get_container_host(subnet: str | None, container_name: str) -> str:
-    """Return container_name if there is docker_subnet in config otherwise return locaahost."""
-    return container_name if subnet else "localhost"
-
-
-def get_container_port(subnet: str | None, exposed_port: int, original_port: int) -> int:
-    """Return container_name if there is docker_subnet in config otherwise return locaahost."""
-    return original_port if subnet else exposed_port

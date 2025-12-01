@@ -12,10 +12,10 @@
 from pathlib import Path
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from server.applicationcontext import get_base_url, get_container_host, get_container_port
-from server.docker import DockerImage, DockerOptions, has_gpu_support_sync, install_and_run_docker, uninstall_docker
+from server.applicationcontext import get_base_url
+from server.docker import DockerImage, DockerOptions
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import ModelProps
 from server.models.models import (
@@ -142,7 +142,7 @@ class ModelInstalledInfo:
 
 
 class LLamacppOptions(BaseModel):
-    gpu: bool = Field(default_factory=lambda: has_gpu_support_sync())
+    gpu: bool
 
 
 class LLamacppModelOptions(BaseModel):
@@ -219,6 +219,8 @@ class LLamacppService(Base2Service[InstalledInfo]):
         )
 
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+        if "gpu" not in options.spec:
+            options.spec["gpu"] = self.docker_service.has_gpu_support
         parsed_options = try_parse_pydantic(LLamacppOptions, options.spec)
         image = self._get_image(parsed_options.gpu)
 
@@ -248,7 +250,7 @@ class LLamacppService(Base2Service[InstalledInfo]):
         installed = info.models.get(model_id, None)
         if not installed:
             raise HTTPException(status_code=400, detail="Model not installed")
-        return self.application_context.get_docker_compose_file_path(installed.docker.name)
+        return self.docker_service.get_docker_compose_file_path(installed.docker.name)
 
     def _add_custom_model(self, model: CustomModel) -> None:
         parsed = try_parse_pydantic(LlamacppCustomModel, model.data)
@@ -337,11 +339,11 @@ class LLamacppService(Base2Service[InstalledInfo]):
             if model.jinja:
                 command_options.append("--jinja")
             command = " ".join(command_options)
-            subnet = self.application_context.get_docker_subnet()
+            subnet = self.docker_service.get_docker_subnet()
             service_name = f"{self.get_id()}-{normalize_name(model_id)}"
             docker_options = DockerOptions(
                 name=service_name,
-                container_name=self.application_context.get_docker_container_name(service_name),
+                container_name=self.docker_service.get_docker_container_name(service_name),
                 image=image.name,
                 command=command,
                 image_port=8080,
@@ -350,7 +352,7 @@ class LLamacppService(Base2Service[InstalledInfo]):
                 use_gpu=info.parsed_options.gpu,
                 subnet=subnet,
             )
-            docker_exposed_port = await install_and_run_docker(self.application_context, docker_options)
+            docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
@@ -358,8 +360,8 @@ class LLamacppService(Base2Service[InstalledInfo]):
                 options=options,
                 docker=docker_options,
                 model_path=local_model_path.absolute(),
-                container_host=get_container_host(subnet, docker_options.name),
-                container_port=get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                container_host=self.docker_service.get_container_host(subnet, docker_options.name),
+                container_port=self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port),
                 docker_exposed_port=docker_exposed_port,
                 registration_id="",
             )
@@ -385,6 +387,6 @@ class LLamacppService(Base2Service[InstalledInfo]):
         model = info.models[model_id]
         del info.models[model_id]
         self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
-        await uninstall_docker(self.application_context, model.docker)
+        await self.docker_service.uninstall_docker(model.docker)
         if options.purge:
             model.model_path.unlink()

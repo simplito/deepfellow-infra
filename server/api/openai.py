@@ -46,7 +46,7 @@ async def on_models(
 @router.get("/v1/models/{model_id:path}")
 async def on_model(
     _: Annotated[str, Depends(auth_server)],
-    model_id: Annotated[str, Path(..., description="The ID of the model to use.")],
+    model_id: Annotated[str, Path(description="The ID of the model to use.")],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
 ) -> ApiModel:
     """Process model request."""
@@ -100,7 +100,7 @@ async def on_audio_speech(
 @router.post("/v1/audio/transcriptions")
 async def on_audio_transcriptions(
     request: Request,
-    body: Annotated[CreateTranscriptionRequest, Form(..., media_type="multipart/form-data")],
+    body: Annotated[CreateTranscriptionRequest, Form(media_type="multipart/form-data")],
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
 ) -> StarletteResponse:
