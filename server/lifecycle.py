@@ -28,6 +28,7 @@ from server.services.coqui_service import CoquiService
 from server.services.custom_service import CustomService
 from server.services.googleai_service import GoogleAIService
 from server.services.llamapcpp_service import LLamacppService
+from server.services.ollama_external_service import OllamaExternalService
 from server.services.ollama_service import OllamaService
 from server.services.openai_service import OpenAIService
 from server.services.sindri_service import SindriService
@@ -79,6 +80,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
         # Register services
         services_manager.register_service(OllamaService(*model_input))
+        services_manager.register_service(OllamaExternalService(*model_input))
         services_manager.register_service(SpeachesAIService(*model_input))
         services_manager.register_service(StableDiffusionService(*model_input))
         services_manager.register_service(LLamacppService(*model_input))
