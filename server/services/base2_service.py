@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from server.config import AppSettings
 from server.docker import (
     DockerImage,
+    DockerOptions,
     DockerService,
 )
 from server.endpointregistry import EndpointRegistry
@@ -274,3 +275,15 @@ class Base2Service[T](BaseService):
             async for progress in self.docker_service.docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
                 stream.emit(StreamChunkProgress(type="progress", value=progress * multiplier))
         stream.emit(StreamChunkProgress(type="progress", value=end_percentage))
+
+    async def _stop_docker(self, docker_options: DockerOptions) -> None:
+        """Stop docker and log error if it occurs."""
+        try:
+            await self.docker_service.stop_docker(docker_options)
+        except Exception:
+            logger.exception("Error during stopping docker compose %s", docker_options.name)
+
+    async def _stop_dockers_parallel(self, docker_options_list: list[DockerOptions]) -> None:
+        """Stop docker and log error if it occurs."""
+        tasks = [asyncio.create_task(self._stop_docker(docker_options)) for docker_options in docker_options_list]
+        await asyncio.gather(*tasks)

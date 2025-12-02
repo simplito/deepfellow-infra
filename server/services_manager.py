@@ -9,6 +9,9 @@
 
 """Services manager."""
 
+import asyncio
+import logging
+
 from fastapi import HTTPException
 
 from server.models.models import (
@@ -34,6 +37,8 @@ from server.models.services import (
 from server.serviceprovider import ServiceRawConfig
 from server.services.base_service import BaseService
 from server.utils.core import PromiseWithProgress, StreamChunk
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class ServicesManager:
@@ -127,3 +132,20 @@ class ServicesManager:
     async def restart_docker(self, service_id: str, model_id: str | None) -> None:
         """Get docker compose file."""
         return await self._get_service(service_id).restart_docker(model_id)
+
+    async def stop_all_services(self) -> None:
+        """Stop all installed services gracefully."""
+
+        async def stop_service(service_id: str, service: BaseService) -> None:
+            if service.is_installed():
+                try:
+                    logger.info("Stopping service: %s", service_id)
+                    await service.stop()
+                    logger.info("Successfully stopped service: %s", service_id)
+                except Exception:
+                    logger.exception("Error stopping service %s", service_id)
+
+        logger.info("Shutting down: stopping services...")
+        tasks = [asyncio.create_task(stop_service(service_id, service)) for service_id, service in self.services.items()]
+        await asyncio.gather(*tasks)
+        logger.info("All services stopped")

@@ -314,6 +314,13 @@ class OllamaService(Base2Service[InstalledInfo]):
         if options.purge:
             await self._clear_working_dir()
 
+    async def stop(self) -> None:
+        """Stop the Ollama service Docker container."""
+        info = self.installed
+        if not info:
+            return
+        await self._stop_docker(info.docker)
+
     def get_docker_compose_file_path(self, model_id: str | None) -> Path:
         """Get docker compose file path."""
         info = self.installed

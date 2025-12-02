@@ -104,6 +104,12 @@ class RemoteService(Base2Service[InstalledInfo]):
         """Return the service size."""
         return ""
 
+    async def stop(self) -> None:
+        """Stop the service gracefully.
+
+        Remote service has no containers to stop.
+        """
+
     @abstractmethod
     def get_default_url(self) -> str:
         """Return the default url."""

@@ -226,6 +226,13 @@ class SindriService(Base2Service[InstalledInfo]):
         """Return true when docker is started when service is installed."""
         return True
 
+    async def stop(self) -> None:
+        """Stop the Sindri service Docker container."""
+        info = self.installed
+        if not info:
+            return
+        await self._stop_docker(info.docker)
+
     async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
         info = self._check_installed()

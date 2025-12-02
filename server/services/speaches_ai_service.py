@@ -427,7 +427,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
 
     def get_description(self) -> str:
         """Return the service description."""
-        return "Self-hosted Speach-to-Text and Text-to-Speach model runner."
+        return "Self-hosted Speech-to-Text and Text-to-Speech model runner."
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
@@ -524,6 +524,13 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         await self.docker_service.uninstall_docker(info.docker)
         if options.purge:
             await self._clear_working_dir()
+
+    async def stop(self) -> None:
+        """Stop the Speaches AI service Docker container."""
+        info = self.installed
+        if not info:
+            return
+        await self._stop_docker(info.docker)
 
     def get_docker_compose_file_path(self, model_id: str | None) -> Path:
         """Get docker compose file path."""
