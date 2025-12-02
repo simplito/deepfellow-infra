@@ -137,7 +137,7 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo]):
 
     def get_size(self) -> str:
         """Return the service size."""
-        return "0 B"
+        return ""
 
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
