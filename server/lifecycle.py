@@ -27,12 +27,12 @@ from server.serviceprovider import ServiceProvider
 from server.services.coqui_service import CoquiService
 from server.services.custom_service import CustomService
 from server.services.googleai_service import GoogleAIService
-from server.services.llamapcpp_service import LLamacppService
+from server.services.llamacpp_service import LLamacppService
 from server.services.ollama_external_service import OllamaExternalService
 from server.services.ollama_service import OllamaService
 from server.services.openai_service import OpenAIService
 from server.services.sindri_service import SindriService
-from server.services.speches_ai_service import SpeachesAIService
+from server.services.speaches_ai_service import SpeachesAIService
 from server.services.stable_diffusion_service import StableDiffusionService
 from server.services.vllm_service import VllmService
 from server.services_manager import ServicesManager
@@ -98,6 +98,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         logger.error(str(e))  # noqa: TRY400
         os._exit(1)
     yield
+    # Shutdown: stop all services gracefully if enabled
+    if config.is_stop_containers_on_shutdown_enabled():
+        await services_manager.stop_all_services()
 
 
 def check_subnet(subnet: str) -> None:

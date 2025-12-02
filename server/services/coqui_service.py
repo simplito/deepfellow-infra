@@ -143,7 +143,7 @@ class CoquiService(Base2Service[InstalledInfo]):
 
     def get_description(self) -> str:
         """Return the service description."""
-        return "Self-hosted Text-to-Speach model runner"
+        return "Self-hosted Text-to-Speech model runner"
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
@@ -317,6 +317,13 @@ class CoquiService(Base2Service[InstalledInfo]):
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
+
+    async def stop(self) -> None:
+        """Stop all the Coqui service Docker containers."""
+        info = self.installed
+        if not info:
+            return
+        await self._stop_dockers_parallel([model.docker for model in info.models.values()])
 
     def _get_image(self, gpu: bool) -> DockerImage:
         return _const.image_gpu if gpu else _const.image_cpu

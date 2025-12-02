@@ -37,6 +37,7 @@ class AppSettings(BaseSettings):
     log_payloads: str = ""
     container_name_prefix: str = ""
     compose_prefix: str = "df_"
+    stop_containers_on_shutdown: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -87,6 +88,10 @@ class AppSettings(BaseSettings):
     def is_log_payloads_enabled(self) -> bool:
         """Is log payloads enabled."""
         return self.log_payloads == "true"
+
+    def is_stop_containers_on_shutdown_enabled(self) -> bool:
+        """Is stop containers on shutdown enabled."""
+        return self.stop_containers_on_shutdown != "false"
 
 
 def get_main_dir() -> Path:

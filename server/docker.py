@@ -151,6 +151,12 @@ class DockerService:
         command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
         return await Utils.run_command_for_success(command)
 
+    async def stop_docker(self, options: DockerOptions) -> None:
+        """Stop docker."""
+        docker_compose_file_path = self.get_docker_compose_file_path(options.name)
+        if docker_compose_file_path.exists():
+            await self.stop_docker_compose(docker_compose_file_path)
+
     async def stop_docker_compose(self, docker_compose_file_path: Path) -> None:
         """Stop given docker compose."""
         docker_compose_cmd = self.docker_compose_cmd

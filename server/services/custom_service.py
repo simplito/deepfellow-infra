@@ -167,6 +167,13 @@ class CustomService(Base2Service[InstalledInfo]):
             ]
         )
 
+    async def stop(self) -> None:
+        """Stop all custom service Docker containers."""
+        info = self.installed
+        if not info:
+            return
+        await self._stop_dockers_parallel([model.docker_options for model in info.models.values()])
+
     def get_custom_model_spec(self) -> CustomModelSpecification | None:
         """Return the custom model specification or None if custom model is not supported."""
         return CustomModelSpecification(

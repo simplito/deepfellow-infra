@@ -127,3 +127,12 @@ class BaseService(ABC):
     @abstractmethod
     async def restart_docker(self, model_id: str | None) -> None:
         """Get docker compose file."""
+
+    @abstractmethod
+    async def stop(self) -> None:
+        """Stop the service gracefully.
+
+        This method is called during application shutdown when DF_STOP_CONTAINERS_ON_SHUTDOWN is enabled.
+        Services with Docker containers should stop their containers here.
+        Services without Docker (proxies, external services) can leave this as a no-op.
+        """

@@ -390,3 +390,10 @@ class LLamacppService(Base2Service[InstalledInfo]):
         await self.docker_service.uninstall_docker(model.docker)
         if options.purge:
             model.model_path.unlink()
+
+    async def stop(self) -> None:
+        """Stop all the Llamacpp service Docker containers."""
+        info = self.installed
+        if not info:
+            return
+        await self._stop_dockers_parallel([model.docker for model in info.models.values()])

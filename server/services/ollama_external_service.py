@@ -186,6 +186,12 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo]):
         """Return true when docker is started when service is installed."""
         return False
 
+    async def stop(self) -> None:
+        """Stop the service gracefully.
+
+        External Ollama service has no containers to stop.
+        """
+
     def _add_custom_model(self, model: CustomModel) -> None:
         parsed = try_parse_pydantic(OllamaCustomModel, model.data)
         if parsed.id in self.models:
