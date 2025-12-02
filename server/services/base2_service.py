@@ -234,7 +234,7 @@ class Base2Service[T](BaseService):
 
     def _get_service_dir(self, service: str) -> Path:
         """Get service dir."""
-        dir = self.config.get_storage_dir() / f"./services/{service}"
+        dir = self.config.get_storage_services_dir() / f"./{service}"
         if not dir.is_dir():
             dir.mkdir(parents=True)
         return dir

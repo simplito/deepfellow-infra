@@ -31,6 +31,7 @@ class AppSettings(BaseSettings):
 
     docker_subnet: str = ""
     storage_dir: str = ""
+    storage_services_dir: str = ""
     hugging_face_token: str = ""
     civitai_token: str = ""
     log_payloads: str = ""
@@ -78,6 +79,10 @@ class AppSettings(BaseSettings):
     def get_storage_dir(self) -> Path:
         """Get storage dir."""
         return Path(self.storage_dir) if self.storage_dir else get_main_dir() / "./storage"
+
+    def get_storage_services_dir(self) -> Path:
+        """Get storage dir."""
+        return Path(self.storage_services_dir) if self.storage_services_dir else self.get_storage_dir() / "services"
 
     def is_log_payloads_enabled(self) -> bool:
         """Is log payloads enabled."""
