@@ -42,6 +42,7 @@ from server.models.models import (
     ListModelsFilters,
     ListModelsOut,
     ModelField,
+    ModelInfo,
     ModelSpecification,
     RetrieveModelOut,
     UninstallModelIn,
@@ -214,6 +215,10 @@ class ModelInstalledInfo(BaseModel):
     options: InstallModelIn
     model_path: Path
     registration_id: RegistrationId
+
+    def get_info(self) -> ModelInfo:
+        """Get info."""
+        return ModelInfo(spec=self.options.spec, registration_id=self.registration_id)
 
 
 class SDOptions(BaseModel):
@@ -480,7 +485,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
         for model_id, model in self.models.items():
-            installed = info.models[model_id].options if model_id in info.models else False
+            installed = info.models[model_id].get_info() if model_id in info.models else False
             if filters.installed is None or filters.installed == installed:
                 out_list.append(
                     RetrieveModelOut(
@@ -502,7 +507,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = self.models[model_id]
-        installed = info.models[model_id].options if model_id in info.models else False
+        installed = info.models[model_id].get_info() if model_id in info.models else False
         return RetrieveModelOut(
             id=model_id,
             service=self.get_id(),
@@ -783,6 +788,8 @@ def _get_in_format(img: str, format: str = "png", quality: int = 95) -> str:
     match format:
         case "jpg":
             return convert_b64png_to_b64jpg(img, quality)
+        case "jpeg":
+            return convert_b64png_to_b64jpg(img, quality)
         case "webp":
             return convert_b64png_to_b64webp(img, quality)
         case "png":
@@ -832,7 +839,7 @@ async def remove_background_from_img(base_url: str, img: str) -> str:
 
 
 def _stable_diffusion_handler(base_url: str, model_filename: str) -> EndpointCallback[ImagesRequest]:
-    async def handler(body: ImagesRequest, _req: Request) -> ImagesResponse:
+    async def handler(body: ImagesRequest, _req: Request | None) -> ImagesResponse:
         settings_raw, remaining_text = split_text_to_json_and_prompt(body.prompt)
         settings_raw["sd_model_checkpoint"] = model_filename
 

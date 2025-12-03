@@ -61,7 +61,7 @@ async def on_chat_completions(
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
 ) -> StarletteResponse:
     """Process chat completions request."""
-    return await endpoint_registry.execute_chat_completion(request, body.model, body)
+    return await endpoint_registry.execute_chat_completion(body, request)
 
 
 @router.post("/v1/completions")
@@ -72,7 +72,7 @@ async def on_completions(
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
 ) -> StarletteResponse:
     """Process completions request."""
-    return await endpoint_registry.execute_completion(request, body.model, body)
+    return await endpoint_registry.execute_completion(body, request)
 
 
 @router.post("/v1/embeddings")
@@ -83,7 +83,7 @@ async def on_embeddings(
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
 ) -> StarletteResponse:
     """Process embeddings request."""
-    return await endpoint_registry.execute_embeddings(request, body.model, body)
+    return await endpoint_registry.execute_embeddings(body, request)
 
 
 @router.post("/v1/audio/speech")
@@ -94,7 +94,7 @@ async def on_audio_speech(
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
 ) -> StarletteResponse:
     """Process audio speech request."""
-    return await endpoint_registry.execute_audio_speech(request, body.model, body)
+    return await endpoint_registry.execute_audio_speech(body, request)
 
 
 @router.post("/v1/audio/transcriptions")
@@ -105,7 +105,7 @@ async def on_audio_transcriptions(
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
 ) -> StarletteResponse:
     """Process audio translation request."""
-    return await endpoint_registry.execute_audio_transcriptions(request, body.model, body)
+    return await endpoint_registry.execute_audio_transcriptions(body, request)
 
 
 @router.post("/v1/images/generations")
@@ -116,7 +116,7 @@ async def on_images_generations(
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
 ) -> StarletteResponse:
     """Process images genenerations request."""
-    return await endpoint_registry.execute_images_generations(request, body.model, body)
+    return await endpoint_registry.execute_images_generations(body, request)
 
 
 # Replacement from router.api_route which is kind bugged in swagger.
@@ -135,4 +135,4 @@ async def on_custom_endpoint(
     full_path: str,
 ) -> StarletteResponse:
     """Process custom endpoint request."""
-    return await endpoint_registry.execute_custom_endpoints(request, full_path)
+    return await endpoint_registry.execute_custom_endpoints(full_path, request)

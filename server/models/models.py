@@ -13,6 +13,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from server.models.api import RegistrationId
+
 type InstallModelOptions = dict[str, Any]
 type CustomModelDefiniton = dict[str, Any]
 type CustomModelId = str
@@ -55,6 +57,11 @@ class InstallModelIn(BaseModel):
     spec: InstallModelOptions | None = None
 
 
+class ModelInfo(BaseModel):
+    spec: InstallModelOptions | None
+    registration_id: RegistrationId
+
+
 class InstallModelOut(BaseModel):
     status: Literal["OK"]
     details: str
@@ -72,7 +79,7 @@ class RetrieveModelOut(BaseModel):
     id: str
     service: str
     type: str
-    installed: bool | InstallModelIn
+    installed: bool | ModelInfo
     custom: CustomModelId | None = None
     size: str
     spec: ModelSpecification

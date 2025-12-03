@@ -22,6 +22,7 @@ from server.applicationcontext import ApplicationContext
 from server.config import ConfigError, load_config
 from server.docker import create_docker_service
 from server.endpointregistry import EndpointRegistry
+from server.model_tester import ModelTester
 from server.portservice import PortService
 from server.serviceprovider import ServiceProvider
 from server.services.coqui_service import CoquiService
@@ -69,7 +70,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         app.state.service_provider = service_provider = ServiceProvider(config)
         app.state.parent_infra = parent_infra = ParentInfra(config, task_manager)
         app.state.services_manager = services_manager = ServicesManager()
-        app.state.endpoint_registry = endpoint_registry = EndpointRegistry(config, parent_infra)
+        app.state.model_tester = model_tester = ModelTester()
+        app.state.endpoint_registry = endpoint_registry = EndpointRegistry(config, parent_infra, model_tester)
         app.state.infra_websocket_server = InfraWebsocketServer(config, parent_infra, endpoint_registry)
         app.state.context = context = ApplicationContext(endpoint_registry, config, service_provider, services_manager)
         app.state.port_service = port_service = PortService()

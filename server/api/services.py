@@ -14,7 +14,9 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, Path, Query
 from fastapi.responses import JSONResponse, Response
 
-from server.core.dependencies import auth_admin, get_services_manager
+from server.core.dependencies import auth_admin, get_endpoint_registry, get_services_manager
+from server.endpointregistry import EndpointRegistry
+from server.models.api import RegistrationId
 from server.models.services import (
     InstallServiceIn,
     ListAllModelsFilters,
@@ -79,6 +81,16 @@ async def list_models(
 ) -> ListAllModelsOut:
     """List models among all services."""
     return await services_manager.list_models_from_all_services(filters)
+
+
+@router.get("/model/test/{registration_id}", summary="Test a model")
+async def test_model(
+    registration_id: Annotated[RegistrationId, Path(description="The ID of the installed model")],
+    endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+) -> JSONResponse:
+    """Test a model by making a simple request to it."""
+    result = await endpoint_registry.test_model(registration_id)
+    return JSONResponse(result)
 
 
 @router.get(
