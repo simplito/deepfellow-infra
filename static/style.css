@@ -91,7 +91,7 @@ input, textarea {
     margin-left: 10px;
 }
 .badge.badge-installed {
-    background-color: #61b822;
+    background-color: #0c9a0c;
 }
 input[type=text] {
     padding: 5px 10px;
@@ -170,4 +170,35 @@ input[type=text] {
 }
 .modal div.content {
     margin: 0 15px;
+}
+.text-result-error,
+.text-result-success {
+    font-size: 20px;
+    line-height: 40px;
+    font-weight: bold;
+}
+.text-result-error span,
+.text-result-success span {
+    color: #fff;
+    border-radius: 50px;
+    width: 40px;
+    padding: 5px;
+    font-size: 30px;
+    line-height: 1;
+    text-align: center;
+    display: inline-block;
+    margin-right: 5px;
+    vertical-align: sub;
+}
+.text-result-error {
+    color: #ff4444;
+}
+.text-result-error span {
+    background-color: #ff4444;
+}
+.text-result-success {
+    color: #0c9a0c
+}
+.text-result-success span {
+    background-color: #0c9a0c
 }

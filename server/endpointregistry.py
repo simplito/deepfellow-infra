@@ -12,7 +12,7 @@
 import logging
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from typing import Any, NamedTuple, TypeVar
+from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar
 from urllib.parse import urljoin
 
 from aiohttp import ClientResponse, FormData, JsonPayload, Payload
@@ -37,19 +37,27 @@ from server.models.api import (
     ModelProps,
     ModelType,
 )
-from server.models.common import StarletteResponse
+from server.models.common import JsonSerializable, StarletteResponse
 from server.utils.core import Utils
 from server.websockets.models import RegistrationId, UsageChangeRequest
 from server.websockets.parent_infra import ParentInfra
 
+if TYPE_CHECKING:
+    from server.model_tester import ModelTester
+
 logger = logging.getLogger("uvicorn.error")
 T = TypeVar("T")
 
-type EndpointCallback[T] = Callable[[T, Request], Awaitable[StarletteResponse]]
+type EndpointCallback[T] = Callable[[T, Request | None], Awaitable[StarletteResponse]]
+type CustomEndpointCallback = Callable[[Request], Awaitable[StarletteResponse]]
 
 
 class SimpleEndpoint[T](NamedTuple):
     on_request: EndpointCallback[T]
+
+
+class CustomEndpoint(NamedTuple):
+    on_request: CustomEndpointCallback
 
 
 class ChatCompletionEndpoint:
@@ -128,17 +136,26 @@ class Endpoint[T]:
         """Have model in registry."""
         return model_id in self.models and len(self.models[model_id]) > 0
 
-    def get_model(self, model_id: ModelId, filter: Callable[[T], bool] | None = None) -> RegisteredModel[T] | None:
+    def get_model(
+        self,
+        model_id: ModelId,
+        filter: Callable[[T], bool] | None = None,
+        registration_id: RegistrationId | None = None,
+    ) -> RegisteredModel[T] | None:
         """Get model from registry."""
         if model_id not in self.models:
             return None
         lowest: RegisteredModel[T] | None = None
         for x in self.models[model_id].values():
             if (not filter or filter(x.endpoint)) and (lowest is None or x.usage < lowest.usage):
-                if x.usage == 0:
-                    logger.debug(f"Choosen model origin={x.origin} id={x.id} name={x.name} usage={x.usage}")  # noqa: G004
-                    return x
-                lowest = x
+                if registration_id:
+                    if x.id == registration_id:
+                        return x
+                else:
+                    if x.usage == 0:
+                        logger.debug(f"Choosen model origin={x.origin} id={x.id} name={x.name} usage={x.usage}")  # noqa: G004
+                        return x
+                    lowest = x
         if lowest:
             logger.debug(f"Choosen model origin={lowest.origin} id={lowest.id} name={lowest.name} usage={lowest.usage}")  # noqa: G004
         return lowest
@@ -199,16 +216,18 @@ class EndpointRegistry:
         self,
         config: AppSettings,
         parent_infra: ParentInfra,
+        model_tester: "ModelTester",
     ):
         self.config = config
         self.parent_infra = parent_infra
         self.parent_infra.endpoint_registry = self
+        self.model_tester = model_tester
         self.registry = dict[RegistrationId, RegistryEntry]()
         self.chat_completion_endpoints = Endpoint[ChatCompletionEndpoint](self.registry, self.parent_infra)
         self.embeddings_endpoints = Endpoint[SimpleEndpoint[EmbeddingRequest]](self.registry, self.parent_infra)
         self.audio_speech_endpoints = Endpoint[SimpleEndpoint[CreateSpeechRequest]](self.registry, self.parent_infra)
         self.audio_transcriptions_endpoints = Endpoint[SimpleEndpoint[CreateTranscriptionRequest]](self.registry, self.parent_infra)
-        self.custom_endpoints = Endpoint[SimpleEndpoint[None]](self.registry, self.parent_infra)
+        self.custom_endpoints = Endpoint[CustomEndpoint](self.registry, self.parent_infra)
         self.images_generations_endpoints = Endpoint[SimpleEndpoint[ImagesRequest]](self.registry, self.parent_infra)
 
     def get_models(self) -> ApiModels:
@@ -274,13 +293,13 @@ class EndpointRegistry:
             raise RuntimeError("Chat completions nor completions registered " + model)
         if chat_completions:
 
-            async def on_chat_completions_request(body: ChatCompletionRequest, request: Request) -> StreamingResponse:
+            async def on_chat_completions_request(body: ChatCompletionRequest, request: Request | None) -> StreamingResponse:
                 return await post_json(body, chat_completions, request)
 
             endpoint.on_chat_completion = on_chat_completions_request
         if completions:
 
-            async def on_completion_request(body: CompletionLegacyRequest, request: Request) -> StreamingResponse:
+            async def on_completion_request(body: CompletionLegacyRequest, request: Request | None) -> StreamingResponse:
                 return await post_json(body, completions, request)
 
             endpoint.on_completion = on_completion_request
@@ -310,7 +329,7 @@ class EndpointRegistry:
     ) -> RegistrationId:
         """Register embeddings for given model as a proxy."""
 
-        async def on_request(body: EmbeddingRequest, request: Request) -> StreamingResponse:
+        async def on_request(body: EmbeddingRequest, request: Request | None) -> StreamingResponse:
             return await post_json(body, options, request)
 
         return self.register_embeddings(model, props, SimpleEndpoint(on_request=on_request), registration_options)
@@ -338,7 +357,7 @@ class EndpointRegistry:
     ) -> RegistrationId:
         """Register audio speech for given model as a proxy."""
 
-        async def on_request(body: CreateSpeechRequest, request: Request) -> StreamingResponse:
+        async def on_request(body: CreateSpeechRequest, request: Request | None) -> StreamingResponse:
             return await post_json(body, options, request)
 
         return self.register_audio_speech(model, props, SimpleEndpoint(on_request=on_request), registration_options)
@@ -366,7 +385,7 @@ class EndpointRegistry:
     ) -> RegistrationId:
         """Register audio transcriptions for given model as a proxy."""
 
-        async def on_request(body: CreateTranscriptionRequest, request: Request) -> StreamingResponse:
+        async def on_request(body: CreateTranscriptionRequest, request: Request | None) -> StreamingResponse:
             return await post_form(body, options, request)
 
         return self.register_audio_transcriptions(model, props, SimpleEndpoint(on_request=on_request), registration_options)
@@ -394,7 +413,7 @@ class EndpointRegistry:
     ) -> RegistrationId:
         """Register image generations for given model as a proxy."""
 
-        async def on_request(body: ImagesRequest, request: Request) -> StreamingResponse:
+        async def on_request(body: ImagesRequest, request: Request | None) -> StreamingResponse:
             return await post_json(body, options, request)
 
         return self.register_image_generations(model, props, SimpleEndpoint(on_request=on_request), registration_options)
@@ -407,7 +426,7 @@ class EndpointRegistry:
         self,
         url: str,
         props: ModelProps,
-        endpoint: SimpleEndpoint[None],
+        endpoint: CustomEndpoint,
         registration_options: RegistrationOptions | None,
     ) -> RegistrationId:
         """Register custom endpoint."""
@@ -422,7 +441,7 @@ class EndpointRegistry:
     ) -> RegistrationId:
         """Register custom endpoint as a proxy."""
 
-        async def on_request(_body: None, request: Request) -> StreamingResponse:
+        async def on_request(request: Request) -> StreamingResponse:
             headers = options.get_request_headers(request)
             headers["content-type"] = request.headers.get("content-type") or "application/octet-stream"
             full_url = Utils.join_url(options.url, request.path_params["full_path"].split("/", 1)[-1])
@@ -435,7 +454,7 @@ class EndpointRegistry:
                 )
             ).as_streaming_response(options.allowed_response_headers)
 
-        return self.register_custom_endpoint(url, props, SimpleEndpoint(on_request=on_request), registration_options)
+        return self.register_custom_endpoint(url, props, CustomEndpoint(on_request=on_request), registration_options)
 
     def unregister_custom_endpoint(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister custom endpoint."""
@@ -609,12 +628,21 @@ class EndpointRegistry:
         """Check whether the custom endpoint is registered."""
         return self.custom_endpoints.has_model(url)
 
-    async def execute_chat_completion(self, request: Request, model: str, body: ChatCompletionRequest) -> StarletteResponse:
+    async def execute_chat_completion(
+        self,
+        body: ChatCompletionRequest,
+        request: Request | None = None,
+        registration_id: RegistrationId | None = None,
+    ) -> StarletteResponse:
         """Process chat completion request."""
         if self.config.is_log_payloads_enabled():
             logger.info(f"DUMP REQUEST PAYLOAD /v1/chat/completions {body.model_dump_json(exclude_none=True)}")  # noqa: G004
 
-        endpoint = self.chat_completion_endpoints.get_model(model, lambda x: x.on_chat_completion is not None)
+        endpoint = self.chat_completion_endpoints.get_model(
+            body.model,
+            filter=lambda x: x.on_chat_completion is not None,
+            registration_id=registration_id,
+        )
         on_chat_completion = endpoint.endpoint.on_chat_completion if endpoint else None
         if not endpoint or not on_chat_completion:
             msg = (
@@ -629,9 +657,18 @@ class EndpointRegistry:
 
         return await self.with_usage(endpoint, func, self.config.is_log_payloads_enabled())
 
-    async def execute_completion(self, request: Request, model: str, body: CompletionLegacyRequest) -> StarletteResponse:
+    async def execute_completion(
+        self,
+        body: CompletionLegacyRequest,
+        request: Request | None = None,
+        registration_id: RegistrationId | None = None,
+    ) -> StarletteResponse:
         """Process completion request."""
-        endpoint = self.chat_completion_endpoints.get_model(model, lambda x: x.on_completion is not None)
+        endpoint = self.chat_completion_endpoints.get_model(
+            body.model,
+            filter=lambda x: x.on_completion is not None,
+            registration_id=registration_id,
+        )
         on_completion = endpoint.endpoint.on_completion if endpoint else None
         if not endpoint or not on_completion:
             msg = (
@@ -646,9 +683,14 @@ class EndpointRegistry:
 
         return await self.with_usage(endpoint, func)
 
-    async def execute_embeddings(self, request: Request, model: str, body: EmbeddingRequest) -> StarletteResponse:
+    async def execute_embeddings(
+        self,
+        body: EmbeddingRequest,
+        request: Request | None = None,
+        registration_id: RegistrationId | None = None,
+    ) -> StarletteResponse:
         """Process embeddings request."""
-        endpoint = self.embeddings_endpoints.get_model(model)
+        endpoint = self.embeddings_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
             raise HTTPException(400, "Given model is not supported")
 
@@ -657,9 +699,14 @@ class EndpointRegistry:
 
         return await self.with_usage(endpoint, func)
 
-    async def execute_images_generations(self, request: Request, model: str, body: ImagesRequest) -> StarletteResponse:
+    async def execute_images_generations(
+        self,
+        body: ImagesRequest,
+        request: Request | None = None,
+        registration_id: RegistrationId | None = None,
+    ) -> StarletteResponse:
         """Process images generations request."""
-        endpoint = self.images_generations_endpoints.get_model(model)
+        endpoint = self.images_generations_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
             raise HTTPException(400, "Given model is not supported")
 
@@ -668,9 +715,14 @@ class EndpointRegistry:
 
         return await self.with_usage(endpoint, func)
 
-    async def execute_audio_speech(self, request: Request, model: str, body: CreateSpeechRequest) -> StarletteResponse:
+    async def execute_audio_speech(
+        self,
+        body: CreateSpeechRequest,
+        request: Request | None = None,
+        registration_id: RegistrationId | None = None,
+    ) -> StarletteResponse:
         """Process audio speech request."""
-        endpoint = self.audio_speech_endpoints.get_model(model)
+        endpoint = self.audio_speech_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
             raise HTTPException(400, "Given model is not supported")
 
@@ -681,12 +733,12 @@ class EndpointRegistry:
 
     async def execute_audio_transcriptions(
         self,
-        request: Request,
-        model: str,
         body: CreateTranscriptionRequest,
+        request: Request | None = None,
+        registration_id: RegistrationId | None = None,
     ) -> StarletteResponse:
         """Process audio transcriptions request."""
-        endpoint = self.audio_transcriptions_endpoints.get_model(model)
+        endpoint = self.audio_transcriptions_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
             raise HTTPException(400, "Given model is not supported")
 
@@ -695,14 +747,14 @@ class EndpointRegistry:
 
         return await self.with_usage(endpoint, func)
 
-    async def execute_custom_endpoints(self, request: Request, url: str) -> StarletteResponse:
+    async def execute_custom_endpoints(self, url: str, request: Request) -> StarletteResponse:
         """Process custom endpoint request."""
         endpoint = self.custom_endpoints.get_model(url.split("/")[0])
         if not endpoint:
             raise HTTPException(400, "Given url is not supported")
 
         async def func() -> StarletteResponse:
-            return await endpoint.endpoint.on_request(None, request)
+            return await endpoint.endpoint.on_request(request)
 
         return await self.with_usage(endpoint, func)
 
@@ -748,6 +800,13 @@ class EndpointRegistry:
     def _refresh_usage(self, model: RegisteredModel[Any]) -> None:
         logger.debug(f"Model usage origin={model.origin} id={model.id} name={model.name} usage={model.usage}")  # noqa: G004
         self.parent_infra.send_usage(UsageChangeRequest(id=model.id, usage=model.usage))
+
+    async def test_model(self, registration_id: RegistrationId) -> JsonSerializable:
+        """Test model of given id."""
+        entry = self.registry.get(registration_id, None)
+        if not entry:
+            raise HTTPException(400, "Model not installed")
+        return await self.model_tester.test_model(entry)
 
 
 async def post_json(data: BaseModel, options: ProxyOptions, request: Request | None = None) -> StreamingResponse:

@@ -27,6 +27,7 @@ from server.models.models import (
     ListModelsFilters,
     ListModelsOut,
     ModelField,
+    ModelInfo,
     ModelSpecification,
     RetrieveModelOut,
     UninstallModelIn,
@@ -70,6 +71,10 @@ class ModelInstalledInfo(BaseModel):
     completions: bool
     legacy_completions: bool
     registration_id: RegistrationId
+
+    def get_info(self) -> ModelInfo:
+        """Get info."""
+        return ModelInfo(spec=self.options.spec, registration_id=self.registration_id)
 
 
 class RemoteOptions(BaseModel):
@@ -222,7 +227,7 @@ class RemoteService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
         for model_id, model in self.models.items():
-            installed = info.models[model_id].options if model_id in info.models else False
+            installed = info.models[model_id].get_info() if model_id in info.models else False
             if filters.installed is None or filters.installed == installed:
                 out_list.append(
                     RetrieveModelOut(
@@ -244,7 +249,7 @@ class RemoteService(Base2Service[InstalledInfo]):
         if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = self.models[model_id]
-        installed = info.models[model_id].options if model_id in info.models else False
+        installed = info.models[model_id].get_info() if model_id in info.models else False
         return RetrieveModelOut(
             id=model_id,
             service=self.get_id(),

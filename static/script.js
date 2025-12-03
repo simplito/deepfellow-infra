@@ -58,8 +58,8 @@ async function showServicesPage() {
                             </div>
                             <div class="box-buttons service-buttons">
                                 ${!s.installed ? `<button data-action="install-service" data-service-id="${s.id}">Install</button>` : ""}
-                                ${s.installed ? `<button data-action="open-service-models" data-service-id="${s.id}">Models</button>`: ""}
-                                ${s.installed ? `<button data-action="uninstall-service" data-service-id="${s.id}">Uninstall</button>`: ""}
+                                ${s.installed ? `<button data-action="open-service-models" data-service-id="${s.id}">Models</button>` : ""}
+                                ${s.installed ? `<button data-action="uninstall-service" data-service-id="${s.id}">Uninstall</button>` : ""}
                             </div>
                         </div>`
                     );
@@ -221,6 +221,58 @@ function showContentModal(options) {
     });
 }
 
+function showTestResultModal(options) {
+    const html = `
+<div class="modal-backdrop">
+    <div class="modal ${options.wide ? "modal-wide" : ""}">
+        <div class="modal-title">${options.title}</div>
+        <div style="margin: 0 15px;">
+            ${options.result.error ? `<div class="text-result-error"><span>x</span> Test failed!</div>` : ""}
+            ${options.result.result ? `<div class="text-result-success"><span>✓</span> Test passed!</div>` : ""}
+            ${options.result.output ? `<h3>Output:</h3><div class="output"></div>` : ""}
+            ${options.result.details ? `<h3>Details:</h3><pre class="content" style="max-height: 150px;"></pre>` : ""}
+        </div>
+        <div class="buttons">
+            <button data-id="ok">OK</button>
+        </div>
+    </div>
+</div>`;
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    if (options.result.details) {
+        div.querySelector(".content").textContent = JSON.stringify(options.result.details, null, 2);
+    }
+    const outputEle = div.querySelector(".output");
+    if (options.result.output) {
+        if (typeof(options.result.output) === "object") {
+            if (options.result.output.content_type.startsWith("audio/")) {
+                const audio = document.createElement("audio");
+                audio.setAttribute("controls", "controls");
+                const source = document.createElement("source");
+                source.src = `data:${options.result.output.content_type};base64,${options.result.output.data}`;
+                audio.append(source);
+                outputEle.append(audio);
+            }
+            else if (options.result.output.content_type.startsWith("image/")) {
+                const img = document.createElement("img");
+                img.style = "max-width: 100px; max-height: 100px;";
+                img.src = `data:${options.result.output.content_type};base64,${options.result.output.data}`;
+                outputEle.append(img);
+            }
+            else {
+                outputEle.textContent = `Content with type ${options.result.output.content_type}`;
+            }
+        }
+        else {
+            outputEle.textContent = options.result.output
+        }
+    }
+    document.body.append(div);
+    div.querySelector("[data-id=ok]").addEventListener("click", () => {
+        div.remove();
+    });
+}
+
 async function showServicePage(id) {
     showLoadingPage();
     const serivceInfo = await fetchJson(`/admin/services/${id}`);
@@ -297,7 +349,7 @@ async function showServicePage(id) {
         const filterl = modelFilter.toLowerCase();
         const installed = installedOptions[modelInstalled];
         const custom = customOptions[modelCustom];
-        const filtered = list.filter(x => 
+        const filtered = list.filter(x =>
             (!filterl || x.id.toLowerCase().includes(filterl)) &&
             (modelType === "__all" || x.type === modelType) &&
             (installed === null || x.installed === installed) &&
@@ -314,7 +366,7 @@ async function showServicePage(id) {
                         </div>
                         ${m.custom ? `<div class="badge">
                             Custom
-                        </div>`: ""}
+                        </div>` : ""}
                     </div>
                     <div class="model-type">${types[m.type] || m.type}</div>
                     <div class="box-size model-size">
@@ -325,7 +377,8 @@ async function showServicePage(id) {
                     </div>
                     <div class="box-buttons model-buttons">
                         ${!m.installed ? `<button data-action="install-model" data-service-id="${id}" data-model-id="${m.id}">Install</button>` : ""}
-                        ${m.installed ? `<button data-action="uninstall-model" data-service-id="${id}" data-model-id="${m.id}">Uninstall</button>`: ""}
+                        ${m.installed ? `<button data-action="uninstall-model" data-service-id="${id}" data-model-id="${m.id}">Uninstall</button>` : ""}
+                        ${m.installed ? `<button data-action="test-model" data-service-id="${id}" data-model-id="${m.id}">Test</button>` : ""}
                         ${m.installed && m.has_docker ? `
                             <button data-service-id="${id}" data-model-id="${m.id}" data-action="show-docker-logs">Show docker logs</button>
                             <button data-service-id="${id}" data-model-id="${m.id}" data-action="show-docker-compose-file">Show docker compose file</button>
@@ -439,6 +492,29 @@ root.addEventListener("click", async e => {
                 headers: {"Content-Type": "application/json"}
             });
             showServicePage(serviceId);
+        }
+        else if (action === "test-model") {
+            const loading = showLoading();
+            try {
+                const info = await fetchJson(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
+                    method: "GET"
+                });
+                if (!info.installed) {
+                    throw new Error("Model not installed");
+                }
+                const result = await fetchJson(
+                    `/admin/services/model/test/${info.installed.registration_id}`,
+                );
+                loading.remove();
+                showTestResultModal({
+                    title: `Test: ${modelId}`,
+                    result: result
+                });
+            }
+            catch (error) {
+                console.log("Error", error);
+                loading.remove();
+            }
         }
         else if (action === "add-custom-model") {
             const info = await fetchJson(`/admin/services/${serviceId}`, {
