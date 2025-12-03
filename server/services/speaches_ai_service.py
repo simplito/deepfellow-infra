@@ -9,7 +9,6 @@
 
 """Speaches AI service."""
 
-import hashlib
 import shutil
 from pathlib import Path
 from typing import Literal
@@ -582,7 +581,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             has_docker=False,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:  # noqa: C901
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         parsed_model_options = try_parse_pydantic(SpeachesAIModelOptions, options.spec) if options.spec else SpeachesAIModelOptions()
         info = self._check_installed()
         if model_id in info.models:
@@ -591,7 +590,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             raise HTTPException(400, "Model not found")
         model = _const.models[model_id]
 
-        async def func(stream: Stream[StreamChunk]) -> InstallModelOut:  # noqa: C901
+        async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
             model_id_fixed = f"models--{model_id.replace('/', '--')}"
 
             models_dir = self._get_working_dir() / "cache"
@@ -599,45 +598,15 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             model_dir = models_dir / model_id_fixed
             model_dir.mkdir(parents=True, exist_ok=True)
 
-            blobs_dir = model_dir / "blobs"
-            blobs_dir.mkdir(parents=True, exist_ok=True)
-
-            snapshot_dir = model_dir / "snapshots" / "0"
-            snapshot_dir.mkdir(parents=True, exist_ok=True)
-
-            refs_dir = model_dir / "refs"
-            refs_dir.mkdir(parents=True, exist_ok=True)
-
-            ref_file = refs_dir / "main"
-            if not ref_file.exists():
-                ref_file.write_text("0")
-
             progress = Progress(convert_size_to_bytes(model.size) or 0)
             local_model_path: Path | None = None
-            async for packet in self.model_downloader.download(model_id, snapshot_dir):
+            async for packet in self.model_downloader.hugging_face_repo_with_blobs_downloader.download(model_id, model_dir):
                 if packet.local_path and not local_model_path:
                     local_model_path = packet.local_path
                 elif packet.downloaded_bytes_size != 0:
                     progress.add_to_actual_value(packet.downloaded_bytes_size)
 
                 stream.emit(StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99))
-
-            for original_file in snapshot_dir.iterdir():
-                if original_file.is_file():
-                    file_hash = hashlib.sha256(original_file.name.encode("utf-8")).hexdigest()
-
-                    if not file_hash:
-                        continue
-
-                    symlink_path = blobs_dir / file_hash
-
-                    if symlink_path.exists():
-                        continue
-
-                    try:
-                        symlink_path.symlink_to(original_file.resolve(), target_is_directory=False)
-                    except OSError as e:
-                        print(f"Failed to create symlink: {e}")
 
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             info.models[model_id] = model_info = ModelInstalledInfo(

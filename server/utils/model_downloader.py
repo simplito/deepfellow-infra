@@ -14,7 +14,7 @@ from abc import abstractmethod
 from collections.abc import AsyncGenerator
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 from aiohttp import ClientSession
 from fastapi import HTTPException
@@ -23,13 +23,8 @@ from server.config import AppSettings
 from server.utils.core import DownloadPacket, HttpClientError, Utils
 
 
-class BaseDownloader:
+class BDownloader:
     error_msg_modifiers: list[tuple[str, str]]
-
-    @staticmethod
-    @abstractmethod
-    def check_url(url: str) -> bool:
-        """Check is url handled by this downloader."""
 
     def create_error_msg(self, msg: str) -> str | dict[str, Any]:
         """Create new string with error msg modifiers."""
@@ -49,6 +44,13 @@ class BaseDownloader:
 
         return new_msg
 
+
+class BaseDownloader(BDownloader):
+    @staticmethod
+    @abstractmethod
+    def check_url(url: str) -> bool:
+        """Check is url handled by this downloader."""
+
     @abstractmethod
     def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
@@ -64,6 +66,122 @@ class StandardModelDownloader(BaseDownloader):
         """Download model."""
         async for packet in Utils.ensure_model_downloaded(url, model_dir, temp_dir, filename):
             yield packet
+
+
+class HGRepoInfo(TypedDict):
+    sha: str
+
+
+class HGLFSFileInfo(TypedDict):
+    oid: str
+    size: int
+    pointerSize: int
+
+
+class HGFileInfo(TypedDict):
+    type: str
+    oid: str
+    size: int
+    path: str
+    lfs: NotRequired[HGLFSFileInfo]
+    xetHash: NotRequired[str]
+
+
+class MyFileInfo(TypedDict):
+    oid: str
+    size: int
+    path: str
+
+
+class HuggingFaceRepoWithBlobsDownloader(BDownloader):
+    header: dict[str, str]
+
+    def __init__(self, key: str, temp_dir: Path):
+        self.headers = Utils.create_bearer_header(key)
+        self.temp_dir = temp_dir
+        self.error_msg_modifiers = [
+            (
+                "Invalid credentials in Authorization header",
+                "This model need HuggingFace Token to download. "
+                "Setup DF_HUGGING_FACE_TOKEN env in enviromental variables to download this model. "
+                "if token is set up probably is wrong or expired.",
+            ),
+            (
+                "is restricted. You must have access to it and be authenticated to access it. Please log in.",
+                "is restricted. "
+                "This model need HuggingFace Token to download. "
+                "Account also need access to this project. Check project site for rules approve. "
+                "After that setup DF_HUGGING_FACE_TOKEN env in enviromental variables to download this model. "
+                "if token is set up probably is wrong or expired.",
+            ),
+            (
+                "is restricted and you are not in the authorized list.",
+                "is restricted and you are not in the authorized list. "
+                "Account with your DF_HUGGING_FACE_TOKEN env doesn't have access to this model.",
+            ),
+        ]
+
+    @staticmethod
+    def check_url(url: str) -> bool:  # noqa: ARG004
+        """Check is url handled by this downloader."""
+        return False
+
+    @staticmethod
+    async def _get_commit_id(model_id: str) -> str:
+        """Get current commit id."""
+        url = f"https://huggingface.co/api/models/{model_id}"
+        async with ClientSession() as session, session.get(url) as response:
+            data: HGRepoInfo = await response.json()
+            return data["sha"]
+
+    @staticmethod
+    async def _get_files(model_id: str) -> list[MyFileInfo]:
+        """Get filenames for repository."""
+        files: list[MyFileInfo] = []
+        url = f"https://huggingface.co/api/models/{model_id}/tree/main"
+        data: list[HGFileInfo] = []
+        async with ClientSession() as session, session.get(url) as response:
+            data = await response.json()
+        for item in data:
+            if item["type"] == "file":
+                files.append(
+                    {
+                        "oid": item["lfs"]["oid"] if "lfs" in item else item["oid"],
+                        "size": item["lfs"]["size"] if "lfs" in item else item["size"],
+                        "path": item["path"],
+                    }
+                )
+        return files
+
+    async def download(self, url: str, model_dir: Path) -> AsyncGenerator[DownloadPacket]:
+        """Download model."""
+        model_id = url
+        commit_id = await self._get_commit_id(model_id)
+        files = await self._get_files(model_id)
+        blobs_dir = model_dir / "blobs"
+        blobs_dir.mkdir(parents=True, exist_ok=True)
+        refs_dir = model_dir / "refs"
+        refs_dir.mkdir(parents=True, exist_ok=True)
+        snapshot_dir = model_dir / "snapshots" / commit_id
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+        ref_file = refs_dir / "main"
+        if not ref_file.exists():
+            ref_file.write_text(commit_id)
+
+        for file in files:
+            whole_url = f"https://huggingface.co/{model_id}/resolve/main/{file['path']}"
+            try:
+                async for packet in Utils.ensure_model_downloaded(whole_url, blobs_dir, self.temp_dir, file["oid"], self.headers):
+                    yield packet
+                symlink_path = snapshot_dir / file["path"]
+                if symlink_path.exists():
+                    continue
+                symlink_path.symlink_to(f"../../blobs/{file['oid']}", target_is_directory=False)
+            except HttpClientError as e:
+                raise HTTPException(500, self.create_error_msg(e.body)) from e
+
+        yield DownloadPacket(success=True, local_path=model_dir)
 
 
 class HuggingFaceRepoDownloader(BaseDownloader):
@@ -222,6 +340,10 @@ class ModelDownloader:
             HuggingFaceModelDownloader(self.get_hugging_face_token(config)),
             CivitaiModelDownloader(self.get_civitai_token(config)),
         ]
+        self.hugging_face_repo_with_blobs_downloader = HuggingFaceRepoWithBlobsDownloader(
+            self.get_hugging_face_token(config),
+            self.temp_dir,
+        )
 
     async def download(self, url: str, model_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
