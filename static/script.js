@@ -113,6 +113,9 @@ function showFormModal(title, mainButtonLabel, spec, onInstall) {
                                 <input type="text" data-map="${field.name}" data-map-value="${i}" placeholder="${field.placeholder || ""}" style="width: 45%" />
                             `).join("<br/>");
                         }
+                        if (field.type === "textarea") {
+                            return `<textarea name="${field.name}" ${field.required ? `required="required"` : ""} placeholder="${field.placeholder || ""}">${field.default || ""}</textarea>`;
+                        }
                     })()}</div>
                 </div>
             `).join("")}
@@ -151,7 +154,7 @@ function showFormModal(title, mainButtonLabel, spec, onInstall) {
         }
         const keyMapping = {};
         const data = {};
-        for (const field of div.querySelectorAll("input,select")) {
+        for (const field of div.querySelectorAll("input,select,textarea")) {
             if (field.name) {
                 data[field.name] = field.type == "checkbox" ? field.checked : field.type == "number" ? field.valueAsNumber : field.value;
             }

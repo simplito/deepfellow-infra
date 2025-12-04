@@ -10,6 +10,7 @@
 """Model downloaders."""
 
 import json
+import re
 from abc import abstractmethod
 from collections.abc import AsyncGenerator
 from contextlib import suppress
@@ -25,6 +26,10 @@ from server.utils.core import DownloadPacket, HttpClientError, Utils
 
 class BDownloader:
     error_msg_modifiers: list[tuple[str, str]]
+
+    @abstractmethod
+    def check_url(self, url: str) -> bool:
+        """Check is url handled by this downloader."""
 
     def create_error_msg(self, msg: str) -> str | dict[str, Any]:
         """Create new string with error msg modifiers."""
@@ -46,9 +51,8 @@ class BDownloader:
 
 
 class BaseDownloader(BDownloader):
-    @staticmethod
     @abstractmethod
-    def check_url(url: str) -> bool:
+    def check_url(self, url: str) -> bool:
         """Check is url handled by this downloader."""
 
     @abstractmethod
@@ -57,8 +61,7 @@ class BaseDownloader(BDownloader):
 
 
 class StandardModelDownloader(BaseDownloader):
-    @staticmethod
-    def check_url(url: str) -> bool:  # noqa: ARG004
+    def check_url(self, url: str) -> bool:  # noqa: ARG002
         """Check is url handled by this downloader."""
         return True
 
@@ -121,8 +124,7 @@ class HuggingFaceRepoWithBlobsDownloader(BDownloader):
             ),
         ]
 
-    @staticmethod
-    def check_url(url: str) -> bool:  # noqa: ARG004
+    def check_url(self, url: str) -> bool:  # noqa: ARG002
         """Check is url handled by this downloader."""
         return False
 
@@ -186,6 +188,7 @@ class HuggingFaceRepoWithBlobsDownloader(BDownloader):
 
 class HuggingFaceRepoDownloader(BaseDownloader):
     header: dict[str, str]
+    huggingface_url_pattern = r"https://huggingface\.co/(.*?)(?:/tree/main)?$"
 
     def __init__(self, key: str):
         self.headers = Utils.create_bearer_header(key)
@@ -211,16 +214,24 @@ class HuggingFaceRepoDownloader(BaseDownloader):
             ),
         ]
 
-    @staticmethod
-    def check_url(url: str) -> bool:
-        """Check is url handled by this downloader."""
-        return not url.startswith("http")
+    def check_url(self, url: str) -> bool:
+        """Check is url handled by this downloader.
+
+        It should work with:
+
+        username/repo-name
+        https://huggingface.co/username/repo-name
+        https://huggingface.co/username/repo-name/tree/main
+        https://huggingface.co/api/models/username/repo-name/tree/main
+        """
+        return not url.startswith("http") or (bool(re.search(self.huggingface_url_pattern, url)))
 
     @staticmethod
     async def get_filenames(model_id: str) -> list[str]:
-        """Get filenames fro repository."""
+        """Get filenames from repository."""
         filenames: list[str] = []
         url = f"https://huggingface.co/api/models/{model_id}/tree/main"
+
         data: list[dict[str, Any]] = []
         with suppress(Exception):
             # Adding authentication header in here make error in public repos
@@ -239,6 +250,11 @@ class HuggingFaceRepoDownloader(BaseDownloader):
     async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
         model_id = url
+        if model_id.startswith("http"):
+            match = re.search(self.huggingface_url_pattern, url)
+            if match:
+                model_id = match.group(1)
+
         filenames = await self.get_filenames(model_id)
         for filename in filenames:
             whole_url = f"https://huggingface.co/{model_id}/resolve/main/{filename}"
@@ -278,10 +294,9 @@ class HuggingFaceModelDownloader(BaseDownloader):
             ),
         ]
 
-    @staticmethod
-    def check_url(url: str) -> bool:
+    def check_url(self, url: str) -> bool:
         """Check is url handled by this downloader."""
-        return url.startswith("https://huggingface.co/")
+        return bool(url.startswith("https://huggingface.co/") and Path(url).suffix)
 
     async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
@@ -305,8 +320,7 @@ class CivitaiModelDownloader(BaseDownloader):
             )
         ]
 
-    @staticmethod
-    def check_url(url: str) -> bool:
+    def check_url(self, url: str) -> bool:
         """Check is url handled by this downloader."""
         return url.startswith("https://civitai.com/")
 

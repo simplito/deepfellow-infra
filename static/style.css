@@ -146,7 +146,8 @@ input[type=text] {
 }
 .modal form .field input[type=text],
 .modal form .field input[type=password],
-.modal form .field input[type=number] {
+.modal form .field input[type=number],
+.modal form .field textarea {
     width: 100%;
     border: 1px solid #ddd;
     padding: 5px 10px;

@@ -179,6 +179,14 @@ class DockerService:
         result = await Utils.run_command_for_success(command)
         return result.stdout
 
+    async def run_command_docker_compose(self, filepath: Path, service_name: str, command: str) -> str:
+        """Run command in docker compose service."""
+        docker_compose_cmd = self.docker_compose_cmd
+        cmd_parts = [*docker_compose_cmd.split(), "-f", str(filepath), "exec", service_name, *command.split(" ")]
+        command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
+        result = await Utils.run_command_for_success(command)
+        return result.stdout
+
     async def docker_compose_status(self, docker_compose_file_path: Path) -> DockerComposeStatus:
         """Get status for given docker compose."""
         docker_compose_cmd = self.docker_compose_cmd
