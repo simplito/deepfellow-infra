@@ -10,9 +10,11 @@
 """Ollama service."""
 
 import json
+import logging
 from pathlib import Path
 from typing import Annotated, Literal, TypedDict
 
+import aiofiles
 from fastapi import HTTPException
 from pydantic import BaseModel, StringConstraints
 
@@ -49,6 +51,8 @@ from server.utils.core import (
 )
 from server.utils.loading import Progress
 
+logger = logging.getLogger("uvicorn")
+
 
 def _read_models_from_json() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
     ollama_path = get_main_dir() / "./static/ollama.json"
@@ -65,17 +69,26 @@ def _read_models_from_json() -> dict[str, bool]:  # pyright: ignore[reportUnused
         return map
 
 
+type Quantization = Literal[
+    "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "q3_K_S", "q3_K_M", "q3_K_L", "q4_K_S", "q4_K_M", "q5_K_S", "q5_K_M", "q6_K"
+]
+
+
 class OllamaModel(BaseModel):
     id: str
     size: str
     type: str
     custom: CustomModelId | None = None
+    modelfile: str | None = None
+    quantization: Quantization | Literal[""] | None = None
 
 
 class OllamaCustomModel(BaseModel):
     id: str
     size: str
     type: Literal["llm", "embedding"]
+    modelfile: str | None = None
+    quantization: Quantization | Literal[""] | None = None
 
 
 class OllamaRegistryEntry(TypedDict):
@@ -236,6 +249,8 @@ class OllamaService(Base2Service[InstalledInfo]):
                 CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
                 CustomModelField(type="text", name="size", description="Model size", placeholder="1GB"),
                 CustomModelField(type="oneof", name="type", description="Model type", values=["llm", "embedding"]),
+                CustomModelField(type="textarea", name="modelfile", description="Modelfile", placeholder="my-custom-model", required=False),
+                CustomModelField(type="text", name="quantization", description="Quantization", placeholder="q4_0", required=False),
             ]
         )
 
@@ -303,6 +318,7 @@ class OllamaService(Base2Service[InstalledInfo]):
                 docker_exposed_port=docker_exposed_port,
             )
             stream.emit(StreamChunkProgress(type="progress", value=1))
+
             return info
 
         return PromiseWithProgress(func=func)
@@ -343,7 +359,9 @@ class OllamaService(Base2Service[InstalledInfo]):
         parsed = try_parse_pydantic(OllamaCustomModel, model.data)
         if parsed.id in self.models:
             raise HTTPException(400, "Model with given id already exists.")
-        self.models[parsed.id] = OllamaModel(id=parsed.id, size=parsed.size, type=parsed.type, custom=model.id)
+        self.models[parsed.id] = OllamaModel(
+            id=parsed.id, size=parsed.size, type=parsed.type, custom=model.id, modelfile=parsed.modelfile, quantization=parsed.quantization
+        )
 
     def _remove_custom_model(self, model: CustomModel) -> None:
         parsed = try_parse_pydantic(OllamaCustomModel, model.data)
@@ -390,7 +408,141 @@ class OllamaService(Base2Service[InstalledInfo]):
             has_docker=False,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:  # noqa: C901
+    async def _download_with_ollama(self, input_stream: Stream[StreamChunk], base_url: str, model_id: str, model_size: str) -> None:
+        progress = Progress(convert_size_to_bytes(model_size) or 0)
+        last_diggest: str = ""
+        last_value: int = 0
+
+        async for stream in stream_fetch_from(f"{base_url}/api/pull", "POST", {"model": model_id}):
+            if (stream.status_code != 200 and stream.status_code != 201) or "error" in stream.data:
+                raise HTTPException(400, "Model not available")
+
+            data_cleared: list[str] = stream.data.rstrip().split("\n")
+            records = [json.loads(s) for s in data_cleared]
+            if progress.max != 0:
+                for record in records:
+                    if value := record.get("completed"):
+                        digest = record.get("digest")
+                        batch_download_bytes_size = value - last_value if digest == last_diggest else value
+                        progress.add_to_actual_value(batch_download_bytes_size)
+                        last_value = value
+                        last_diggest = digest
+
+                    elif record.get("status") == "success":
+                        progress.set_actual_value(progress.max)
+
+                    input_stream.emit(StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99))
+
+    @staticmethod
+    async def is_model_installed(base_url: str, model: str) -> bool:
+        """Return is model installed."""
+        result = await fetch_from(
+            f"{base_url}/api/show",
+            "POST",
+            {"model": model},
+        )
+        return result.status_code == 200
+
+    async def create_model_from_modelfile(
+        self, compose_filepath: Path, service_name: str, model: str, model_path: str, quantization: str | None
+    ) -> str:
+        """Send message to ollama to create model from Modelfile.."""
+        quantization_param = f"-q {quantization} " if quantization else ""
+        cmd = f"ollama create {quantization_param}{model} -f {model_path}"
+        return await self.docker_service.run_command_docker_compose(compose_filepath, service_name, cmd)
+
+    async def _download(
+        self, input_stream: Stream[StreamChunk], base_url: str, model_url: str, model_size: str, model_id: str, models_quantity: int
+    ) -> str:
+        base_docker_dir: Path = Path("/root/.ollama/custom")
+        local_models_dir = Path(self._get_working_dir()) / "main" / "custom"
+        model_path = Path(model_url)
+
+        if model_url.startswith(("http://", "https://")):
+            dir = Path(Path(local_models_dir) / model_id)
+            additional_params = ()
+            if model_path.suffix:
+                # If file then add filename to download.
+                additional_params = (model_path.name,)
+            else:
+                # Download all files to subdirectory model
+                dir = dir / "model"
+
+            progress = Progress(convert_size_to_bytes(model_size) or 0)
+            async for packet in self.model_downloader.download(model_url, dir, *additional_params):
+                progress.add_to_actual_value(packet.downloaded_bytes_size / models_quantity)
+                input_stream.emit(StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99))
+            # Return path to file or path to directory (with model)
+            return str(base_docker_dir / model_id / model_path.name)
+
+        await self._download_with_ollama(input_stream, base_url, model_url, model_size)
+        return model_url
+
+    async def create_docker_modelfile_content(self, model_name: str, modelfile: str) -> tuple[str, list[str]]:
+        """Create docker modelfile content.
+
+        Can edit local models path to docker model paths.
+        """
+        base_docker_dir: Path = Path("/root/.ollama/custom")
+        local_models_dir = Path(self._get_working_dir()) / "main" / "custom"
+        docker_modelfile_parts: list[str] = []
+        models_to_download_with_duplicates: list[str] = []
+
+        for line in modelfile.split("\n"):
+            new_line = line
+            if line.startswith(("FROM", "ADAPTER")):
+                line_parts = line.split(" ")
+                new_line_parts: list[str] = line_parts.copy()
+                if len(line_parts) == 2:
+                    model = line_parts[1]
+                    path_model = Path(model)
+                    if model.startswith(("http://", "https://")):
+                        file_or_dir = path_model.name if path_model.suffix else "model"
+                        path = str(base_docker_dir / model_name / file_or_dir)
+                        models_to_download_with_duplicates.append(model)
+                    else:
+                        docker_parent_path = base_docker_dir / path_model
+                        local_parent_path = local_models_dir / path_model
+                        if local_parent_path.exists():
+                            # If exist then we don't want download. Replace to docker path
+                            path = str(docker_parent_path)
+                        else:
+                            # If doesn't exist the we download with ollama
+                            path = model
+                            models_to_download_with_duplicates.append(model)
+
+                    new_line_parts[1] = path
+
+                new_line = " ".join(new_line_parts)
+
+            docker_modelfile_parts.append(new_line)
+
+        models = list(set(models_to_download_with_duplicates))
+
+        return "\n".join(docker_modelfile_parts), models
+
+    async def save_modelfile(self, model: str, modelfile: str) -> str:
+        """Save modelfile."""
+        base_docker_dir: Path = Path("root/.ollama/custom")
+        base_local_dir: Path = Path(self._get_working_dir())
+        docker_modelfile_path = base_docker_dir / model / "Modelfile"
+        local_modelfile_path = base_local_dir / "main" / "custom" / model / "Modelfile"
+
+        if local_modelfile_path.exists():
+            async with aiofiles.open(local_modelfile_path) as f:
+                content = await f.read()
+                if modelfile == content:
+                    return str(docker_modelfile_path)
+
+        if not local_modelfile_path.parent.exists():
+            local_modelfile_path.parent.mkdir(parents=True)
+
+        async with aiofiles.open(local_modelfile_path, mode="w") as f:
+            await f.write(modelfile)
+
+        return str(docker_modelfile_path)
+
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         parsed_model_options = try_parse_pydantic(OllamaModelOptions, options.spec) if options.spec else OllamaModelOptions()
         info = self._check_installed()
         if model_id in info.models:
@@ -399,32 +551,26 @@ class OllamaService(Base2Service[InstalledInfo]):
             raise HTTPException(400, "Model not found")
         model = self.models[model_id]
 
-        async def func(streamp: Stream[StreamChunk]) -> InstallModelOut:
-            progress = Progress(convert_size_to_bytes(model.size) or 0)
-            last_diggest: str = ""
-            last_value: int = 0
+        async def func(input_stream: Stream[StreamChunk]) -> InstallModelOut:
+            service_name = info.docker.name
+            compose_filepath = self.docker_service.get_docker_compose_file_path(service_name)
+            if not await self.is_model_installed(info.base_url, model_id):
+                if not model.modelfile:
+                    await self._download_with_ollama(input_stream, info.base_url, model_id, model.size)
+                else:
+                    content, models_to_download = await self.create_docker_modelfile_content(model_id, model.modelfile)
+                    models_quantity = len(set(models_to_download))
+                    for model_to_download in models_to_download:
+                        await self._download(input_stream, info.base_url, model_to_download, model.size, model_id, models_quantity)
+                    path = await self.save_modelfile(model_id, content)
+                    quantization = model.quantization
 
-            async for stream in stream_fetch_from(f"{info.base_url}/api/pull", "POST", {"model": model_id}):
-                if (stream.status_code != 200 and stream.status_code != 201) or "error" in stream.data:
-                    raise HTTPException(400, "Model not available")
+                    msg = f"Create model {model_id} from {path}{f'with quantization {quantization}' if quantization else ''}"
+                    logger.debug(msg)
 
-                data_cleared: list[str] = stream.data.rstrip().split("\n")
-                records = [json.loads(s) for s in data_cleared]
-                if progress.max != 0:
-                    for record in records:
-                        if value := record.get("completed"):
-                            digest = record.get("digest")
-                            batch_download_bytes_size = value - last_value if digest == last_diggest else value
-                            progress.add_to_actual_value(batch_download_bytes_size)
-                            last_value = value
-                            last_diggest = digest
+                    await self.create_model_from_modelfile(compose_filepath, service_name, model_id, path, quantization)
 
-                        elif record.get("status") == "success":
-                            progress.set_actual_value(progress.max)
-
-                        streamp.emit(StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99))
-
-            streamp.emit(StreamChunkProgress(type="progress", value=0.99))
+            input_stream.emit(StreamChunkProgress(type="progress", value=0.99))
             if parsed_model_options.alive_time != "":
                 await fetch_from(
                     f"{info.base_url}/api/generate",
@@ -455,7 +601,7 @@ class OllamaService(Base2Service[InstalledInfo]):
                     options=ProxyOptions(url=f"{info.base_url}/v1/embeddings", rewrite_model_to=model_id),
                     registration_options=None,
                 )
-            streamp.emit(StreamChunkProgress(type="progress", value=1))
+            input_stream.emit(StreamChunkProgress(type="progress", value=1))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
