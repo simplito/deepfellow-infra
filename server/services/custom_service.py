@@ -226,10 +226,8 @@ class CustomService(Base2Service[InstalledInfo]):
         )
 
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
-        async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
-            info = InstalledInfo(models={}, options=options)
-            stream.emit(StreamChunkProgress(type="progress", value=1))
-            return info
+        async def func(stream: Stream[StreamChunk]) -> InstalledInfo:  # noqa: ARG001
+            return InstalledInfo(models={}, options=options)
 
         return PromiseWithProgress(func=func)
 
@@ -354,6 +352,7 @@ class CustomService(Base2Service[InstalledInfo]):
             subnet = self.docker_service.get_docker_subnet()
             docker_options = model.options
             await self._docker_pull(DockerImage(name=docker_options.image, size=model.size), stream)
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
@@ -371,7 +370,7 @@ class CustomService(Base2Service[InstalledInfo]):
                 options=ProxyOptions(url=model_info.base_url),
                 registration_options=None,
             )
-            stream.emit(StreamChunkProgress(type="progress", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)

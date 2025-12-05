@@ -276,6 +276,7 @@ class OllamaService(Base2Service[InstalledInfo]):
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             volumes = [f"{self._get_working_dir()}/main:/root/.ollama"]
             subnet = self.docker_service.get_docker_subnet()
             envs = dict[str, str]()
@@ -317,7 +318,7 @@ class OllamaService(Base2Service[InstalledInfo]):
                 container_port=self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port),
                 docker_exposed_port=docker_exposed_port,
             )
-            stream.emit(StreamChunkProgress(type="progress", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
 
             return info
 
@@ -408,16 +409,17 @@ class OllamaService(Base2Service[InstalledInfo]):
             has_docker=False,
         )
 
-    async def _download_with_ollama(self, input_stream: Stream[StreamChunk], base_url: str, model_id: str, model_size: str) -> None:
+    async def _download_with_ollama(self, stream: Stream[StreamChunk], base_url: str, model_id: str, model_size: str) -> None:
         progress = Progress(convert_size_to_bytes(model_size) or 0)
         last_diggest: str = ""
         last_value: int = 0
 
-        async for stream in stream_fetch_from(f"{base_url}/api/pull", "POST", {"model": model_id}):
-            if (stream.status_code != 200 and stream.status_code != 201) or "error" in stream.data:
+        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
+        async for ollama_stream in stream_fetch_from(f"{base_url}/api/pull", "POST", {"model": model_id}):
+            if (ollama_stream.status_code != 200 and ollama_stream.status_code != 201) or "error" in ollama_stream.data:
                 raise HTTPException(400, "Model not available")
 
-            data_cleared: list[str] = stream.data.rstrip().split("\n")
+            data_cleared: list[str] = ollama_stream.data.rstrip().split("\n")
             records = [json.loads(s) for s in data_cleared]
             if progress.max != 0:
                 for record in records:
@@ -431,7 +433,9 @@ class OllamaService(Base2Service[InstalledInfo]):
                     elif record.get("status") == "success":
                         progress.set_actual_value(progress.max)
 
-                    input_stream.emit(StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99))
+                    stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
+
+        stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
 
     @staticmethod
     async def is_model_installed(base_url: str, model: str) -> bool:
@@ -452,7 +456,7 @@ class OllamaService(Base2Service[InstalledInfo]):
         return await self.docker_service.run_command_docker_compose(compose_filepath, service_name, cmd)
 
     async def _download(
-        self, input_stream: Stream[StreamChunk], base_url: str, model_url: str, model_size: str, model_id: str, models_quantity: int
+        self, stream: Stream[StreamChunk], base_url: str, model_url: str, model_size: str, model_id: str, models_quantity: int
     ) -> str:
         base_docker_dir: Path = Path("/root/.ollama/custom")
         local_models_dir = Path(self._get_working_dir()) / "main" / "custom"
@@ -469,13 +473,15 @@ class OllamaService(Base2Service[InstalledInfo]):
                 dir = dir / "model"
 
             progress = Progress(convert_size_to_bytes(model_size) or 0)
+            stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
             async for packet in self.model_downloader.download(model_url, dir, *additional_params):
                 progress.add_to_actual_value(packet.downloaded_bytes_size / models_quantity)
-                input_stream.emit(StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99))
+                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
             # Return path to file or path to directory (with model)
+            stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
             return str(base_docker_dir / model_id / model_path.name)
 
-        await self._download_with_ollama(input_stream, base_url, model_url, model_size)
+        await self._download_with_ollama(stream, base_url, model_url, model_size)
         return model_url
 
     async def create_docker_modelfile_content(self, model_name: str, modelfile: str) -> tuple[str, list[str]]:
@@ -570,7 +576,7 @@ class OllamaService(Base2Service[InstalledInfo]):
 
                     await self.create_model_from_modelfile(compose_filepath, service_name, model_id, path, quantization)
 
-            input_stream.emit(StreamChunkProgress(type="progress", value=0.99))
+            input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             if parsed_model_options.alive_time != "":
                 await fetch_from(
                     f"{info.base_url}/api/generate",
@@ -601,7 +607,7 @@ class OllamaService(Base2Service[InstalledInfo]):
                     options=ProxyOptions(url=f"{info.base_url}/v1/embeddings", rewrite_model_to=model_id),
                     registration_options=None,
                 )
-            input_stream.emit(StreamChunkProgress(type="progress", value=1))
+            input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)

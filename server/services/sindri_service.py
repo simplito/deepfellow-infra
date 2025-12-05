@@ -157,6 +157,7 @@ class SindriService(Base2Service[InstalledInfo]):
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             config_path = self._get_working_dir() / "config.yaml"
             data = (
                 "listenAddress: 0.0.0.0\n"
@@ -203,7 +204,7 @@ class SindriService(Base2Service[InstalledInfo]):
                 container_port=self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port),
                 docker_exposed_port=docker_exposed_port,
             )
-            stream.emit(StreamChunkProgress(type="progress", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             return info
 
         return PromiseWithProgress(func=func)
@@ -285,6 +286,7 @@ class SindriService(Base2Service[InstalledInfo]):
         model = _const.models[model_id]
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
@@ -301,7 +303,7 @@ class SindriService(Base2Service[InstalledInfo]):
                     completions=None,
                     registration_options=None,
                 )
-            stream.emit(StreamChunkProgress(type="progress", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)

@@ -218,6 +218,7 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo]):
 
         async def func(stream: Stream[StreamChunk]) -> InstalledExternalInfo:
             # Verify connection to external Ollama
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             try:
                 res = await fetch_from(f"{parsed_options.url.rstrip('/')}/api/tags", "GET", None)
                 if res.status_code != 200:
@@ -228,7 +229,7 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo]):
                 msg = f"Cannot connect to Ollama at {parsed_options.url}: {e!s}"
                 raise HTTPException(status_code=400, detail=msg) from e
 
-            stream.emit(StreamChunkProgress(type="progress", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             return InstalledExternalInfo(
                 models={},
                 options=options,
@@ -296,16 +297,17 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo]):
             raise HTTPException(400, "Model not found")
         model = self.models[model_id]
 
-        async def func(streamp: Stream[StreamChunk]) -> InstallModelOut:
+        async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
             progress = Progress(convert_size_to_bytes(model.size) or 0)
             last_diggest: str = ""
             last_value: int = 0
 
-            async for stream in stream_fetch_from(f"{info.base_url}/api/pull", "POST", {"model": model_id}):
-                if (stream.status_code != 200 and stream.status_code != 201) or "error" in stream.data:
+            stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
+            async for ollama_stream in stream_fetch_from(f"{info.base_url}/api/pull", "POST", {"model": model_id}):
+                if (ollama_stream.status_code != 200 and ollama_stream.status_code != 201) or "error" in ollama_stream.data:
                     raise HTTPException(400, "Model not available")
 
-                data_cleared: list[str] = stream.data.rstrip().split("\n")
+                data_cleared: list[str] = ollama_stream.data.rstrip().split("\n")
                 records = [json.loads(s) for s in data_cleared]
                 if progress.max != 0:
                     for record in records:
@@ -319,9 +321,10 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo]):
                         elif record.get("status") == "success":
                             progress.set_actual_value(progress.max)
 
-                        streamp.emit(StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99))
+                        stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
 
-            streamp.emit(StreamChunkProgress(type="progress", value=0.99))
+            stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             if parsed_model_options.alive_time != "":
                 await fetch_from(
                     f"{info.base_url}/api/generate",
@@ -352,7 +355,7 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo]):
                     options=ProxyOptions(url=f"{info.base_url}/v1/embeddings", rewrite_model_to=model_id),
                     registration_options=None,
                 )
-            streamp.emit(StreamChunkProgress(type="progress", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)

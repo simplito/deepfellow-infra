@@ -480,6 +480,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             subnet = self.docker_service.get_docker_subnet()
             docker_options = DockerOptions(
                 name="speaches-ai",
@@ -512,7 +513,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
                 container_port=self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port),
                 docker_exposed_port=docker_exposed_port,
             )
-            stream.emit(StreamChunkProgress(type="progress", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             return info
 
         return PromiseWithProgress(func=func)
@@ -605,13 +606,18 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
 
             progress = Progress(convert_size_to_bytes(model.size) or 0)
             local_model_path: Path | None = None
+            stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
             async for packet in self.model_downloader.hugging_face_repo_with_blobs_downloader.download(model_id, model_dir):
                 if packet.local_path and not local_model_path:
                     local_model_path = packet.local_path
                 elif packet.downloaded_bytes_size != 0:
                     progress.add_to_actual_value(packet.downloaded_bytes_size)
 
-                stream.emit(StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99))
+                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
+
+            stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
+
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
 
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             info.models[model_id] = model_info = ModelInstalledInfo(
@@ -636,7 +642,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
                     options=ProxyOptions(url=f"{info.base_url}/v1/audio/transcriptions", rewrite_model_to=model_id),
                     registration_options=None,
                 )
-            stream.emit(StreamChunkProgress(type="progress", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)

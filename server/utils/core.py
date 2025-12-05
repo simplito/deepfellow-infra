@@ -335,8 +335,9 @@ class StreamChunkFinish(TypedDict):
 
 
 class StreamChunkProgress(TypedDict):
-    value: float
     type: Literal["progress"]
+    stage: Literal["install", "download"]
+    value: float
 
 
 type StreamChunk = StreamChunkFinish | StreamChunkProgress

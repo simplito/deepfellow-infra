@@ -265,16 +265,13 @@ class Base2Service[T](BaseService):
         self,
         image: DockerImage,
         stream: Stream[StreamChunk],
-        start_percentage: float = 0,
-        end_percentage: float = 0.99,
     ) -> None:
         """Docker pull only if image does not exist."""
-        multiplier = end_percentage - start_percentage
-        stream.emit(StreamChunkProgress(type="progress", value=start_percentage))
+        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
         if not await self.docker_service.is_docker_image_pulled(image.name):
             async for progress in self.docker_service.docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
-                stream.emit(StreamChunkProgress(type="progress", value=progress * multiplier))
-        stream.emit(StreamChunkProgress(type="progress", value=end_percentage))
+                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress))
+        stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
 
     async def _stop_docker(self, docker_options: DockerOptions) -> None:
         """Stop docker and log error if it occurs."""

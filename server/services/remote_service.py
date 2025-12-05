@@ -179,10 +179,8 @@ class RemoteService(Base2Service[InstalledInfo]):
             options.spec["api_url"] = self.get_default_url()
         parsed_options = try_parse_pydantic(RemoteOptions, options.spec)
 
-        async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
-            info = InstalledInfo(models={}, options=options, parsed_options=parsed_options)
-            stream.emit(StreamChunkProgress(type="progress", value=1))
-            return info
+        async def func(stream: Stream[StreamChunk]) -> InstalledInfo:  # noqa: ARG001
+            return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
 
         return PromiseWithProgress(func=func)
 
@@ -271,6 +269,7 @@ class RemoteService(Base2Service[InstalledInfo]):
         model = self.models[model_id]
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
@@ -350,7 +349,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                     ),
                     registration_options=None,
                 )
-            stream.emit(StreamChunkProgress(type="progress", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
