@@ -233,9 +233,7 @@ class VllmService(Base2Service[InstalledInfo]):
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)
-            info = InstalledInfo(models={}, options=options, parsed_options=parsed_options)
-            stream.emit(StreamChunkProgress(type="progress", value=1))
-            return info
+            return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
 
         return PromiseWithProgress(func=func)
 
@@ -326,13 +324,17 @@ class VllmService(Base2Service[InstalledInfo]):
             model_dir.mkdir(parents=True, exist_ok=True)
             progress = Progress(convert_size_to_bytes(model.size) or 0)
             local_model_path: Path | None = None
+            stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
             async for packet in self.model_downloader.download(model_id, model_dir):
                 if packet.local_path and not local_model_path:
                     local_model_path = packet.local_path
                 elif packet.downloaded_bytes_size != 0:
                     progress.add_to_actual_value(packet.downloaded_bytes_size)
 
-                stream.emit(StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99))
+                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
+
+            stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
 
             docker_model_path = Path(self.hugging_face_cache_path) / "hub" / model_id_fixed
             volumes = [f"{local_model_path}:{docker_model_path}"]
@@ -418,7 +420,7 @@ class VllmService(Base2Service[InstalledInfo]):
                 completions=ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id),
                 registration_options=None,
             )
-            stream.emit(StreamChunkProgress(type="progress", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)

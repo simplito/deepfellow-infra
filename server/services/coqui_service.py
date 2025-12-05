@@ -193,9 +193,7 @@ class CoquiService(Base2Service[InstalledInfo]):
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)
-            info = InstalledInfo(models={}, options=options, parsed_options=parsed_options)
-            stream.emit(StreamChunkProgress(type="progress", value=1))
-            return info
+            return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
 
         return PromiseWithProgress(func=func)
 
@@ -270,6 +268,7 @@ class CoquiService(Base2Service[InstalledInfo]):
             image = self._get_image(info.parsed_options.gpu)
 
             subnet = self.docker_service.get_docker_subnet()
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             docker_options = DockerOptions(
                 name=f"{self.get_id()}-{model.docker_name}",
                 container_name=self.docker_service.get_docker_container_name(f"{self.get_id()}-{model.docker_name}"),
@@ -318,7 +317,7 @@ class CoquiService(Base2Service[InstalledInfo]):
                 endpoint=SimpleEndpoint(on_request=_create_handler(model_info.base_url, model.default_speaker, model.response_format)),
                 registration_options=None,
             )
-            stream.emit(StreamChunkProgress(type="progress", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)

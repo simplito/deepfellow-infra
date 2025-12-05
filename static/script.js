@@ -629,6 +629,16 @@ async function fetchJson(url, options) {
     }
 }
 
+function getStageLabel(stage) {
+    if (stage == "install") {
+        return "Installing";
+    }
+    if (stage == "download") {
+        return "Downloading";
+    }
+    return stage || "";
+}
+
 function readProgress(response, onFinish) {
     const contentType = (response.headers.get("content-type") || "").split(";")[0].trim();
     if (contentType !== "text/event-stream") {
@@ -656,7 +666,7 @@ function readProgress(response, onFinish) {
             return;
         }
         if (data.type === "progress") {
-            progress.textContent = (Math.floor(data.value * 10000) / 100).toFixed(2) + "%";
+            progress.textContent = getStageLabel(data.stage) + " " + (Math.floor(data.value * 10000) / 100).toFixed(2) + "%";
         }
         else if (data.type === "finish") {
             if (data.status === "ok") {

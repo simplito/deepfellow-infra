@@ -368,9 +368,8 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             image = _const.image_cpu
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
-            stream.emit(StreamChunkProgress(type="progress", value=0))
             await self._docker_pull(image, stream)
-            stream.emit(StreamChunkProgress(type="progress", value=0.99))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             await self.update_config()
             subnet = self.docker_service.get_docker_subnet()
             docker_options = DockerOptions(
@@ -420,7 +419,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
                 docker_exposed_port=docker_exposed_port,
                 proxy_registration_id=proxy_registration_id,
             )
-            stream.emit(StreamChunkProgress(type="progress", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             return info
 
         return PromiseWithProgress(func=func)
@@ -553,6 +552,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             progress = Progress(convert_size_to_bytes(model.size) or 0)
             local_model_path: Path | None = None
             model_filename = ""
+            stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
             async for packet in self.model_downloader.download(model.url, model_dir, model.filename):
                 if packet.local_path and packet.filename and not local_model_path and not model_filename:
                     local_model_path = packet.local_path
@@ -560,10 +560,13 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
                 elif packet.downloaded_bytes_size != 0:
                     progress.add_to_actual_value(packet.downloaded_bytes_size)
 
-                stream.emit(StreamChunkProgress(type="progress", value=progress.get_percentage() * 0.99))
+                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
 
             if not local_model_path:
                 raise HTTPException(400, "Something went wrong with downloading")
+
+            stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
 
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             info.models[model_id] = model_info = ModelInstalledInfo(
@@ -584,7 +587,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
                 )
 
             await self.refresh_models()
-            stream.emit(StreamChunkProgress(type="progress", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
