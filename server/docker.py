@@ -273,7 +273,7 @@ class DockerService:
         if not options.subnet:
             if not port:
                 raise AppError("Port is required when not in subnet mode")
-            service["ports"] = [f"{port}:{options.image_port}"]
+            service["ports"] = [f"127.0.0.1:{port}:{options.image_port}"]
         if options.healthcheck:
             service["healthcheck"] = options.healthcheck
         if options.command:
