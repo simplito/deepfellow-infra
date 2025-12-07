@@ -94,7 +94,7 @@ class ModelTester:
             raise RuntimeError("LLM has no on_chat_completion callback")
         (my_resp, json) = await self._read_json(
             await endpoint.on_chat_completion(
-                ChatCompletionRequest(model=model, max_tokens=20, messages=[UserMessage(role="user", content="Say hello!")]),
+                ChatCompletionRequest(model=model, max_completion_tokens=20, messages=[UserMessage(role="user", content="Say hello!")]),
                 None,
             )
         )
