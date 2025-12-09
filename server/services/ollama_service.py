@@ -130,6 +130,7 @@ class ModelInstalledInfo(BaseModel):
     type: str
     options: InstallModelIn
     registration_id: RegistrationId
+    internal_name: str | None
 
     def get_info(self) -> ModelInfo:
         """Get info."""
@@ -143,11 +144,13 @@ class OllamaOptions(BaseModel):
     is_flash_attention: bool | None = None  # False
     max_loaded_models: int | None = None  # 1
     kv_cache_type: str = ""  # f16
+    context_length: int | None = None  # 4096
 
 
 class OllamaModelOptions(BaseModel):
     alias: str | None = None
     alive_time: int | Annotated[str, StringConstraints(pattern=r"^(\d+[smh])?$", strict=True)] = ""
+    context_length: int | None = None
 
 
 class InstalledInfo:
@@ -225,6 +228,12 @@ class OllamaService(Base2Service[InstalledInfo]):
                     description="Quantization type for the K/V cache (default: f16, available: q4_0, q8_0) (OLLAMA_KV_CACHE_TYPE)",
                     required=False,
                 ),
+                ServiceField(
+                    type="number",
+                    name="context_length",
+                    description="Default context length (OLLAMA_CONTEXT_LENGTH)",
+                    required=False,
+                ),
             ]
         )
 
@@ -239,6 +248,12 @@ class OllamaService(Base2Service[InstalledInfo]):
                     description="How long should this model last when it isn't used (e.g. 5m)",
                     required=False,
                 ),
+                ModelField(
+                    type="number",
+                    name="context_length",
+                    description="The size of context for this model (e.g. 8192)",
+                    required=False,
+                ),
             ]
         )
 
@@ -249,7 +264,13 @@ class OllamaService(Base2Service[InstalledInfo]):
                 CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
                 CustomModelField(type="text", name="size", description="Model size", placeholder="1GB"),
                 CustomModelField(type="oneof", name="type", description="Model type", values=["llm", "embedding"]),
-                CustomModelField(type="textarea", name="modelfile", description="Modelfile", placeholder="my-custom-model", required=False),
+                CustomModelField(
+                    type="textarea",
+                    name="modelfile",
+                    description="Modelfile",
+                    placeholder="FROM gemma3:1b\nPARAMETER num_ctx 8192",
+                    required=False,
+                ),
                 CustomModelField(type="text", name="quantization", description="Quantization", placeholder="q4_0", required=False),
             ]
         )
@@ -290,6 +311,8 @@ class OllamaService(Base2Service[InstalledInfo]):
                 envs["OLLAMA_MAX_LOADED_MODELS"] = str(parsed_options.max_loaded_models)
             if parsed_options.kv_cache_type:
                 envs["OLLAMA_KV_CACHE_TYPE"] = str(parsed_options.kv_cache_type)
+            if parsed_options.context_length:
+                envs["OLLAMA_CONTEXT_LENGTH"] = str(parsed_options.context_length)
             docker_options = DockerOptions(
                 name="ollama",
                 container_name=self.docker_service.get_docker_container_name("ollama"),
@@ -548,7 +571,7 @@ class OllamaService(Base2Service[InstalledInfo]):
 
         return str(docker_modelfile_path)
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:  # noqa: C901
         parsed_model_options = try_parse_pydantic(OllamaModelOptions, options.spec) if options.spec else OllamaModelOptions()
         info = self._check_installed()
         if model_id in info.models:
@@ -583,6 +606,14 @@ class OllamaService(Base2Service[InstalledInfo]):
                     "POST",
                     {"model": model_id, "keep_alive": parsed_model_options.alive_time},
                 )
+            rewrite_model_to = model_id
+            internal_name: str | None = None
+            if not model.modelfile and model.type == "llm" and parsed_model_options.context_length is not None:
+                internal_name = model_id + "-customcontextlength"
+                rewrite_model_to = internal_name
+                content = f"FROM {model_id}\nPARAMETER num_ctx {parsed_model_options.context_length}"
+                path = await self.save_modelfile(internal_name, content)
+                await self.create_model_from_modelfile(compose_filepath, service_name, internal_name, path, "")
 
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             info.models[model_id] = model_info = ModelInstalledInfo(
@@ -591,20 +622,21 @@ class OllamaService(Base2Service[InstalledInfo]):
                 registered_name=registered_name,
                 options=options,
                 registration_id="",
+                internal_name=internal_name,
             )
             if model.type == "llm":
                 model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                     model=registered_name,
                     props=ModelProps(private=True),
-                    chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
-                    completions=ProxyOptions(url=f"{info.base_url}/v1/completions", rewrite_model_to=model_id),
+                    chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=rewrite_model_to),
+                    completions=ProxyOptions(url=f"{info.base_url}/v1/completions", rewrite_model_to=rewrite_model_to),
                     registration_options=None,
                 )
             if model.type == "embedding":
                 model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
                     model=registered_name,
                     props=ModelProps(private=True),
-                    options=ProxyOptions(url=f"{info.base_url}/v1/embeddings", rewrite_model_to=model_id),
+                    options=ProxyOptions(url=f"{info.base_url}/v1/embeddings", rewrite_model_to=rewrite_model_to),
                     registration_options=None,
                 )
             input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))

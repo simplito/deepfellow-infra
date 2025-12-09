@@ -376,7 +376,7 @@ async function showServicePage(id) {
                         Size: <span class="size">${m.size ? m.size : "N/A"}</span>
                     </div>
                     <div class="box-values">
-                        ${values ? Object.keys(values).map(key => `<div class="box-value">${key} = ${m.spec.fields.find(x => x.name === key)?.type === "password" ? "*****" : values[key]}</div>`).join("") : ""}
+                        ${values ? Object.keys(values).map(key => `<div class="box-value">${key} = ${m.spec.fields.find(x => x.name === key)?.type === "password" ? "*****" : (values[key] === null ? "" : values[key])}</div>`).join("") : ""}
                     </div>
                     <div class="box-buttons model-buttons">
                         ${!m.installed ? `<button data-action="install-model" data-service-id="${id}" data-model-id="${m.id}">Install</button>` : ""}
