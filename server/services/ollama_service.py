@@ -415,7 +415,7 @@ class OllamaService(Base2Service[InstalledInfo]):
         last_value: int = 0
 
         stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
-        async for ollama_stream in stream_fetch_from(f"{base_url}/api/pull", "POST", {"model": model_id}):
+        async for ollama_stream in stream_fetch_from(f"{base_url}/api/pull", "POST", {"model": model_id}, timeout=24 * 60 * 60):
             if (ollama_stream.status_code != 200 and ollama_stream.status_code != 201) or "error" in ollama_stream.data:
                 raise HTTPException(400, "Model not available")
 
