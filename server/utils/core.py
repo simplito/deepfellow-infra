@@ -235,9 +235,11 @@ async def fetch_from(url: str, method: str = "GET", data: JsonSerializable | Non
         return FetchResult(status_code=response.status, data=await response.text())
 
 
-async def stream_fetch_from(url: str, method: str = "GET", data: JsonSerializable | None = None) -> AsyncGenerator[FetchResult]:
+async def stream_fetch_from(
+    url: str, method: str = "GET", data: JsonSerializable | None = None, timeout: int = 120
+) -> AsyncGenerator[FetchResult]:
     """Make stream HTTP request to host on given port."""
-    async with aiohttp.ClientSession() as session, session.request(method, url, json=data) as response:
+    async with aiohttp.ClientSession() as session, session.request(method, url, json=data, timeout=ClientTimeout(timeout)) as response:
         async for chunk in response.content.iter_any():
             yield FetchResult(status_code=response.status, data=chunk.decode())
 
