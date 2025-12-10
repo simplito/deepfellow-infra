@@ -10,22 +10,26 @@
 """Docker backend."""
 
 import json
+import logging
 import os
+import re
 import shutil
 from collections.abc import AsyncGenerator
 from contextlib import suppress
 from pathlib import Path
-from typing import NotRequired, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 import yaml
-from aiodocker import Docker
+from aiodocker import Docker, DockerError
 from pydantic import BaseModel
 
 from server.config import AppSettings
 from server.portservice import PortService
-from server.utils.core import CommandResult2, Utils
+from server.utils.core import CommandResult2, Utils, get_cpu_architecture, get_os
 from server.utils.exceptions import AppError
 from server.utils.loading import Progress
+
+logger = logging.getLogger("uvicorn")
 
 
 class DockerOptions:
@@ -132,6 +136,8 @@ class DockerService:
         port_service: PortService,
         docker_compose_cmd: str,
         has_gpu_support: bool,
+        os: str,
+        architecture: str,
         is_rootless: bool,
     ):
         self.config = config
@@ -139,6 +145,155 @@ class DockerService:
         self.docker_compose_cmd = docker_compose_cmd
         self.has_gpu_support = has_gpu_support
         self.is_rootless = is_rootless
+        self.os = os
+        self.architecture = architecture
+
+    def calculate_total_layer_size(self, manifest: dict[str, Any]) -> int:
+        """Parse an docker image manifest and calculates the total size.
+
+        Sum up the 'size' of all entries in the 'layers' array.
+
+        Args:
+            manifest: data in format:
+
+        Returns:
+            int: total size in bytes
+        """
+        layers = manifest.get("layers")
+
+        if not layers:
+            logger.debug("Image Manifest JSON structure missing 'layers' array.")
+            return 0
+
+        total_size = 0
+        for layer in layers:
+            layer_size = layer.get("size", 0)
+            # We only count layer sizes that are integers (i.e., not missing)
+            if isinstance(layer_size, int):
+                total_size += layer_size
+
+        return total_size
+
+    def get_platform_digest(self, manifest: dict[str, Any]) -> str | None:
+        """Parse the docker platform index and finds the digest matching the target platform.
+
+        Cases:
+            1. There is no manifests, there are layers -> return None.
+            2. There is only one manifest and we return sha from it.
+            3. There is manifest with same os and same architecture.
+            4. There is manifest with same architecture but different os and there is no manifest with same os and architecture.
+            5. We use first manifest with unknown os and unknown architecture when above are not met
+            6. We use first manifest when when above are not met
+
+        Args:
+            manifest: return from docker builx imagetools inspect --raw {image}
+
+        Returns:
+            full docker sha with sha256:
+
+        """
+        manifests = manifest.get("manifests", [])
+
+        if not manifests:
+            return None
+
+        # If there is only one digest then we the take it.
+        if len(manifests) == 1:
+            return manifests[0].get("digest")
+
+        first_unknown_digest = None
+        matching_architecture_digest = None
+
+        for manifest in manifests:
+            # Check for a precise platform match
+            platform_info = manifest.get("platform")
+            if platform_info:
+                manifest_architecture = platform_info.get("architecture")
+                manifest_os = platform_info.get("os")
+                digest = manifest.get("digest")
+
+                if manifest_architecture == self.architecture:
+                    if manifest_os == self.os:
+                        # If os and architecture agree then we take it.
+                        return digest
+
+                    # if os doesn't agree we might use it later
+                    matching_architecture_digest = digest
+
+                # Capture the first 'unknown/unknown' for the fallback logic
+                if manifest_os == "unknown" and manifest_architecture == "unknown" and first_unknown_digest is None:
+                    first_unknown_digest = digest
+
+        # Fallback logic based on user request:
+        # 1. Use digest with right architecture
+        if matching_architecture_digest:
+            return matching_architecture_digest
+
+        # 1. Use the first 'unknown/unknown' digest found.
+        if first_unknown_digest:
+            return first_unknown_digest
+
+        # 2. Use the first digest in the whole list if no exact match and no unknown/unknown match.
+        #    We re-parse the data or check the first entry if the list isn't empty.
+        return manifests[0].get("digest")
+
+    async def get_docker_manifest(self, image: str) -> dict[str, Any]:
+        """Get docker indexes list.
+
+        Args:
+            image: docker image ex. ubuntu
+
+        Returns:
+            output from docker builx imagetools inspect --raw {image} in python dict format.
+        """
+        cmd_parts = ["docker", "buildx", "imagetools", "inspect", image, "--raw"]
+        cmd = " ".join(Utils.shell_escape(part) for part in cmd_parts)
+        output = await Utils.run_command_for_success(cmd)
+        if output.stderr:
+            logger.exception(output.stderr)
+            raise AppError("Something went wrong. Check logs.")
+
+        try:
+            output_json = dict(json.loads(output.stdout))
+        except json.JSONDecodeError as err:
+            logger.exception("Error when con went to json")
+            raise AppError("Something went wrong. Check logs.") from err
+
+        return output_json
+
+    async def get_local_image_size(self, image: str) -> int | None:
+        """Get docker indexes list.
+
+        Args:
+            image: docker image ex. ubuntu
+
+        Returns:
+            size of image or None
+        """
+        cmd_parts = ["docker", "image", "history", image, "--human=false", "--format", "json"]
+        cmd = " ".join(Utils.shell_escape(part) for part in cmd_parts)
+        output = await Utils.run_command_for_success(cmd)
+        return not output.stderr
+
+    def replace_image_digest(self, image: str, digest: str | None) -> str:
+        """Replace docker image sha or add it on the end if it is."""
+        if digest:
+            if "sha256:" in image:
+                image = re.sub("sha256:.*", "", image)
+            return f"{image}@{digest}"
+        return image
+
+    async def get_docker_image_size(self, image: str) -> int:
+        """Get docker image size in bytes."""
+        if size := await self.get_local_image_size(image):
+            return size
+        platforms_manifest = await self.get_docker_manifest(image)
+        platform_digest = self.get_platform_digest(platforms_manifest)
+        platform_image = image
+        if platform_digest:
+            platform_image = self.replace_image_digest(image, platform_digest)
+        layers_manifest = await self.get_docker_manifest(platform_image)
+        return self.calculate_total_layer_size(layers_manifest)
 
     async def get_user_for_docker(self) -> str:
         """Get user for docker."""
@@ -210,11 +365,16 @@ class DockerService:
     async def is_docker_image_pulled(self, full_image_name: str) -> bool:
         """Check whether given image is pulled."""
         try:
-            cmd = f"docker image history {full_image_name}"
-            result = await Utils.run_command(cmd)
-            return result.exit_code == 0  # noqa: TRY300
-        except Exception:
-            return False
+            async with Docker() as docker:
+                await docker.images.get(full_image_name)
+                return True
+        except DockerError as e:
+            # DockerError is raised for various API issues. A 404 status code
+            # specifically means the resource (image) was not found.
+            if e.status == 404:
+                print(f"Image '{full_image_name}' not found locally.")
+
+        return False
 
     async def docker_pull(self, full_image_name: str, image_size: float) -> AsyncGenerator[float]:
         """Pull given docker image."""
@@ -222,7 +382,11 @@ class DockerService:
         bytes_per_id: dict[str, float] = {}
         async with Docker() as docker:
             async for chunk in docker.images.pull(full_image_name, stream=True, timeout=24 * 60 * 60):
-                if (id := chunk.get("id", "")) and (value := chunk.get("progressDetail", {}).get("current", 0)):
+                if (
+                    (id := chunk.get("id"))
+                    and (chunk.get("status") == "Downloading")
+                    and (value := chunk.get("progressDetail", {}).get("current"))
+                ):
                     bytes_per_id[id] = value
                     image_bytes = sum(bytes_per_id.values())
                     progress.set_actual_value(image_bytes)
@@ -232,7 +396,8 @@ class DockerService:
         """Check whether the service from given docker compose is healthy."""
         docker_compose_cmd = self.docker_compose_cmd
         if not docker_compose_file_path.exists():
-            print(f"{docker_compose_file_path} not found")
+            msg = f"{docker_compose_file_path} not found"
+            logger.debug(msg)
             return False
 
         try:
@@ -240,7 +405,8 @@ class DockerService:
             result = await Utils.run_command(cmd)
 
             if result.exit_code != 0:
-                print(f"{docker_compose_file_path} {cmd} exit code is not 0. Exit code is {result.exit_code}")
+                msg = f"{docker_compose_file_path} {cmd} exit code is not 0. Exit code is {result.exit_code}"
+                logger.debug(msg)
                 return False
 
             container = json.loads(result.stdout)
@@ -483,5 +649,7 @@ async def create_docker_service(port_service: PortService, config: AppSettings) 
         port_service,
         get_docker_compose_cmd(),
         await has_gpu_support(),
+        get_os(),
+        get_cpu_architecture(),
         await is_rootless(),
     )

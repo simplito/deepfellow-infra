@@ -365,7 +365,7 @@ async function showServicePage(id) {
                     <div class="box-name model-name">
                         ${m.id}
                         <div class="badge ${m.installed ? "badge-installed" : "badge-not-insalled"}">
-                            ${m.installed ? "Installed" : "Not installed"}
+                            ${m.installed ? m.installed.stage ? `Progress ${(m.installed.value * 100).toFixed(2)}%` : "Installed" : "Not installed"}
                         </div>
                         ${m.custom ? `<div class="badge">
                             Custom

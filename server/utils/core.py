@@ -10,8 +10,10 @@
 """Utils module."""
 
 import asyncio
+import contextlib
 import json
 import logging
+import platform
 import re
 import shlex
 from collections.abc import AsyncGenerator, Awaitable, Callable
@@ -23,6 +25,7 @@ from uuid import uuid4
 import aiofiles
 import aiohttp
 from aiohttp import ClientSession, ClientTimeout
+from attr import dataclass
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from multidict import CIMultiDictProxy
@@ -52,11 +55,28 @@ class CommandResult2(NamedTuple):
     stderr: str
 
 
-class DownloadPacket(NamedTuple):
-    downloaded_bytes_size: int = 0
-    success: bool = False
-    local_path: Path | None = None
+class DownloadPacket:
+    pass
+
+
+@dataclass
+class PreDownloadPacket(DownloadPacket):
+    file_bytes_size: int
+    type: str = "predownload"
+
+
+@dataclass
+class DownloadedPacket(DownloadPacket):
+    downloaded_bytes_size: int
+    type: str = "downloading"
+
+
+@dataclass
+class SuccessDownloadPacket(DownloadPacket):
+    local_path: Path
     filename: str = ""
+    success: bool = True
+    type: str = "finish"
 
 
 class Utils:
@@ -158,7 +178,7 @@ class Utils:
         if not model_url.startswith("https://"):
             # Already a local path
             local_path = Path(model_url)
-            yield DownloadPacket(success=True, local_path=local_path, filename=filename or "")
+            yield SuccessDownloadPacket(local_path, filename or "")
 
         else:
             # Get filename from URL (last part after /)
@@ -171,11 +191,13 @@ class Utils:
                 temp_path = temp_dir / str(uuid4())
                 temp_path.parent.mkdir(parents=True, exist_ok=True)
                 try:
-                    async for downloaded_bytes_size in download_file(model_url, temp_path, headers):
-                        yield DownloadPacket(downloaded_bytes_size=downloaded_bytes_size)
+                    async for download_packet in download_file(model_url, temp_path, headers):
+                        yield download_packet
 
                 except Exception:
                     # Clean up any partial download
+                    msg = f"Exception while downloading {model_url} to {temp_path}"
+                    logger.exception(msg)
                     if temp_path.exists():
                         temp_path.unlink()
                     raise
@@ -193,7 +215,7 @@ class Utils:
 
                 print(f"Successfully downloaded {filename_out} ({local_path.stat().st_size} bytes)")
 
-            yield DownloadPacket(success=True, local_path=local_path, filename=filename_out)
+            yield SuccessDownloadPacket(local_path, filename_out)
 
     @staticmethod
     def add_url_parameter_if_missing(url: str, param_name: str, param_value: str) -> str:
@@ -214,19 +236,26 @@ class FetchResult(BaseModel):
     data: str
 
 
-async def download_file(url: str, file_path: Path, headers: dict[str, str]) -> AsyncGenerator[int]:
-    """Download file from given url and save it under given path."""
+async def download_file(url: str, file_path: Path, headers: dict[str, str]) -> AsyncGenerator[DownloadPacket]:
+    """Download file from given url and save it under given path.
+
+    First return max file size, then return downloaded bytes.
+    """
     async with aiohttp.ClientSession() as session, session.get(url, headers=headers, timeout=ClientTimeout(3600)) as response:
         if response.status != 200:
             body = await response.text()
             msg = f"Cannot download file from {url} get status code {response.status}, {body}"
             raise HttpClientError(message=msg, status_code=response.status, headers=response.headers, body=body)
 
+        content_length = response.headers.get("Content-Length")
+        max_size = int(content_length) if content_length else 0
+        yield PreDownloadPacket(max_size)
+
         async with aiofiles.open(file_path, "wb") as f:
             async for chunk in response.content.iter_any():
                 downloaded_bytes_size = len(chunk)
                 await f.write(chunk)
-                yield downloaded_bytes_size
+                yield DownloadedPacket(downloaded_bytes_size)
 
 
 async def fetch_from(url: str, method: str = "GET", data: JsonSerializable | None = None) -> FetchResult:
@@ -347,33 +376,42 @@ type StreamChunk = StreamChunkFinish | StreamChunkProgress
 
 class Stream[T]:
     def __init__(self):
-        self.queue = asyncio.Queue[T | None]()
-        self.closed = False
-        self.consumed = False
+        self._history: list[T] = []
+        self._subscribers: list[asyncio.Queue[T | None]] = []
+        self._closed = False
 
     def emit(self, data: T) -> None:
         """Emit event."""
-        if not self.closed:
-            self.queue.put_nowait(data)
+        if self._closed:
+            return
+        self._history.append(data)
+        for q in self._subscribers:
+            q.put_nowait(data)
 
     def close(self) -> None:
         """Close stream."""
-        if not self.closed:
-            self.closed = True
-            self.queue.put_nowait(None)
+        if not self._closed:
+            self._closed = True
+            for q in self._subscribers:
+                q.put_nowait(None)
 
     async def as_generator(self) -> AsyncGenerator[T]:
         """Convert to generator."""
-        if self.consumed:
-            raise RuntimeError("Stream already consumed")
-        self.consumed = True
-        if self.closed:
-            return
-        while True:
-            item = await self.queue.get()
-            if item is None:
-                break
-            yield item
+        q: asyncio.Queue[T | None] = asyncio.Queue()
+        self._subscribers.append(q)
+        try:
+            for item in self._history:
+                yield item
+            if self._closed:
+                return
+            while True:
+                item = await q.get()
+                if item is None:
+                    break
+                yield item
+        finally:
+            with contextlib.suppress(Exception):
+                self._subscribers.remove(q)
 
     def pipe(self, stream: "Stream[T]") -> None:
         """Send all events to given stream."""
@@ -413,11 +451,16 @@ class PromiseWithProgress[T, U]:
         """Wait for the result."""
         return await self._future
 
-    def next[Z](self, func: Callable[[T], Awaitable[Z]]) -> "PromiseWithProgress[Z, U]":
+    def next[Z](self, func: Callable[[T], Awaitable[Z]], on_error: Callable[[Exception], None]) -> "PromiseWithProgress[Z, U]":
         """Add next step."""
 
         async def the_func(_stream: Stream[U]) -> Z:
-            res = await self.wait()
+            try:
+                res = await self.wait()
+            except Exception as e:
+                with contextlib.suppress(Exception):
+                    on_error(e)
+                raise
             return await func(res)
 
         promise = PromiseWithProgress[Z, U](func=the_func)
@@ -452,3 +495,28 @@ async def convert_promise_with_progress_to_fastapi_response(promise: PromiseWith
             yield "data: " + json.dumps(chunk) + "\n\n"
 
     return StreamingResponse(content=generator(), media_type="text/event-stream")
+
+
+def get_os() -> str:
+    """Return os."""
+    return platform.system().lower()
+
+
+def get_cpu_architecture() -> str:
+    """Return cpu architecture."""
+    base_architecture_type = platform.machine().lower()
+
+    architecture = "unknown"
+
+    if base_architecture_type in ["x86_64", "amd64", "i386", "x86"]:
+        architecture = "amd64"
+    elif base_architecture_type in ["aarch64", "arm64"]:
+        architecture = "arm64"
+    elif base_architecture_type.startswith("arm"):
+        architecture = "arm"
+    elif base_architecture_type.startswith("ppc64le"):
+        architecture = "ppc64le"
+    elif base_architecture_type.startswith("s390x"):
+        architecture = "s390x"
+
+    return architecture

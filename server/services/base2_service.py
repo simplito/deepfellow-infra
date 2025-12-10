@@ -33,6 +33,7 @@ from server.models.models import (
     CustomModelId,
     InstallModelIn,
     InstallModelOut,
+    InstallModelProgress,
     UninstallModelIn,
 )
 from server.models.services import InstallServiceIn, InstallServiceOut, UninstallServiceIn
@@ -63,7 +64,28 @@ T = TypeVar("T")
 logger = logging.getLogger("uvicorn.error")
 
 
+class InstallingModel:
+    last_chunk: StreamChunk | None = None
+
+    def __init__(self, promise: PromiseWithProgress[InstallModelOut, StreamChunk]):
+        self.promise = promise
+
+        async def the_func() -> None:
+            async for chunk in promise.progress.as_generator():
+                self.last_chunk = chunk
+
+        self.task = asyncio.create_task(the_func())
+
+
 class Base2Service[T](BaseService):
+    config: AppSettings
+    endpoint_registry: EndpointRegistry
+    service_provider: ServiceProvider
+    model_downloader: ModelDownloader
+    docker_service: DockerService
+    custom: list[CustomModel]
+    installing_model_progress: dict[str, InstallingModel]
+
     def __init__(
         self,
         config: AppSettings,
@@ -81,6 +103,7 @@ class Base2Service[T](BaseService):
         self.installed: T | None = None
         self.installing = False
         self.custom = list[CustomModel]()
+        self.installing_model_progress = {}
         self._after_init()
 
     def _after_init(self) -> None:
@@ -93,6 +116,13 @@ class Base2Service[T](BaseService):
     @abstractmethod
     def get_description(self) -> str:
         """Return the service description."""
+
+    def get_model_install_progress(self, model: str) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
+        """Return actually installing models."""
+        if installing := self.installing_model_progress.get(model):
+            return installing.promise
+
+        raise HTTPException(404, "This model is not installing now.")
 
     def is_installed(self) -> bool:
         """Check whether service is installed."""
@@ -192,9 +222,17 @@ class Base2Service[T](BaseService):
 
         async def func(data: InstallModelOut) -> InstallModelOut:
             await self._save()
+            del self.installing_model_progress[model_id]
             return data
 
-        return (await self._install_model(model_id, options)).next(func)
+        def on_error(_e: Exception) -> None:
+            del self.installing_model_progress[model_id]
+
+        promise = await self._install_model(model_id, options)
+
+        self.installing_model_progress[model_id] = InstallingModel(promise)
+
+        return promise.next(func, on_error)
 
     @abstractmethod
     async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
@@ -213,6 +251,16 @@ class Base2Service[T](BaseService):
         """Get docker logs."""
         docker_compose_file_path = self.get_docker_compose_file_path(model_id)
         return await self.docker_service.get_docker_compose_logs(docker_compose_file_path)
+
+    def _get_model_installed_info(self, model_id: str) -> bool | InstallModelProgress:
+        if model_id in self.installing_model_progress:
+            installing = self.installing_model_progress[model_id]
+            if installing.last_chunk and installing.last_chunk["type"] == "progress":
+                return InstallModelProgress(stage=installing.last_chunk["stage"], value=installing.last_chunk["value"])
+            if installing.last_chunk and installing.last_chunk["type"] == "finish":
+                return InstallModelProgress(stage="install", value=1)
+            return InstallModelProgress(stage="download", value=0)
+        return False
 
     async def get_docker_compose_file(self, model_id: str | None) -> str:
         """Get docker compose file."""
@@ -269,7 +317,8 @@ class Base2Service[T](BaseService):
         """Docker pull only if image does not exist."""
         stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
         if not await self.docker_service.is_docker_image_pulled(image.name):
-            async for progress in self.docker_service.docker_pull(image.name, convert_size_to_bytes(image.size) or 0):
+            size = await self.docker_service.get_docker_image_size(image.name)
+            async for progress in self.docker_service.docker_pull(image.name, size or convert_size_to_bytes(image.size) or 0):
                 stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress))
         stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
 

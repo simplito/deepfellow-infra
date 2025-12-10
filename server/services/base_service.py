@@ -69,6 +69,10 @@ class BaseService(ABC):
         )
 
     @abstractmethod
+    def get_model_install_progress(self, model: str) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
+        """Return actually installing models."""
+
+    @abstractmethod
     def is_installed(self) -> bool:
         """Check whether service is installed."""
 

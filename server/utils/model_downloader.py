@@ -21,7 +21,7 @@ from aiohttp import ClientSession
 from fastapi import HTTPException
 
 from server.config import AppSettings
-from server.utils.core import DownloadPacket, HttpClientError, Utils
+from server.utils.core import DownloadPacket, HttpClientError, PreDownloadPacket, SuccessDownloadPacket, Utils
 
 
 class BDownloader:
@@ -183,7 +183,7 @@ class HuggingFaceRepoWithBlobsDownloader(BDownloader):
             except HttpClientError as e:
                 raise HTTPException(500, self.create_error_msg(e.body)) from e
 
-        yield DownloadPacket(success=True, local_path=model_dir)
+        yield SuccessDownloadPacket(model_dir)
 
 
 class HuggingFaceRepoDownloader(BaseDownloader):
@@ -227,12 +227,14 @@ class HuggingFaceRepoDownloader(BaseDownloader):
         return not url.startswith("http") or (bool(re.search(self.huggingface_url_pattern, url)))
 
     @staticmethod
-    async def get_filenames(model_id: str) -> list[str]:
+    async def get_filenames(model_id: str) -> tuple[list[str], int]:
         """Get filenames from repository."""
         filenames: list[str] = []
         url = f"https://huggingface.co/api/models/{model_id}/tree/main"
 
         data: list[dict[str, Any]] = []
+        size = 0
+        filenames = []
         with suppress(Exception):
             # Adding authentication header in here make error in public repos
             async with ClientSession() as session, session.get(url) as response:
@@ -242,10 +244,12 @@ class HuggingFaceRepoDownloader(BaseDownloader):
                 # If we find repo with folder we should add support for it.
                 if item.get("type") == "file" and (filename := item.get("path")):
                     filenames.append(filename)
+                    size += int(item.get("size", 0))
+
         except Exception:
             filenames = []
 
-        return filenames
+        return filenames, size
 
     async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
@@ -255,16 +259,18 @@ class HuggingFaceRepoDownloader(BaseDownloader):
             if match:
                 model_id = match.group(1)
 
-        filenames = await self.get_filenames(model_id)
+        filenames, size = await self.get_filenames(model_id)
+        yield PreDownloadPacket(size)
         for filename in filenames:
             whole_url = f"https://huggingface.co/{model_id}/resolve/main/{filename}"
             try:
                 async for packet in Utils.ensure_model_downloaded(whole_url, model_dir, temp_dir, filename, self.headers):
-                    yield packet
+                    if not isinstance(packet, PreDownloadPacket):
+                        yield packet
             except HttpClientError as e:
                 raise HTTPException(500, self.create_error_msg(e.body)) from e
 
-        yield DownloadPacket(success=True, local_path=model_dir)
+        yield SuccessDownloadPacket(model_dir)
 
 
 class HuggingFaceModelDownloader(BaseDownloader):

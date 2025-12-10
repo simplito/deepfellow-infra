@@ -40,10 +40,13 @@ from server.models.models import (
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
 from server.utils.core import (
+    DownloadedPacket,
+    PreDownloadPacket,
     PromiseWithProgress,
     Stream,
     StreamChunk,
     StreamChunkProgress,
+    SuccessDownloadPacket,
     convert_size_to_bytes,
     normalize_name,
     try_parse_pydantic,
@@ -274,7 +277,7 @@ class VllmService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
         for model_id, model in self.models.items():
-            installed = info.models[model_id].get_info() if model_id in info.models else False
+            installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
             if filters.installed is None or filters.installed == installed:
                 out_list.append(
                     RetrieveModelOut(
@@ -296,7 +299,7 @@ class VllmService(Base2Service[InstalledInfo]):
         if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = self.models[model_id]
-        installed = info.models[model_id].get_info() if model_id in info.models else False
+        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
         return RetrieveModelOut(
             id=model_id,
             service=self.get_id(),
@@ -326,12 +329,14 @@ class VllmService(Base2Service[InstalledInfo]):
             local_model_path: Path | None = None
             stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
             async for packet in self.model_downloader.download(model_id, model_dir):
-                if packet.local_path and not local_model_path:
-                    local_model_path = packet.local_path
-                elif packet.downloaded_bytes_size != 0:
+                if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
                     progress.add_to_actual_value(packet.downloaded_bytes_size)
-
-                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
+                    stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
+                elif isinstance(packet, PreDownloadPacket):
+                    if max := packet.file_bytes_size:
+                        progress.set_max_value(max)
+                elif isinstance(packet, SuccessDownloadPacket):
+                    local_model_path = packet.local_path
 
             stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
