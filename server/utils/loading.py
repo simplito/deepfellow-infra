@@ -35,6 +35,11 @@ class Progress:
         self.actual = value
         self.calculate_percentage()
 
+    def set_max_value(self, value: float) -> None:
+        """Set max value."""
+        self.max = value
+        self.calculate_percentage()
+
     def get_percentage(self) -> float:
         """Return percentage."""
         return self.percentage

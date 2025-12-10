@@ -40,6 +40,8 @@ from server.models.models import (
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
 from server.utils.core import (
+    DownloadedPacket,
+    PreDownloadPacket,
     PromiseWithProgress,
     Stream,
     StreamChunk,
@@ -398,7 +400,7 @@ class OllamaService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
         for model_id, model in self.models.items():
-            installed = info.models[model_id].get_info() if model_id in info.models else False
+            installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
             if filters.installed is None or filters.installed == installed:
                 out_list.append(
                     RetrieveModelOut(
@@ -420,7 +422,7 @@ class OllamaService(Base2Service[InstalledInfo]):
         if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = self.models[model_id]
-        installed = info.models[model_id].get_info() if model_id in info.models else False
+        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
         return RetrieveModelOut(
             id=model_id,
             service=self.get_id(),
@@ -479,7 +481,14 @@ class OllamaService(Base2Service[InstalledInfo]):
         return await self.docker_service.run_command_docker_compose(compose_filepath, service_name, cmd)
 
     async def _download(
-        self, stream: Stream[StreamChunk], base_url: str, model_url: str, model_size: str, model_id: str, models_quantity: int
+        self,
+        input_stream: Stream[StreamChunk],
+        base_url: str,
+        model_url: str,
+        model_size: str,
+        model_id: str,
+        model_number: int,
+        model_quantity: int,
     ) -> str:
         base_docker_dir: Path = Path("/root/.ollama/custom")
         local_models_dir = Path(self._get_working_dir()) / "main" / "custom"
@@ -496,15 +505,21 @@ class OllamaService(Base2Service[InstalledInfo]):
                 dir = dir / "model"
 
             progress = Progress(convert_size_to_bytes(model_size) or 0)
-            stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
+            input_stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
             async for packet in self.model_downloader.download(model_url, dir, *additional_params):
-                progress.add_to_actual_value(packet.downloaded_bytes_size / models_quantity)
-                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
+                if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
+                    progress.add_to_actual_value(packet.downloaded_bytes_size)
+                    value = (model_quantity * model_number) + (progress.get_percentage() / model_quantity)
+                    input_stream.emit(StreamChunkProgress(type="progress", stage="download", value=value))
+                elif isinstance(packet, PreDownloadPacket):
+                    if max := packet.file_bytes_size:
+                        progress.set_max_value(max)
+
             # Return path to file or path to directory (with model)
-            stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
+            input_stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
             return str(base_docker_dir / model_id / model_path.name)
 
-        await self._download_with_ollama(stream, base_url, model_url, model_size)
+        await self._download_with_ollama(input_stream, base_url, model_url, model_size)
         return model_url
 
     async def create_docker_modelfile_content(self, model_name: str, modelfile: str) -> tuple[str, list[str]]:
@@ -589,8 +604,8 @@ class OllamaService(Base2Service[InstalledInfo]):
                 else:
                     content, models_to_download = await self.create_docker_modelfile_content(model_id, model.modelfile)
                     models_quantity = len(set(models_to_download))
-                    for model_to_download in models_to_download:
-                        await self._download(input_stream, info.base_url, model_to_download, model.size, model_id, models_quantity)
+                    for i, model_to_download in enumerate(models_to_download):
+                        await self._download(input_stream, info.base_url, model_to_download, model.size, model_id, i, models_quantity)
                     path = await self.save_modelfile(model_id, content)
                     quantization = model.quantization
 

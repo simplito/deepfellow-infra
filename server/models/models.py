@@ -75,11 +75,16 @@ class UninstallModelOut(BaseModel):
     status: Literal["OK"]
 
 
+class InstallModelProgress(BaseModel):
+    stage: str
+    value: float
+
+
 class RetrieveModelOut(BaseModel):
     id: str
     service: str
     type: str
-    installed: bool | ModelInfo
+    installed: bool | InstallModelProgress | ModelInfo
     custom: CustomModelId | None = None
     size: str
     spec: ModelSpecification

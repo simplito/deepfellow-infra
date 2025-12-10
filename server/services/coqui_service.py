@@ -222,7 +222,7 @@ class CoquiService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
         for model_id, model in _const.models.items():
-            installed = info.models[model_id].get_info() if model_id in info.models else False
+            installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
             if filters.installed is None or filters.installed == installed:
                 out_list.append(
                     RetrieveModelOut(
@@ -243,7 +243,7 @@ class CoquiService(Base2Service[InstalledInfo]):
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = _const.models[model_id]
-        installed = info.models[model_id].get_info() if model_id in info.models else False
+        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
         return RetrieveModelOut(
             id=model_id,
             service=self.get_id(),

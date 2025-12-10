@@ -50,10 +50,13 @@ from server.models.models import (
 from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
 from server.utils.core import (
+    DownloadedPacket,
+    PreDownloadPacket,
     PromiseWithProgress,
     Stream,
     StreamChunk,
     StreamChunkProgress,
+    SuccessDownloadPacket,
     convert_size_to_bytes,
     try_parse_pydantic,
 )
@@ -484,7 +487,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
         for model_id, model in self.models.items():
-            installed = info.models[model_id].get_info() if model_id in info.models else False
+            installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
             if filters.installed is None or filters.installed == installed:
                 out_list.append(
                     RetrieveModelOut(
@@ -506,7 +509,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
         if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
         model = self.models[model_id]
-        installed = info.models[model_id].get_info() if model_id in info.models else False
+        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
         return RetrieveModelOut(
             id=model_id,
             service=self.get_id(),
@@ -538,7 +541,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             tasks = [asyncio.create_task(f(client, info.base_url)) for f in refresh_functions]
             await asyncio.gather(*tasks)
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:  # noqa: C901
         parsed_model_options = try_parse_pydantic(SDModelOptions, options.spec) if options.spec else SDModelOptions()
         info = self._check_installed()
         if model_id in info.models:
@@ -554,11 +557,14 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             model_filename = ""
             stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
             async for packet in self.model_downloader.download(model.url, model_dir, model.filename):
-                if packet.local_path and packet.filename and not local_model_path and not model_filename:
+                if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
+                    progress.add_to_actual_value(packet.downloaded_bytes_size)
+                elif isinstance(packet, PreDownloadPacket):
+                    if max := packet.file_bytes_size:
+                        progress.set_max_value(max)
+                elif isinstance(packet, SuccessDownloadPacket):
                     local_model_path = packet.local_path
                     model_filename = packet.filename
-                elif packet.downloaded_bytes_size != 0:
-                    progress.add_to_actual_value(packet.downloaded_bytes_size)
 
                 stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
 

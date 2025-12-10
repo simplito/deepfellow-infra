@@ -52,6 +52,21 @@ async def install_model(
     return JSONResponse(result.model_dump())
 
 
+@router.get(
+    "/progress",
+    summary="Get progress of installing model.",
+)
+async def get_install_progress_model(
+    service_id: Annotated[str, Path(description="The ID of the service to use.")],
+    query: Annotated[ModelIdQuery, Query()],
+    services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
+    _: Annotated[str, Depends(auth_admin)],
+) -> Response:
+    """Install the model from the service."""
+    promise = await services_manager.get_model_install_progress(service_id, query.model_id)
+    return await convert_promise_with_progress_to_fastapi_response(promise)
+
+
 @router.delete(
     "/_",
     summary="Uninstall the model from the service.",
