@@ -282,6 +282,34 @@ function showTestResultModal(options) {
     });
 }
 
+function showConfirmAlert(options) {
+    return new Promise((resolve) => {
+        const html = `
+            <div class="modal-backdrop">
+                <div class="modal">
+                    <div class="modal-title">${options.title}</div>
+                    <div class="content"></div>
+                    <div class="buttons">
+                        <button data-id="continue">Continue</button>
+                        <button data-id="cancel">Cancel</button>
+                    </div>
+                </div>
+            </div>`;
+            const div = document.createElement("div");
+            div.innerHTML = html;
+            div.querySelector(".content").textContent = options.text;
+            document.body.append(div);
+            div.querySelector("[data-id=continue]").addEventListener("click", () => {
+                div.remove();
+                resolve(true);
+            });
+            div.querySelector("[data-id=cancel]").addEventListener("click", () => {
+                div.remove();
+                resolve(false);
+            });
+    });
+}
+
 async function showServicePage(id) {
     showLoadingPage();
     const serivceInfo = await fetchJson(`/admin/services/${id}`);
@@ -462,7 +490,35 @@ root.addEventListener("click", async e => {
                 const response = await fetchForResponse(`/admin/services/${serviceId}`, {
                     method: "POST",
                     body: JSON.stringify({stream: true, spec: data}),
-                    headers: {"Content-Type": "application/json"}
+                    headers: {"Content-Type": "application/json"},
+                    onError: async (response, content) => {
+                        if (response.status === 400) {
+                            try {
+                                const errorData = JSON.parse(content);
+                                if (!errorData || !errorData.detail || !errorData.detail.warnings) {
+                                    return false;
+                                }
+                                const res = await showConfirmAlert({
+                                    title: "Install " + serviceId,
+                                    text: `There are warnings, do you really want to continue: ${errorData.detail.warnings.join(",")}`
+                                });
+                                if (res) {
+                                    return fetchForResponse(`/admin/services/${serviceId}`, {
+                                        method: "POST",
+                                        body: JSON.stringify({stream: true, spec: data, ignore_warnings: true}),
+                                        headers: {"Content-Type": "application/json"},
+                                    });
+                                }
+                                else {
+                                    return true;
+                                }
+                            }
+                            catch (e) {
+                                console.log("Second try error", e);
+                            }
+                        }
+                        return false;
+                    },
                 });
                 readServiceInstallProgress(serviceId, response);
             });
@@ -488,7 +544,35 @@ root.addEventListener("click", async e => {
                 const response = await fetchForResponse(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
                     method: "POST",
                     body: JSON.stringify({stream: true, spec: data}),
-                    headers: {"Content-Type": "application/json"}
+                    headers: {"Content-Type": "application/json"},
+                    onError: async (response, content) => {
+                        if (response.status === 400) {
+                            try {
+                                const errorData = JSON.parse(content);
+                                if (!errorData || !errorData.detail || !errorData.detail.warnings) {
+                                    return false;
+                                }
+                                const res = await showConfirmAlert({
+                                    title: "Install " + modelId,
+                                    text: `There are warnings, do you really want to continue: ${errorData.detail.warnings.join(",")}`
+                                });
+                                if (res) {
+                                    return fetchForResponse(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
+                                        method: "POST",
+                                        body: JSON.stringify({stream: true, spec: data, ignore_warnings: true}),
+                                        headers: {"Content-Type": "application/json"},
+                                    });
+                                }
+                                else {
+                                    return true;
+                                }
+                            }
+                            catch (e) {
+                                console.log("Second try error", e);
+                            }
+                        }
+                        return false;
+                    },
                 });
                 readModalInstallProgress(serviceId, modelId, response);
             });
@@ -615,8 +699,14 @@ async function fetchForResponse(url, options) {
     }
     if (response.status !== 200) {
         const content = await response.text();
+        const handler = opts.onError ? await opts.onError(response, content) : false;
+        if (handler !== false && handler !== true) {
+            return handler;
+        }
         console.log("Invalid status code", response.status, content);
-        alert(`ERROR: Invalid status code ${response.status} - ${content}`);
+        if (handler !== true) {
+            alert(`ERROR: Invalid status code ${response.status} - ${content}`);
+        }
         throw new Error("Invalid status code");
     }
     return response;

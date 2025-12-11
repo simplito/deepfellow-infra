@@ -239,6 +239,7 @@ class LLamacppService(Base2Service[InstalledInfo]):
             options.spec["gpu"] = self.docker_service.has_gpu_support
         parsed_options = try_parse_pydantic(LLamacppOptions, options.spec)
         image = self._get_image(parsed_options.gpu)
+        await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)

@@ -21,6 +21,7 @@ type ServiceSize = dict[str, str] | str
 
 class InstallServiceIn(BaseModel):
     stream: bool = False
+    ignore_warnings: bool = False
     spec: ServiceOptions
 
 

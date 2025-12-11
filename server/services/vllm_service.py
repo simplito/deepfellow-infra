@@ -241,6 +241,7 @@ class VllmService(Base2Service[InstalledInfo]):
         if not parsed_options.gpu and not is_avx512_supported():
             raise HTTPException(400, "Your CPU does not support AVX 512 instructions")
         image = self._get_image(parsed_options.gpu)
+        await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)

@@ -186,20 +186,20 @@ class Base2Service[T](BaseService):
         if self.installing:
             raise HTTPException(status_code=400, detail=f"Service {self.get_id()} already installing")
 
-        async def func(stream: Stream[StreamChunk]) -> InstallServiceOut:
-            try:
-                promise = await self._install_core(options)
-                promise.progress.pipe(stream)
-                self.installed = await promise.wait()
-                if save:
-                    await self._save()
-                return InstallServiceOut(status="OK")
-            finally:
-                self.installing = None
+        async def func(data: T) -> InstallServiceOut:
+            self.installed = data
+            self.installing = None
+            if save:
+                await self._save()
+            return InstallServiceOut(status="OK")
 
-        promise = PromiseWithProgress(func=func)
-        self.installing = InstallingService(promise=promise)
-        return promise
+        def on_error(_e: Exception) -> None:
+            self.installing = None
+
+        promise = await self._install_core(options)
+        next_promise = promise.next(func, on_error)
+        self.installing = InstallingService(promise=next_promise)
+        return next_promise
 
     @abstractmethod
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[T, StreamChunk]:
@@ -364,3 +364,8 @@ class Base2Service[T](BaseService):
         """Stop docker and log error if it occurs."""
         tasks = [asyncio.create_task(self._stop_docker(docker_options)) for docker_options in docker_options_list]
         await asyncio.gather(*tasks)
+
+    async def _verify_docker_image(self, docker_image: str, ignore_warning: bool) -> None:
+        warnings = await self.docker_service.get_image_warnings(docker_image)
+        if len(warnings) > 0 and not ignore_warning:
+            raise HTTPException(400, {"warnings": warnings})

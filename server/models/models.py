@@ -54,6 +54,7 @@ class CustomModelSpecification(BaseModel):
 
 class InstallModelIn(BaseModel):
     stream: bool = False
+    ignore_warnings: bool = False
     spec: InstallModelOptions | None = None
 
 

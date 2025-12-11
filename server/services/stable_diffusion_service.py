@@ -377,6 +377,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
                 raise HTTPException(400, "Docker doesn't support GPU on this machine.")
         else:
             image = _const.image_cpu
+        await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)
