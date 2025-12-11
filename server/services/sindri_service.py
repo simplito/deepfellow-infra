@@ -162,6 +162,7 @@ class SindriService(Base2Service[InstalledInfo]):
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
         parsed_options = try_parse_pydantic(SindriOptions, options.spec)
         image = self._get_image()
+        await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)

@@ -352,6 +352,7 @@ class CustomService(Base2Service[InstalledInfo]):
         if "prefix" not in options.spec:
             options.spec["prefix"] = model.default_prefix
         parsed_model_options = try_parse_pydantic(CustomModelOptions, options.spec)
+        await self._verify_docker_image(model.options.image, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
             model_dir = self._get_working_dir() / "models"

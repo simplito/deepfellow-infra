@@ -28,3 +28,19 @@ class ApiError(Exception):
         self.message = message
         self.code = code
         self.data = data
+
+
+class DockerImageDoesNotExistError(Exception):
+    """Raise when docker image does not exist."""
+
+    def __init__(self, image: str):
+        super().__init__(f"Docker image does not exist {image}")
+        self.image = image
+
+
+class DockerImageAuthorizationError(Exception):
+    """Raise when authorization error occurs during accessing to docker image."""
+
+    def __init__(self, image: str):
+        super().__init__(f"Cannot access docker image, authorization failed {image}")
+        self.image = image

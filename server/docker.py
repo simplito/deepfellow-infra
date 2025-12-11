@@ -12,6 +12,7 @@
 import json
 import logging
 import os
+import platform
 import re
 import shutil
 from collections.abc import AsyncGenerator
@@ -26,7 +27,7 @@ from pydantic import BaseModel
 from server.config import AppSettings
 from server.portservice import PortService
 from server.utils.core import CommandResult2, Utils, get_cpu_architecture, get_os
-from server.utils.exceptions import AppError
+from server.utils.exceptions import AppError, DockerImageAuthorizationError, DockerImageDoesNotExistError
 from server.utils.loading import Progress
 
 logger = logging.getLogger("uvicorn")
@@ -139,6 +140,7 @@ class DockerService:
         os: str,
         architecture: str,
         is_rootless: bool,
+        host_platform: str,
     ):
         self.config = config
         self.port_service = port_service
@@ -147,6 +149,7 @@ class DockerService:
         self.is_rootless = is_rootless
         self.os = os
         self.architecture = architecture
+        self.host_platform = host_platform
 
     def calculate_total_layer_size(self, manifest: dict[str, Any]) -> int:
         """Parse an docker image manifest and calculates the total size.
@@ -248,7 +251,13 @@ class DockerService:
         """
         cmd_parts = ["docker", "buildx", "imagetools", "inspect", image, "--raw"]
         cmd = " ".join(Utils.shell_escape(part) for part in cmd_parts)
-        output = await Utils.run_command_for_success(cmd)
+        output = await Utils.run_command(cmd)
+        if output.exit_code != 0:
+            if output.stderr.endswith(" not found"):
+                raise DockerImageDoesNotExistError(image)
+            if output.stderr.endswith(" authorization failed"):
+                raise DockerImageAuthorizationError(image)
+            raise RuntimeError("Invalid exit code for command", (output.exit_code, cmd, output.stdout, output.stderr))
         if output.stderr:
             logger.exception(output.stderr)
             raise AppError("Something went wrong. Check logs.")
@@ -278,6 +287,72 @@ class DockerService:
             platform_image = self.replace_image_digest(image, platform_digest)
         layers_manifest = await self.get_docker_manifest(platform_image)
         return self.calculate_total_layer_size(layers_manifest)
+
+    async def get_image_platforms(self, image: str) -> list[str]:  # noqa: C901
+        """Get platform of a Docker image in format 'os/architecture'.
+
+        Args:
+            image: Docker image name (e.g., 'ubuntu:latest', 'vllm/vllm-openai:latest')
+
+        Returns:
+            Platform string like 'linux/arm64' or 'linux/amd64', or None if image not found.
+        """
+        try:
+            # Inspect the image to get its metadata
+            result = await Utils.run_command_for_success(f"docker image inspect {image}")
+
+            # Parse JSON output
+            image_data = json.loads(result.stdout)
+
+            if not image_data or len(image_data) == 0:
+                return []
+        except Exception:
+            main_manifest = await self.get_docker_manifest(image)
+            manifests = main_manifest.get("manifests", [])
+            if not manifests:
+                return []
+            platforms = set[str]()
+            for manifest in manifests:
+                platform_info = manifest.get("platform")
+                if platform_info:
+                    variant = platform_info.get("variant", "")
+                    os = platform_info.get("os", "")
+                    architecture = platform_info.get("architecture", "")
+                    if os != "unknown" and architecture != "unknown":
+                        image = f"{os}/{architecture}{'/' + variant if variant else ''}"
+                        platforms.add(image)
+            return list(platforms)
+        else:
+            # Get OS and Architecture from the first image
+            os_type = image_data[0].get("Os", "linux").lower()
+            arch = image_data[0].get("Architecture", "").lower()
+
+            # Normalize architecture names to match Docker platform conventions
+            if arch in ("arm64", "aarch64"):
+                arch = "arm64"
+            elif arch in ("amd64", "x86_64"):
+                arch = "amd64"
+            elif arch in ("arm", "armv7l", "armv7"):
+                # Check for variant
+                variant = image_data[0].get("Variant", "")
+                arch = f"arm/{variant}" if variant else "arm/v7"
+            return [f"{os_type}/{arch}"] if arch else []
+
+    async def get_image_warnings(self, image: str) -> list[str]:
+        """Get warnings about run given image on current platform."""
+        warnings: list[str] = []
+        try:
+            platforms = await self.get_image_platforms(image)
+            if self.host_platform not in platforms:
+                warnings.append(
+                    f"The docker image {image} is not compatible with the current system, "
+                    f"platform mismatch, {self.host_platform} not in [{','.join(platforms)}]."
+                )
+        except DockerImageDoesNotExistError:
+            warnings.append(f"Docker image does not exist {image}.")
+        except DockerImageAuthorizationError:
+            warnings.append(f"Cannot access docker image, authorization failed {image}.")
+        return warnings
 
     async def get_user_for_docker(self) -> str:
         """Get user for docker."""
@@ -617,7 +692,7 @@ class DockerService:
         return original_port if subnet else exposed_port
 
 
-async def create_docker_service(port_service: PortService, config: AppSettings) -> DockerService:
+async def create_docker_service(port_service: PortService, config: AppSettings) -> DockerService:  # noqa: C901
     """Create docker service."""
 
     def get_docker_compose_cmd() -> str:
@@ -639,6 +714,31 @@ async def create_docker_service(port_service: PortService, config: AppSettings) 
         result = await Utils.run_command("docker info")
         return result.exit_code == 0 and "rootless" in result.stdout
 
+    def get_host_platform() -> str:
+        """Get normalized host platform in format 'linux/architecture'.
+
+        Returns platform string like 'linux/arm64' or 'linux/amd64'.
+        Caches the result for performance.
+        """
+        # Get machine architecture
+        machine = platform.machine().lower()
+
+        # Normalize architecture names
+        if machine in ("arm64", "aarch64"):
+            arch = "arm64/v8"
+        elif machine in ("x86_64", "amd64"):
+            arch = "amd64"
+        elif machine in ("armv7l", "armv7"):
+            arch = "arm/v7"
+        elif machine == "i386":
+            arch = "386"
+        else:
+            # Default to the raw machine type
+            arch = machine
+
+        # Docker on macOS runs Linux containers
+        return f"linux/{arch}"
+
     return DockerService(
         config,
         port_service,
@@ -647,4 +747,5 @@ async def create_docker_service(port_service: PortService, config: AppSettings) 
         get_os(),
         get_cpu_architecture(),
         await is_rootless(),
+        get_host_platform(),
     )
