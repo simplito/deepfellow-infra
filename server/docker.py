@@ -441,7 +441,11 @@ class DockerService:
         if options.use_gpu:
             if not self.has_gpu_support:
                 raise AppError("Docker doesn't support GPU on this machine.")
-            service["deploy"] = {"resources": {"reservations": {"devices": [{"driver": "nvidia", "count": 1, "capabilities": ["gpu"]}]}}}
+            service["deploy"] = {
+                "resources": {
+                    "reservations": {"devices": [{"driver": "nvidia", "count": self.config.nvidia_gpus_count, "capabilities": ["gpu"]}]}
+                }
+            }
         if options.subnet:
             service["networks"] = [options.subnet]
         docker_compose_content: DockerComposeContent = {"services": {options.service_name: service}}
