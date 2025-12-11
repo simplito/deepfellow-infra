@@ -36,7 +36,7 @@ from server.models.models import (
     InstallModelProgress,
     UninstallModelIn,
 )
-from server.models.services import InstallServiceIn, InstallServiceOut, UninstallServiceIn
+from server.models.services import InstallServiceIn, InstallServiceOut, InstallServiceProgress, UninstallServiceIn
 from server.serviceprovider import ServiceProvider, ServiceRawConfig
 from server.services.base_service import BaseService
 from server.utils.core import PromiseWithProgress, Stream, StreamChunk, StreamChunkProgress, Utils, convert_size_to_bytes
@@ -77,6 +77,19 @@ class InstallingModel:
         self.task = asyncio.create_task(the_func())
 
 
+class InstallingService:
+    last_chunk: StreamChunk | None = None
+
+    def __init__(self, promise: PromiseWithProgress[InstallServiceOut, StreamChunk]):
+        self.promise = promise
+
+        async def the_func() -> None:
+            async for chunk in promise.progress.as_generator():
+                self.last_chunk = chunk
+
+        self.task = asyncio.create_task(the_func())
+
+
 class Base2Service[T](BaseService):
     config: AppSettings
     endpoint_registry: EndpointRegistry
@@ -85,6 +98,7 @@ class Base2Service[T](BaseService):
     docker_service: DockerService
     custom: list[CustomModel]
     installing_model_progress: dict[str, InstallingModel]
+    installing: InstallingService | None
 
     def __init__(
         self,
@@ -101,7 +115,7 @@ class Base2Service[T](BaseService):
         self.model_downloader = model_downloader
         self.docker_service = docker_service
         self.installed: T | None = None
-        self.installing = False
+        self.installing = None
         self.custom = list[CustomModel]()
         self.installing_model_progress = {}
         self._after_init()
@@ -123,6 +137,13 @@ class Base2Service[T](BaseService):
             return installing.promise
 
         raise HTTPException(404, "This model is not installing now.")
+
+    def get_service_install_progress(self) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
+        """Return actually installing service."""
+        if self.installing:
+            return self.installing.promise
+
+        raise HTTPException(404, "This service is not installing now.")
 
     def is_installed(self) -> bool:
         """Check whether service is installed."""
@@ -166,7 +187,6 @@ class Base2Service[T](BaseService):
             raise HTTPException(status_code=400, detail=f"Service {self.get_id()} already installing")
 
         async def func(stream: Stream[StreamChunk]) -> InstallServiceOut:
-            self.installing = True
             try:
                 promise = await self._install_core(options)
                 promise.progress.pipe(stream)
@@ -175,9 +195,11 @@ class Base2Service[T](BaseService):
                     await self._save()
                 return InstallServiceOut(status="OK")
             finally:
-                self.installing = False
+                self.installing = None
 
-        return PromiseWithProgress(func=func)
+        promise = PromiseWithProgress(func=func)
+        self.installing = InstallingService(promise=promise)
+        return promise
 
     @abstractmethod
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[T, StreamChunk]:
@@ -261,6 +283,15 @@ class Base2Service[T](BaseService):
                 return InstallModelProgress(stage="install", value=1)
             return InstallModelProgress(stage="download", value=0)
         return False
+
+    def _get_service_installed_info(self) -> bool | InstallServiceProgress:
+        if not self.installing:
+            return False
+        if self.installing.last_chunk and self.installing.last_chunk["type"] == "progress":
+            return InstallServiceProgress(stage=self.installing.last_chunk["stage"], value=self.installing.last_chunk["value"])
+        if self.installing.last_chunk and self.installing.last_chunk["type"] == "finish":
+            return InstallServiceProgress(stage="install", value=1)
+        return InstallServiceProgress(stage="download", value=0)
 
     async def get_docker_compose_file(self, model_id: str | None) -> str:
         """Get docker compose file."""

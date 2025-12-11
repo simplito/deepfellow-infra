@@ -107,6 +107,20 @@ async def retrieve_service(
 
 
 @router.get(
+    "/{service_id}/progress",
+    summary="Get progress of installing service.",
+)
+async def get_install_progress_service(
+    service_id: Annotated[str, Path(description="The ID of the service to use.")],
+    services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
+    _: Annotated[str, Depends(auth_admin)],
+) -> Response:
+    """Get progress of installing service."""
+    promise = await services_manager.get_service_install_progress(service_id)
+    return await convert_promise_with_progress_to_fastapi_response(promise)
+
+
+@router.get(
     "",
     summary="List services.",
 )

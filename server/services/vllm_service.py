@@ -37,7 +37,15 @@ from server.models.models import (
     RetrieveModelOut,
     UninstallModelIn,
 )
-from server.models.services import InstallServiceIn, ServiceField, ServiceOptions, ServiceSize, ServiceSpecification, UninstallServiceIn
+from server.models.services import (
+    InstallServiceIn,
+    InstallServiceProgress,
+    ServiceField,
+    ServiceOptions,
+    ServiceSize,
+    ServiceSpecification,
+    UninstallServiceIn,
+)
 from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
 from server.utils.core import (
     DownloadedPacket,
@@ -213,9 +221,9 @@ class VllmService(Base2Service[InstalledInfo]):
             ]
         )
 
-    def get_installed_info(self) -> bool | ServiceOptions:
+    def get_installed_info(self) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""
-        return False if self.installed is None else self.installed.options.spec
+        return self._get_service_installed_info() if self.installed is None else self.installed.options.spec
 
     def _generate_config(self, info: InstalledInfo | None) -> ServiceConfig:
         return ServiceConfig(
