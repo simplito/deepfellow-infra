@@ -62,7 +62,7 @@ async def get_install_progress_model(
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
 ) -> Response:
-    """Install the model from the service."""
+    """Get progress of installing model."""
     promise = await services_manager.get_model_install_progress(service_id, query.model_id)
     return await convert_promise_with_progress_to_fastapi_response(promise)
 

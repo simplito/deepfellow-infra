@@ -25,6 +25,7 @@ from server.models.models import (
 from server.models.services import (
     InstallServiceIn,
     InstallServiceOut,
+    InstallServiceProgress,
     RetrieveServiceOut,
     ServiceOptions,
     ServiceSize,
@@ -69,6 +70,10 @@ class BaseService(ABC):
         )
 
     @abstractmethod
+    def get_service_install_progress(self) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
+        """Return actually installing service."""
+
+    @abstractmethod
     def get_model_install_progress(self, model: str) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         """Return actually installing models."""
 
@@ -77,7 +82,7 @@ class BaseService(ABC):
         """Check whether service is installed."""
 
     @abstractmethod
-    def get_installed_info(self) -> bool | ServiceOptions:
+    def get_installed_info(self) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""
 
     def service_has_docker(self) -> bool:

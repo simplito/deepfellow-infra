@@ -49,10 +49,15 @@ class ServiceSpecification(BaseModel):
     fields: list[ServiceField]
 
 
+class InstallServiceProgress(BaseModel):
+    stage: str
+    value: float
+
+
 class RetrieveServiceOut(BaseModel):
     id: str
     description: str
-    installed: bool | ServiceOptions
+    installed: bool | InstallServiceProgress | ServiceOptions
     spec: ServiceSpecification
     size: ServiceSize
     custom_model_spec: CustomModelSpecification | None

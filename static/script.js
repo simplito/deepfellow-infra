@@ -31,13 +31,13 @@ async function showServicesPage() {
             </h3>
             <div class="boxes services">
                 ${data.list.map(s => {
-                    const values = s.installed ? s.installed : false;
+                    const values = s.installed && !s.installed.stage ? s.installed : false;
                     return (
-                        `<div class="box service">
+                        `<div class="box service" data-service-id="${s.id}">
                             <div class="box-name service-name">
                                 ${s.id}
                                 <div class="badge ${s.installed ? "badge-installed" : "badge-not-insalled"}">
-                                    ${s.installed ? "Installed" : "Not installed"}
+                                    ${s.installed ? s.installed.stage ? `${getStageLabel(s.installed.stage)} ${(s.installed.value * 100).toFixed(1)}%` : "Installed" : "Not installed"}
                                 </div>
                             </div>
                             <div class="box-size service-description">
@@ -58,8 +58,8 @@ async function showServicesPage() {
                             </div>
                             <div class="box-buttons service-buttons">
                                 ${!s.installed ? `<button data-action="install-service" data-service-id="${s.id}">Install</button>` : ""}
-                                ${s.installed ? `<button data-action="open-service-models" data-service-id="${s.id}">Models</button>` : ""}
-                                ${s.installed ? `<button data-action="uninstall-service" data-service-id="${s.id}">Uninstall</button>` : ""}
+                                ${s.installed && !s.installed.stage ? `<button data-action="open-service-models" data-service-id="${s.id}">Models</button>` : ""}
+                                ${s.installed && !s.installed.stage ? `<button data-action="uninstall-service" data-service-id="${s.id}">Uninstall</button>` : ""}
                             </div>
                         </div>`
                     );
@@ -67,6 +67,12 @@ async function showServicesPage() {
             </div>
         </div>`;
     showHtml(html);
+    Promise.all(data.list.map(async service => {
+        if (service.installed && service.installed.stage) {
+            const response = await fetchForResponse(`/admin/services/${service.id}/progress`);
+            readServiceInstallProgress(service.id, response);
+        }
+    }))
 }
 
 let modelFilter = "";
@@ -361,11 +367,11 @@ async function showServicePage(id) {
         boxes.innerHTML = filtered.length === 0 ? `<div class="empty">No elements</div>` : filtered.map(m => {
             const values = m.installed ? m.installed.spec || {} : false;
             return (
-                `<div class="box model">
+                `<div class="box model" data-model-id="${m.id}">
                     <div class="box-name model-name">
                         ${m.id}
                         <div class="badge ${m.installed ? "badge-installed" : "badge-not-insalled"}">
-                            ${m.installed ? m.installed.stage ? `Progress ${(m.installed.value * 100).toFixed(2)}%` : "Installed" : "Not installed"}
+                            ${m.installed ? m.installed.stage ? `${getStageLabel(m.installed.stage)} ${(m.installed.value * 100).toFixed(1)}%` : "Installed" : "Not installed"}
                         </div>
                         ${m.custom ? `<div class="badge">
                             Custom
@@ -380,9 +386,9 @@ async function showServicePage(id) {
                     </div>
                     <div class="box-buttons model-buttons">
                         ${!m.installed ? `<button data-action="install-model" data-service-id="${id}" data-model-id="${m.id}">Install</button>` : ""}
-                        ${m.installed ? `<button data-action="uninstall-model" data-service-id="${id}" data-model-id="${m.id}">Uninstall</button>` : ""}
-                        ${m.installed ? `<button data-action="test-model" data-service-id="${id}" data-model-id="${m.id}">Test</button>` : ""}
-                        ${m.installed && m.has_docker ? `
+                        ${m.installed && !m.installed.stage ? `<button data-action="uninstall-model" data-service-id="${id}" data-model-id="${m.id}">Uninstall</button>` : ""}
+                        ${m.installed && !m.installed.stage ? `<button data-action="test-model" data-service-id="${id}" data-model-id="${m.id}">Test</button>` : ""}
+                        ${m.installed && !m.installed.stage && m.has_docker ? `
                             <button data-service-id="${id}" data-model-id="${m.id}" data-action="show-docker-logs">Show docker logs</button>
                             <button data-service-id="${id}" data-model-id="${m.id}" data-action="show-docker-compose-file">Show docker compose file</button>
                             <button data-service-id="${id}" data-model-id="${m.id}" data-action="restart-docker">Restart docker</button>` : ""}
@@ -391,6 +397,12 @@ async function showServicePage(id) {
                 </div>`
             );
         }).join("")
+        Promise.all(filtered.map(async model => {
+            if (model.installed && model.installed.stage) {
+                const response = await fetchForResponse(`/admin/services/${id}/models/progress?model_id=${model.id}`);
+                readModalInstallProgress(id, model.id, response);
+            }
+        }));
     }
     render();
     const modelFilterEle = document.getElementById("model-filter");
@@ -447,15 +459,12 @@ root.addEventListener("click", async e => {
                 method: "GET"
             });
             showInstallServiceModal(info, async data => {
-                showLoadingPage()
                 const response = await fetchForResponse(`/admin/services/${serviceId}`, {
                     method: "POST",
                     body: JSON.stringify({stream: true, spec: data}),
                     headers: {"Content-Type": "application/json"}
                 });
-                readProgress(response, () => {
-                    showServicesPage();
-                });
+                readServiceInstallProgress(serviceId, response);
             });
         }
         else if (action === "uninstall-service") {
@@ -476,15 +485,12 @@ root.addEventListener("click", async e => {
                 method: "GET"
             });
             showInstallModelModal(info, async data => {
-                showLoadingPage()
                 const response = await fetchForResponse(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
                     method: "POST",
                     body: JSON.stringify({stream: true, spec: data}),
                     headers: {"Content-Type": "application/json"}
                 });
-                readProgress(response, () => {
-                    showServicePage(serviceId);
-                });
+                readModalInstallProgress(serviceId, modelId, response);
             });
         }
         else if (action === "uninstall-model") {
@@ -640,6 +646,96 @@ function getStageLabel(stage) {
 }
 
 function readProgress(response, onFinish) {
+    const progress = document.getElementById("progress");
+    readProgressCore(response, onFinish, data => {
+        // console.log(data);
+        if (!data) {
+            return;
+        }
+        if (data.type === "progress") {
+            if (progress) progress.textContent = getStageLabel(data.stage) + " " + (Math.floor(data.value * 10000) / 100).toFixed(1) + "%";
+        }
+        else if (data.type === "finish") {
+            if (data.status === "ok") {
+                if (progress) progress.textContent = data.details;
+            }
+            if (data.status === "error") {
+                console.log("Error", data.details);
+                alert("Error: " + data.details);
+            }
+        }
+    });
+}
+
+function readServiceInstallProgress(serviceId, response) {
+    const serviceBox = document.querySelector(`.box.service[data-service-id="${serviceId}"]`);
+    const badge = serviceBox ? serviceBox.querySelector(".badge") : null;
+    if (badge) {
+        badge.classList.add("badge-installed");
+        badge.textContent = "...";
+    }
+    if (serviceBox) {
+        const buttons = serviceBox.querySelector(".box-buttons");
+        if (buttons) {
+            buttons.style.display = "none";
+        }
+    }
+    readProgressCore(response, () => {
+        showServicesPage();
+    }, data => {
+        if (!data) {
+            return;
+        }
+        if (data.type === "progress") {
+            if (badge) badge.textContent = `${getStageLabel(data.stage)} ${(data.value * 100).toFixed(1)}%`
+        }
+        else if (data.type === "finish") {
+            if (data.status === "ok") {
+                // do nothing, onFinish call showServicesPage
+            }
+            if (data.status === "error") {
+                console.log("Error", data.details);
+                alert("Error: " + data.details);
+            }
+        }
+    });
+}
+
+function readModalInstallProgress(serviceId, modelId, response) {
+    const modelBox = document.querySelector(`.box.model[data-model-id="${modelId}"]`);
+    const badge = modelBox ? modelBox.querySelector(".badge") : null;
+    if (badge) {
+        badge.classList.add("badge-installed");
+        badge.textContent = "...";
+    }
+    if (modelBox) {
+        const buttons = modelBox.querySelector(".box-buttons");
+        if (buttons) {
+            buttons.style.display = "none";
+        }
+    }
+    readProgressCore(response, () => {
+        showServicePage(serviceId);
+    }, data => {
+        if (!data) {
+            return;
+        }
+        if (data.type === "progress") {
+            if (badge) badge.textContent = `${getStageLabel(data.stage)} ${(data.value * 100).toFixed(1)}%`
+        }
+        else if (data.type === "finish") {
+            if (data.status === "ok") {
+                // do nothing, onFinish call showServicePage
+            }
+            if (data.status === "error") {
+                console.log("Error", data.details);
+                alert("Error: " + data.details);
+            }
+        }
+    });
+}
+
+function readProgressCore(response, onFinish, onChunk) {
     const contentType = (response.headers.get("content-type") || "").split(";")[0].trim();
     if (contentType !== "text/event-stream") {
         (async () => {
@@ -657,27 +753,9 @@ function readProgress(response, onFinish) {
             }
         })()
     }
-    const progress = document.getElementById("progress");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    const stream = new SSEStream(data => {
-        console.log(data);
-        if (!data) {
-            return;
-        }
-        if (data.type === "progress") {
-            progress.textContent = getStageLabel(data.stage) + " " + (Math.floor(data.value * 10000) / 100).toFixed(2) + "%";
-        }
-        else if (data.type === "finish") {
-            if (data.status === "ok") {
-                progress.textContent = data.details;
-            }
-            if (data.status === "error") {
-                console.log("Error", data.details);
-                alert("Error: " + data.details);
-            }
-        }
-    });
+    const stream = new SSEStream(onChunk);
 
     function readChunk() {
         return reader.read().then(({ done, value }) => {
@@ -714,7 +792,13 @@ class SSEStream {
             if (chunk.startsWith("data: ")) {
                 const data = chunk.substring(6);
                 try {
-                    this.onProgress(JSON.parse(data));
+                    const progress = JSON.parse(data);
+                    try {
+                        this.onProgress(progress);
+                    }
+                    catch (e) {
+                        console.log("Error during onProgress callback", progress, e);
+                    }
                 }
                 catch (e) {
                     console.log("JSON parse error during reading streaming chunk", data);

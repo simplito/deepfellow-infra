@@ -261,20 +261,6 @@ class DockerService:
 
         return output_json
 
-    async def get_local_image_size(self, image: str) -> int | None:
-        """Get docker indexes list.
-
-        Args:
-            image: docker image ex. ubuntu
-
-        Returns:
-            size of image or None
-        """
-        cmd_parts = ["docker", "image", "history", image, "--human=false", "--format", "json"]
-        cmd = " ".join(Utils.shell_escape(part) for part in cmd_parts)
-        output = await Utils.run_command_for_success(cmd)
-        return not output.stderr
-
     def replace_image_digest(self, image: str, digest: str | None) -> str:
         """Replace docker image sha or add it on the end if it is."""
         if digest:
@@ -285,8 +271,6 @@ class DockerService:
 
     async def get_docker_image_size(self, image: str) -> int:
         """Get docker image size in bytes."""
-        if size := await self.get_local_image_size(image):
-            return size
         platforms_manifest = await self.get_docker_manifest(image)
         platform_digest = self.get_platform_digest(platforms_manifest)
         platform_image = image
@@ -481,13 +465,20 @@ class DockerService:
             # # Generate desired configuration
             current_service = current_config.get("services", {}).get(options.service_name, {})
             current_ports = current_service.get("ports", [])
-            current_port = int(current_ports[0].split(":")[0]) if len(current_ports) > 0 else None
+            current_port = (
+                int(
+                    current_port_segments[0] if len(current_port_segments := current_ports[0].split(":")) == 2 else current_port_segments[1]
+                )
+                if len(current_ports) > 0
+                else None
+            )
 
             desired_config = await self.generate_docker_compose_content(options, current_port)
             desired_content = yaml.dump(desired_config, default_flow_style=False, sort_keys=False)
             # Check image, command, environment
             return (current_content != desired_content, current_port)  # noqa: TRY300
         except Exception:
+            logger.exception("Error during checking docker compose differences")
             return True, None
 
     async def get_existing_or_free_port_docker(
