@@ -324,7 +324,7 @@ class DockerService:
         layers_manifest = await self.get_docker_manifest(platform_image)
         return self.calculate_total_layer_size(layers_manifest)
 
-    async def get_image_platforms(self, image: str) -> list[str]:  # noqa: C901
+    async def get_image_platforms(self, image: str) -> list[str]:
         """Get platform of a Docker image in format 'os/architecture'.
 
         Args:
@@ -362,17 +362,7 @@ class DockerService:
             # Get OS and Architecture from the first image
             os_type = image_data[0].get("Os", "linux").lower()
             arch = image_data[0].get("Architecture", "").lower()
-
-            # Normalize architecture names to match Docker platform conventions
-            if arch in ("arm64", "aarch64"):
-                arch = "arm64"
-            elif arch in ("amd64", "x86_64"):
-                arch = "amd64"
-            elif arch in ("arm", "armv7l", "armv7"):
-                # Check for variant
-                variant = image_data[0].get("Variant", "")
-                arch = f"arm/{variant}" if variant else "arm/v7"
-            return [f"{os_type}/{arch}"] if arch else []
+            return [normalize_docker_platform(f"{os_type}/{arch}")] if arch else []
 
     async def get_image_warnings(self, image: str) -> list[str]:
         """Get warnings about run given image on current platform."""
