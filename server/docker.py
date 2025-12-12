@@ -346,6 +346,20 @@ class DockerService:
             main_manifest = await self.get_docker_manifest(image)
             manifests = main_manifest.get("manifests", [])
             if not manifests:
+                if (
+                    main_manifest.get("mediaType") == "application/vnd.docker.distribution.manifest.v2+json"
+                    and (config := main_manifest.get("config"))
+                    and isinstance(config, dict)
+                    and (digest := config.get("digest"))  # type: ignore
+                    and isinstance(digest, str)
+                ):
+                    new_image = image.split("@")[0] + "@" + digest
+                    image_manifest = await self.get_docker_manifest(new_image)
+                    os = image_manifest.get("os", "")
+                    architecture = image_manifest.get("architecture", "")
+                    variant = image_manifest.get("variant", "")
+                    return [normalize_docker_platform(f"{os}/{architecture}{'/' + variant if variant else ''}")]
+
                 return []
             platforms = set[str]()
             for manifest in manifests:
