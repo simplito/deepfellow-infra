@@ -32,6 +32,42 @@ from server.utils.loading import Progress
 
 logger = logging.getLogger("uvicorn")
 
+ARCH_ALIASES = {
+    "x86_64": "amd64",
+    "aarch64": "arm64",
+    "armhf": "arm/v7",
+    "armv7l": "arm/v7",
+    "armv7": "arm/v7",
+    "i386": "386",
+}
+
+ARCHES_WITH_REQUIRED_VARIANT = ["arm", "arm64"]
+
+DEFAULT_VARIANTS = {
+    "arm": "v7",
+    "arm64": "v8",
+}
+
+
+def normalize_docker_platform(platform_str: str) -> str:
+    """Normalize the docker platform to format os/arch[/variant] with aliases."""
+    parts = platform_str.split("/")
+    if len(parts) == 2:
+        os_part, arch_part = parts
+        variant_part = None
+    elif len(parts) == 3:
+        os_part, arch_part, variant_part = parts
+    else:
+        msg = f"Invalid platform format: {platform_str}"
+        raise ValueError(msg)
+
+    arch_normalized = ARCH_ALIASES.get(arch_part, arch_part)
+    variant_normalized = variant_part if variant_part else DEFAULT_VARIANTS.get(arch_normalized)
+    if arch_normalized in ARCHES_WITH_REQUIRED_VARIANT and not variant_normalized:
+        msg = f"Platform '{platform_str}' requires a variant for architecture '{arch_normalized}'"
+        raise ValueError(msg)
+    return f"{os_part}/{arch_normalized}/{variant_normalized}" if variant_normalized else f"{os_part}/{arch_normalized}"
+
 
 class DockerOptions:
     def __init__(
@@ -319,7 +355,7 @@ class DockerService:
                     os = platform_info.get("os", "")
                     architecture = platform_info.get("architecture", "")
                     if os != "unknown" and architecture != "unknown":
-                        image = f"{os}/{architecture}{'/' + variant if variant else ''}"
+                        image = normalize_docker_platform(f"{os}/{architecture}{'/' + variant if variant else ''}")
                         platforms.add(image)
             return list(platforms)
         else:
@@ -692,7 +728,7 @@ class DockerService:
         return original_port if subnet else exposed_port
 
 
-async def create_docker_service(port_service: PortService, config: AppSettings) -> DockerService:  # noqa: C901
+async def create_docker_service(port_service: PortService, config: AppSettings) -> DockerService:
     """Create docker service."""
 
     def get_docker_compose_cmd() -> str:
@@ -715,29 +751,9 @@ async def create_docker_service(port_service: PortService, config: AppSettings) 
         return result.exit_code == 0 and "rootless" in result.stdout
 
     def get_host_platform() -> str:
-        """Get normalized host platform in format 'linux/architecture'.
-
-        Returns platform string like 'linux/arm64' or 'linux/amd64'.
-        Caches the result for performance.
-        """
-        # Get machine architecture
-        machine = platform.machine().lower()
-
-        # Normalize architecture names
-        if machine in ("arm64", "aarch64"):
-            arch = "arm64/v8"
-        elif machine in ("x86_64", "amd64"):
-            arch = "amd64"
-        elif machine in ("armv7l", "armv7"):
-            arch = "arm/v7"
-        elif machine == "i386":
-            arch = "386"
-        else:
-            # Default to the raw machine type
-            arch = machine
-
-        # Docker on macOS runs Linux containers
-        return f"linux/{arch}"
+        """Get the current host platform normalized for docker."""
+        arch = platform.machine().lower()
+        return normalize_docker_platform(f"linux/{arch}")
 
     return DockerService(
         config,
