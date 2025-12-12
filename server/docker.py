@@ -33,12 +33,12 @@ from server.utils.loading import Progress
 logger = logging.getLogger("uvicorn")
 
 ARCH_ALIASES = {
-    "x86_64": "amd64",
-    "aarch64": "arm64",
-    "armhf": "arm/v7",
-    "armv7l": "arm/v7",
-    "armv7": "arm/v7",
-    "i386": "386",
+    "x86_64": ("amd64", None),
+    "aarch64": ("arm64", "v8"),
+    "armhf": ("arm", "v7"),
+    "armv7l": ("arm", "v7"),
+    "armv7": ("arm", "v7"),
+    "i386": ("386", None),
 }
 
 ARCHES_WITH_REQUIRED_VARIANT = ["arm", "arm64"]
@@ -61,7 +61,11 @@ def normalize_docker_platform(platform_str: str) -> str:
         msg = f"Invalid platform format: {platform_str}"
         raise ValueError(msg)
 
-    arch_normalized = ARCH_ALIASES.get(arch_part, arch_part)
+    (arch_normalized, variant_x) = ARCH_ALIASES.get(arch_part, (arch_part, variant_part))
+    if variant_part and variant_x is not None and variant_x != variant_part:
+        msg = f"Platform '{platform_str}' has mismatched variant '{arch_normalized}' '{variant_part}' != '{variant_x}"
+        raise ValueError(msg)
+    variant_part = variant_part or variant_x
     variant_normalized = variant_part if variant_part else DEFAULT_VARIANTS.get(arch_normalized)
     if arch_normalized in ARCHES_WITH_REQUIRED_VARIANT and not variant_normalized:
         msg = f"Platform '{platform_str}' requires a variant for architecture '{arch_normalized}'"
