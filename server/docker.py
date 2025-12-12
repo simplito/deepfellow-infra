@@ -289,9 +289,9 @@ class DockerService:
         cmd = " ".join(Utils.shell_escape(part) for part in cmd_parts)
         output = await Utils.run_command(cmd)
         if output.exit_code != 0:
-            if output.stderr.endswith(" not found"):
+            if "not found" in output.stderr:
                 raise DockerImageDoesNotExistError(image)
-            if output.stderr.endswith(" authorization failed"):
+            if "authorization failed" in output.stderr or "failed to authorize" in output.stderr:
                 raise DockerImageAuthorizationError(image)
             raise RuntimeError("Invalid exit code for command", (output.exit_code, cmd, output.stdout, output.stderr))
         if output.stderr:
