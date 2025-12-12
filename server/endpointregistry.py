@@ -706,6 +706,8 @@ class EndpointRegistry:
         registration_id: RegistrationId | None = None,
     ) -> StarletteResponse:
         """Process images generations request."""
+        if self.config.is_log_payloads_enabled():
+            logger.info(f"DUMP REQUEST PAYLOAD /v1/images/generations {body.model_dump_json(exclude_none=True)}")  # noqa: G004
         endpoint = self.images_generations_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
             raise HTTPException(400, "Given model is not supported")
@@ -722,6 +724,8 @@ class EndpointRegistry:
         registration_id: RegistrationId | None = None,
     ) -> StarletteResponse:
         """Process audio speech request."""
+        if self.config.is_log_payloads_enabled():
+            logger.info(f"DUMP REQUEST PAYLOAD /v1/audio/speech {body.model_dump_json(exclude_none=True)}")  # noqa: G004
         endpoint = self.audio_speech_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
             raise HTTPException(400, "Given model is not supported")
