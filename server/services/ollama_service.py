@@ -505,7 +505,7 @@ class OllamaService(Base2Service[InstalledInfo]):
         if model_url.startswith(("http://", "https://")):
             dir = Path(Path(local_models_dir) / model_id)
             additional_params = ()
-            if model_path.suffix:
+            if model_path.suffix == ".gguf":
                 # If file then add filename to download.
                 additional_params = (model_path.name,)
             else:
@@ -549,7 +549,7 @@ class OllamaService(Base2Service[InstalledInfo]):
                     model = line_parts[1]
                     path_model = Path(model)
                     if model.startswith(("http://", "https://")):
-                        file_or_dir = path_model.name if path_model.suffix else "model"
+                        file_or_dir = path_model.name if path_model.suffix == ".gguf" else "model"
                         path = str(base_docker_dir / model_name / file_or_dir)
                         models_to_download_with_duplicates.append(model)
                     else:

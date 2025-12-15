@@ -302,7 +302,7 @@ class HuggingFaceModelDownloader(BaseDownloader):
 
     def check_url(self, url: str) -> bool:
         """Check is url handled by this downloader."""
-        return bool(url.startswith("https://huggingface.co/") and Path(url).suffix)
+        return bool(url.startswith("https://huggingface.co/") and Path(url).suffix == ".gguf")
 
     async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
