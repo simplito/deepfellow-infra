@@ -20,13 +20,20 @@ export const MODEL_TYPES = {
 
 export type ModelType = keyof typeof MODEL_TYPES;
 
+export interface InstallProgress {
+  stage: "install" | "download";
+  value: number; // 0.0 to 1.0
+}
+
 export interface SpecField {
   name: string;
   description: string;
-  type: "text" | "password" | "number" | "bool";
+  type: "text" | "password" | "number" | "bool" | "oneof" | "list" | "map" | "textarea";
   required: boolean;
   default?: string | number | boolean;
   placeholder?: string;
+  values?: string[]; // For oneof type
+  display?: string; // Conditional display: "fieldName=value"
 }
 
 export interface ServiceSpec {
@@ -35,9 +42,12 @@ export interface ServiceSpec {
 
 export interface Service {
   id: string;
-  installed: Record<string, any> | null;
+  installed: Record<string, any> | InstallProgress | null;
   spec: ServiceSpec;
   size: string | Record<string, string>;
+  description?: string;
+  custom_model_spec?: ServiceSpec;
+  has_docker?: boolean;
 }
 
 export interface ServiceListResponse {
@@ -49,13 +59,28 @@ export interface ServiceModel {
   type: ModelType;
   installed: {
     spec?: Record<string, any>;
+    stage?: string;
+    value?: number;
+    registration_id?: string; // For test endpoint
   } | null;
   spec: ServiceSpec;
   size: string;
+  custom?: string; // Custom model ID if custom
+  has_docker?: boolean;
 }
 
 export interface ServiceModelsResponse {
   list: ServiceModel[];
+}
+
+export interface TestResult {
+  result?: boolean; // true if test passed
+  error?: boolean; // true if test failed
+  output?: string | {
+    content_type: string; // e.g., "audio/wav", "image/png"
+    data: string; // base64 encoded data
+  };
+  details?: Record<string, any>; // Additional details
 }
 
 export interface InstallRequest {
@@ -64,4 +89,34 @@ export interface InstallRequest {
 
 export interface UninstallRequest {
   purge: boolean;
+}
+
+export class InstallationWarningsError extends Error {
+  warnings: string[];
+
+  constructor(warnings: string[], message?: string) {
+    super(message || "Installation warnings detected");
+    this.name = "InstallationWarningsError";
+    this.warnings = warnings;
+  }
+}
+
+// Mesh types
+export interface MeshInfoModel {
+  name: string;
+  type: string;
+}
+
+export interface MeshInfoInfra {
+  name: string;
+  url: string;
+  models: MeshInfoModel[];
+}
+
+export interface MeshInfo {
+  connections: MeshInfoInfra[];
+}
+
+export interface ShowMeshInfoOut {
+  info: MeshInfo;
 }

@@ -8,7 +8,7 @@ This software is Licensed under the DeepFellow Free License.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,6 +21,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { ListInput } from "./ListInput";
+import { MapInput } from "./MapInput";
 import type { SpecField } from "@/deepfellow/types";
 
 interface DynamicFormModalProps {
@@ -40,17 +50,45 @@ export function DynamicFormModal({
   onSubmit,
   isSubmitting = false,
 }: DynamicFormModalProps) {
-  const [formData, setFormData] = useState<Record<string, any>>(() => {
+  const initializeFormData = useMemo(() => {
     const initial: Record<string, any> = {};
     for (const field of fields) {
       if (field.type === "bool") {
         initial[field.name] = field.default === true ? true : false;
+      } else if (field.type === "list") {
+        initial[field.name] = [];
+      } else if (field.type === "map") {
+        initial[field.name] = {};
       } else if (field.default !== undefined && field.default !== null) {
         initial[field.name] = field.default;
       }
     }
     return initial;
-  });
+  }, [fields]);
+
+  const [formData, setFormData] = useState<Record<string, any>>(initializeFormData);
+
+  // Reset form data when modal opens or fields change
+  useEffect(() => {
+    if (open) {
+      setFormData(initializeFormData);
+    }
+  }, [open, initializeFormData]);
+
+  // Conditional field visibility logic
+  const isFieldVisible = (field: SpecField): boolean => {
+    if (!field.display) return true;
+    const [name, value] = field.display.split("=");
+    if (name && value) {
+      return formData[name] === value;
+    }
+    return true;
+  };
+
+  // Filter fields based on visibility
+  const visibleFields = useMemo(() => {
+    return fields.filter(isFieldVisible);
+  }, [fields, formData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +118,7 @@ export function DynamicFormModal({
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
-            {fields.map((field) => (
+            {visibleFields.map((field) => (
               <div key={field.name} className="grid gap-2">
                 <Label htmlFor={field.name}>
                   {field.description}
@@ -100,6 +138,43 @@ export function DynamicFormModal({
                       }
                     />
                   </div>
+                ) : field.type === "oneof" ? (
+                  <Select
+                    value={formData[field.name] || ""}
+                    onValueChange={(value) => handleInputChange(field.name, value)}
+                    required={field.required}
+                  >
+                    <SelectTrigger id={field.name} className="w-full">
+                      <SelectValue placeholder="Select an option" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {field.values?.map((val) => (
+                        <SelectItem key={val} value={val}>
+                          {val}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : field.type === "list" ? (
+                  <ListInput
+                    value={formData[field.name] || []}
+                    onChange={(value) => handleInputChange(field.name, value)}
+                    placeholder={field.placeholder}
+                  />
+                ) : field.type === "map" ? (
+                  <MapInput
+                    value={formData[field.name] || {}}
+                    onChange={(value) => handleInputChange(field.name, value)}
+                    placeholder={field.placeholder}
+                  />
+                ) : field.type === "textarea" ? (
+                  <Textarea
+                    id={field.name}
+                    placeholder={field.placeholder || ""}
+                    required={field.required}
+                    value={formData[field.name] || ""}
+                    onChange={(e) => handleInputChange(field.name, e.target.value)}
+                  />
                 ) : (
                   <Input
                     id={field.name}

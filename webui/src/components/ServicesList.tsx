@@ -8,96 +8,369 @@ This software is Licensed under the DeepFellow Free License.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { apiClient } from "@/deepfellow/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { MoreVertical } from "lucide-react";
 import { DynamicFormModal } from "./DynamicFormModal";
 import { ConfirmModal } from "./ConfirmModal";
-import type { Service } from "@/deepfellow/types";
+import { ProgressBadge } from "./ProgressBadge";
+import { ContentModal } from "./ContentModal";
+import { WarningsModal } from "./WarningsModal";
+import { MeshInfoModal } from "./MeshInfoModal";
+import { useModal } from "@/hooks/use-modal";
+import type { Service, InstallProgress } from "@/deepfellow/types";
+import { InstallationWarningsError } from "@/deepfellow/types";
+import type { ProgressEvent } from "@/utils/sse-stream";
 import { toast } from "sonner";
 
 export function ServicesList() {
-  const [installModalOpen, setInstallModalOpen] = useState(false);
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const modal = useModal();
   const [searchQuery, setSearchQuery] = useState("");
-  const [uninstallModalOpen, setUninstallModalOpen] = useState(false);
-  const [serviceToUninstall, setServiceToUninstall] = useState<string | null>(null);
   const [installingServiceId, setInstallingServiceId] = useState<string | null>(null);
+  const [installProgress, setInstallProgress] = useState<Record<string, { stage: "install" | "download", value: number }>>({});
+  const pendingInstallationRef = useRef<{ serviceId: string; spec: Record<string, any> } | null>(null);
+  const hasWarningsRef = useRef(false);
+  const restartDockerToastIdRef = useRef<string | number | null>(null);
+  const uninstallToastIdRef = useRef<string | number | null>(null);
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
 
   const { data: servicesData, isLoading } = useQuery({
     queryKey: ["admin", "services"],
     queryFn: () => apiClient.listAdminServices(),
   });
 
+  // Progress polling for existing installations
+  useEffect(() => {
+    if (!servicesData?.list) return;
+
+    const progressPromises: Array<() => void> = [];
+
+    servicesData.list.forEach((service) => {
+      // Check if service has installation in progress (has stage property)
+      const installed = service.installed;
+      if (installed && typeof installed === "object" && "stage" in installed && "value" in installed) {
+        const serviceId = service.id;
+
+        // Start progress polling
+        const abortController = new AbortController();
+        let isCancelled = false;
+
+        const startProgress = async () => {
+          try {
+            await apiClient.getServiceProgress(serviceId, (event: ProgressEvent) => {
+              if (isCancelled) return;
+
+              if (event.type === "progress" && event.stage && event.value !== undefined) {
+                setInstallProgress((prev) => ({
+                  ...prev,
+                  [serviceId]: { stage: event.stage!, value: event.value! },
+                }));
+              } else if (event.type === "finish") {
+                if (event.status === "ok") {
+                  queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
+                  setInstallProgress((prev) => {
+                    const newProgress = { ...prev };
+                    delete newProgress[serviceId];
+                    return newProgress;
+                  });
+                } else {
+                  setInstallProgress((prev) => {
+                    const newProgress = { ...prev };
+                    delete newProgress[serviceId];
+                    return newProgress;
+                  });
+                  toast.error(`Installation failed for ${serviceId}: ${event.details || "Unknown error"}`);
+                }
+              }
+            });
+          } catch (error) {
+            if (!isCancelled) {
+              console.error(`Error polling progress for ${serviceId}:`, error);
+            }
+          }
+        };
+
+        startProgress();
+
+        progressPromises.push(() => {
+          isCancelled = true;
+          abortController.abort();
+        });
+      }
+    });
+
+    return () => {
+      progressPromises.forEach((cleanup) => cleanup());
+    };
+  }, [servicesData, queryClient]);
+
   const installMutation = useMutation({
-    mutationFn: ({ serviceId, spec }: { serviceId: string; spec: Record<string, any> }) =>
-      apiClient.installAdminService(serviceId, spec),
+    mutationFn: ({ serviceId, spec, ignoreWarnings = false }: { serviceId: string; spec: Record<string, any>; ignoreWarnings?: boolean }) => {
+      return new Promise<void>((resolve, reject) => {
+        apiClient.installAdminServiceStreaming(
+          serviceId,
+          spec,
+          (event: ProgressEvent) => {
+            if (event.type === "progress" && event.stage && event.value !== undefined) {
+              setInstallProgress((prev) => ({
+                ...prev,
+                [serviceId]: { stage: event.stage!, value: event.value! },
+              }));
+            } else if (event.type === "finish") {
+              if (event.status === "ok") {
+                resolve();
+              } else {
+                reject(new Error(event.details || "Installation failed"));
+              }
+            }
+          },
+          ignoreWarnings
+        ).catch(reject);
+        modal.close();
+      });
+    },
     onMutate: ({ serviceId }) => {
       setInstallingServiceId(serviceId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
-      setInstallModalOpen(false);
-      setSelectedService(null);
+      pendingInstallationRef.current = null;
+      setInstallProgress((prev) => {
+        const newProgress = { ...prev };
+        delete newProgress[installingServiceId || ""];
+        return newProgress;
+      });
       toast.success("Service installed successfully");
     },
     onError: (error) => {
+      if (error instanceof InstallationWarningsError) {
+        // Show warnings modal instead of error toast
+        hasWarningsRef.current = true;
+        modal.open(WarningsModal, {
+          warnings: error.warnings,
+          onContinue: handleWarningsContinue,
+          isLoading: false,
+        });
+        return;
+      }
+      
+      hasWarningsRef.current = false;
+      setInstallProgress((prev) => {
+        const newProgress = { ...prev };
+        delete newProgress[installingServiceId || ""];
+        return newProgress;
+      });
       toast.error(`Failed to install service: ${error.message}`);
     },
     onSettled: () => {
-      setInstallingServiceId(null);
+      // Only reset if not showing warnings modal
+      if (!hasWarningsRef.current) {
+        setInstallingServiceId(null);
+      }
     },
   });
 
   const uninstallMutation = useMutation({
     mutationFn: (serviceId: string) => apiClient.uninstallAdminService(serviceId, false),
+    onMutate: () => {
+      const toastId = toast.loading("Uninstalling...");
+      uninstallToastIdRef.current = toastId;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
-      setUninstallModalOpen(false);
-      setServiceToUninstall(null);
-      toast.success("Service uninstalled successfully");
+      if (uninstallToastIdRef.current) {
+        toast.success("Service uninstalled successfully", { id: uninstallToastIdRef.current });
+        uninstallToastIdRef.current = null;
+      } else {
+        toast.success("Service uninstalled successfully");
+      }
     },
     onError: (error) => {
-      toast.error(`Failed to uninstall service: ${error.message}`);
+      if (uninstallToastIdRef.current) {
+        toast.error(`Failed to uninstall service: ${error.message}`, { id: uninstallToastIdRef.current });
+        uninstallToastIdRef.current = null;
+      } else {
+        toast.error(`Failed to uninstall service: ${error.message}`);
+      }
     },
   });
+
+  const dockerRestartMutation = useMutation({
+    mutationFn: (serviceId: string) => apiClient.restartDocker(serviceId),
+    onMutate: () => {
+      const toastId = toast.loading("Restarting Docker...");
+      restartDockerToastIdRef.current = toastId;
+    },
+    onSuccess: () => {
+      if (restartDockerToastIdRef.current) {
+        toast.success("Docker restarted successfully", { id: restartDockerToastIdRef.current });
+        restartDockerToastIdRef.current = null;
+      } else {
+        toast.success("Docker restarted successfully");
+      }
+    },
+    onError: (error) => {
+      if (restartDockerToastIdRef.current) {
+        toast.error(`Failed to restart Docker: ${error.message}`, { id: restartDockerToastIdRef.current });
+        restartDockerToastIdRef.current = null;
+      } else {
+        toast.error(`Failed to restart Docker: ${error.message}`);
+      }
+    },
+  });
+
+  const handleShowDockerLogs = async (serviceId: string) => {
+    // Open modal immediately with loading state
+    modal.open(ContentModal, {
+      title: "Docker Logs",
+      content: "",
+      wide: true,
+      pre: true,
+      isLoading: true,
+      onCancel: () => {
+        modal.close();
+      },
+    });
+
+    try {
+      const data = await apiClient.getDockerLogs(serviceId);
+      // Update modal with actual content
+      modal.open(ContentModal, {
+        title: "Docker Logs",
+        content: data.logs,
+        wide: true,
+        pre: true,
+        isLoading: false,
+      });
+    } catch (error) {
+      modal.close();
+      toast.error(`Failed to fetch Docker logs: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  };
+
+  const handleShowDockerCompose = async (serviceId: string) => {
+    // Open modal immediately with loading state
+    modal.open(ContentModal, {
+      title: "Docker Compose File",
+      content: "",
+      wide: true,
+      pre: true,
+      isLoading: true,
+      onCancel: () => {
+        modal.close();
+      },
+    });
+
+    try {
+      const data = await apiClient.getDockerCompose(serviceId);
+      // Update modal with actual content
+      modal.open(ContentModal, {
+        title: "Docker Compose File",
+        content: data.compose_file,
+        wide: true,
+        pre: true,
+        isLoading: false,
+      });
+    } catch (error) {
+      modal.close();
+      toast.error(`Failed to fetch Docker compose file: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  };
+
+  const handleRestartDocker = (serviceId: string) => {
+    modal.open(ConfirmModal, {
+      title: "Restart Docker",
+      description: `Are you sure you want to restart Docker for ${serviceId}?`,
+      confirmText: "Restart",
+      cancelText: "Cancel",
+      onConfirm: () => {
+        modal.close();
+        dockerRestartMutation.mutate(serviceId);
+      },
+      isLoading: dockerRestartMutation.isPending,
+      variant: "warning",
+    });
+  };
+
+  const handleShowMeshInfo = async () => {
+    try {
+      const data = await apiClient.getMeshInfo();
+      modal.open(MeshInfoModal, {
+        meshInfo: data.info,
+      });
+    } catch (error) {
+      toast.error(`Failed to fetch mesh info: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  };
 
   const handleInstallClick = async (service: Service) => {
     try {
       const serviceDetail = await apiClient.getAdminService(service.id);
-      setSelectedService(serviceDetail);
-      setInstallModalOpen(true);
+      modal.open(DynamicFormModal, {
+        title: `Install ${serviceDetail.id}`,
+        fields: serviceDetail.spec.fields,
+        onSubmit: (spec: Record<string, any>) => {
+          pendingInstallationRef.current = { serviceId: serviceDetail.id, spec };
+          installMutation.mutate({ serviceId: serviceDetail.id, spec });
+        },
+        isSubmitting: installMutation.isPending,
+      });
     } catch (error) {
       toast.error("Failed to load service details");
     }
   };
 
-  const handleInstallSubmit = (spec: Record<string, any>) => {
-    if (selectedService) {
-      installMutation.mutate({ serviceId: selectedService.id, spec });
+  const handleWarningsContinue = () => {
+    if (pendingInstallationRef.current) {
+      hasWarningsRef.current = false;
+      installMutation.mutate({ 
+        serviceId: pendingInstallationRef.current.serviceId, 
+        spec: pendingInstallationRef.current.spec,
+        ignoreWarnings: true 
+      });
     }
   };
 
-  const handleUninstallClick = (serviceId: string) => {
-    setServiceToUninstall(serviceId);
-    setUninstallModalOpen(true);
-  };
-
-  const handleUninstallConfirm = () => {
-    if (serviceToUninstall) {
-      uninstallMutation.mutate(serviceToUninstall);
+  const handleUninstallClick = async (serviceId: string) => {
+    // Check if service has custom models before uninstalling
+    let customModelsCount = 0;
+    try {
+      const modelsData = await apiClient.listAdminServiceModels(serviceId);
+      customModelsCount = modelsData.list?.filter((model) => model.custom).length || 0;
+    } catch (error) {
+      // If we can't fetch models, proceed anyway but log the error
+      console.warn("Failed to fetch models for service:", error);
     }
-  };
 
-  const handleOpenModels = (serviceId: string) => {
-    navigate({ to: "/dashboard/services/$serviceId", params: { serviceId } });
+    const description = customModelsCount > 0
+      ? `Are you sure you want to uninstall ${serviceId}? This will also remove ${customModelsCount} custom model${customModelsCount > 1 ? "s" : ""} associated with this service. This action cannot be undone.`
+      : `Are you sure you want to uninstall ${serviceId}? This action cannot be undone.`;
+
+    modal.open(ConfirmModal, {
+      title: "Uninstall Service",
+      description,
+      confirmText: "Uninstall",
+      cancelText: "Cancel",
+      onConfirm: () => {
+        modal.close();
+        uninstallMutation.mutate(serviceId);
+      },
+      isLoading: uninstallMutation.isPending,
+      variant: "destructive",
+    });
   };
 
   const services = servicesData?.list || [];
@@ -136,7 +409,16 @@ export function ServicesList() {
 
   return (
     <div className="px-4 lg:px-6">
-      <div className="mb-4">
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-3xl font-bold">Services</h1>
+          <Button
+            onClick={handleShowMeshInfo}
+            variant="outline"
+          >
+            Show mesh info
+          </Button>
+        </div>
         <Input
           placeholder="Search services..."
           value={searchQuery}
@@ -151,7 +433,7 @@ export function ServicesList() {
             <TableRow>
               <TableHead>Service ID</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Size</TableHead>
+              <TableHead>Resources</TableHead>
               <TableHead>Configuration</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -171,18 +453,47 @@ export function ServicesList() {
                   : Object.entries(service.size).map(([key, val]) => `${key.toUpperCase()}: ${val}`).join(", ");
 
                 const isInstallingCurrent = installMutation.isPending && installingServiceId === service.id;
+                const currentProgress = installProgress[service.id];
+                const isInProgress = !!currentProgress;
+                // Check if installed is InstallProgress type (has stage and value)
+                const installedIsProgress = service.installed && typeof service.installed === "object" && "stage" in service.installed && "value" in service.installed;
 
                 return (
                   <TableRow key={service.id}>
-                    <TableCell className="font-medium">{service.id}</TableCell>
+                    <TableCell className="font-medium">
+                      <div>
+                        {isInstalled && !installedIsProgress ? (
+                          <Link
+                            to="/dashboard/services/$serviceId"
+                            params={{ serviceId: service.id }}
+                            className="text-primary hover:underline"
+                          >
+                            {service.id}
+                          </Link>
+                        ) : (
+                          <div>{service.id}</div>
+                        )}
+                        {service.description && service.description.length > 0 && (
+                          <div className="text-sm text-muted-foreground mt-1">{service.description}</div>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
-                      <Badge variant={isInstalled ? "default" : "secondary"}>
-                        {isInstalled ? "Installed" : "Not installed"}
-                      </Badge>
+                      {isInProgress || installedIsProgress ? (
+                        <ProgressBadge
+                          stage={currentProgress?.stage || (service.installed as InstallProgress).stage}
+                          value={currentProgress?.value ?? (service.installed as InstallProgress).value}
+                          variant="default"
+                        />
+                      ) : (
+                        <Badge variant={isInstalled ? "default" : "secondary"}>
+                          {isInstalled ? "Installed" : "Not installed"}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="font-mono text-sm">{sizeInfo || "N/A"}</TableCell>
                     <TableCell>
-                      {isInstalled && service.installed ? (
+                      {isInstalled && service.installed && !installedIsProgress ? (
                         <div className="space-y-1">
                           {Object.entries(service.installed).map(([key, value]) => {
                             const field = service.spec.fields.find((f) => f.name === key);
@@ -200,7 +511,7 @@ export function ServicesList() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        {!isInstalled ? (
+                        {isInProgress || installedIsProgress ? null : !isInstalled ? (
                           <Button
                             onClick={() => handleInstallClick(service)}
                             size="sm"
@@ -209,18 +520,41 @@ export function ServicesList() {
                             {isInstallingCurrent ? "Installing..." : "Install"}
                           </Button>
                         ) : (
-                          <>
-                            <Button onClick={() => handleOpenModels(service.id)} size="sm" variant="outline">
-                              Models
-                            </Button>
-                            <Button
-                              onClick={() => handleUninstallClick(service.id)}
-                              variant="destructive"
-                              size="sm"
-                            >
-                              Uninstall
-                            </Button>
-                          </>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="sm">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {service.has_docker && (
+                                <>
+                                  <DropdownMenuItem
+                                    onClick={() => handleShowDockerLogs(service.id)}
+                                  >
+                                    Docker Logs
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleShowDockerCompose(service.id)}
+                                  >
+                                    Docker Compose
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleRestartDocker(service.id)}
+                                  >
+                                    Restart Docker
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => handleUninstallClick(service.id)}
+                                variant="destructive"
+                              >
+                                Uninstall
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         )}
                       </div>
                     </TableCell>
@@ -231,29 +565,6 @@ export function ServicesList() {
           </TableBody>
         </Table>
       </div>
-
-      {selectedService && (
-        <DynamicFormModal
-          open={installModalOpen}
-          onOpenChange={setInstallModalOpen}
-          title={`Install ${selectedService.id}`}
-          fields={selectedService.spec.fields}
-          onSubmit={handleInstallSubmit}
-          isSubmitting={installMutation.isPending}
-        />
-      )}
-
-      <ConfirmModal
-        open={uninstallModalOpen}
-        onOpenChange={setUninstallModalOpen}
-        title="Uninstall Service"
-        description={`Are you sure you want to uninstall ${serviceToUninstall}? This action cannot be undone.`}
-        confirmText="Uninstall"
-        cancelText="Cancel"
-        onConfirm={handleUninstallConfirm}
-        isLoading={uninstallMutation.isPending}
-        variant="destructive"
-      />
     </div>
   );
 }

@@ -17,6 +17,7 @@ import { useEffect } from "react";
 
 import { useAuth } from "../hooks/use-auth";
 import { Toaster } from "../components/ui/sonner";
+import { ModalProvider } from "../hooks/use-modal";
 
 import type { QueryClient } from "@tanstack/react-query";
 
@@ -37,10 +38,10 @@ function RootComponent() {
   }, [apiKey, isLoading, router]);
 
   return (
-    <>
+    <ModalProvider>
       <Outlet />
       <Toaster />
-    </>
+    </ModalProvider>
   );
 }
 

@@ -49,6 +49,7 @@
     "@tanstack/react-router": "^1.130.2",
     "@tanstack/react-router-devtools": "^1.131.5",
     "@tanstack/router-plugin": "^1.121.2",
+    "@xyflow/react": "^12.10.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
