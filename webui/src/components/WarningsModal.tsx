@@ -17,31 +17,24 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { AlertTriangle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
-interface ConfirmModalProps {
+interface WarningsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  title: string;
-  description: string;
-  confirmText?: string;
-  cancelText?: string;
-  onConfirm: () => void;
+  warnings: string[];
+  onContinue: () => void;
   isLoading?: boolean;
-  variant?: "default" | "destructive" | "warning";
 }
 
-export function ConfirmModal({
+export function WarningsModal({
   open,
   onOpenChange,
-  title,
-  description,
-  confirmText = "Confirm",
-  cancelText = "Cancel",
-  onConfirm,
+  warnings,
+  onContinue,
   isLoading = false,
-  variant = "default",
-}: ConfirmModalProps) {
+}: WarningsModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -51,11 +44,25 @@ export function ConfirmModal({
         onEscapeKeyDown={(e) => {
           if (isLoading) e.preventDefault();
         }}
+        className="max-w-3xl"
       >
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-yellow-500" />
+            Installation Warnings
+          </DialogTitle>
+          <DialogDescription>
+            The following warnings were detected during installation. Do you want to continue?
+          </DialogDescription>
         </DialogHeader>
+        <div className="space-y-2 max-h-[400px] overflow-y-auto">
+          {warnings.map((warning, index) => (
+            <Alert key={index} variant="default" className="border-yellow-500">
+              <AlertTriangle className="h-4 w-4 text-yellow-500" />
+              <AlertDescription className="text-sm">{warning}</AlertDescription>
+            </Alert>
+          ))}
+        </div>
         <DialogFooter>
           <Button
             type="button"
@@ -63,18 +70,15 @@ export function ConfirmModal({
             onClick={() => onOpenChange(false)}
             disabled={isLoading}
           >
-            {cancelText}
+            Cancel
           </Button>
           <Button
             type="button"
-            onClick={onConfirm}
+            onClick={onContinue}
             disabled={isLoading}
-            variant={variant === "destructive" ? "destructive" : "default"}
-            className={cn(
-              variant === "warning" && "bg-yellow-500 hover:bg-yellow-600 text-white focus-visible:ring-yellow-500/20 dark:bg-yellow-600 dark:hover:bg-yellow-700"
-            )}
+            variant="default"
           >
-            {isLoading ? "Processing..." : confirmText}
+            {isLoading ? "Installing..." : "Continue Anyway"}
           </Button>
         </DialogFooter>
       </DialogContent>
