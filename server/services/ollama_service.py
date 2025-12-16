@@ -116,9 +116,21 @@ def _read_models() -> dict[str, OllamaModel]:
         registry: OllamaRegistry = json.loads(f.read())
         map: dict[str, OllamaModel] = {}
         for tag in registry["llms"]:
-            map[tag["name"]] = OllamaModel(id=tag["name"], size=tag["size"], type="llm")
+            map[tag["name"]] = OllamaModel(
+                id=tag["name"],
+                size=tag["size"],
+                type="llm",
+                modelfile=tag.get("modelfile", ""),
+                quantization=tag.get("quantization", ""),
+            )
         for tag in registry["embeddings"]:
-            map[tag["name"]] = OllamaModel(id=tag["name"], size=tag["size"], type="embedding")
+            map[tag["name"]] = OllamaModel(
+                id=tag["name"],
+                size=tag["size"],
+                type="embedding",
+                modelfile=tag.get("modelfile", ""),
+                quantization=tag.get("quantization", ""),
+            )
         return map
 
 

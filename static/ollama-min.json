@@ -2125,6 +2125,16 @@
     {
       "name": "mannix/jan-nano",
       "size": "2.3GB"
+    },
+    {
+      "name": "Llama-PLLuM-8B-chat",
+      "size": "16.1GB",
+      "modelfile": "FROM https://huggingface.co/CYFRAGOVPL/Llama-PLLuM-8B-chat"
+    },
+    {
+      "name": "Llama-PLLuM-8B-chat-Q8_0",
+      "size": "16.1GB",
+      "modelfile": "FROM https://huggingface.co/tsej/Llama-PLLuM-8B-chat-GGUF/resolve/main/Llama-PLLuM-8B-chat-Q8_0.gguf"
     }
   ]
 }
