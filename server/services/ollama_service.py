@@ -621,6 +621,7 @@ class OllamaService(Base2Service[InstalledInfo]):
             if not await self.is_model_installed(info.base_url, model_id):
                 if not model.modelfile:
                     await self._download_with_ollama(input_stream, info.base_url, model_id, model.size)
+                    input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
                 else:
                     content, models_to_download = await self.create_docker_modelfile_content(model_id, model.modelfile)
                     models_quantity = len(set(models_to_download))
@@ -632,9 +633,11 @@ class OllamaService(Base2Service[InstalledInfo]):
                     msg = f"Create model {model_id} from {path}{f'with quantization {quantization}' if quantization else ''}"
                     logger.debug(msg)
 
+                    input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
                     await self.create_model_from_modelfile(compose_filepath, service_name, model_id, path, quantization)
+            else:
+                input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
 
-            input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             if parsed_model_options.alive_time != "":
                 await fetch_from(
                     f"{info.base_url}/api/generate",
