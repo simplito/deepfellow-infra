@@ -863,6 +863,8 @@ async def make_http_request(
     headers: dict[str, str] | None = None,
 ) -> HttpResponse:
     """Make HTTP request to given url."""
+    # NOTE: Uncomment to debug http request
+    # logger.info(f"Making HTTP request to: {url}")
     headers = headers or {}
     session = ClientSession()
     try:

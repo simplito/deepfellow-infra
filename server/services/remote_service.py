@@ -107,7 +107,7 @@ class InstalledInfo:
 
 
 class RemoteService(Base2Service[InstalledInfo]):
-    url_prefix: str = "v1/"
+    api_version: str = "v1/"
     models: dict[str, RemoteModel]
 
     def _after_init(self) -> None:
@@ -288,7 +288,8 @@ class RemoteService(Base2Service[InstalledInfo]):
                 legacy_completions=model.legacy_completions,
                 registration_id="",
             )
-            url_base = urljoin(info.parsed_options.api_url, self.url_prefix)
+
+            url_base = urljoin(info.parsed_options.api_url, self.api_version)
             if model.type == "llm":
                 model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                     model=registered_name,
@@ -310,7 +311,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                     registration_options=None,
                 )
             if model.type == "tts":
-                url = urljoin(url_base, "v1/audio/speech")
+                url = urljoin(url_base, "audio/speech")
                 model_info.registration_id = self.endpoint_registry.register_audio_speech_as_proxy(
                     model=registered_name,
                     props=model.props,
@@ -322,7 +323,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                     registration_options=None,
                 )
             if model.type == "stt":
-                url = urljoin(url_base, "v1/audio/transcriptions")
+                url = urljoin(url_base, "audio/transcriptions")
                 model_info.registration_id = self.endpoint_registry.register_audio_transcriptions_as_proxy(
                     model=registered_name,
                     props=model.props,
@@ -334,7 +335,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                     registration_options=None,
                 )
             if model.type == "txt2img":
-                url = urljoin(url_base, "v1/images/generations")
+                url = urljoin(url_base, "images/generations")
                 model_info.registration_id = self.endpoint_registry.register_image_generations_as_proxy(
                     model=registered_name,
                     props=model.props,
@@ -346,7 +347,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                     registration_options=None,
                 )
             if model.type == "embedding":
-                url = urljoin(url_base, "v1/embeddings")
+                url = urljoin(url_base, "embeddings")
                 model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
                     model=registered_name,
                     props=model.props,
