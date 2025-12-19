@@ -67,7 +67,7 @@ _const = RemoteConst(
 
 
 class GoogleAIService(RemoteService):
-    url_prefix = "v1beta/openai/"
+    api_version = "v1beta/openai/"
 
     def get_id(self) -> str:
         """Return the service id."""
