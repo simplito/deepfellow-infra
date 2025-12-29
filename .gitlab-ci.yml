@@ -1,22 +1,65 @@
+image: python:3.13
+
 stages:
+  # - security
+  - analysis
+  - test
   - build
   - deploy
 
 variables:
   DOCKER_TLS_CERTDIR: ""
+  UV_VERSION: "0.9.9"
+  PYTHON_VERSION: "3.13"
+  BASE_LAYER: bookworm-slim
+  # GitLab CI creates a separate mountpoint for the build directory,
+  # so we need to copy instead of using hard links.
+  UV_LINK_MODE: copy
 
-build:
-  stage: build
-  image: docker:27.3.1
-  services:
-    - name: docker:27.3.1-dind
-      command: ["--tls=false"]
+.uv: &uv
+  variables:
+    UV_CACHE_DIR: .uv-cache
+  cache:
+    - key:
+        files:
+          - uv.lock
+      paths:
+        - $UV_CACHE_DIR
+  image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
   script:
-    - docker build .
-  except:
-    - tags
-    - main
-    - /^hotfix-.*$/
+    - uv sync --frozen
+    - uv cache prune --ci
+
+ruff:
+  <<: *uv
+  stage: analysis
+  script:
+    - uv run ruff check server/ tests/
+
+ruff-format:
+  <<: *uv
+  stage: analysis
+  script:
+    - uv run ruff format --check server/ tests/
+
+pyright:
+  <<: *uv
+  stage: analysis
+  script:
+    - PYRIGHT_PYTHON_NODE_VERSION=24.10.0 uv run pyright
+
+pytest:
+  <<: *uv
+  stage: test
+  script:
+    - uv run pytest --showlocals --tb=auto -ra --cov server --cov-branch --cov-report=term-missing --cov-report xml:coverage_server.xml --no-cov-on-fail tests/
+  coverage: '/(?i)total.*? (100(?:\.0)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  artifacts:
+    expire_in: 1 week
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage_server.xml
 
 build_and_publish_docker_image:
   stage: build
