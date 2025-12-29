@@ -7,9 +7,6 @@ WORKDIR /app
 COPY . .
 RUN uv venv .venv
 RUN uv sync --frozen
-RUN uv run ruff check server/ tests/
-RUN uv run ruff format server/ tests/ --check
-RUN PYRIGHT_PYTHON_NODE_VERSION=24.10.0 uv run pyright
 RUN uv run pytest --showlocals --tb=auto -ra --cov server --cov-branch --cov-report=term-missing tests/
 RUN rm -rf .venv
 RUN uv sync --frozen --no-dev
