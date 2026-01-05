@@ -5,7 +5,7 @@ dev-trace:
     uv run uvicorn server.main:app --reload --log-level trace
 
 test *FLAGS:
-    uv run pytest --showlocals --tb=auto -ra --cov server --cov-branch --cov-report=term-missing --no-cov-on-fail {{FLAGS}}
+    uv run pytest --showlocals --tb=auto -ra --cov server --cov scripts --cov-branch --cov-report=term-missing --no-cov-on-fail {{FLAGS}}
 
 ntest *FLAGS:
     uv run pytest --showlocals --tb=auto -ra --cov server --cov-branch --cov-report=term-missing --no-cov-on-fail -n auto {{FLAGS}}
@@ -33,9 +33,10 @@ todo:
     git grep "# FIX" -- "*.py"
     git grep "# DONE" -- "*.py"
 
-check: ruff ruff-format pyright
+license-check *FLAGS:
+    uv run scripts/check_license_header.py {{FLAGS}}
+
+check: license-check ruff ruff-format pyright
 
 ui-rebuild:
    (cd $(git rev-parse --show-toplevel)/webui && npm run buildx)
-
-
