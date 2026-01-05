@@ -1,5 +1,5 @@
 # DeepFellow Software Framework.
-# Copyright © 2025 Simplito sp. z o.o.
+# Copyright © 2026 Simplito sp. z o.o.
 #
 # This file is part of the DeepFellow Software Framework (https://deepfellow.ai).
 # This software is Licensed under the DeepFellow Free License.

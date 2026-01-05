@@ -52,7 +52,7 @@ pytest:
   <<: *uv
   stage: test
   script:
-    - uv run pytest --showlocals --tb=auto -ra --cov server --cov-branch --cov-report=term-missing --cov-report xml:coverage_server.xml --no-cov-on-fail tests/
+    - uv run pytest --showlocals --tb=auto -ra --cov server --cov scripts --cov-branch --cov-report=term-missing --cov-report xml:coverage_server.xml --no-cov-on-fail tests/
   coverage: '/(?i)total.*? (100(?:\.0)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     expire_in: 1 week
