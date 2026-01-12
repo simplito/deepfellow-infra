@@ -15,6 +15,7 @@ import io
 import json
 import platform
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
@@ -241,27 +242,17 @@ class SDModelOptions(BaseModel):
     alias: str | None = None
 
 
+@dataclass
 class InstalledInfo:
-    def __init__(
-        self,
-        docker: DockerOptions,
-        models: dict[str, ModelInstalledInfo],
-        options: InstallServiceIn,
-        parsed_options: SDOptions,
-        container_host: str,
-        container_port: int,
-        docker_exposed_port: int,
-        proxy_registration_id: RegistrationId | None,
-    ):
-        self.docker = docker
-        self.models = models
-        self.options = options
-        self.parsed_options = parsed_options
-        self.container_host = container_host
-        self.container_port = container_port
-        self.docker_exposed_port = docker_exposed_port
-        self.base_url = get_base_url(self.container_host, self.container_port)
-        self.proxy_registration_id = proxy_registration_id
+    docker: DockerOptions
+    models: dict[str, ModelInstalledInfo]
+    options: InstallServiceIn
+    parsed_options: SDOptions
+    container_host: str
+    container_port: int
+    docker_exposed_port: int
+    proxy_registration_id: RegistrationId | None
+    base_url: str
 
 
 class DefaultSdNextConfig(NamedTuple):
@@ -430,6 +421,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
                 container_port=port,
                 docker_exposed_port=docker_exposed_port,
                 proxy_registration_id=proxy_registration_id,
+                base_url=get_base_url(host, port),
             )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             return info

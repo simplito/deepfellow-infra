@@ -10,6 +10,7 @@
 """Ollama external service."""
 
 import json
+from dataclasses import dataclass
 from typing import Annotated, Literal
 
 from fastapi import HTTPException
@@ -99,7 +100,8 @@ _const = OllamaAiConst(
 )
 
 
-class ModelInstalledInfo(BaseModel):
+@dataclass
+class ModelInstalledInfo:
     id: str
     registered_name: str
     type: str
@@ -120,17 +122,12 @@ class OllamaModelOptions(BaseModel):
     alive_time: int | Annotated[str, StringConstraints(pattern=r"^(\d+[smh])?$", strict=True)] = ""
 
 
+@dataclass
 class InstalledExternalInfo:
-    def __init__(
-        self,
-        models: dict[str, ModelInstalledInfo],
-        options: InstallServiceIn,
-        parsed_options: OllamaExternalOptions,
-    ):
-        self.models = models
-        self.options = options
-        self.parsed_options = parsed_options
-        self.base_url = parsed_options.url.rstrip("/")
+    models: dict[str, ModelInstalledInfo]
+    options: InstallServiceIn
+    parsed_options: OllamaExternalOptions
+    base_url: str
 
 
 class OllamaExternalService(Base2Service[InstalledExternalInfo]):
@@ -237,11 +234,7 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo]):
                 raise HTTPException(status_code=400, detail=msg) from e
 
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
-            return InstalledExternalInfo(
-                models={},
-                options=options,
-                parsed_options=parsed_options,
-            )
+            return InstalledExternalInfo(models={}, options=options, parsed_options=parsed_options, base_url=parsed_options.url.rstrip("/"))
 
         return PromiseWithProgress(func=func)
 

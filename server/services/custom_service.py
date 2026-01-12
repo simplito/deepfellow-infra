@@ -10,6 +10,7 @@
 """Custom service."""
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
@@ -55,24 +56,15 @@ from server.utils.core import (
 type SrvCustomModelX = Callable[["CustomService", str | None], SrvCustomModel]
 
 
+@dataclass
 class SrvCustomModel:
-    def __init__(
-        self,
-        model_props: ModelProps,
-        model_spec: ModelSpecification,
-        model_type: str,
-        default_prefix: str,
-        size: str,
-        options: DockerOptions,
-        custom: CustomModelId | None = None,
-    ):
-        self.model_props = model_props
-        self.model_spec = model_spec
-        self.model_type = model_type
-        self.default_prefix = default_prefix
-        self.size = size
-        self.options = options
-        self.custom = custom
+    model_props: ModelProps
+    model_spec: ModelSpecification
+    model_type: str
+    default_prefix: str
+    size: str
+    options: DockerOptions
+    custom: CustomModelId | None = None
 
 
 class SrvCustomCustomModel(BaseModel):
@@ -90,53 +82,36 @@ class SrvCustomCustomModel(BaseModel):
     healthcheck_start_period: str | None = None  # TODO change to str time
 
 
+@dataclass
 class CustomConst:
-    def __init__(
-        self,
-        models: dict[str, SrvCustomModelX],
-    ):
-        self.models = models
+    models: dict[str, SrvCustomModelX]
 
 
 class CustomModelOptions(BaseModel):
     prefix: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]+$")]
 
 
+@dataclass
 class ModelInstalledInfo:
-    def __init__(
-        self,
-        id: str,
-        options: InstallModelIn,
-        docker_options: DockerOptions,
-        container_host: str,
-        container_port: int,
-        docker_exposed_port: int,
-        registration_id: RegistrationId,
-        prefix: str,
-    ):
-        self.id = id
-        self.options = options
-        self.docker_options = docker_options
-        self.container_host = container_host
-        self.container_port = container_port
-        self.docker_exposed_port = docker_exposed_port
-        self.base_url = get_base_url(self.container_host, self.container_port)
-        self.registration_id = registration_id
-        self.prefix = prefix
+    id: str
+    options: InstallModelIn
+    docker_options: DockerOptions
+    container_host: str
+    container_port: int
+    docker_exposed_port: int
+    registration_id: RegistrationId
+    prefix: str
+    base_url: str
 
     def get_info(self) -> ModelInfo:
         """Get info."""
         return ModelInfo(spec=self.options.spec, registration_id=self.registration_id)
 
 
+@dataclass
 class InstalledInfo:
-    def __init__(
-        self,
-        models: dict[str, ModelInstalledInfo],
-        options: InstallServiceIn,
-    ):
-        self.models = models
-        self.options = options
+    models: dict[str, ModelInstalledInfo]
+    options: InstallServiceIn
 
 
 class CustomService(Base2Service[InstalledInfo]):
@@ -362,15 +337,18 @@ class CustomService(Base2Service[InstalledInfo]):
             await self._docker_pull(DockerImage(name=docker_options.image, size=model.size), stream)
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
+            container_host = self.docker_service.get_container_host(subnet, docker_options.name)
+            container_port = self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port)
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
                 options=options,
                 docker_options=docker_options,
-                container_host=self.docker_service.get_container_host(subnet, docker_options.name),
-                container_port=self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                container_host=container_host,
+                container_port=container_port,
                 docker_exposed_port=docker_exposed_port,
                 registration_id="",
                 prefix=parsed_model_options.prefix,
+                base_url=get_base_url(container_host, container_port),
             )
             model_info.registration_id = self.endpoint_registry.register_custom_endpoint_as_proxy(
                 url=model_info.prefix,
