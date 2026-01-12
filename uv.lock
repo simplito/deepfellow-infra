@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.13"
 
 [[package]]
@@ -294,6 +294,7 @@ dependencies = [
     { name = "aiohttp" },
     { name = "fastapi" },
     { name = "json-stream" },
+    { name = "langdetect" },
     { name = "pillow" },
     { name = "py-cpuinfo" },
     { name = "pydantic-settings" },
@@ -326,6 +327,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.12.15" },
     { name = "fastapi", specifier = ">=0.112.1" },
     { name = "json-stream", specifier = ">=2.3.3" },
+    { name = "langdetect", specifier = ">=1.0.9" },
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "py-cpuinfo", specifier = ">=9.0.0" },
     { name = "pydantic-settings", specifier = ">=2.10.1" },
@@ -546,6 +548,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/5f/22/ca50f9fbe1bd90101e5f02de115ffbf46675309e83e0ca6a4462d1d2fbc6/json_stream_rs_tokenizer-0.4.32-cp314-cp314-win32.whl", hash = "sha256:7a6f3e6bae7b97ef5aadf98b2808ea96a84015a8cdea4a5ebaaa07c9cb502861", size = 178072, upload-time = "2025-11-10T21:13:21.198Z" },
     { url = "https://files.pythonhosted.org/packages/5b/f5/8afccd84c19014861eb0595f4a48b38dd3a3209184b8ff0d09c29f1051c9/json_stream_rs_tokenizer-0.4.32-cp314-cp314-win_amd64.whl", hash = "sha256:eb1939eda685346e3a50864b26b4ec056ebe1fb9076581db1f4159f5f129abf5", size = 185606, upload-time = "2025-11-10T21:13:22.435Z" },
 ]
+
+[[package]]
+name = "langdetect"
+version = "1.0.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0e/72/a3add0e4eec4eb9e2569554f7c70f4a3c27712f40e3284d483e88094cc0e/langdetect-1.0.9.tar.gz", hash = "sha256:cbc1fef89f8d062739774bd51eda3da3274006b3661d199c2655f6b3f6d605a0", size = 981474, upload-time = "2021-05-07T07:54:13.562Z" }
 
 [[package]]
 name = "multidict"

@@ -19,6 +19,7 @@ dependencies = [
     "aiofiles>=24.1.0",
     "py-cpuinfo>=9.0.0",
     "aiodocker>=0.24.0",
+    "langdetect>=1.0.9",
 ]
 
 [dependency-groups]
