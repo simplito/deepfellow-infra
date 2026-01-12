@@ -11,6 +11,7 @@
 
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Literal, TypedDict
 
@@ -145,7 +146,8 @@ _const = OllamaAiConst(
 )
 
 
-class ModelInstalledInfo(BaseModel):
+@dataclass
+class ModelInstalledInfo:
     id: str
     registered_name: str
     type: str
@@ -174,25 +176,16 @@ class OllamaModelOptions(BaseModel):
     context_length: int | None = None
 
 
+@dataclass
 class InstalledInfo:
-    def __init__(
-        self,
-        docker: DockerOptions,
-        models: dict[str, ModelInstalledInfo],
-        options: InstallServiceIn,
-        parsed_options: OllamaOptions,
-        container_host: str,
-        container_port: int,
-        docker_exposed_port: int,
-    ):
-        self.docker = docker
-        self.models = models
-        self.options = options
-        self.parsed_options = parsed_options
-        self.container_host = container_host
-        self.container_port = container_port
-        self.docker_exposed_port = docker_exposed_port
-        self.base_url = get_base_url(self.container_host, self.container_port)
+    docker: DockerOptions
+    models: dict[str, ModelInstalledInfo]
+    options: InstallServiceIn
+    parsed_options: OllamaOptions
+    container_host: str
+    container_port: int
+    docker_exposed_port: int
+    base_url: str
 
 
 class OllamaService(Base2Service[InstalledInfo]):
@@ -354,14 +347,17 @@ class OllamaService(Base2Service[InstalledInfo]):
                 },
             )
             docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
+            container_host = self.docker_service.get_container_host(subnet, docker_options.name)
+            container_port = self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port)
             info = InstalledInfo(
                 docker=docker_options,
                 models={},
                 options=options,
                 parsed_options=parsed_options,
-                container_host=self.docker_service.get_container_host(subnet, docker_options.name),
-                container_port=self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                container_host=container_host,
+                container_port=container_port,
                 docker_exposed_port=docker_exposed_port,
+                base_url=get_base_url(container_host, container_port),
             )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
 

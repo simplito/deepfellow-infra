@@ -10,6 +10,7 @@
 """Vllm service."""
 
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 import cpuinfo  # pyright: ignore[reportMissingTypeStubs]
@@ -127,29 +128,18 @@ _const = VllmConst(
 )
 
 
+@dataclass
 class ModelInstalledInfo:
-    def __init__(
-        self,
-        id: str,
-        registered_name: str,
-        options: InstallModelIn,
-        docker: DockerOptions,
-        container_host: str,
-        container_port: int,
-        docker_exposed_port: int,
-        registration_id: RegistrationId,
-        model_path: Path,
-    ):
-        self.id = id
-        self.registered_name = registered_name
-        self.options = options
-        self.docker = docker
-        self.container_host = container_host
-        self.container_port = container_port
-        self.docker_exposed_port = docker_exposed_port
-        self.base_url = get_base_url(self.container_host, self.container_port)
-        self.registration_id = registration_id
-        self.model_path = model_path
+    id: str
+    registered_name: str
+    options: InstallModelIn
+    docker: DockerOptions
+    container_host: str
+    container_port: int
+    docker_exposed_port: int
+    registration_id: RegistrationId
+    model_path: Path
+    base_url: str
 
     def get_info(self) -> ModelInfo:
         """Get info."""
@@ -164,16 +154,11 @@ class VllmModelOptions(BaseModel):
     alias: str | None = None
 
 
+@dataclass
 class InstalledInfo:
-    def __init__(
-        self,
-        models: dict[str, ModelInstalledInfo],
-        options: InstallServiceIn,
-        parsed_options: VllmOptions,
-    ):
-        self.models = models
-        self.options = options
-        self.parsed_options = parsed_options
+    models: dict[str, ModelInstalledInfo]
+    options: InstallServiceIn
+    parsed_options: VllmOptions
 
 
 class VllmService(Base2Service[InstalledInfo]):
@@ -416,16 +401,19 @@ class VllmService(Base2Service[InstalledInfo]):
             )
             docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
+            container_host = self.docker_service.get_container_host(subnet, docker_options.name)
+            container_port = self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port)
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
                 registered_name=registered_name,
                 options=options,
                 docker=docker_options,
-                container_host=self.docker_service.get_container_host(subnet, docker_options.name),
-                container_port=self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port),
+                container_host=container_host,
+                container_port=container_port,
                 docker_exposed_port=docker_exposed_port,
                 registration_id="",
                 model_path=model_dir,
+                base_url=get_base_url(container_host, container_port),
             )
             model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                 model=registered_name,

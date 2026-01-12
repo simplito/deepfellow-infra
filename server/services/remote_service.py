@@ -10,6 +10,7 @@
 """Remote service."""
 
 from abc import abstractmethod
+from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import urljoin
 
@@ -71,7 +72,8 @@ class RemoteConst(BaseModel):
     models: dict[str, RemoteModel]
 
 
-class ModelInstalledInfo(BaseModel):
+@dataclass
+class ModelInstalledInfo:
     id: str
     registered_name: str
     type: str
@@ -94,16 +96,11 @@ class RemoteModelOptions(BaseModel):
     alias: str | None = None
 
 
+@dataclass
 class InstalledInfo:
-    def __init__(
-        self,
-        models: dict[str, ModelInstalledInfo],
-        options: InstallServiceIn,
-        parsed_options: RemoteOptions,
-    ):
-        self.models = models
-        self.options = options
-        self.parsed_options = parsed_options
+    models: dict[str, ModelInstalledInfo]
+    options: InstallServiceIn
+    parsed_options: RemoteOptions
 
 
 class RemoteService(Base2Service[InstalledInfo]):
