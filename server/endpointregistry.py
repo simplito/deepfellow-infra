@@ -12,6 +12,7 @@
 import logging
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar
 from urllib.parse import urljoin
 
@@ -188,7 +189,8 @@ class Endpoint[T]:
         return res
 
 
-class ProxyOptions(NamedTuple):
+@dataclass
+class ProxyOptions:
     url: str
     rewrite_model_to: str | None = None
     remove_model: bool = False

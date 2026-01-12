@@ -10,18 +10,21 @@
 """Speaches AI service."""
 
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
+from fastapi.responses import StreamingResponse
+from langdetect import detect  # type: ignore
 from pydantic import BaseModel
 
 from server.applicationcontext import get_base_url
 from server.docker import DockerImage, DockerOptions
-from server.endpointregistry import ProxyOptions, RegistrationId
-from server.models.api import ModelProps
+from server.endpointregistry import ProxyOptions, RegistrationId, SimpleEndpoint, post_json
+from server.models.api import CreateSpeechRequest, ModelId, ModelProps
 from server.models.models import (
+    CustomModelField,
     CustomModelSpecification,
     InstallModelIn,
     InstallModelOut,
@@ -42,7 +45,7 @@ from server.models.services import (
     ServiceSpecification,
     UninstallServiceIn,
 )
-from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
+from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
 from server.utils.core import (
     DownloadedPacket,
     PreDownloadPacket,
@@ -55,10 +58,11 @@ from server.utils.core import (
 )
 from server.utils.loading import Progress
 
-ModelType = Literal["tts", "stt"]
+type ModelType = Literal["tts", "stt"]
+type CustomModelId = str
 
 
-class SpeachesModel(BaseModel):
+class CsvSpeachesModel(BaseModel):
     type: ModelType
     size: str
 
@@ -68,7 +72,6 @@ class SpeachesAiConst(BaseModel):
     image_cpu: DockerImage
     audio_speech_models: list[tuple[str, str]]
     audio_transcriptions_models: list[tuple[str, str]]
-    models: dict[str, SpeachesModel]
 
 
 _const = SpeachesAiConst(
@@ -385,12 +388,69 @@ _const = SpeachesAiConst(
         ("nebi/whisper-large-v3-turbo-swiss-german-ct2-int8", ""),
         ("nekusu/faster-whisper-large-v3-turbo-latam-int8-ct2", ""),
     ],
-    models={},
 )
-for model_tuple in _const.audio_speech_models:
-    _const.models[model_tuple[0]] = SpeachesModel(type="tts", size=model_tuple[1])
-for model_tuple in _const.audio_transcriptions_models:
-    _const.models[model_tuple[0]] = SpeachesModel(type="stt", size=model_tuple[1])
+
+
+type SupportedLanguages = (
+    str
+    | Literal[
+        "af",
+        "ar",
+        "bg",
+        "bn",
+        "ca",
+        "cs",
+        "cy",
+        "da",
+        "de",
+        "el",
+        "en",
+        "es",
+        "et",
+        "fa",
+        "fi",
+        "fr",
+        "gu",
+        "he",
+        "hi",
+        "hr",
+        "hu",
+        "id",
+        "it",
+        "ja",
+        "kn",
+        "ko",
+        "lt",
+        "lv",
+        "mk",
+        "ml",
+        "mr",
+        "ne",
+        "nl",
+        "no",
+        "pa",
+        "pl",
+        "pt",
+        "ro",
+        "ru",
+        "sk",
+        "sl",
+        "so",
+        "sq",
+        "sv",
+        "sw",
+        "ta",
+        "te",
+        "th",
+        "tl",
+        "tr",
+        "uk",
+        "ur",
+        "vi",
+        "zh-cn",
+        "zh-tw",
+    ]
+)
 
 
 @dataclass
@@ -401,6 +461,8 @@ class ModelInstalledInfo:
     options: InstallModelIn
     registration_id: RegistrationId
     model_path: Path
+    default_model: str | None
+    langs_models: dict[SupportedLanguages, str] | None
 
     def get_info(self) -> ModelInfo:
         """Get info."""
@@ -427,7 +489,32 @@ class InstalledInfo:
     base_url: str
 
 
+class SrvSpeachesCustomModel(BaseModel):
+    id: str
+    default_model: str
+    langs_models: dict[SupportedLanguages, str] | None = None
+
+
+@dataclass
+class SpeachesModel:
+    id: str
+    type: ModelType
+    size: str = ""
+    custom: CustomModelId | None = None
+    default_model: str | None = None
+    langs_models: dict[SupportedLanguages, str] = field(default_factory=dict[SupportedLanguages, str])
+
+
 class SpeachesAIService(Base2Service[InstalledInfo]):
+    models: dict[str, SpeachesModel]
+
+    def _after_init(self) -> None:
+        self.models = {}
+        for model in _const.audio_speech_models.copy():
+            self.models[model[0]] = SpeachesModel(id=model[0], type="tts", size=model[1])
+        for model in _const.audio_transcriptions_models.copy():
+            self.models[model[0]] = SpeachesModel(id=model[0], type="stt", size=model[1])
+
     def get_id(self) -> str:
         """Return the service id."""
         return "speaches-ai"
@@ -458,7 +545,19 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
 
     def get_custom_model_spec(self) -> CustomModelSpecification | None:
         """Return the custom model specification or None if custom model is not supported."""
-        return None
+        return CustomModelSpecification(
+            fields=[
+                CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
+                CustomModelField(
+                    type="text", name="default_model", description="Default model", placeholder="speaches-ai/piper-en_US-john-medium"
+                ),
+                CustomModelField(
+                    type="map",
+                    name="langs_models",
+                    description="ISO 639-1 language codes and model id pairs.",
+                ),
+            ]
+        )
 
     def get_installed_info(self) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""
@@ -557,11 +656,44 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         """Return true when docker is started when service is installed."""
         return True
 
+    def _add_custom_model(self, model: CustomModel) -> None:
+        parsed = try_parse_pydantic(SrvSpeachesCustomModel, model.data)
+        if parsed.id in self.models:
+            raise HTTPException(400, "Model with given id already exists.")
+
+        if parsed.langs_models:
+            for lang_model_id in parsed.langs_models.values():
+                if lang_model_id not in self.models:
+                    raise HTTPException(400, f"Model {lang_model_id} not found")
+
+                if lang_model_id not in self.models:
+                    raise HTTPException(400, f"Model {lang_model_id} not installed. Install it first.")
+        if parsed.default_model:
+            if parsed.default_model not in self.models:
+                raise HTTPException(400, f"Model {parsed.default_model} not found")
+
+            if parsed.default_model not in self.models:
+                raise HTTPException(400, f"Model {parsed.default_model} not installed. Install it first.")
+
+        self.models[parsed.id] = SpeachesModel(
+            id=parsed.id,
+            type="tts",
+            custom=model.id,
+            default_model=parsed.default_model,
+            langs_models=parsed.langs_models if parsed.langs_models else {},
+        )
+
+    def _remove_custom_model(self, model: CustomModel) -> None:
+        parsed = try_parse_pydantic(SrvSpeachesCustomModel, model.data)
+        if self.installed and parsed.id in self.installed.models:
+            raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
+        del self.models[parsed.id]
+
     async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
         info = self._check_installed()
         out_list: list[RetrieveModelOut] = []
-        for model_id, model in _const.models.items():
+        for model_id, model in self.models.items():
             installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
             if filters.installed is None or filters.installed == installed:
                 out_list.append(
@@ -571,6 +703,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
                         type=model.type,
                         installed=installed,
                         size=model.size,
+                        custom=model.custom,
                         spec=self.get_model_spec(),
                         has_docker=False,
                     )
@@ -580,9 +713,9 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
     async def get_model(self, model_id: str) -> RetrieveModelOut:
         """Get the model."""
         info = self._check_installed()
-        if model_id not in _const.models:
+        if model_id not in self.models:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = _const.models[model_id]
+        model = self.models[model_id]
         installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
         return RetrieveModelOut(
             id=model_id,
@@ -594,35 +727,50 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             has_docker=False,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
+    @staticmethod
+    def choose_model_for_language(text: str, default_model: str, langs_models: dict[str, str]) -> ModelId:
+        """Choose model for language."""
+        text_parts = text.split(" ")
+        text_sample = " ".join(text_parts[0:9]) if len(text_parts) > 10 else text
+        detected_language = detect(text_sample)  # type: ignore
+        if isinstance(detected_language, str) and (model := langs_models.get(detected_language)):
+            return model
+
+        return default_model
+
+    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:  # noqa: C901
         parsed_model_options = try_parse_pydantic(SpeachesAIModelOptions, options.spec) if options.spec else SpeachesAIModelOptions()
         info = self._check_installed()
         if model_id in info.models:
             return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
-        if model_id not in _const.models:
+        if model_id not in self.models:
             raise HTTPException(400, "Model not found")
-        model = _const.models[model_id]
+
+        model = self.models[model_id]
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
-            model_id_fixed = f"models--{model_id.replace('/', '--')}"
+            model_dir = Path()
 
-            models_dir = self._get_working_dir() / "cache"
+            if not model.custom and not model.langs_models:
+                model_id_fixed = f"models--{model_id.replace('/', '--')}"
 
-            model_dir = models_dir / model_id_fixed
-            model_dir.mkdir(parents=True, exist_ok=True)
+                models_dir = self._get_working_dir() / "cache"
 
-            progress = Progress(convert_size_to_bytes(model.size) or 0)
+                model_dir = models_dir / model_id_fixed
+                model_dir.mkdir(parents=True, exist_ok=True)
 
-            stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
-            async for packet in self.model_downloader.hugging_face_repo_with_blobs_downloader.download(model_id, model_dir):
-                if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
-                    progress.add_to_actual_value(packet.downloaded_bytes_size)
-                    stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
-                elif isinstance(packet, PreDownloadPacket):
-                    if max := packet.file_bytes_size:
-                        progress.set_max_value(max)
+                progress = Progress(convert_size_to_bytes(model.size) or 0)
 
-            stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
+                stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
+                async for packet in self.model_downloader.hugging_face_repo_with_blobs_downloader.download(model_id, model_dir):
+                    if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
+                        progress.add_to_actual_value(packet.downloaded_bytes_size)
+                        stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
+                    elif isinstance(packet, PreDownloadPacket):
+                        if max := packet.file_bytes_size:
+                            progress.set_max_value(max)
+
+                stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
 
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
 
@@ -634,12 +782,24 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
                 options=options,
                 registration_id="",
                 model_path=model_dir,
+                default_model=model.default_model or None,
+                langs_models=model.langs_models or None,
             )
             if model.type == "tts":
-                model_info.registration_id = self.endpoint_registry.register_audio_speech_as_proxy(
+
+                async def on_request(body: CreateSpeechRequest, request: Request | None) -> StreamingResponse:
+                    body.voice = "" if not body.voice else body.voice  # Fix for 422 status code
+                    proxy_options = ProxyOptions(url=f"{info.base_url}/v1/audio/speech", rewrite_model_to=model_id)
+                    if model.id and model.default_model and model.langs_models:
+                        proxy_options.rewrite_model_to = body.model = self.choose_model_for_language(
+                            body.input, model.default_model, model.langs_models
+                        )
+                    return await post_json(body, proxy_options, request)
+
+                model_info.registration_id = self.endpoint_registry.register_audio_speech(
                     model=registered_name,
                     props=ModelProps(private=True),
-                    options=ProxyOptions(url=f"{info.base_url}/v1/audio/speech", rewrite_model_to=model_id),
+                    endpoint=SimpleEndpoint(on_request=on_request),
                     registration_options=None,
                 )
             if model.type == "stt":
@@ -659,6 +819,13 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
         if model_id not in info.models:
             return
         model = info.models[model_id]
+
+        for check_model_id, check_model in info.models.items():
+            if (isinstance(check_model.langs_models, dict) and model_id in check_model.langs_models.values()) or (
+                check_model.default_model and model_id in check_model.default_model
+            ):
+                raise HTTPException(409, f"Model is used in custom model {check_model_id}. Remove it first.")
+
         del info.models[model_id]
         if model.type == "tts":
             self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
