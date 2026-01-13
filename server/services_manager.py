@@ -84,7 +84,6 @@ class ServicesManager:
 
     async def list_models_from_all_services(self, filters: ListAllModelsFilters) -> ListAllModelsOut:
         """List models from all services."""
-        print("list_models_from_all_services", filters)
         filter = ListModelsFilters(installed=filters.installed)
         res: list[ListModelsOut] = []
         for service in self.services.values():
