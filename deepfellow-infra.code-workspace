@@ -1,0 +1,45 @@
+{
+	"folders": [
+		{"path": "."},
+	],
+	"settings": {
+		"[python]": {
+			"editor.defaultFormatter": "charliermarsh.ruff",
+			"editor.formatOnSave": true,
+			"editor.codeActionsOnSave": {
+				"source.fixAll.ruff": "explicit",
+				"source.organizeImports.ruff": "explicit"
+			},
+		},
+		"python.analysis.inlayHints.functionReturnTypes": true,
+		"python.analysis.inlayHints.pytestParameters": true,
+		"python.analysis.inlayHints.variableTypes": true,
+		"files.trimFinalNewlines": true,
+		"files.insertFinalNewline": true,
+		"diffEditor.ignoreTrimWhitespace": false
+	},
+	"extensions": {
+		"recommendations": [
+			"charliermarsh.ruff",
+			"ms-python.python",
+			"hbenl.vscode-test-explorer",
+			"unifiedjs.vscode-mdx",
+			"xyc.vscode-mdx-preview",
+			"ms-vscode.test-adapter-converter",
+			"ms-python.vscode-python-envs",
+			"ms-python.debugpy",
+			"ms-python.vscode-pylance",
+			"ms-azuretools.vscode-containers",
+			"ms-vscode-remote.remote-containers",
+			"ms-vscode-remote.remote-ssh",
+			"ms-vscode-remote.remote-ssh-edit",
+			"ms-vscode.remote-explorer",
+			"streetsidesoftware.code-spell-checker",
+			"streetsidesoftware.code-spell-checker-british-english",
+			"littlefoxteam.vscode-python-test-adapter",
+			"kaih2o.python-resource-monitor",
+			"almenon.arepl",
+			"mdw.vscode-todo-plus-plus"
+		]
+	}
+}
