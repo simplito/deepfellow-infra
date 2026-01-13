@@ -32,6 +32,7 @@ from multidict import CIMultiDictProxy
 from pydantic import BaseModel, ValidationError
 
 from server.models.common import JsonSerializable
+from server.utils.logger import uvicorn_logger
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -187,7 +188,7 @@ class Utils:
             local_path = dir / filename_out
 
             if not local_path.exists():
-                print(f"Downloading {filename_out}...")
+                uvicorn_logger.info(f"Downloading {filename_out}...")
                 temp_path = temp_dir / str(uuid4())
                 temp_path.parent.mkdir(parents=True, exist_ok=True)
                 try:
@@ -213,7 +214,7 @@ class Utils:
                 local_path.parent.mkdir(parents=True, exist_ok=True)
                 temp_path.rename(local_path)
 
-                print(f"Successfully downloaded {filename_out} ({local_path.stat().st_size} bytes)")
+                uvicorn_logger.info(f"Successfully downloaded {filename_out} ({local_path.stat().st_size} bytes)")
 
             yield SuccessDownloadPacket(local_path, filename_out)
 

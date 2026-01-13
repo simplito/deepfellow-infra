@@ -93,6 +93,7 @@ select = [
     # "S",   # flake8-bandit
     "SIM", # flake8-simplify
     "T10", # flake8-print
+    "T201", # print in code
     "TCH", # flake8-type-checking
     "TRY", # tryceratops
     "UP",  # pyupgrade

@@ -25,9 +25,6 @@ mypy *FLAGS:
 pre-commit:
     uv run pre-commit run --all-files
 
-print:
-    git grep "print(" -- "*.py"
-
 todo:
     git grep "# TODO" -- "*.py"
     git grep "# FIX" -- "*.py"

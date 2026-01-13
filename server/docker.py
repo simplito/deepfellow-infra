@@ -29,6 +29,7 @@ from server.portservice import PortService
 from server.utils.core import CommandResult2, Utils, get_cpu_architecture, get_os
 from server.utils.exceptions import AppError, DockerImageAuthorizationError, DockerImageDoesNotExistError
 from server.utils.loading import Progress
+from server.utils.logger import uvicorn_logger
 
 logger = logging.getLogger("uvicorn")
 
@@ -475,7 +476,7 @@ class DockerService:
             # DockerError is raised for various API issues. A 404 status code
             # specifically means the resource (image) was not found.
             if e.status == 404:
-                print(f"Image '{full_image_name}' not found locally.")
+                uvicorn_logger.info(f"Image '{full_image_name}' not found locally.")
 
         return False
 
@@ -516,7 +517,7 @@ class DockerService:
 
             health = container.get("Health", "").lower()
             if "unhealthy" in health:
-                print(f"Docker container {service_name} is unhealthy")
+                uvicorn_logger.warning(f"Docker container {service_name} is unhealthy")
                 return False
             if "healthy" in health:
                 return True
@@ -525,10 +526,10 @@ class DockerService:
             if state == "running":
                 return True
 
-            print(f"Docker container {service_name} is in state {state}")
+            uvicorn_logger.info(f"Docker container {service_name} is in state {state}")
             return False  # noqa: TRY300
         except Exception as exc:
-            print(f"Error while checking health of docker container {service_name}. Error: {exc}")
+            uvicorn_logger.warning(f"Error while checking health of docker container {service_name}. Error: {exc}")
             return False
 
     async def generate_docker_compose_content(self, options: DockerOptions, port: int | None) -> DockerComposeContent:  # noqa: C901
