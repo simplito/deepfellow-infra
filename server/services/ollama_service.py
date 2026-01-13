@@ -188,7 +188,12 @@ class InstalledInfo:
     base_url: str
 
 
-class OllamaService(Base2Service[InstalledInfo]):
+@dataclass
+class DownloadedInfo:
+    pass
+
+
+class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
     models: dict[str, OllamaModel]
 
     def _after_init(self) -> None:
@@ -298,6 +303,7 @@ class OllamaService(Base2Service[InstalledInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
+            downloaded=self.downloaded,
         )
 
     def _get_image(self) -> DockerImage:
@@ -402,7 +408,12 @@ class OllamaService(Base2Service[InstalledInfo]):
         if parsed.id in self.models:
             raise HTTPException(400, "Model with given id already exists.")
         self.models[parsed.id] = OllamaModel(
-            id=parsed.id, size=parsed.size, type=parsed.type, custom=model.id, modelfile=parsed.modelfile, quantization=parsed.quantization
+            id=parsed.id,
+            size=parsed.size,
+            type=parsed.type,
+            custom=model.id,
+            modelfile=parsed.modelfile,
+            quantization=parsed.quantization,
         )
 
     def _remove_custom_model(self, model: CustomModel) -> None:
@@ -424,6 +435,7 @@ class OllamaService(Base2Service[InstalledInfo]):
                         service=self.get_id(),
                         type=model.type,
                         installed=installed,
+                        downloaded=model_id in self.downloaded,
                         size=model.size,
                         custom=model.custom,
                         spec=self.get_model_spec(),
@@ -444,6 +456,7 @@ class OllamaService(Base2Service[InstalledInfo]):
             service=self.get_id(),
             type=model.type,
             installed=installed,
+            downloaded=model_id in self.downloaded,
             size=model.size,
             custom=model.custom,
             spec=self.get_model_spec(),
@@ -674,20 +687,21 @@ class OllamaService(Base2Service[InstalledInfo]):
                     registration_options=None,
                 )
             input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            self.downloaded[model_id] = DownloadedInfo()
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
-        if model_id not in info.models:
-            return
-        model = info.models[model_id]
-        del info.models[model_id]
-        if model.type == "llm":
-            self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
-        if model.type == "embedding":
-            self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
+        if model_id in info.models:
+            model = info.models[model_id]
+            del info.models[model_id]
+            if model.type == "llm":
+                self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
+            if model.type == "embedding":
+                self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
 
-        if options.purge:
+        if options.purge and model_id in self.downloaded:
             await fetch_from(f"{info.base_url}/api/delete", "DELETE", {"name": model_id})
+            del self.downloaded[model_id]

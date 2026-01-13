@@ -130,7 +130,12 @@ class InstalledExternalInfo:
     base_url: str
 
 
-class OllamaExternalService(Base2Service[InstalledExternalInfo]):
+@dataclass
+class DownloadedInfo:
+    pass
+
+
+class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo]):
     models: dict[str, OllamaModel]
 
     def _after_init(self) -> None:
@@ -189,6 +194,7 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
+            downloaded=self.downloaded,
         )
 
     def service_has_docker(self) -> bool:
@@ -262,6 +268,7 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo]):
                         service=self.get_id(),
                         type=model.type,
                         installed=installed,
+                        downloaded=model_id in self.downloaded,
                         size=model.size,
                         custom=model.custom,
                         spec=self.get_model_spec(),
@@ -282,6 +289,7 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo]):
             service=self.get_id(),
             type=model.type,
             installed=installed,
+            downloaded=model_id in self.downloaded,
             size=model.size,
             custom=model.custom,
             spec=self.get_model_spec(),
@@ -356,6 +364,7 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo]):
                     registration_options=None,
                 )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            self.downloaded[model_id] = DownloadedInfo()
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -363,13 +372,13 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo]):
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
         if model_id not in info.models:
-            return
-        model = info.models[model_id]
-        del info.models[model_id]
-        if model.type == "llm":
-            self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
-        if model.type == "embedding":
-            self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
+            model = info.models[model_id]
+            del info.models[model_id]
+            if model.type == "llm":
+                self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
+            if model.type == "embedding":
+                self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
 
-        if options.purge:
+        if options.purge and model_id in self.downloaded:
             await fetch_from(f"{info.base_url}/api/delete", "DELETE", {"name": model_id})
+            del self.downloaded[model_id]

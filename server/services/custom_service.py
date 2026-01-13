@@ -114,7 +114,12 @@ class InstalledInfo:
     options: InstallServiceIn
 
 
-class CustomService(Base2Service[InstalledInfo]):
+@dataclass
+class DownloadedInfo:
+    pass
+
+
+class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
     models: dict[str, "SrvCustomModel"]
 
     def _after_init(self) -> None:
@@ -205,6 +210,7 @@ class CustomService(Base2Service[InstalledInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
+            downloaded=self.downloaded,
         )
 
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
@@ -289,6 +295,7 @@ class CustomService(Base2Service[InstalledInfo]):
                         service=self.get_id(),
                         type=model.model_type,
                         installed=installed,
+                        downloaded=model_id in self.downloaded,
                         size=model.size,
                         custom=model.custom,
                         spec=model.model_spec,
@@ -309,6 +316,7 @@ class CustomService(Base2Service[InstalledInfo]):
             service=self.get_id(),
             type=model.model_type,
             installed=installed,
+            downloaded=model_id in self.downloaded,
             size=model.size,
             custom=model.custom,
             spec=model.model_spec,
@@ -357,6 +365,7 @@ class CustomService(Base2Service[InstalledInfo]):
                 registration_options=None,
             )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            self.downloaded[model_id] = DownloadedInfo()
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -364,14 +373,13 @@ class CustomService(Base2Service[InstalledInfo]):
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
         if (model_id not in info.models) or (model_id not in self.models):
-            return
-        model = info.models[model_id]
-        del info.models[model_id]
-        self.endpoint_registry.unregister_custom_endpoint(model.prefix, model.registration_id)
-        await self.docker_service.uninstall_docker(model.docker_options)
-        if options.purge:
+            model = info.models[model_id]
+            del info.models[model_id]
+            self.endpoint_registry.unregister_custom_endpoint(model.prefix, model.registration_id)
+            await self.docker_service.uninstall_docker(model.docker_options)
+        if options.purge and model_id in self.downloaded:
+            del self.downloaded[model_id]
             # unsupported
-            pass
 
     def get_working_dir(self) -> Path:
         """Get working dir."""

@@ -13,6 +13,7 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from aiohttp import ClientSession
+from attr import dataclass
 from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -135,6 +136,11 @@ class InstalledInfo:
         self.parsed_options = parsed_options
 
 
+@dataclass
+class DownloadedInfo:
+    pass
+
+
 class CoquiCmdOptions:
     def __init__(
         self,
@@ -149,7 +155,7 @@ class CoquiCmdOptions:
         self.language = language
 
 
-class CoquiService(Base2Service[InstalledInfo]):
+class CoquiService(Base2Service[InstalledInfo, DownloadedInfo]):
     def get_id(self) -> str:
         """Return the service id."""
         return "coqui"
@@ -191,6 +197,7 @@ class CoquiService(Base2Service[InstalledInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
+            downloaded=self.downloaded,
         )
 
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
@@ -239,6 +246,7 @@ class CoquiService(Base2Service[InstalledInfo]):
                         service=self.get_id(),
                         type=model.model_type,
                         installed=installed,
+                        downloaded=model_id in self.downloaded,
                         size=model.size,
                         spec=self.get_model_spec(),
                         has_docker=True,
@@ -258,6 +266,7 @@ class CoquiService(Base2Service[InstalledInfo]):
             service=self.get_id(),
             type=model.model_type,
             installed=installed,
+            downloaded=model_id in self.downloaded,
             size=model.size,
             spec=self.get_model_spec(),
             has_docker=True,
@@ -327,6 +336,7 @@ class CoquiService(Base2Service[InstalledInfo]):
                 registration_options=None,
             )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            self.downloaded[model_id] = DownloadedInfo()
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -369,16 +379,16 @@ class CoquiService(Base2Service[InstalledInfo]):
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
-        if model_id not in info.models:
-            return
-        model = info.models[model_id]
-        del info.models[model_id]
-        if model.type == "tts":
-            self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
-        await self.docker_service.uninstall_docker(model.docker)
-        if options.purge:
+        if model_id in info.models:
+            model = info.models[model_id]
+            del info.models[model_id]
+            if model.type == "tts":
+                self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
+            await self.docker_service.uninstall_docker(model.docker)
+
+        if options.purge and model_id in self.downloaded:
+            del self.downloaded[model_id]
             # unsupported
-            pass
 
 
 def _create_handler(base_url: str, default_speaker: str | None, response_format: str | None) -> EndpointCallback[CreateSpeechRequest]:

@@ -93,6 +93,10 @@ input, textarea {
 .badge.badge-installed {
     background-color: #0c9a0c;
 }
+.badge.badge-downloaded {
+    background-color: #1088ac;
+    margin-left: 0;
+}
 input[type=text] {
     padding: 5px 10px;
     font-size: 14px;

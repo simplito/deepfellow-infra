@@ -36,7 +36,7 @@ async function showServicesPage() {
                         `<div class="box service" data-service-id="${s.id}">
                             <div class="box-name service-name">
                                 ${s.id}
-                                <div class="badge ${s.installed ? "badge-installed" : "badge-not-insalled"}">
+                                <div class="badge ${s.installed ? "badge-installed" : "badge-not-installed"}">
                                     ${s.installed ? s.installed.stage ? `${getStageLabel(s.installed.stage)} ${(s.installed.value * 100).toFixed(1)}%` : "Installed" : "Not installed"}
                                 </div>
                             </div>
@@ -78,12 +78,14 @@ async function showServicesPage() {
 let modelFilter = "";
 let modelType = "__all";
 let modelInstalled = "__all";
+let modelDownloaded = "__all";
 let modelCustom = "__all"
 
 function resetModelFilters() {
     modelFilter = "";
     modelType = "__all";
     modelInstalled = "__all";
+    modelDownloaded = "__all";
     modelCustom = "__all";
 }
 
@@ -230,6 +232,37 @@ function showContentModal(options) {
     });
 }
 
+function showUninstallModal(options) {
+    const html = `
+<div class="modal-backdrop">
+    <div class="modal">
+        <div class="modal-title">${options.title}</div>
+        <div class="content"></div>
+        <div class="buttons">
+            <button data-id="uninstall">Uninstall</button>
+            <button data-id="purge">Purge</button>
+            <button data-id="cancel">Cancel</button>
+        </div>
+    </div>
+</div>`;
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    div.querySelector(".content").textContent = options.text;
+    document.body.append(div);
+    div.querySelector("[data-id=uninstall]").addEventListener("click", () => {
+        options.onResult("uninstall")
+        div.remove();
+    });
+    div.querySelector("[data-id=purge]").addEventListener("click", () => {
+        options.onResult("purge")
+        div.remove();
+    });
+    div.querySelector("[data-id=cancel]").addEventListener("click", () => {
+        div.remove();
+    });
+}
+
+
 function showTestResultModal(options) {
     const html = `
 <div class="modal-backdrop">
@@ -335,6 +368,11 @@ async function showServicePage(id) {
         installed: true,
         notinstalled: false
     };
+    const downloadedOptions = {
+        __all: null,
+        downloaded: true,
+        notdownloaded: false
+    };
     const customOptions = {
         __all: null,
         onlycustom: true,
@@ -370,6 +408,13 @@ async function showServicePage(id) {
                     <option value="notinstalled">Only not installed</option>
                 </select>
                 
+                <span style="margin-left: 20px;">Downloaded:</span>
+                <select id="model-downloaded">
+                    <option value="__all">--ALL--</option>
+                    <option value="downloaded">Only downloaded</option>
+                    <option value="notdownloaded">Only not downloaded</option>
+                </select>
+                
                 ${serivceInfo.custom_model_spec ? `<span style="margin-left: 20px;">Custom:</span>
                 <select id="model-custom">
                     <option value="__all">--ALL--</option>
@@ -385,11 +430,13 @@ async function showServicePage(id) {
     function render() {
         const filterl = modelFilter.toLowerCase();
         const installed = installedOptions[modelInstalled];
+        const downloaded = downloadedOptions[modelDownloaded];
         const custom = customOptions[modelCustom];
         const filtered = list.filter(x =>
             (!filterl || x.id.toLowerCase().includes(filterl)) &&
             (modelType === "__all" || x.type === modelType) &&
             (installed === null || x.installed === installed) &&
+            (downloaded === null || x.downloaded === downloaded) &&
             (custom === null || (!!x.custom) === custom)
         );
         boxes.innerHTML = filtered.length === 0 ? `<div class="empty">No elements</div>` : filtered.map(m => {
@@ -398,9 +445,10 @@ async function showServicePage(id) {
                 `<div class="box model" data-model-id="${m.id}">
                     <div class="box-name model-name">
                         ${m.id}
-                        <div class="badge ${m.installed ? "badge-installed" : "badge-not-insalled"}">
+                        <div class="badge ${m.installed ? "badge-installed" : "badge-not-installed"}">
                             ${m.installed ? m.installed.stage ? `${getStageLabel(m.installed.stage)} ${(m.installed.value * 100).toFixed(1)}%` : "Installed" : "Not installed"}
                         </div>
+                        ${!m.installed && m.downloaded ? `<div class="badge badge-downloaded">Downloaded</div>` : ""}
                         ${m.custom ? `<div class="badge">
                             Custom
                         </div>` : ""}
@@ -414,6 +462,7 @@ async function showServicePage(id) {
                     </div>
                     <div class="box-buttons model-buttons">
                         ${!m.installed ? `<button data-action="install-model" data-service-id="${id}" data-model-id="${m.id}">Install</button>` : ""}
+                        ${!m.installed && m.downloaded ? `<button data-action="purge-model" data-service-id="${id}" data-model-id="${m.id}">Purge</button>` : ""}
                         ${m.installed && !m.installed.stage ? `<button data-action="uninstall-model" data-service-id="${id}" data-model-id="${m.id}">Uninstall</button>` : ""}
                         ${m.installed && !m.installed.stage ? `<button data-action="test-model" data-service-id="${id}" data-model-id="${m.id}">Test</button>` : ""}
                         ${m.installed && !m.installed.stage && m.has_docker ? `
@@ -449,6 +498,12 @@ async function showServicePage(id) {
     modelInstalledEle.value = modelInstalled;
     modelInstalledEle.addEventListener("change", () => {
         modelInstalled = modelInstalledEle.value;
+        render();
+    });
+    const modelDownloadedEle = document.getElementById("model-downloaded");
+    modelDownloadedEle.value = modelDownloaded;
+    modelDownloadedEle.addEventListener("change", () => {
+        modelDownloaded = modelDownloadedEle.value;
         render();
     });
     const modelCustomEle = document.getElementById("model-custom");
@@ -578,10 +633,25 @@ root.addEventListener("click", async e => {
             });
         }
         else if (action === "uninstall-model") {
+            showUninstallModal({
+                title: "Uninstalling Model",
+                text: "How do you want to uninstall model? Purge remove all model files.",
+                onResult: async (removeType) => {
+                    showLoadingPage()
+                    await fetchJson(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
+                        method: "DELETE",
+                        body: JSON.stringify({purge: removeType === "purge"}),
+                        headers: {"Content-Type": "application/json"}
+                    });
+                    showServicePage(serviceId);
+                }
+            })
+        }
+        else if (action === "purge-model") {
             showLoadingPage()
             await fetchJson(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {
                 method: "DELETE",
-                body: JSON.stringify({purge: false}),
+                body: JSON.stringify({purge: true}),
                 headers: {"Content-Type": "application/json"}
             });
             showServicePage(serviceId);
