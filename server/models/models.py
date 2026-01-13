@@ -86,6 +86,7 @@ class RetrieveModelOut(BaseModel):
     service: str
     type: str
     installed: bool | InstallModelProgress | ModelInfo
+    downloaded: bool
     custom: CustomModelId | None = None
     size: str
     spec: ModelSpecification

@@ -15,7 +15,7 @@ import shutil
 import uuid
 from abc import abstractmethod
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -57,9 +57,11 @@ class ServiceConfig(BaseModel):
     options: InstallServiceIn | None = None
     models: list[ModelConfig] | None = None
     custom: list[CustomModel] | None = None
+    downloaded: dict[str, Any] | None = None
 
 
-T = TypeVar("T")
+InstalledInfoType = TypeVar("InstalledInfoType")
+DownloadInfoType = TypeVar("DownloadInfoType")
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -90,12 +92,13 @@ class InstallingService:
         self.task = asyncio.create_task(the_func())
 
 
-class Base2Service[T](BaseService):
+class Base2Service[InstalledInfoType, DownloadInfoType](BaseService):
     config: AppSettings
     endpoint_registry: EndpointRegistry
     service_provider: ServiceProvider
     model_downloader: ModelDownloader
     docker_service: DockerService
+    downloaded: dict[str, DownloadInfoType]
     custom: list[CustomModel]
     installing_model_progress: dict[str, InstallingModel]
     installing: InstallingService | None
@@ -114,8 +117,9 @@ class Base2Service[T](BaseService):
         self.service_provider = service_provider
         self.model_downloader = model_downloader
         self.docker_service = docker_service
-        self.installed: T | None = None
+        self.installed: InstalledInfoType | None = None
         self.installing = None
+        self.downloaded = {}
         self.custom = list[CustomModel]()
         self.installing_model_progress = {}
         self._after_init()
@@ -160,6 +164,7 @@ class Base2Service[T](BaseService):
     async def load(self, config: ServiceRawConfig) -> None:
         """Load service using the config."""
         cfg = ServiceConfig(**config)
+        self.downloaded = cfg.downloaded or {}
         self.custom = cfg.custom or []
         for custom in self.custom:
             self._add_custom_model(custom)
@@ -176,7 +181,7 @@ class Base2Service[T](BaseService):
         await self.service_provider.save_service_config(self.get_id(), cfg.model_dump())
 
     @abstractmethod
-    def _generate_config(self, info: T | None) -> ServiceConfig:
+    def _generate_config(self, info: InstalledInfoType | None) -> ServiceConfig:
         """Generate config."""
 
     async def install(self, options: InstallServiceIn, save: bool = True) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
@@ -186,7 +191,7 @@ class Base2Service[T](BaseService):
         if self.installing:
             raise HTTPException(status_code=400, detail=f"Service {self.get_id()} already installing")
 
-        async def func(data: T) -> InstallServiceOut:
+        async def func(data: InstalledInfoType) -> InstallServiceOut:
             self.installed = data
             self.installing = None
             if save:
@@ -202,7 +207,7 @@ class Base2Service[T](BaseService):
         return next_promise
 
     @abstractmethod
-    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[T, StreamChunk]:
+    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfoType, StreamChunk]:
         """Install service."""
 
     async def uninstall(self, options: UninstallServiceIn) -> None:
@@ -324,7 +329,7 @@ class Base2Service[T](BaseService):
         if working_dir.exists():
             shutil.rmtree(working_dir)
 
-    def _check_installed(self) -> T:
+    def _check_installed(self) -> InstalledInfoType:
         if self.installed is None:
             raise HTTPException(status_code=400, detail=f"Service {self.get_id()} not installed")
         return self.installed

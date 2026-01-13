@@ -102,7 +102,12 @@ class InstalledInfo:
     base_url: str
 
 
-class SindriService(Base2Service[InstalledInfo]):
+@dataclass
+class DownloadedInfo:
+    pass
+
+
+class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
     def get_id(self) -> str:
         """Return the service id."""
         return "sindri"
@@ -147,6 +152,7 @@ class SindriService(Base2Service[InstalledInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
+            downloaded=self.downloaded,
         )
 
     def _get_image(self) -> DockerImage:
@@ -257,6 +263,7 @@ class SindriService(Base2Service[InstalledInfo]):
                         service=self.get_id(),
                         type=model.type,
                         installed=installed,
+                        downloaded=model_id in self.downloaded,
                         size="",
                         spec=self.get_model_spec(),
                         has_docker=False,
@@ -276,6 +283,7 @@ class SindriService(Base2Service[InstalledInfo]):
             service=self.get_id(),
             type=model.type,
             installed=installed,
+            downloaded=model_id in self.downloaded,
             size="",
             spec=self.get_model_spec(),
             has_docker=False,
@@ -309,6 +317,7 @@ class SindriService(Base2Service[InstalledInfo]):
                     registration_options=None,
                 )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            self.downloaded[model_id] = DownloadedInfo()
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -316,12 +325,10 @@ class SindriService(Base2Service[InstalledInfo]):
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
         if model_id not in info.models:
-            return
-        model = info.models[model_id]
-        del info.models[model_id]
-        if model.type == "llm":
-            self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
+            model = info.models[model_id]
+            del info.models[model_id]
+            if model.type == "llm":
+                self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
 
-        if options.purge:
-            # unsupported
-            pass
+        if options.purge and model_id in self.downloaded:
+            del self.downloaded[model_id]

@@ -489,6 +489,11 @@ class InstalledInfo:
     base_url: str
 
 
+@dataclass
+class DownloadedInfo:
+    model_path: str
+
+
 class SrvSpeachesCustomModel(BaseModel):
     id: str
     default_model: str
@@ -505,7 +510,7 @@ class SpeachesModel:
     langs_models: dict[SupportedLanguages, str] = field(default_factory=dict[SupportedLanguages, str])
 
 
-class SpeachesAIService(Base2Service[InstalledInfo]):
+class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
     models: dict[str, SpeachesModel]
 
     def _after_init(self) -> None:
@@ -568,6 +573,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
+            downloaded=self.downloaded,
         )
 
     def _get_image(self, gpu: bool) -> DockerImage:
@@ -702,6 +708,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
                         service=self.get_id(),
                         type=model.type,
                         installed=installed,
+                        downloaded=model_id in self.downloaded,
                         size=model.size,
                         custom=model.custom,
                         spec=self.get_model_spec(),
@@ -722,6 +729,7 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
             service=self.get_id(),
             type=model.type,
             installed=installed,
+            downloaded=model_id in self.downloaded,
             size=model.size,
             spec=self.get_model_spec(),
             has_docker=False,
@@ -810,27 +818,28 @@ class SpeachesAIService(Base2Service[InstalledInfo]):
                     registration_options=None,
                 )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            self.downloaded[model_id] = DownloadedInfo(model_path=str(model_dir))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
-        if model_id not in info.models:
-            return
-        model = info.models[model_id]
+        if model_id in info.models:
+            model = info.models[model_id]
 
-        for check_model_id, check_model in info.models.items():
-            if (isinstance(check_model.langs_models, dict) and model_id in check_model.langs_models.values()) or (
-                check_model.default_model and model_id in check_model.default_model
-            ):
-                raise HTTPException(409, f"Model is used in custom model {check_model_id}. Remove it first.")
+            for check_model_id, check_model in info.models.items():
+                if (isinstance(check_model.langs_models, dict) and model_id in check_model.langs_models.values()) or (
+                    check_model.default_model and model_id in check_model.default_model
+                ):
+                    raise HTTPException(409, f"Model is used in custom model {check_model_id}. Remove it first.")
 
-        del info.models[model_id]
-        if model.type == "tts":
-            self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
-        if model.type == "stt":
-            self.endpoint_registry.unregister_audio_transcriptions(model.registered_name, model.registration_id)
+            del info.models[model_id]
+            if model.type == "tts":
+                self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
+            if model.type == "stt":
+                self.endpoint_registry.unregister_audio_transcriptions(model.registered_name, model.registration_id)
 
-        if options.purge:
-            shutil.rmtree(model.model_path)
+        if options.purge and model_id in self.downloaded:
+            shutil.rmtree(Path(self.downloaded[model_id].model_path))
+            del self.downloaded[model_id]

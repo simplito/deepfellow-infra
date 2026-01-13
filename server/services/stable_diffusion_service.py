@@ -255,6 +255,11 @@ class InstalledInfo:
     base_url: str
 
 
+@dataclass
+class DownloadedInfo:
+    model_path: str
+
+
 class DefaultSdNextConfig(NamedTuple):
     samples_format: str = "png"
     samples_save: bool = False
@@ -262,7 +267,7 @@ class DefaultSdNextConfig(NamedTuple):
     save_selected_only: bool = False
 
 
-class StableDiffusionService(Base2Service[InstalledInfo]):
+class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
     models: dict[str, StableDiffusionModel]
 
     def _after_init(self) -> None:
@@ -326,6 +331,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
+            downloaded=self.downloaded,
         )
 
     async def update_config(self) -> None:
@@ -440,6 +446,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
                 self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
         self.installed = None
         await self.docker_service.uninstall_docker(info.docker)
+
         if options.purge:
             await self._clear_working_dir()
 
@@ -496,6 +503,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
                         service=self.get_id(),
                         type=model.type,
                         installed=installed,
+                        downloaded=model_id in self.downloaded,
                         size=model.size,
                         custom=model.custom,
                         spec=self.get_model_spec(),
@@ -516,6 +524,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             service=self.get_id(),
             type=model.type,
             installed=installed,
+            downloaded=model_id in self.downloaded,
             size=model.size,
             custom=model.custom,
             spec=self.get_model_spec(),
@@ -576,12 +585,13 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
 
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
+            model_path = local_model_path.absolute()
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
                 type=model.type,
                 registered_name=registered_name,
                 options=options,
-                model_path=local_model_path.absolute(),
+                model_path=model_path,
                 registration_id="",
             )
             model_filename = model.filename.split(".")[0]
@@ -595,6 +605,7 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
 
             await self.refresh_models()
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            self.downloaded[model_id] = DownloadedInfo(str(model_path))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -602,14 +613,14 @@ class StableDiffusionService(Base2Service[InstalledInfo]):
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
         if model_id not in info.models:
-            return
-        model = info.models[model_id]
-        del info.models[model_id]
-        if model.type == "txt2img":
-            self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
+            model = info.models[model_id]
+            del info.models[model_id]
+            if model.type == "txt2img":
+                self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
 
-        if options.purge:
-            model.model_path.unlink()
+        if options.purge and model_id in self.downloaded:
+            Path(self.downloaded[model_id].model_path).unlink()
+            del self.downloaded[model_id]
 
         await self.refresh_models()
 

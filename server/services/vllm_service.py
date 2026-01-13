@@ -161,7 +161,12 @@ class InstalledInfo:
     parsed_options: VllmOptions
 
 
-class VllmService(Base2Service[InstalledInfo]):
+@dataclass
+class DownloadedInfo:
+    model_path: str | None
+
+
+class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
     hugging_face_cache_path = "/mnt/hf"
     models: dict[str, VllmModel]
 
@@ -215,6 +220,7 @@ class VllmService(Base2Service[InstalledInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
+            downloaded=self.downloaded,
         )
 
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
@@ -279,6 +285,7 @@ class VllmService(Base2Service[InstalledInfo]):
                         service=self.get_id(),
                         type=_const.model_type,
                         installed=installed,
+                        downloaded=model_id in self.downloaded,
                         size=model.size,
                         custom=model.custom,
                         spec=self.get_model_spec(),
@@ -299,6 +306,7 @@ class VllmService(Base2Service[InstalledInfo]):
             service=self.get_id(),
             type=_const.model_type,
             installed=installed,
+            downloaded=model_id in self.downloaded,
             size=model.size,
             custom=model.custom,
             spec=self.get_model_spec(),
@@ -423,6 +431,7 @@ class VllmService(Base2Service[InstalledInfo]):
                 registration_options=None,
             )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            self.downloaded[model_id] = DownloadedInfo(str(local_model_path))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -432,14 +441,16 @@ class VllmService(Base2Service[InstalledInfo]):
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
-        if model_id not in info.models:
-            return
-        model = info.models[model_id]
-        del info.models[model_id]
-        self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
-        await self.docker_service.uninstall_docker(model.docker)
-        if options.purge:
-            shutil.rmtree(model.model_path)
+        if model_id in info.models:
+            model = info.models[model_id]
+            del info.models[model_id]
+            self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
+            await self.docker_service.uninstall_docker(model.docker)
+
+        if options.purge and model_id in self.downloaded:
+            if model_path := self.downloaded[model_id].model_path:
+                shutil.rmtree(Path(model_path))
+            del self.downloaded[model_id]
 
     async def stop(self) -> None:
         """Stop all the vLLM service Docker containers."""

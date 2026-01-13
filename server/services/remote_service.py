@@ -103,7 +103,12 @@ class InstalledInfo:
     parsed_options: RemoteOptions
 
 
-class RemoteService(Base2Service[InstalledInfo]):
+@dataclass
+class DownloadedInfo:
+    pass
+
+
+class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
     api_version: str = "v1/"
     models: dict[str, RemoteModel]
 
@@ -177,6 +182,7 @@ class RemoteService(Base2Service[InstalledInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
+            downloaded=self.downloaded,
         )
 
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
@@ -238,6 +244,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                         service=self.get_id(),
                         type=model.type,
                         installed=installed,
+                        downloaded=model_id in self.downloaded,
                         size="",
                         custom=model.custom,
                         spec=self.get_model_spec(),
@@ -258,6 +265,7 @@ class RemoteService(Base2Service[InstalledInfo]):
             service=self.get_id(),
             type=model.type,
             installed=installed,
+            downloaded=model_id in self.downloaded,
             size="",
             custom=model.custom,
             spec=self.get_model_spec(),
@@ -356,6 +364,7 @@ class RemoteService(Base2Service[InstalledInfo]):
                     registration_options=None,
                 )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            self.downloaded[model_id] = DownloadedInfo()
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -363,20 +372,18 @@ class RemoteService(Base2Service[InstalledInfo]):
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
         if model_id not in info.models:
-            return
-        model = info.models[model_id]
-        del info.models[model_id]
-        if model.type == "llm":
-            self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
-        if model.type == "tts":
-            self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
-        if model.type == "stt":
-            self.endpoint_registry.unregister_audio_transcriptions(model.registered_name, model.registration_id)
-        if model.type == "txt2img":
-            self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
-        if model.type == "embedding":
-            self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
+            model = info.models[model_id]
+            del info.models[model_id]
+            if model.type == "llm":
+                self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
+            if model.type == "tts":
+                self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
+            if model.type == "stt":
+                self.endpoint_registry.unregister_audio_transcriptions(model.registered_name, model.registration_id)
+            if model.type == "txt2img":
+                self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
+            if model.type == "embedding":
+                self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
 
-        if options.purge:
-            # unsupported
-            pass
+        if options.purge and model_id in self.downloaded:
+            del self.downloaded[model_id]
