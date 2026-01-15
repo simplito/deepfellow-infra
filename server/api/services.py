@@ -87,6 +87,7 @@ async def list_models(
 async def test_model(
     registration_id: Annotated[RegistrationId, Path(description="The ID of the installed model")],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+    _: Annotated[str, Depends(auth_admin)],  # noqa: PT019
 ) -> JSONResponse:
     """Test a model by making a simple request to it."""
     result = await endpoint_registry.test_model(registration_id)
