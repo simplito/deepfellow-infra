@@ -41,7 +41,6 @@ from server.models.models import (
 from server.models.services import (
     InstallServiceIn,
     InstallServiceProgress,
-    ServiceField,
     ServiceOptions,
     ServiceSize,
     ServiceSpecification,
@@ -117,7 +116,7 @@ class ModelInstalledInfo:
 
 
 class CoquiOptions(BaseModel):
-    gpu: bool
+    hardware: str | bool | None = None
 
 
 class CoquiModelOptions(BaseModel):
@@ -166,15 +165,15 @@ class CoquiService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
-        return {"cpu": _const.image_cpu.size, "gpu": _const.image_gpu.size}
+        sizes = {"cpu": _const.image_cpu.size}
+        if self.hardware.gpus:
+            sizes["gpu"] = _const.image_gpu.size
+        return sizes
 
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
-        return ServiceSpecification(
-            fields=[
-                ServiceField(type="bool", name="gpu", description="Run on GPU", required=False, default=self._has_gpu_for_spec()),
-            ]
-        )
+        fields = self.add_gpu_field_to_spec()
+        return ServiceSpecification(fields=fields)
 
     def get_model_spec(self) -> ModelSpecification:
         """Return the model specification."""
@@ -204,7 +203,7 @@ class CoquiService(Base2Service[InstalledInfo, DownloadedInfo]):
         if "gpu" not in options.spec:
             options.spec["gpu"] = self.docker_service.has_gpu_support
         parsed_options = try_parse_pydantic(CoquiOptions, options.spec)
-        image = self._get_image(parsed_options.gpu)
+        image = self._get_image(self.is_given_hardware_support_gpu(parsed_options.hardware))
         await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
@@ -283,7 +282,8 @@ class CoquiService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
             volumes = [f"{self._get_working_output_dir()}:/root/tts-output", f"{self._get_working_dir()}/models:/root/.local/share/tts"]
-            image = self._get_image(info.parsed_options.gpu)
+            use_gpu = self.is_given_hardware_support_gpu(info.parsed_options.hardware)
+            image = self._get_image(use_gpu)
 
             subnet = self.docker_service.get_docker_subnet()
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
@@ -295,7 +295,7 @@ class CoquiService(Base2Service[InstalledInfo, DownloadedInfo]):
                     CoquiCmdOptions(
                         model_name=model_id,
                         model_path=None,
-                        cuda=info.parsed_options.gpu,
+                        cuda=use_gpu,
                         language=model.language,
                     )
                 ),
@@ -303,7 +303,7 @@ class CoquiService(Base2Service[InstalledInfo, DownloadedInfo]):
                 image_port=5002,
                 restart="unless-stopped",
                 volumes=volumes,
-                use_gpu=info.parsed_options.gpu,
+                hardware=self.get_specified_hardware_parts(info.parsed_options.hardware),
                 subnet=subnet,
                 healthcheck={
                     "test": (

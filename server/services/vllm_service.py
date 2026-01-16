@@ -10,10 +10,10 @@
 """Vllm service."""
 
 import shutil
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-import cpuinfo  # pyright: ignore[reportMissingTypeStubs]
 from fastapi import HTTPException
 from pydantic import BaseModel
 
@@ -41,7 +41,6 @@ from server.models.models import (
 from server.models.services import (
     InstallServiceIn,
     InstallServiceProgress,
-    ServiceField,
     ServiceOptions,
     ServiceSize,
     ServiceSpecification,
@@ -60,15 +59,8 @@ from server.utils.core import (
     normalize_name,
     try_parse_pydantic,
 )
+from server.utils.hardware import HardwarePartInfo
 from server.utils.loading import Progress
-
-
-def is_avx512_supported() -> bool:
-    """Chech if CPU supports avx512 instructions."""
-    info = cpuinfo.get_cpu_info()
-    flags = info.get("flags", [])
-
-    return any(flag.startswith("avx512") for flag in flags)
 
 
 class VllmModel(BaseModel):
@@ -147,7 +139,7 @@ class ModelInstalledInfo:
 
 
 class VllmOptions(BaseModel):
-    gpu: bool
+    hardware: str | bool | None = None
 
 
 class VllmModelOptions(BaseModel):
@@ -179,7 +171,12 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
-        return {"cpu": _const.image_cpu.size, "gpu": _const.image_gpu.size}
+        sizes: dict[str, str] = {}
+        if self.hardware.cpu.avx512:
+            sizes["cpu"] = _const.image_cpu.size
+        if self.hardware.gpus:
+            sizes["gpu"] = _const.image_gpu.size
+        return sizes
 
     def get_description(self) -> str:
         """Return the service description."""
@@ -187,11 +184,8 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
-        return ServiceSpecification(
-            fields=[
-                ServiceField(type="bool", name="gpu", description="Run on GPU", required=False, default=self._has_gpu_for_spec()),
-            ]
-        )
+        fields = self.add_gpu_field_to_spec(add_cpu_option_only_on_avx512_support=True)
+        return ServiceSpecification(fields=fields)
 
     def get_model_spec(self) -> ModelSpecification:
         """Return the model specification."""
@@ -223,15 +217,44 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             downloaded=self.downloaded,
         )
 
+    def is_given_hardware_support_gpu(self, hardware_specification: str | bool | None) -> bool:
+        """Return is gpu will be used."""
+        if not self.hardware.cpu.avx512 and not self.hardware.gpus:
+            raise HTTPException(
+                400,
+                (
+                    "Your hardware doesn't support this service.\n"
+                    "CPU does not support AVX 512 instructions.\n"
+                    "There are not any graphic cards"
+                ),
+            )
+        return super().is_given_hardware_support_gpu(hardware_specification)
+
+    def get_specified_hardware_parts(self, hardware_specification: str | bool | None) -> Sequence[HardwarePartInfo]:
+        """Get hardware based on user input."""
+        if not self.hardware.cpu.avx512 and not self.hardware.gpus:
+            raise HTTPException(
+                400,
+                (
+                    "Your hardware doesn't support this service.\n"
+                    "CPU does not support AVX 512 instructions.\n"
+                    "There are not any graphic cards"
+                ),
+            )
+        return super().get_specified_hardware_parts(hardware_specification)
+
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
         if "gpu" not in options.spec:
             options.spec["gpu"] = self.docker_service.has_gpu_support
         parsed_options = try_parse_pydantic(VllmOptions, options.spec)
-        if parsed_options.gpu and not self.docker_service.has_gpu_support:
+
+        use_gpu = self.is_given_hardware_support_gpu(parsed_options.hardware)
+
+        if not self.docker_service.has_gpu_support:
             raise HTTPException(400, "Docker doesn't support GPU on this machine.")
-        if not parsed_options.gpu and not is_avx512_supported():
-            raise HTTPException(400, "Your CPU does not support AVX 512 instructions")
-        image = self._get_image(parsed_options.gpu)
+
+        image = self._get_image(use_gpu)
+
         await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
@@ -362,13 +385,15 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model.quantization:
                 vllm_command.extend(["--quantization", model.quantization])
 
-            if info.parsed_options.gpu:
+            use_gpu = self.is_given_hardware_support_gpu(info.parsed_options.hardware)
+
+            if use_gpu:
                 vllm_command.extend(["--gpu-memory-utilization", str(model.gpu_memory_utilization)])
 
-            if model.max_model_len and info.parsed_options.gpu:
+            if model.max_model_len and use_gpu:
                 vllm_command.extend(["--max-model-len", str(model.max_model_len)])
 
-            if not info.parsed_options.gpu:
+            if not use_gpu:
                 if model.max_model_len is None:
                     vllm_command.extend(["--disable-sliding-window"])
                 else:
@@ -379,10 +404,10 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
 
             model.env_vars["HF_HUB_OFFLINE"] = "1"
             model.env_vars["HF_HOME"] = self.hugging_face_cache_path
-            if not info.parsed_options.gpu:
+            if not use_gpu:
                 model.env_vars["VLLM_USE_V1"] = "1"
 
-            image = self._get_image(info.parsed_options.gpu)
+            image = self._get_image(use_gpu)
 
             subnet = self.docker_service.get_docker_subnet()
             service_name = f"{self.get_id()}-{normalize_name(model_id)}"
@@ -395,7 +420,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
                 env_vars=model.env_vars,
                 restart="unless-stopped",
                 volumes=volumes,
-                use_gpu=info.parsed_options.gpu,
+                hardware=self.get_specified_hardware_parts(info.parsed_options.hardware),
                 shm_size=model.shm_size,
                 ulimits=model.ulimits,
                 subnet=subnet,

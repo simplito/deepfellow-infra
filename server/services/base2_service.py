@@ -14,6 +14,7 @@ import logging
 import shutil
 import uuid
 from abc import abstractmethod
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -36,10 +37,11 @@ from server.models.models import (
     InstallModelProgress,
     UninstallModelIn,
 )
-from server.models.services import InstallServiceIn, InstallServiceOut, InstallServiceProgress, UninstallServiceIn
+from server.models.services import InstallServiceIn, InstallServiceOut, InstallServiceProgress, ServiceField, UninstallServiceIn
 from server.serviceprovider import ServiceProvider, ServiceRawConfig
 from server.services.base_service import BaseService
 from server.utils.core import PromiseWithProgress, Stream, StreamChunk, StreamChunkProgress, Utils, convert_size_to_bytes
+from server.utils.hardware import GpuInfo, Hardware, HardwarePartInfo
 from server.utils.model_downloader import ModelDownloader
 
 
@@ -102,6 +104,7 @@ class Base2Service[InstalledInfoType, DownloadInfoType](BaseService):
     custom: list[CustomModel]
     installing_model_progress: dict[str, InstallingModel]
     installing: InstallingService | None
+    hardware: Hardware
 
     def __init__(
         self,
@@ -110,6 +113,7 @@ class Base2Service[InstalledInfoType, DownloadInfoType](BaseService):
         service_provider: ServiceProvider,
         model_downloader: ModelDownloader,
         docker_service: DockerService,
+        hardware: Hardware,
     ):
         super().__init__()
         self.config = config
@@ -117,6 +121,7 @@ class Base2Service[InstalledInfoType, DownloadInfoType](BaseService):
         self.service_provider = service_provider
         self.model_downloader = model_downloader
         self.docker_service = docker_service
+        self.hardware = hardware
         self.installed: InstalledInfoType | None = None
         self.installing = None
         self.downloaded = {}
@@ -374,3 +379,62 @@ class Base2Service[InstalledInfoType, DownloadInfoType](BaseService):
         warnings = await self.docker_service.get_image_warnings(docker_image)
         if len(warnings) > 0 and not ignore_warning:
             raise HTTPException(400, {"warnings": warnings})
+
+    def is_given_hardware_support_gpu(self, hardware_specification: str | bool | None) -> bool:
+        """Return is gpu will be used."""
+        if hardware_specification is None:
+            return self.hardware.has_gpu_support
+        if isinstance(hardware_specification, str):
+            has_gpu_support = hardware_specification.startswith("GPU")
+            if has_gpu_support and not self.hardware.has_gpu_support:
+                raise HTTPException(400, "Given hardware specification is not supported")
+            return has_gpu_support
+        return hardware_specification
+
+    def get_specified_hardware_parts(self, hardware_specification: str | bool | None) -> Sequence[HardwarePartInfo]:
+        """Get specified hardware parts."""
+        if hardware_specification is None:
+            if self.hardware.gpus:
+                return self.hardware.gpus
+            return [self.hardware.cpu]
+        if (hardware_specification is False) or (isinstance(hardware_specification, str) and hardware_specification == "CPU"):
+            return [self.hardware.cpu]
+
+        if (hardware_specification is True) or (hardware_specification == "GPUs"):
+            return self.hardware.gpus
+
+        gpus: list[GpuInfo] = []
+
+        for gpu_name in hardware_specification.removeprefix("GPU | ").split(","):
+            for gpu in self.hardware.gpus:
+                if gpu_name == gpu.long_name:
+                    gpus.append(gpu)
+
+        return gpus
+
+    def add_gpu_field_to_spec(
+        self,
+        fields: list[ServiceField] | None = None,
+        add_cpu_option_only_on_avx512_support: bool = False,
+    ) -> list[ServiceField]:
+        """Add gpu field to specification."""
+        fields = fields or []
+        options: list[str] = []
+        if not add_cpu_option_only_on_avx512_support or self.hardware.cpu.avx512:
+            options.append("CPU")
+
+        gpus_quantity = len(self.hardware.gpus)
+        if gpus_quantity == 1:
+            options.append("GPU")
+        elif gpus_quantity:
+            options.append("GPUs")
+            options.extend([f"GPU | {gpu.long_name}" for gpu in self.hardware.gpus])
+
+        if len(options) > 2:
+            gpus_select_field = ServiceField(type="oneof", name="hardware", description="Choose hardware:", values=options)
+            fields.append(gpus_select_field)
+        elif options == ["CPU", "GPU"]:
+            gpus_checkbox_field = ServiceField(type="bool", name="hardware", description="Use GPU?", values=options)
+            fields.append(gpus_checkbox_field)
+
+        return fields

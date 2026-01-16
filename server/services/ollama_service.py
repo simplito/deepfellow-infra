@@ -161,7 +161,7 @@ class ModelInstalledInfo:
 
 
 class OllamaOptions(BaseModel):
-    gpu: bool
+    hardware: str | bool | None = None
     num_parallel: int | None = None  # 3
     keep_alive: str = ""  # 60m
     is_flash_attention: bool | None = None  # False
@@ -213,9 +213,10 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
-        return ServiceSpecification(
-            fields=[
-                ServiceField(type="bool", name="gpu", description="Run on GPU", required=False, default=self._has_gpu_for_spec()),
+        fields = self.add_gpu_field_to_spec()
+
+        fields.extend(
+            [
                 ServiceField(
                     type="number",
                     name="num_parallel",
@@ -255,6 +256,8 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                 ),
             ]
         )
+
+        return ServiceSpecification(fields=fields)
 
     def get_model_spec(self) -> ModelSpecification:
         """Return the model specification."""
@@ -339,7 +342,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                 container_name=self.docker_service.get_docker_container_name("ollama"),
                 image=_const.image.name,
                 image_port=11434,
-                use_gpu=parsed_options.gpu,
+                hardware=self.get_specified_hardware_parts(parsed_options.hardware),
                 volumes=volumes,
                 env_vars=envs,
                 restart="unless-stopped",

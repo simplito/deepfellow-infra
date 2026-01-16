@@ -15,7 +15,7 @@ import os
 import platform
 import re
 import shutil
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
@@ -28,6 +28,7 @@ from server.config import AppSettings
 from server.portservice import PortService
 from server.utils.core import CommandResult2, Utils, get_cpu_architecture, get_os
 from server.utils.exceptions import AppError, DockerImageAuthorizationError, DockerImageDoesNotExistError
+from server.utils.hardware import HardwarePartInfo, NvidiaGpuInfo
 from server.utils.loading import Progress
 from server.utils.logger import uvicorn_logger
 
@@ -82,7 +83,7 @@ class DockerOptions:
         image: str,
         image_port: int,
         command: str | None = None,
-        use_gpu: bool = False,
+        hardware: Sequence[HardwarePartInfo] | None = None,
         volumes: list[str] | None = None,
         restart: str | None = None,
         env_vars: dict[str, str] | None = None,
@@ -104,7 +105,7 @@ class DockerOptions:
         self.container_name = container_name
         self.restart = restart
         self.volumes = volumes
-        self.use_gpu = use_gpu
+        self.hardware = hardware
         self.uliumits = ulimits
         self.shm_size = shm_size
         self.entrypoint = entrypoint
@@ -125,7 +126,7 @@ class DockerComposeStatus(BaseModel):
 class DockerComposeDevice(TypedDict):
     driver: str
     count: NotRequired[int]
-    device_ids: NotRequired[list[int]]
+    device_ids: NotRequired[list[str]]
     capabilities: list[str]
 
 
@@ -558,14 +559,18 @@ class DockerService:
             service["entrypoint"] = options.entrypoint
         if options.user:
             service["user"] = options.user
-        if options.use_gpu:
-            if not self.has_gpu_support:
-                raise AppError("Docker doesn't support GPU on this machine.")
-            service["deploy"] = {
-                "resources": {
-                    "reservations": {"devices": [{"driver": "nvidia", "count": self.config.nvidia_gpus_count, "capabilities": ["gpu"]}]}
+        if options.hardware:
+            nvidia_gpus = [gpu for gpu in options.hardware if isinstance(gpu, NvidiaGpuInfo)]
+            if nvidia_gpus:
+                if not self.has_gpu_support:
+                    raise AppError("Docker doesn't support GPU on this machine.")
+                service["deploy"] = {
+                    "resources": {
+                        "reservations": {
+                            "devices": [{"driver": "nvidia", "device_ids": [f"{gpu.id!s}" for gpu in nvidia_gpus], "capabilities": ["gpu"]}]
+                        }
+                    }
                 }
-            }
         if options.subnet:
             service["networks"] = [options.subnet]
         docker_compose_content: DockerComposeContent = {"services": {options.service_name: service}}

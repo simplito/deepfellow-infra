@@ -36,7 +36,6 @@ from server.models.models import (
 from server.models.services import (
     InstallServiceIn,
     InstallServiceProgress,
-    ServiceField,
     ServiceOptions,
     ServiceSize,
     ServiceSpecification,
@@ -148,7 +147,7 @@ class ModelInstalledInfo:
 
 
 class LLamacppOptions(BaseModel):
-    gpu: bool
+    hardware: str | bool | None = None
 
 
 class LLamacppModelOptions(BaseModel):
@@ -183,15 +182,15 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
-        return {"cpu": _const.image_cpu.size, "gpu": _const.image_gpu.size}
+        sizes = {"cpu": _const.image_cpu.size}
+        if self.hardware.gpus:
+            sizes["gpu"] = _const.image_gpu.size
+        return sizes
 
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
-        return ServiceSpecification(
-            fields=[
-                ServiceField(type="bool", name="gpu", description="Run on GPU", required=False, default=self._has_gpu_for_spec()),
-            ]
-        )
+        fields = self.add_gpu_field_to_spec()
+        return ServiceSpecification(fields=fields)
 
     def get_model_spec(self) -> ModelSpecification:
         """Return the model specification."""
@@ -229,7 +228,7 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
         if "gpu" not in options.spec:
             options.spec["gpu"] = self.docker_service.has_gpu_support
         parsed_options = try_parse_pydantic(LLamacppOptions, options.spec)
-        image = self._get_image(parsed_options.gpu)
+        image = self._get_image(self.is_given_hardware_support_gpu(parsed_options.hardware))
         await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
@@ -347,7 +346,7 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
 
             model_in_container = f"/models/{model_filename}"
             volumes = [f"{local_model_path.absolute()}:{model_in_container}:ro"]
-            image = self._get_image(info.parsed_options.gpu)
+            image = self._get_image(self.is_given_hardware_support_gpu(info.parsed_options.hardware))
             command_options = ["--host 0.0.0.0", "--port 8080", f"--model {model_in_container}"]
             if model.jinja:
                 command_options.append("--jinja")
@@ -362,7 +361,7 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
                 image_port=8080,
                 restart="unless-stopped",
                 volumes=volumes,
-                use_gpu=info.parsed_options.gpu,
+                hardware=self.get_specified_hardware_parts(info.parsed_options.hardware),
                 subnet=subnet,
             )
             docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
