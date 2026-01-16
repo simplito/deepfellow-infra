@@ -39,6 +39,7 @@ from server.services.vllm_service import VllmService
 from server.services_manager import ServicesManager
 from server.task_manager import TaskManager
 from server.utils.exceptions import AppStartError
+from server.utils.hardware import Hardware
 from server.utils.model_downloader import ModelDownloader
 from server.websockets.infra_websocket_server import InfraWebsocketServer
 from server.websockets.parent_infra import ParentInfra
@@ -66,6 +67,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         if app.state.config.docker_subnet:
             check_subnet(app.state.config.docker_subnet)
 
+        app.state.hardware = hardware = Hardware()
+        await hardware.init_async()
+
         app.state.task_manager = task_manager = TaskManager()
         app.state.service_provider = service_provider = ServiceProvider(config)
         app.state.parent_infra = parent_infra = ParentInfra(config, task_manager)
@@ -78,7 +82,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         app.state.docker_service = docker_service = await create_docker_service(port_service, config)
         app.state.model_downloader = model_downloader = ModelDownloader(app.state.config)
 
-        model_input = (config, endpoint_registry, service_provider, model_downloader, docker_service)
+        model_input = (config, endpoint_registry, service_provider, model_downloader, docker_service, hardware)
 
         # Register services
         services_manager.register_service(OllamaService(*model_input))

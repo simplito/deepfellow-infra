@@ -39,7 +39,6 @@ from server.models.models import (
 from server.models.services import (
     InstallServiceIn,
     InstallServiceProgress,
-    ServiceField,
     ServiceOptions,
     ServiceSize,
     ServiceSpecification,
@@ -530,15 +529,15 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
-        return {"cpu": _const.image_cpu.size, "gpu": _const.image_gpu.size}
+        sizes = {"cpu": _const.image_cpu.size}
+        if self.hardware.gpus:
+            sizes["gpu"] = _const.image_gpu.size
+        return sizes
 
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
-        return ServiceSpecification(
-            fields=[
-                ServiceField(type="bool", name="gpu", description="Run on GPU", required=False, default=self._has_gpu_for_spec()),
-            ]
-        )
+        fields = self.add_gpu_field_to_spec()
+        return ServiceSpecification(fields=fields)
 
     def get_model_spec(self) -> ModelSpecification:
         """Return the model specification."""
@@ -584,7 +583,9 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
             options.spec["gpu"] = self.docker_service.has_gpu_support
         parsed_options = try_parse_pydantic(SpeachesAIOptions, options.spec)
         volumes = [f"{self._get_working_dir()}/cache:/home/ubuntu/.cache/huggingface/hub"]
-        image = self._get_image(parsed_options.gpu)
+
+        image = self._get_image(self.is_given_hardware_support_gpu(parsed_options.gpu))
+
         await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
@@ -596,7 +597,7 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
                 container_name=self.docker_service.get_docker_container_name("speaches-ai"),
                 image=image.name,
                 image_port=8000,
-                use_gpu=parsed_options.gpu,
+                hardware=self.get_specified_hardware_parts(parsed_options.gpu),
                 volumes=volumes,
                 env_vars={
                     "ENABLE_UI": "False",

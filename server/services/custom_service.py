@@ -75,7 +75,7 @@ class SrvCustomCustomModel(BaseModel):
     image: str
     image_port: int
     command: str | None = None
-    use_gpu: bool = False
+    hardware: str | bool | None = None
     volumes: list[str] | None = None
     envs: dict[str, str] | None = None
     healthcheck_cmd: str | None = None
@@ -257,7 +257,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
                 container_name=self.docker_service.get_docker_container_name(name),
                 image=parsed.image,
                 command=parsed.command,
-                use_gpu=parsed.use_gpu,
+                hardware=self.get_specified_hardware_parts(parsed.hardware),
                 env_vars=parsed.envs,
                 restart="unless-stopped",
                 volumes=[f"{self.get_working_dir()}/{name}/volume_{i}:{volume}" for i, volume in enumerate(parsed.volumes or [])],
@@ -415,7 +415,6 @@ _const = CustomConst(
                 name="easyocr",
                 container_name=custom_service.docker_service.get_docker_container_name("easyocr"),
                 image="gitlab2.simplito.com:5050/df/df-ocr:1.0.1",
-                use_gpu=False,
                 env_vars={},
                 restart="unless-stopped",
                 volumes=[f"{custom_service.get_working_dir()}/easyocr/model:/root/.EasyOCR/model"],

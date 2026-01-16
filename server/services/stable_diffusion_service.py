@@ -234,7 +234,7 @@ class ModelInstalledInfo(BaseModel):
 
 
 class SDOptions(BaseModel):
-    gpu: bool
+    hardware: str | bool | None = None
     expose_api_at_prefix: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]+$")] = ""
 
 
@@ -283,19 +283,18 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
-        if _const.image_gpu.name != _const.image_gpu.name:
-            return {"cpu": _const.image_cpu.size, "gpu": _const.image_gpu.size}
-
-        return _const.image_cpu.size
+        sizes = {"cpu": _const.image_cpu.size}
+        if self.hardware.gpus:
+            sizes["gpu"] = _const.image_gpu.size
+        return sizes
 
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
-        return ServiceSpecification(
-            fields=[
-                ServiceField(type="bool", name="gpu", description="Run on GPU", required=False, default=self._has_gpu_for_spec()),
-                ServiceField(type="text", name="expose_api_at_prefix", description="Expose SD API at prefix", required=False, default="sd"),
-            ]
-        )
+        fields: list[ServiceField] = [
+            ServiceField(type="text", name="expose_api_at_prefix", description="Expose SD API at prefix", required=False, default="sd")
+        ]
+        fields = self.add_gpu_field_to_spec(fields)
+        return ServiceSpecification(fields=fields)
 
     def get_model_spec(self) -> ModelSpecification:
         """Return the model specification."""
@@ -368,10 +367,11 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
             f"{self._get_working_data_dir()}:/mnt/data",
             f"{self._get_working_logs()}:/app/sdnext.log",
         ]
-        if parsed_options.gpu:
-            image = _const.image_gpu
+        use_gpu = self.is_given_hardware_support_gpu(parsed_options.hardware)
+        if use_gpu:
             if not self.docker_service.has_gpu_support:
                 raise HTTPException(400, "Docker doesn't support GPU on this machine.")
+            image = _const.image_gpu
         else:
             image = _const.image_cpu
         await self._verify_docker_image(image.name, options.ignore_warnings)
@@ -389,7 +389,7 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
                     "SD_DOCS": "true",
                 },
                 image_port=7860,
-                use_gpu=parsed_options.gpu,
+                hardware=self.get_specified_hardware_parts(parsed_options.hardware),
                 volumes=volumes,
                 restart="unless-stopped",
                 subnet=subnet,
