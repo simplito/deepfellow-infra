@@ -24,7 +24,7 @@ from uuid import uuid4
 
 import aiofiles
 import aiohttp
-from aiohttp import ClientSession, ClientTimeout
+from aiohttp import ClientResponse, ClientSession, ClientTimeout, FormData, Payload
 from attr import dataclass
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -521,3 +521,73 @@ def get_cpu_architecture() -> str:
         architecture = "s390x"
 
     return architecture
+
+
+class HttpResponse:
+    def __init__(self, response: ClientResponse, content: AsyncGenerator[bytes]):
+        self.response = response
+        self.content = content
+
+    def as_streaming_response(self, allowed_response_headers: list[str] | None = None) -> StreamingResponse:
+        """Return as StreamingResponse."""
+        allowed_response_headers = allowed_response_headers or []
+        response_headers = {k: v for k, v in dict(self.response.headers).items() if k in allowed_response_headers}
+        return StreamingResponse(
+            self.content, media_type=self.response.content_type, status_code=self.response.status, headers=response_headers
+        )
+
+
+async def make_http_request(
+    url: str,
+    method: str = "GET",
+    data: AsyncGenerator[bytes] | bytes | FormData | Payload | None = None,
+    headers: dict[str, str] | None = None,
+) -> HttpResponse:
+    """Make HTTP request to given url."""
+    # NOTE: Uncomment to debug http request
+    # logger.info(f"Making HTTP request to: {url}")
+    headers = headers or {}
+    session = ClientSession()
+    try:
+        response = await session.request(method=method, url=url, data=data, headers=headers)
+
+        async def generator() -> AsyncGenerator[bytes]:
+            try:
+                async for chunk in response.content.iter_any():
+                    if chunk:
+                        yield chunk
+            finally:
+                await response.release()
+                await session.close()
+
+        return HttpResponse(response=response, content=generator())
+
+    except Exception:
+        await session.close()
+        raise
+
+
+class OneTimeKey:
+    """Generate new key every time. If key is correct then remove it."""
+
+    _key: str | None
+
+    def __init__(self) -> None:
+        self._key: str | None = None
+
+    @property
+    def key(self) -> str:
+        """Return new key."""
+        self._key = uuid4().hex
+        return self._key
+
+    def check(self, input_key: str) -> bool:
+        """Check is key is correct.
+
+        Remove key if correct.
+        """
+        if input_key == self._key:
+            self._key = None
+            return True
+
+        return False

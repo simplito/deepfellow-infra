@@ -16,8 +16,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar
 from urllib.parse import urljoin
 
-from aiohttp import ClientResponse, FormData, JsonPayload, Payload
-from aiohttp.client import ClientSession
+from aiohttp import JsonPayload
 from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -39,7 +38,7 @@ from server.models.api import (
     ModelType,
 )
 from server.models.common import JsonSerializable, StarletteResponse
-from server.utils.core import Utils
+from server.utils.core import Utils, make_http_request
 from server.websockets.models import RegistrationId, UsageChangeRequest
 from server.websockets.parent_infra import ParentInfra
 
@@ -842,47 +841,3 @@ async def post_form(data: FormSerializable, options: ProxyOptions, request: Requ
             headers=options.get_request_headers(request),
         )
     ).as_streaming_response(options.allowed_response_headers)
-
-
-class HttpResponse:
-    def __init__(self, response: ClientResponse, content: AsyncGenerator[bytes]):
-        self.response = response
-        self.content = content
-
-    def as_streaming_response(self, allowed_response_headers: list[str] | None = None) -> StreamingResponse:
-        """Return as StreamingResponse."""
-        allowed_response_headers = allowed_response_headers or []
-        response_headers = {k: v for k, v in dict(self.response.headers).items() if k in allowed_response_headers}
-        return StreamingResponse(
-            self.content, media_type=self.response.content_type, status_code=self.response.status, headers=response_headers
-        )
-
-
-async def make_http_request(
-    url: str,
-    method: str = "GET",
-    data: AsyncGenerator[bytes] | bytes | FormData | Payload | None = None,
-    headers: dict[str, str] | None = None,
-) -> HttpResponse:
-    """Make HTTP request to given url."""
-    # NOTE: Uncomment to debug http request
-    # logger.info(f"Making HTTP request to: {url}")
-    headers = headers or {}
-    session = ClientSession()
-    try:
-        response = await session.request(method=method, url=url, data=data, headers=headers)
-
-        async def generator() -> AsyncGenerator[bytes]:
-            try:
-                async for chunk in response.content.iter_any():
-                    if chunk:
-                        yield chunk
-            finally:
-                await response.release()
-                await session.close()
-
-        return HttpResponse(response=response, content=generator())
-
-    except Exception:
-        await session.close()
-        raise

@@ -18,6 +18,7 @@ from server.config import AppSettings
 from server.endpointregistry import EndpointRegistry
 from server.services_manager import ServicesManager
 from server.websockets.infra_websocket_server import InfraWebsocketServer
+from server.websockets.parent_infra import ParentInfra
 
 oauth2_scheme = HTTPBearer()
 
@@ -49,6 +50,11 @@ def get_config(request: Request) -> AppSettings:
 def get_infra_websocket_server(request: Request) -> InfraWebsocketServer:
     """Get InfraWebsocketServer from application state."""
     return get_dependency(request, "infra_websocket_server")
+
+
+def get_parent_infra(request: Request) -> ParentInfra:
+    """Get parent infra from application state."""
+    return get_dependency(request, "parent_infra")
 
 
 def auth_server(

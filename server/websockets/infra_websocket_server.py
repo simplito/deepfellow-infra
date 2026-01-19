@@ -17,7 +17,8 @@ from pydantic import BaseModel, ValidationError
 from server.config import AppSettings
 from server.endpointregistry import EndpointRegistry
 from server.models.api import Model
-from server.models.mesh import MeshInfo, MeshInfoInfra, MeshInfoModel
+from server.models.mesh import CheckMeshConnection, MeshInfo, MeshInfoInfra, MeshInfoModel
+from server.utils.core import make_http_request
 from server.utils.exceptions import ApiError
 from server.utils.json_rpc_server import JsonRpcServer
 from server.websockets.models import InitRequest, UpdateModelsRequest, UsageChangeRequest
@@ -43,12 +44,7 @@ InfraWsContext = WebSocketContext[InfraWsData]
 
 
 class InfraWebsocketServer(WebSocketServer[InfraWsData]):
-    def __init__(
-        self,
-        config: AppSettings,
-        parent_infra: ParentInfra,
-        endpoint_registry: EndpointRegistry,
-    ):
+    def __init__(self, config: AppSettings, parent_infra: ParentInfra, endpoint_registry: EndpointRegistry):
         super().__init__()
         self.config = config
         self.parent_infra = parent_infra
@@ -77,7 +73,7 @@ class InfraWebsocketServer(WebSocketServer[InfraWsData]):
 
     async def _handle_json_rpc_request(self, method: str, params: Any, context: InfraWsData) -> Any:  # noqa: ANN401
         if method == "init":
-            return self._on_init(self._try_parse(params, InitRequest), context)
+            return await self._on_init(self._try_parse(params, InitRequest), context)
         if method == "usage_change":
             return self._on_usage_change(self._try_parse(params, UsageChangeRequest), context)
         if method == "update_models":
@@ -90,11 +86,25 @@ class InfraWebsocketServer(WebSocketServer[InfraWsData]):
         except Exception as e:
             raise ApiError(code=-32602, message="Invalid params", data=e.errors if isinstance(e, ValidationError) else None) from e
 
-    def _on_init(self, params: InitRequest, context: InfraWsData) -> Literal["OK"]:
+    async def _on_init(self, params: InitRequest, context: InfraWsData) -> Literal["OK"]:
         if context.authorized:
             raise ApiError(code=1, message="Already authorized")
         if params.auth != self.config.mesh_key.get_secret_value():
             raise ApiError(code=2, message="Invalid api key")
+
+        if params.check_key:  # TODO: params.check_key should be switched to requried parameter after old infra migration
+            url = f"{params.url}/admin/mesh/check"
+            connection_info = await make_http_request(
+                method="POST",
+                url=url,
+                data=CheckMeshConnection(connection_verifier=params.check_key, infra_api_key=params.api_key)
+                .model_dump_json()
+                .encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            if connection_info.response.status != 200:
+                raise ApiError(code=4, message="Subinfra verification error", data={"url": url, "status": connection_info.response.status})
+
         context.authorized = Authorized(name=params.name, url=params.url, api_key=params.api_key, models=params.models)
         self.endpoint_registry.update_models([], params.models, params.url, params.api_key)
         logger.info(f"WS client connected {params.url}")  # noqa: G004

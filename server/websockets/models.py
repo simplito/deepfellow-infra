@@ -20,6 +20,7 @@ class InitRequest(BaseModel):
     url: str
     api_key: str
     models: list[Model]
+    check_key: str | None = None  # TODO: params.check_key should be switched to requried parameter after old infra migration
 
 
 class UsageChangeRequest(BaseModel):

@@ -13,7 +13,9 @@ import logging
 from typing import TYPE_CHECKING
 
 from server.config import AppSettings
+from server.models.mesh import CheckMeshConnection
 from server.task_manager import TaskManager
+from server.utils.core import OneTimeKey
 from server.utils.exceptions import ApiError
 from server.utils.json_rpc_client import JsonRpcClient
 from server.websockets.infra_client import InfraClient
@@ -29,16 +31,13 @@ logger = logging.getLogger("uvicorn.error")
 class ParentInfra(WebSocketClient):
     endpoint_registry: "EndpointRegistry"
 
-    def __init__(
-        self,
-        config: AppSettings,
-        task_manager: TaskManager,
-    ):
+    def __init__(self, config: AppSettings, task_manager: TaskManager):
         self.config = config
         self.task_manager = task_manager
         self.client = JsonRpcClient(send=lambda x: self._send(x), timeout=30)
         self.infra_client = InfraClient(self.client)
         self.enabled = self.config.connect_to_mesh_url != ""
+        self.one_time_key = OneTimeKey()
         uri = f"{self.config.connect_to_mesh_url}/ws" if self.enabled else ""
         super().__init__(uri)
 
@@ -69,6 +68,7 @@ class ParentInfra(WebSocketClient):
                     url=self.config.infra_url,
                     api_key=self.config.infra_api_key.get_secret_value(),
                     models=self.endpoint_registry.list_models(),
+                    check_key=self.one_time_key.key,
                 )
             )
         except ApiError as e:
@@ -92,3 +92,7 @@ class ParentInfra(WebSocketClient):
             self.infra_client.update_models(UpdateModelsRequest(models=self.endpoint_registry.list_models())),
             "parent_infra.update_models",
         )
+
+    def check_subinfra_connection(self, model: CheckMeshConnection) -> bool:
+        """Check if given sub infra connection data is valid."""
+        return self.one_time_key.check(model.connection_verifier) and self.config.infra_api_key.get_secret_value() == model.infra_api_key
