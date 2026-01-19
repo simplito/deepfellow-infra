@@ -11,11 +11,12 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends, HTTPException
 
-from server.core.dependencies import auth_admin, get_infra_websocket_server
-from server.models.mesh import ShowMeshInfoOut
+from server.core.dependencies import auth_admin, get_infra_websocket_server, get_parent_infra
+from server.models.mesh import CheckMeshConnection, ShowMeshInfoOut
 from server.websockets.infra_websocket_server import InfraWebsocketServer
+from server.websockets.parent_infra import ParentInfra
 
 router = APIRouter(prefix="/admin/mesh", tags=["Services"])
 
@@ -30,3 +31,17 @@ async def show_mesh_info(
 ) -> ShowMeshInfoOut:
     """Install the service."""
     return ShowMeshInfoOut(info=infra_websocket_server.get_mesh_info())
+
+
+@router.post(
+    "/check",
+    summary="Check mesh connection.",
+)
+async def check_mesh_connection(
+    model: Annotated[CheckMeshConnection, Body()],
+    parent_infra: Annotated[ParentInfra, Depends(get_parent_infra)],
+) -> str:
+    """Check mesh connection."""
+    if not parent_infra.check_subinfra_connection(model):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return "OK"

@@ -29,3 +29,8 @@ class MeshInfo(BaseModel):
 
 class ShowMeshInfoOut(BaseModel):
     info: MeshInfo
+
+
+class CheckMeshConnection(BaseModel):
+    infra_api_key: str
+    connection_verifier: str
