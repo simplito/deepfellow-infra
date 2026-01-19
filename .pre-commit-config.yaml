@@ -11,5 +11,15 @@ repos:
         language: system
         exclude: "static"
         types_or: [python, pyi]
-        entry: poetry
+        entry: uv
         args: ["run", "ruff", "check"]
+
+  - repo: local
+    hooks:
+      - id: pyright-py
+        name: pyright
+        language: system
+        exclude: "static"
+        types_or: [python, pyi]
+        entry: uv
+        args: ["run", "pyright"]

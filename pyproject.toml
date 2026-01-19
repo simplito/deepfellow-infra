@@ -34,6 +34,7 @@ dev = [
     "freezegun>=1.5.2",
     "pyright>=1.1.407",
     "pytest-xdist>=3.8.0",
+    "typer>=0.20.0",
 ]
 
 [tool.ruff]
@@ -152,3 +153,6 @@ venvPath = "."
 venv = ".venv"
 typeCheckingMode = "strict"
 pythonVersion = "3.13"
+reportUnknownMemberType = "none"
+reportUnknownVariableType = "none"
+reportUnknownArgumentType = "none"
