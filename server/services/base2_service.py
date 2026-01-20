@@ -60,6 +60,7 @@ class ServiceConfig(BaseModel):
     models: list[ModelConfig] | None = None
     custom: list[CustomModel] | None = None
     downloaded: dict[str, Any] | None = None
+    service_downloaded: bool | None = True
 
 
 InstalledInfoType = TypeVar("InstalledInfoType")
@@ -100,7 +101,8 @@ class Base2Service[InstalledInfoType, DownloadInfoType](BaseService):
     service_provider: ServiceProvider
     model_downloader: ModelDownloader
     docker_service: DockerService
-    downloaded: dict[str, DownloadInfoType]
+    models_downloaded: dict[str, DownloadInfoType]
+    service_downloaded: bool
     custom: list[CustomModel]
     installing_model_progress: dict[str, InstallingModel]
     installing: InstallingService | None
@@ -124,7 +126,8 @@ class Base2Service[InstalledInfoType, DownloadInfoType](BaseService):
         self.hardware = hardware
         self.installed: InstalledInfoType | None = None
         self.installing = None
-        self.downloaded = {}
+        self.models_downloaded = {}
+        self.service_downloaded = False
         self.custom = list[CustomModel]()
         self.installing_model_progress = {}
         self._after_init()
@@ -158,6 +161,10 @@ class Base2Service[InstalledInfoType, DownloadInfoType](BaseService):
         """Check whether service is installed."""
         return self.installed is not None
 
+    def get_downloaded(self) -> bool:
+        """Get service downloaded info."""
+        return self.service_downloaded
+
     async def load_model(self, model: ModelConfig) -> None:
         """Load single model."""
         logger.info(f"{self.get_id()} loading model {model.model_id}")  # noqa: G004
@@ -169,7 +176,8 @@ class Base2Service[InstalledInfoType, DownloadInfoType](BaseService):
     async def load(self, config: ServiceRawConfig) -> None:
         """Load service using the config."""
         cfg = ServiceConfig(**config)
-        self.downloaded = cfg.downloaded or {}
+        self.models_downloaded = cfg.downloaded or {}
+        self.service_downloaded = cfg.service_downloaded or (cfg.options is not None)  # backward compatibility
         self.custom = cfg.custom or []
         for custom in self.custom:
             self._add_custom_model(custom)

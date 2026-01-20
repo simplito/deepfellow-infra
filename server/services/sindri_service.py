@@ -152,7 +152,8 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
-            downloaded=self.downloaded,
+            downloaded=self.models_downloaded,
+            service_downloaded=self.service_downloaded,
         )
 
     def _get_image(self) -> DockerImage:
@@ -165,6 +166,7 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)
+            self.service_downloaded = True
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             config_path = self._get_working_dir() / "config.yaml"
             data = (
@@ -221,13 +223,16 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
         return PromiseWithProgress(func=func)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
-        info = self._check_installed()
-        for model in info.models.copy().values():
-            if model.type == "llm":
-                self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
+        if info := self.installed:
+            for model in info.models.copy().values():
+                if model.type == "llm":
+                    self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
+
+            await self.docker_service.uninstall_docker(info.docker)
+
         self.installed = None
-        await self.docker_service.uninstall_docker(info.docker)
         if options.purge:
+            self.service_downloaded = False
             await self._clear_working_dir()
 
     def get_docker_compose_file_path(self, model_id: str | None) -> Path:
@@ -263,7 +268,7 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
                         service=self.get_id(),
                         type=model.type,
                         installed=installed,
-                        downloaded=model_id in self.downloaded,
+                        downloaded=model_id in self.models_downloaded,
                         size="",
                         spec=self.get_model_spec(),
                         has_docker=False,
@@ -283,7 +288,7 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
             service=self.get_id(),
             type=model.type,
             installed=installed,
-            downloaded=model_id in self.downloaded,
+            downloaded=model_id in self.models_downloaded,
             size="",
             spec=self.get_model_spec(),
             has_docker=False,
@@ -317,7 +322,7 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
                     registration_options=None,
                 )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
-            self.downloaded[model_id] = DownloadedInfo()
+            self.models_downloaded[model_id] = DownloadedInfo()
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -330,5 +335,5 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model.type == "llm":
                 self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
 
-        if options.purge and model_id in self.downloaded:
-            del self.downloaded[model_id]
+        if options.purge and model_id in self.models_downloaded:
+            del self.models_downloaded[model_id]

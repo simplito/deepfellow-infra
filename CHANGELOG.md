@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Check child Deepfellow Infra existence by parent DeepFellow Infra in mesh connection.
 - Extended GPU choice depending on the available hardware.
+- Add showing is service downloaded in WebUI.
+- Add purge button to WebUI.
 
 ## [0.17.0] - 2026-01-16
 

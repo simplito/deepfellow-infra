@@ -572,7 +572,8 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
-            downloaded=self.downloaded,
+            downloaded=self.models_downloaded,
+            service_downloaded=self.service_downloaded,
         )
 
     def _get_image(self, gpu: bool) -> DockerImage:
@@ -590,6 +591,7 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)
+            self.service_downloaded = True
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             subnet = self.docker_service.get_docker_subnet()
             docker_options = DockerOptions(
@@ -632,15 +634,18 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
         return PromiseWithProgress(func=func)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
-        info = self._check_installed()
-        for model in info.models.copy().values():
-            if model.type == "tts":
-                self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
-            if model.type == "stt":
-                self.endpoint_registry.unregister_audio_transcriptions(model.registered_name, model.registration_id)
+        if info := self.installed:
+            for model in info.models.copy().values():
+                if model.type == "tts":
+                    self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
+                if model.type == "stt":
+                    self.endpoint_registry.unregister_audio_transcriptions(model.registered_name, model.registration_id)
+
+            await self.docker_service.uninstall_docker(info.docker)
+
         self.installed = None
-        await self.docker_service.uninstall_docker(info.docker)
         if options.purge:
+            self.service_downloaded = False
             await self._clear_working_dir()
 
     async def stop(self) -> None:
@@ -709,7 +714,7 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
                         service=self.get_id(),
                         type=model.type,
                         installed=installed,
-                        downloaded=model_id in self.downloaded,
+                        downloaded=model_id in self.models_downloaded,
                         size=model.size,
                         custom=model.custom,
                         spec=self.get_model_spec(),
@@ -730,7 +735,7 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
             service=self.get_id(),
             type=model.type,
             installed=installed,
-            downloaded=model_id in self.downloaded,
+            downloaded=model_id in self.models_downloaded,
             size=model.size,
             spec=self.get_model_spec(),
             has_docker=False,
@@ -819,7 +824,7 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
                     registration_options=None,
                 )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
-            self.downloaded[model_id] = DownloadedInfo(model_path=str(model_dir))
+            self.models_downloaded[model_id] = DownloadedInfo(model_path=str(model_dir))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -841,6 +846,6 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model.type == "stt":
                 self.endpoint_registry.unregister_audio_transcriptions(model.registered_name, model.registration_id)
 
-        if options.purge and model_id in self.downloaded:
-            shutil.rmtree(Path(self.downloaded[model_id].model_path))
-            del self.downloaded[model_id]
+        if options.purge and model_id in self.models_downloaded:
+            shutil.rmtree(Path(self.models_downloaded[model_id].model_path))
+            del self.models_downloaded[model_id]

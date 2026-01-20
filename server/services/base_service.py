@@ -63,6 +63,7 @@ class BaseService(ABC):
             id=self.get_id(),
             description=self.get_description(),
             installed=self.get_installed_info(),
+            downloaded=self.get_downloaded(),
             spec=self.get_spec(),
             size=self.get_size(),
             custom_model_spec=self.get_custom_model_spec(),
@@ -84,6 +85,10 @@ class BaseService(ABC):
     @abstractmethod
     def get_installed_info(self) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""
+
+    @abstractmethod
+    def get_downloaded(self) -> bool:
+        """Get service downloaded info."""
 
     def service_has_docker(self) -> bool:
         """Return true when docker is started when service is installed."""

@@ -60,6 +60,7 @@ class RetrieveServiceOut(BaseModel):
     id: str
     description: str
     installed: bool | InstallServiceProgress | ServiceOptions
+    downloaded: bool
     spec: ServiceSpecification
     size: ServiceSize
     custom_model_spec: CustomModelSpecification | None

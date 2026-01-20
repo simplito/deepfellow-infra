@@ -214,7 +214,8 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
-            downloaded=self.downloaded,
+            downloaded=self.models_downloaded,
+            service_downloaded=self.service_downloaded,
         )
 
     def is_given_hardware_support_gpu(self, hardware_specification: str | bool | None) -> bool:
@@ -259,16 +260,20 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)
+            self.service_downloaded = True
             return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
 
         return PromiseWithProgress(func=func)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
-        info = self._check_installed()
-        for model in info.models.copy().values():
-            await self._uninstall_model(model.id, UninstallModelIn(purge=options.purge))
+        if info := self.installed:
+            for model in info.models.copy().values():
+                await self._uninstall_model(model.id, UninstallModelIn(purge=options.purge))
+
         self.installed = None
+
         if options.purge:
+            self.service_downloaded = False
             await self._clear_working_dir()
 
     def get_docker_compose_file_path(self, model_id: str | None) -> Path:
@@ -308,7 +313,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
                         service=self.get_id(),
                         type=_const.model_type,
                         installed=installed,
-                        downloaded=model_id in self.downloaded,
+                        downloaded=model_id in self.models_downloaded,
                         size=model.size,
                         custom=model.custom,
                         spec=self.get_model_spec(),
@@ -329,7 +334,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             service=self.get_id(),
             type=_const.model_type,
             installed=installed,
-            downloaded=model_id in self.downloaded,
+            downloaded=model_id in self.models_downloaded,
             size=model.size,
             custom=model.custom,
             spec=self.get_model_spec(),
@@ -456,7 +461,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
                 registration_options=None,
             )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
-            self.downloaded[model_id] = DownloadedInfo(str(local_model_path))
+            self.models_downloaded[model_id] = DownloadedInfo(str(local_model_path))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -472,10 +477,10 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
             await self.docker_service.uninstall_docker(model.docker)
 
-        if options.purge and model_id in self.downloaded:
-            if model_path := self.downloaded[model_id].model_path:
+        if options.purge and model_id in self.models_downloaded:
+            if model_path := self.models_downloaded[model_id].model_path:
                 shutil.rmtree(Path(model_path))
-            del self.downloaded[model_id]
+            del self.models_downloaded[model_id]
 
     async def stop(self) -> None:
         """Stop all the vLLM service Docker containers."""
