@@ -39,6 +39,7 @@ async function showServicesPage() {
                                 <div class="badge ${s.installed ? "badge-installed" : "badge-not-installed"}">
                                     ${s.installed ? s.installed.stage ? `${getStageLabel(s.installed.stage)} ${(s.installed.value * 100).toFixed(1)}%` : "Installed" : "Not installed"}
                                 </div>
+                                ${!s.installed && s.downloaded ? `<div class="badge badge-downloaded">Downloaded</div>` : ""}
                             </div>
                             <div class="box-size service-description">
                                 ${typeof(s.description) == "string" && s.description.length > 0 ?
@@ -60,6 +61,7 @@ async function showServicesPage() {
                                 ${!s.installed ? `<button data-action="install-service" data-service-id="${s.id}">Install</button>` : ""}
                                 ${s.installed && !s.installed.stage ? `<button data-action="open-service-models" data-service-id="${s.id}">Models</button>` : ""}
                                 ${s.installed && !s.installed.stage ? `<button data-action="uninstall-service" data-service-id="${s.id}">Uninstall</button>` : ""}
+                                ${!s.installed && s.downloaded ? `<button data-action="purge-service" data-service-id="${s.id}">Purge</button>` : ""}
                             </div>
                         </div>`
                     );
@@ -579,10 +581,25 @@ root.addEventListener("click", async e => {
             });
         }
         else if (action === "uninstall-service") {
+            showUninstallModal({
+                title: "Uninstalling Model",
+                text: "How do you want to uninstall service? It purge all service files.",
+                onResult: async (removeType) => {
+                    showLoadingPage()
+                    await fetchJson(`/admin/services/${serviceId}`, {
+                        method: "DELETE",
+                        body: JSON.stringify({purge: removeType === "purge"}),
+                        headers: {"Content-Type": "application/json"}
+                    });
+                    showServicesPage();
+                }
+            })
+        }
+        else if (action === "purge-service") {
             showLoadingPage()
             await fetchJson(`/admin/services/${serviceId}`, {
                 method: "DELETE",
-                body: JSON.stringify({purge: false}),
+                body: JSON.stringify({purge: true}),
                 headers: {"Content-Type": "application/json"}
             });
             showServicesPage();

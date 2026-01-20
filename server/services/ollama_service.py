@@ -306,7 +306,8 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
-            downloaded=self.downloaded,
+            downloaded=self.models_downloaded,
+            service_downloaded=self.service_downloaded,
         )
 
     def _get_image(self) -> DockerImage:
@@ -321,6 +322,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)
+            self.service_downloaded = True
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             volumes = [f"{self._get_working_dir()}/main:/root/.ollama"]
             subnet = self.docker_service.get_docker_subnet()
@@ -375,15 +377,16 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         return PromiseWithProgress(func=func)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
-        info = self._check_installed()
-        for model in info.models.copy().values():
-            if model.type == "llm":
-                self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
-            if model.type == "embedding":
-                self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
+        if self.installed:
+            for model in self.installed.models.copy().values():
+                if model.type == "llm":
+                    self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
+                if model.type == "embedding":
+                    self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
+            await self.docker_service.uninstall_docker(self.installed.docker)
         self.installed = None
-        await self.docker_service.uninstall_docker(info.docker)
         if options.purge:
+            self.service_downloaded = False
             await self._clear_working_dir()
 
     async def stop(self) -> None:
@@ -438,7 +441,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                         service=self.get_id(),
                         type=model.type,
                         installed=installed,
-                        downloaded=model_id in self.downloaded,
+                        downloaded=model_id in self.models_downloaded,
                         size=model.size,
                         custom=model.custom,
                         spec=self.get_model_spec(),
@@ -459,7 +462,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             service=self.get_id(),
             type=model.type,
             installed=installed,
-            downloaded=model_id in self.downloaded,
+            downloaded=model_id in self.models_downloaded,
             size=model.size,
             custom=model.custom,
             spec=self.get_model_spec(),
@@ -690,7 +693,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                     registration_options=None,
                 )
             input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
-            self.downloaded[model_id] = DownloadedInfo()
+            self.models_downloaded[model_id] = DownloadedInfo()
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -705,6 +708,6 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model.type == "embedding":
                 self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
 
-        if options.purge and model_id in self.downloaded:
+        if options.purge and model_id in self.models_downloaded:
             await fetch_from(f"{info.base_url}/api/delete", "DELETE", {"name": model_id})
-            del self.downloaded[model_id]
+            del self.models_downloaded[model_id]

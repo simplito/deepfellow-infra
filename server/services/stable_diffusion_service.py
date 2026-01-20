@@ -330,7 +330,8 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
-            downloaded=self.downloaded,
+            downloaded=self.models_downloaded,
+            service_downloaded=self.service_downloaded,
         )
 
     async def update_config(self) -> None:
@@ -378,6 +379,7 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             await self._docker_pull(image, stream)
+            self.service_downloaded = True
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             await self.update_config()
             subnet = self.docker_service.get_docker_subnet()
@@ -435,19 +437,22 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
         return PromiseWithProgress(func=func)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
-        info = self._check_installed()
-        if info.parsed_options.expose_api_at_prefix and info.proxy_registration_id:
-            self.endpoint_registry.unregister_custom_endpoint(
-                info.parsed_options.expose_api_at_prefix,
-                info.proxy_registration_id,
-            )
-        for model in info.models.copy().values():
-            if model.type == "txt2img":
-                self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
+        if info := self.installed:
+            if info.parsed_options.expose_api_at_prefix and info.proxy_registration_id:
+                self.endpoint_registry.unregister_custom_endpoint(
+                    info.parsed_options.expose_api_at_prefix,
+                    info.proxy_registration_id,
+                )
+            for model in info.models.copy().values():
+                if model.type == "txt2img":
+                    self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
+
+            await self.docker_service.uninstall_docker(info.docker)
+
         self.installed = None
-        await self.docker_service.uninstall_docker(info.docker)
 
         if options.purge:
+            self.service_downloaded = False
             await self._clear_working_dir()
 
     async def stop(self) -> None:
@@ -503,7 +508,7 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
                         service=self.get_id(),
                         type=model.type,
                         installed=installed,
-                        downloaded=model_id in self.downloaded,
+                        downloaded=model_id in self.models_downloaded,
                         size=model.size,
                         custom=model.custom,
                         spec=self.get_model_spec(),
@@ -524,7 +529,7 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
             service=self.get_id(),
             type=model.type,
             installed=installed,
-            downloaded=model_id in self.downloaded,
+            downloaded=model_id in self.models_downloaded,
             size=model.size,
             custom=model.custom,
             spec=self.get_model_spec(),
@@ -605,7 +610,7 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
 
             await self.refresh_models()
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
-            self.downloaded[model_id] = DownloadedInfo(str(model_path))
+            self.models_downloaded[model_id] = DownloadedInfo(str(model_path))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -618,9 +623,9 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model.type == "txt2img":
                 self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
 
-        if options.purge and model_id in self.downloaded:
-            Path(self.downloaded[model_id].model_path).unlink()
-            del self.downloaded[model_id]
+        if options.purge and model_id in self.models_downloaded:
+            Path(self.models_downloaded[model_id].model_path).unlink()
+            del self.models_downloaded[model_id]
 
         await self.refresh_models()
 

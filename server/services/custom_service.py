@@ -210,21 +210,24 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
             custom=self.custom,
-            downloaded=self.downloaded,
+            downloaded=self.models_downloaded,
+            service_downloaded=self.service_downloaded,
         )
 
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:  # noqa: ARG001
+            self.service_downloaded = True
             return InstalledInfo(models={}, options=options)
 
         return PromiseWithProgress(func=func)
 
     async def _uninstall(self, options: UninstallServiceIn) -> None:
-        info = self._check_installed()
-        for model in info.models.copy().values():
-            await self._uninstall_model(model.id, UninstallModelIn(purge=options.purge))
+        if info := self.installed:
+            for model in info.models.copy().values():
+                await self._uninstall_model(model.id, UninstallModelIn(purge=options.purge))
         self.installed = None
         if options.purge:
+            self.service_downloaded = False
             await self._clear_working_dir()
 
     def get_docker_compose_file_path(self, model_id: str | None) -> Path:
@@ -295,7 +298,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
                         service=self.get_id(),
                         type=model.model_type,
                         installed=installed,
-                        downloaded=model_id in self.downloaded,
+                        downloaded=model_id in self.models_downloaded,
                         size=model.size,
                         custom=model.custom,
                         spec=model.model_spec,
@@ -316,7 +319,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
             service=self.get_id(),
             type=model.model_type,
             installed=installed,
-            downloaded=model_id in self.downloaded,
+            downloaded=model_id in self.models_downloaded,
             size=model.size,
             custom=model.custom,
             spec=model.model_spec,
@@ -365,7 +368,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
                 registration_options=None,
             )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
-            self.downloaded[model_id] = DownloadedInfo()
+            self.models_downloaded[model_id] = DownloadedInfo()
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -377,8 +380,8 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
             del info.models[model_id]
             self.endpoint_registry.unregister_custom_endpoint(model.prefix, model.registration_id)
             await self.docker_service.uninstall_docker(model.docker_options)
-        if options.purge and model_id in self.downloaded:
-            del self.downloaded[model_id]
+        if options.purge and model_id in self.models_downloaded:
+            del self.models_downloaded[model_id]
             # unsupported
 
     def get_working_dir(self) -> Path:
