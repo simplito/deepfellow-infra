@@ -6,6 +6,7 @@ stages:
   - test
   - build
   - deploy
+  - post-merge
 
 variables:
   DOCKER_TLS_CERTDIR: ""
@@ -111,3 +112,11 @@ deploy_to_dev:
   environment:
     name: dev
     url: https://dfinfra.test.simplito.com/
+
+create_issue_on_merge:
+  image: hub.simplito.com/deepfellow/automatic-issue-creator:0.4.0
+  stage: post-merge
+  only:
+    - main  # change to 'master' if that's your default branch
+  script:
+      - /work/script.sh
