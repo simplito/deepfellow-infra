@@ -11,7 +11,7 @@
 
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urljoin
 
 from fastapi import HTTPException
@@ -186,6 +186,9 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
             service_downloaded=self.service_downloaded,
         )
 
+    def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
+        return DownloadedInfo(**data)
+
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
         if "api_url" not in options.spec:
             options.spec["api_url"] = self.get_default_url()
@@ -214,6 +217,7 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
         if options.purge:
             self.service_downloaded = False
             await self._clear_working_dir()
+            self.models_downloaded = {}
 
     def _add_custom_model(self, model: CustomModel) -> None:
         parsed = try_parse_pydantic(RemoteCustomModel, model.data)
@@ -374,7 +378,7 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
-        if model_id not in info.models:
+        if model_id in info.models:
             model = info.models[model_id]
             del info.models[model_id]
             if model.type == "llm":

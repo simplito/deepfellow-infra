@@ -11,7 +11,7 @@
 
 import json
 from dataclasses import dataclass
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, StringConstraints
@@ -219,6 +219,9 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo])
             raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
         del self.models[parsed.id]
 
+    def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
+        return DownloadedInfo(**data)
+
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledExternalInfo, StreamChunk]:
         parsed_options = try_parse_pydantic(OllamaExternalOptions, options.spec)
 
@@ -256,6 +259,7 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo])
         if options.purge:
             self.service_downloaded = False
             await self._clear_working_dir()
+            self.models_downloaded = {}
 
     async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
@@ -373,7 +377,7 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo])
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
-        if model_id not in info.models:
+        if model_id in info.models:
             model = info.models[model_id]
             del info.models[model_id]
             if model.type == "llm":

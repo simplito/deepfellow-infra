@@ -12,7 +12,7 @@
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -66,16 +66,20 @@ class CsvSpeachesModel(BaseModel):
     size: str
 
 
+type ImageTypes = Literal["cpu", "gpu"]
+
+
 class SpeachesAiConst(BaseModel):
-    image_gpu: DockerImage
-    image_cpu: DockerImage
+    images: dict[ImageTypes, DockerImage]
     audio_speech_models: list[tuple[str, str]]
     audio_transcriptions_models: list[tuple[str, str]]
 
 
 _const = SpeachesAiConst(
-    image_gpu=DockerImage(name="ghcr.io/speaches-ai/speaches:0.9.0-rc.1-cuda", size="5.9 GB"),
-    image_cpu=DockerImage(name="ghcr.io/speaches-ai/speaches:0.9.0-rc.1-cpu", size="1.6 GB"),
+    images={
+        "gpu": DockerImage(name="ghcr.io/speaches-ai/speaches:0.9.0-rc.1-cuda", size="5.9 GB"),
+        "cpu": DockerImage(name="ghcr.io/speaches-ai/speaches:0.9.0-rc.1-cpu", size="1.6 GB"),
+    },
     audio_speech_models=[
         ("speaches-ai/Kokoro-82M-v1.0-ONNX-fp16", ""),
         ("speaches-ai/Kokoro-82M-v1.0-ONNX", ""),
@@ -469,7 +473,7 @@ class ModelInstalledInfo:
 
 
 class SpeachesAIOptions(BaseModel):
-    gpu: bool
+    hardware: bool
 
 
 class SpeachesAIModelOptions(BaseModel):
@@ -529,9 +533,9 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
-        sizes = {"cpu": _const.image_cpu.size}
+        sizes = {"cpu": _const.images["cpu"].size}
         if self.hardware.gpus:
-            sizes["gpu"] = _const.image_gpu.size
+            sizes["gpu"] = _const.images["gpu"].size
         return sizes
 
     def get_spec(self) -> ServiceSpecification:
@@ -577,15 +581,18 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
         )
 
     def _get_image(self, gpu: bool) -> DockerImage:
-        return _const.image_gpu if gpu else _const.image_cpu
+        return _const.images["gpu"] if gpu else _const.images["cpu"]
+
+    def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
+        return DownloadedInfo(**data)
 
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
-        if "gpu" not in options.spec:
-            options.spec["gpu"] = self.docker_service.has_gpu_support
+        if "hardware" not in options.spec:
+            options.spec["hardware"] = options.spec.get("gpu", self.docker_service.has_gpu_support)
         parsed_options = try_parse_pydantic(SpeachesAIOptions, options.spec)
         volumes = [f"{self._get_working_dir()}/cache:/home/ubuntu/.cache/huggingface/hub"]
 
-        image = self._get_image(self.is_given_hardware_support_gpu(parsed_options.gpu))
+        image = self._get_image(self.is_given_hardware_support_gpu(parsed_options.hardware))
 
         await self._verify_docker_image(image.name, options.ignore_warnings)
 
@@ -599,7 +606,7 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
                 container_name=self.docker_service.get_docker_container_name("speaches-ai"),
                 image=image.name,
                 image_port=8000,
-                hardware=self.get_specified_hardware_parts(parsed_options.gpu),
+                hardware=self.get_specified_hardware_parts(parsed_options.hardware),
                 volumes=volumes,
                 env_vars={
                     "ENABLE_UI": "False",
@@ -646,7 +653,10 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
         self.installed = None
         if options.purge:
             self.service_downloaded = False
+            for image in _const.images.values():
+                await self.docker_service.remove_image(image.name)
             await self._clear_working_dir()
+            self.models_downloaded = {}
 
     async def stop(self) -> None:
         """Stop the Speaches AI service Docker container."""

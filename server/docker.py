@@ -497,6 +497,15 @@ class DockerService:
                     progress.set_actual_value(image_bytes)
                     yield progress.get_percentage()
 
+    async def remove_image(self, image_name: str) -> None:
+        """Remove docker image."""
+        try:
+            async with Docker() as docker:
+                await docker.images.delete(image_name, force=True)
+        except DockerError as err:
+            if err.status != 404:
+                raise
+
     async def is_docker_compose_healthy(self, docker_compose_file_path: Path, service_name: str) -> bool:
         """Check whether the service from given docker compose is healthy."""
         docker_compose_cmd = self.docker_compose_cmd

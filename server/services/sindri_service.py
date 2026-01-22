@@ -11,6 +11,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -159,6 +160,9 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
     def _get_image(self) -> DockerImage:
         return _const.image
 
+    def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
+        return DownloadedInfo(**data)
+
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
         parsed_options = try_parse_pydantic(SindriOptions, options.spec)
         image = self._get_image()
@@ -190,7 +194,7 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
             docker_options = DockerOptions(
                 name="sindri",
                 container_name=self.docker_service.get_docker_container_name("sindri"),
-                image=_const.image.name,
+                image=image.name,
                 command="serve /config.yaml",
                 image_port=8080,
                 volumes=volumes,
@@ -233,7 +237,10 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
         self.installed = None
         if options.purge:
             self.service_downloaded = False
+            image = self._get_image()
+            await self.docker_service.remove_image(image.name)
             await self._clear_working_dir()
+            self.models_downloaded = {}
 
     def get_docker_compose_file_path(self, model_id: str | None) -> Path:
         """Get docker compose file path."""
@@ -329,7 +336,7 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
-        if model_id not in info.models:
+        if model_id in info.models:
             model = info.models[model_id]
             del info.models[model_id]
             if model.type == "llm":

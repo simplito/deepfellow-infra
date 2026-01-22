@@ -11,6 +11,7 @@
 
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import Any, Literal
 
 from aiohttp import ClientSession
 from attr import dataclass
@@ -66,15 +67,19 @@ class CoquiModel(BaseModel):
     size: str
 
 
+type ImageTypes = Literal["cpu", "gpu"]
+
+
 class CoquiConst(BaseModel):
-    image_gpu: DockerImage
-    image_cpu: DockerImage
+    images: dict[ImageTypes, DockerImage]
     models: dict[str, CoquiModel]
 
 
 _const = CoquiConst(
-    image_gpu=DockerImage(name="ghcr.io/coqui-ai/tts:dbf1a08a0d4e47fdad6172e433eeb34bc6b13b4e", size="11.0 GB"),
-    image_cpu=DockerImage(name="ghcr.io/coqui-ai/tts-cpu:dbf1a08a0d4e47fdad6172e433eeb34bc6b13b4e", size="11.0 GB"),
+    images={
+        "cpu": DockerImage(name="ghcr.io/coqui-ai/tts:dbf1a08a0d4e47fdad6172e433eeb34bc6b13b4e", size="11.0 GB"),
+        "gpu": DockerImage(name="ghcr.io/coqui-ai/tts-cpu:dbf1a08a0d4e47fdad6172e433eeb34bc6b13b4e", size="11.0 GB"),
+    },
     models={
         "tts_models/en/vctk/vits": CoquiModel(
             docker_name="en-vctk-vits",
@@ -165,9 +170,9 @@ class CoquiService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
-        sizes = {"cpu": _const.image_cpu.size}
+        sizes = {"cpu": _const.images["cpu"].size}
         if self.hardware.gpus:
-            sizes["gpu"] = _const.image_gpu.size
+            sizes["gpu"] = _const.images["gpu"].size
         return sizes
 
     def get_spec(self) -> ServiceSpecification:
@@ -200,9 +205,12 @@ class CoquiService(Base2Service[InstalledInfo, DownloadedInfo]):
             service_downloaded=self.service_downloaded,
         )
 
+    def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
+        return DownloadedInfo(**data)
+
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
-        if "gpu" not in options.spec:
-            options.spec["gpu"] = self.docker_service.has_gpu_support
+        if "hardware" not in options.spec:
+            options.spec["hardware"] = options.spec.get("gpu", self.docker_service.has_gpu_support)
         parsed_options = try_parse_pydantic(CoquiOptions, options.spec)
         image = self._get_image(self.is_given_hardware_support_gpu(parsed_options.hardware))
         await self._verify_docker_image(image.name, options.ignore_warnings)
@@ -221,7 +229,10 @@ class CoquiService(Base2Service[InstalledInfo, DownloadedInfo]):
         self.installed = None
         if options.purge:
             self.service_downloaded = False
+            for image in _const.images.values():
+                await self.docker_service.remove_image(image.name)
             await self._clear_working_dir()
+            self.models_downloaded = {}
 
     def get_docker_compose_file_path(self, model_id: str | None) -> Path:
         """Get docker compose file path."""
@@ -353,7 +364,7 @@ class CoquiService(Base2Service[InstalledInfo, DownloadedInfo]):
         await self._stop_dockers_parallel([model.docker for model in info.models.values()])
 
     def _get_image(self, gpu: bool) -> DockerImage:
-        return _const.image_gpu if gpu else _const.image_cpu
+        return _const.images["gpu"] if gpu else _const.images["cpu"]
 
     def _get_working_output_dir(self) -> Path:
         path = self._get_working_dir() / "output"

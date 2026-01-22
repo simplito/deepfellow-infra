@@ -13,6 +13,7 @@ import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -82,17 +83,21 @@ class VllmCustomModel(BaseModel):
     size: str
 
 
+type ImageTypes = Literal["cpu", "gpu"]
+
+
 class VllmConst(BaseModel):
-    image_gpu: DockerImage
-    image_cpu: DockerImage
+    images: dict[ImageTypes, DockerImage]
     model_type: str
     models: dict[str, VllmModel]
 
 
 _const = VllmConst(
-    image_gpu=DockerImage(name="vllm/vllm-openai:v0.10.2", size="21.0 GB"),
-    # Official docker images based on docs: https://gallery.ecr.aws/q9t5s3a7/vllm-cpu-release-repo
-    image_cpu=DockerImage(name="public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.10.2", size="3.4 GB"),
+    images={
+        "gpu": DockerImage(name="vllm/vllm-openai:v0.10.2", size="21.0 GB"),
+        # Official docker images based on docs: https://gallery.ecr.aws/q9t5s3a7/vllm-cpu-release-repo
+        "cpu": DockerImage(name="public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.10.2", size="3.4 GB"),
+    },
     model_type="llm",
     models={
         "Qwen/Qwen3-0.6B": VllmModel(
@@ -173,9 +178,9 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
         """Return the service size."""
         sizes: dict[str, str] = {}
         if self.hardware.cpu.avx512:
-            sizes["cpu"] = _const.image_cpu.size
+            sizes["cpu"] = _const.images["cpu"].size
         if self.hardware.gpus:
-            sizes["gpu"] = _const.image_gpu.size
+            sizes["gpu"] = _const.images["gpu"].size
         return sizes
 
     def get_description(self) -> str:
@@ -244,18 +249,14 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             )
         return super().get_specified_hardware_parts(hardware_specification)
 
+    def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
+        return DownloadedInfo(**data)
+
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
-        if "gpu" not in options.spec:
-            options.spec["gpu"] = self.docker_service.has_gpu_support
+        if "hardware" not in options.spec:
+            options.spec["hardware"] = options.spec.get("gpu", self.docker_service.has_gpu_support)
         parsed_options = try_parse_pydantic(VllmOptions, options.spec)
-
-        use_gpu = self.is_given_hardware_support_gpu(parsed_options.hardware)
-
-        if not self.docker_service.has_gpu_support:
-            raise HTTPException(400, "Docker doesn't support GPU on this machine.")
-
-        image = self._get_image(use_gpu)
-
+        image = self._get_image(self.is_given_hardware_support_gpu(parsed_options.hardware))
         await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
@@ -274,7 +275,10 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         if options.purge:
             self.service_downloaded = False
+            for image in _const.images.values():
+                await self.docker_service.remove_image(image.name)
             await self._clear_working_dir()
+            self.models_downloaded = {}
 
     def get_docker_compose_file_path(self, model_id: str | None) -> Path:
         """Get docker compose file path."""
@@ -467,7 +471,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
         return PromiseWithProgress(func=func)
 
     def _get_image(self, gpu: bool) -> DockerImage:
-        return _const.image_gpu if gpu else _const.image_cpu
+        return _const.images["gpu"] if gpu else _const.images["cpu"]
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
@@ -478,7 +482,8 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             await self.docker_service.uninstall_docker(model.docker)
 
         if options.purge and model_id in self.models_downloaded:
-            if model_path := self.models_downloaded[model_id].model_path:
+            model = self.models_downloaded[model_id]
+            if model_path := model.model_path:
                 shutil.rmtree(Path(model_path))
             del self.models_downloaded[model_id]
 
