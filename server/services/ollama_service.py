@@ -13,7 +13,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 import aiofiles
 from fastapi import HTTPException
@@ -313,9 +313,12 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
     def _get_image(self) -> DockerImage:
         return _const.image
 
+    def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
+        return DownloadedInfo(**data)
+
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
-        if "gpu" not in options.spec:
-            options.spec["gpu"] = self.docker_service.has_gpu_support
+        if "hardware" not in options.spec:
+            options.spec["hardware"] = options.spec.get("gpu", self.docker_service.has_gpu_support)
         parsed_options = try_parse_pydantic(OllamaOptions, options.spec)
         image = self._get_image()
         await self._verify_docker_image(image.name, options.ignore_warnings)
@@ -342,7 +345,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             docker_options = DockerOptions(
                 name="ollama",
                 container_name=self.docker_service.get_docker_container_name("ollama"),
-                image=_const.image.name,
+                image=image.name,
                 image_port=11434,
                 hardware=self.get_specified_hardware_parts(parsed_options.hardware),
                 volumes=volumes,
@@ -387,7 +390,9 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         self.installed = None
         if options.purge:
             self.service_downloaded = False
+            await self.docker_service.remove_image(_const.image.name)
             await self._clear_working_dir()
+            self.models_downloaded = {}
 
     async def stop(self) -> None:
         """Stop the Ollama service Docker container."""

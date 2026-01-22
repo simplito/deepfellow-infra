@@ -16,7 +16,7 @@ import uuid
 from abc import abstractmethod
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Generic, TypeVar
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -95,7 +95,7 @@ class InstallingService:
         self.task = asyncio.create_task(the_func())
 
 
-class Base2Service[InstalledInfoType, DownloadInfoType](BaseService):
+class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  # noqa: UP046
     config: AppSettings
     endpoint_registry: EndpointRegistry
     service_provider: ServiceProvider
@@ -176,7 +176,7 @@ class Base2Service[InstalledInfoType, DownloadInfoType](BaseService):
     async def load(self, config: ServiceRawConfig) -> None:
         """Load service using the config."""
         cfg = ServiceConfig(**config)
-        self.models_downloaded = cfg.downloaded or {}
+        self.models_downloaded = ({key: self._load_download_info(value) for key, value in cfg.downloaded.items()}) if cfg.downloaded else {}
         self.service_downloaded = cfg.service_downloaded or (cfg.options is not None)  # backward compatibility
         self.custom = cfg.custom or []
         for custom in self.custom:
@@ -188,6 +188,10 @@ class Base2Service[InstalledInfoType, DownloadInfoType](BaseService):
         logger.info(f"{self.get_id()} service checked")  # noqa: G004
         tasks = [asyncio.create_task(self.load_model(model)) for model in cfg.models or []]
         await asyncio.gather(*tasks)
+
+    @abstractmethod
+    def _load_download_info(self, data: dict[str, Any]) -> DownloadInfoType:
+        pass
 
     async def _save(self) -> None:
         cfg = self._generate_config(self.installed)

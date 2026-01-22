@@ -11,6 +11,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -70,16 +71,20 @@ class LlamacppCustomModel(BaseModel):
     size: str
 
 
+type ImageTypes = Literal["cpu", "gpu"]
+
+
 class LlamacppConst(BaseModel):
-    image_gpu: DockerImage
-    image_cpu: DockerImage
+    images: dict[ImageTypes, DockerImage]
     model_type: str
     models: dict[str, LlamacppModel]
 
 
 _const = LlamacppConst(
-    image_gpu=DockerImage(name="ghcr.io/ggml-org/llama.cpp:server-cuda-b6620", size="2.6 GB"),
-    image_cpu=DockerImage(name="ghcr.io/ggml-org/llama.cpp:server-b6617", size="0.1 GB"),
+    images={
+        "gpu": DockerImage(name="ghcr.io/ggml-org/llama.cpp:server-cuda-b6620", size="2.6 GB"),
+        "cpu": DockerImage(name="ghcr.io/ggml-org/llama.cpp:server-b6617", size="0.1 GB"),
+    },
     model_type="llm",
     models={
         "bartowski/mistral-community_pixtral-12b": LlamacppModel(
@@ -182,9 +187,9 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
-        sizes = {"cpu": _const.image_cpu.size}
+        sizes = {"cpu": _const.images["cpu"].size}
         if self.hardware.gpus:
-            sizes["gpu"] = _const.image_gpu.size
+            sizes["gpu"] = _const.images["gpu"].size
         return sizes
 
     def get_spec(self) -> ServiceSpecification:
@@ -225,9 +230,12 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
             service_downloaded=self.service_downloaded,
         )
 
+    def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
+        return DownloadedInfo(**data)
+
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
-        if "gpu" not in options.spec:
-            options.spec["gpu"] = self.docker_service.has_gpu_support
+        if "hardware" not in options.spec:
+            options.spec["hardware"] = options.spec.get("gpu", self.docker_service.has_gpu_support)
         parsed_options = try_parse_pydantic(LLamacppOptions, options.spec)
         image = self._get_image(self.is_given_hardware_support_gpu(parsed_options.hardware))
         await self._verify_docker_image(image.name, options.ignore_warnings)
@@ -246,7 +254,11 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
         self.installed = None
         if options.purge:
             self.service_downloaded = False
+            for image in _const.images.values():
+                await self.docker_service.remove_image(image.name)
+
             await self._clear_working_dir()
+            self.models_downloaded = {}
 
     def get_docker_compose_file_path(self, model_id: str | None) -> Path:
         """Get docker compose file path."""
@@ -349,13 +361,13 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
 
             model_in_container = f"/models/{model_filename}"
             volumes = [f"{local_model_path.absolute()}:{model_in_container}:ro"]
-            image = self._get_image(self.is_given_hardware_support_gpu(info.parsed_options.hardware))
             command_options = ["--host 0.0.0.0", "--port 8080", f"--model {model_in_container}"]
             if model.jinja:
                 command_options.append("--jinja")
             command = " ".join(command_options)
             subnet = self.docker_service.get_docker_subnet()
             service_name = f"{self.get_id()}-{normalize_name(model_id)}"
+            image = self._get_image(self.is_given_hardware_support_gpu(info.parsed_options.hardware))
             docker_options = DockerOptions(
                 name=service_name,
                 container_name=self.docker_service.get_docker_container_name(service_name),
@@ -397,11 +409,11 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
         return PromiseWithProgress(func=func)
 
     def _get_image(self, gpu: bool) -> DockerImage:
-        return _const.image_gpu if gpu else _const.image_cpu
+        return _const.images["gpu"] if gpu else _const.images["cpu"]
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
-        if model_id not in info.models:
+        if model_id in info.models:
             model = info.models[model_id]
             del info.models[model_id]
             self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)

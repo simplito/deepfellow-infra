@@ -12,7 +12,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
@@ -214,6 +214,9 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
             service_downloaded=self.service_downloaded,
         )
 
+    def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
+        return DownloadedInfo(**data)
+
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:  # noqa: ARG001
             self.service_downloaded = True
@@ -229,6 +232,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
         if options.purge:
             self.service_downloaded = False
             await self._clear_working_dir()
+            self.models_downloaded = {}
 
     def get_docker_compose_file_path(self, model_id: str | None) -> Path:
         """Get docker compose file path."""
@@ -345,7 +349,8 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
             model_dir.mkdir(parents=True, exist_ok=True)
             subnet = self.docker_service.get_docker_subnet()
             docker_options = model.options
-            await self._docker_pull(DockerImage(name=docker_options.image, size=model.size), stream)
+            image = DockerImage(name=docker_options.image, size=model.size)
+            await self._docker_pull(image, stream)
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
             container_host = self.docker_service.get_container_host(subnet, docker_options.name)
@@ -375,14 +380,15 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
-        if (model_id not in info.models) or (model_id not in self.models):
+        if model_id in info.models:
             model = info.models[model_id]
             del info.models[model_id]
             self.endpoint_registry.unregister_custom_endpoint(model.prefix, model.registration_id)
             await self.docker_service.uninstall_docker(model.docker_options)
         if options.purge and model_id in self.models_downloaded:
+            model = info.models[model_id]
+            await self.docker_service.remove_image(model.docker_options.image)
             del self.models_downloaded[model_id]
-            # unsupported
 
     def get_working_dir(self) -> Path:
         """Get working dir."""

@@ -119,19 +119,23 @@ class StableDiffusionCustomModel(BaseModel):
     size: str
 
 
+type ImageTypes = Literal["cpu", "gpu"]
+
+
 class StableDiffusionConst(BaseModel):
-    image_gpu: DockerImage
-    image_cpu: DockerImage
+    images: dict[ImageTypes, DockerImage]
     models: dict[str, StableDiffusionModel]
 
 
 _const = StableDiffusionConst(
-    image_gpu=DockerImage(
-        name="vladmandic/sdnext-cuda:latest@sha256:10f9ab600c245b9ce83be5a55abb64b46e115ef8508f5ffc69eed8fa0fc28ce8", size="9.4 GB"
-    ),
-    image_cpu=DockerImage(
-        name="vladmandic/sdnext-cuda:latest@sha256:10f9ab600c245b9ce83be5a55abb64b46e115ef8508f5ffc69eed8fa0fc28ce8", size="9.4 GB"
-    ),
+    images={
+        "gpu": DockerImage(
+            name="vladmandic/sdnext-cuda:latest@sha256:10f9ab600c245b9ce83be5a55abb64b46e115ef8508f5ffc69eed8fa0fc28ce8", size="9.4 GB"
+        ),
+        "cpu": DockerImage(
+            name="vladmandic/sdnext-cuda:latest@sha256:10f9ab600c245b9ce83be5a55abb64b46e115ef8508f5ffc69eed8fa0fc28ce8", size="9.4 GB"
+        ),
+    },
     models={
         "Plant Milk Walnut": StableDiffusionModel(
             filetype="Stable-diffusion",
@@ -283,9 +287,9 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
-        sizes = {"cpu": _const.image_cpu.size}
+        sizes = {"cpu": _const.images["cpu"].size}
         if self.hardware.gpus:
-            sizes["gpu"] = _const.image_gpu.size
+            sizes["gpu"] = _const.images["gpu"].size
         return sizes
 
     def get_spec(self) -> ServiceSpecification:
@@ -357,9 +361,15 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
             data.update(old_content)
             await f.write(json.dumps(data, indent=4))
 
+    def _get_image(self, gpu: bool) -> DockerImage:
+        return _const.images["gpu"] if gpu else _const.images["cpu"]
+
+    def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
+        return DownloadedInfo(**data)
+
     async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
-        if "gpu" not in options.spec:
-            options.spec["gpu"] = self.docker_service.has_gpu_support
+        if "hardware" not in options.spec:
+            options.spec["hardware"] = options.spec.get("gpu", self.docker_service.has_gpu_support)
         if platform.system() == "Darwin":
             raise HTTPException(400, "Stable Diffusion is not supported on macOS")
         parsed_options = try_parse_pydantic(SDOptions, options.spec)
@@ -368,13 +378,7 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
             f"{self._get_working_data_dir()}:/mnt/data",
             f"{self._get_working_logs()}:/app/sdnext.log",
         ]
-        use_gpu = self.is_given_hardware_support_gpu(parsed_options.hardware)
-        if use_gpu:
-            if not self.docker_service.has_gpu_support:
-                raise HTTPException(400, "Docker doesn't support GPU on this machine.")
-            image = _const.image_gpu
-        else:
-            image = _const.image_cpu
+        image = self._get_image(self.is_given_hardware_support_gpu(parsed_options.hardware))
         await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
@@ -453,7 +457,10 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         if options.purge:
             self.service_downloaded = False
+            for image in _const.images.values():
+                await self.docker_service.remove_image(image.name)
             await self._clear_working_dir()
+            self.models_downloaded = {}
 
     async def stop(self) -> None:
         """Stop the Stable Diffusion service Docker container."""
@@ -617,7 +624,7 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
         info = self._check_installed()
-        if model_id not in info.models:
+        if model_id in info.models:
             model = info.models[model_id]
             del info.models[model_id]
             if model.type == "txt2img":

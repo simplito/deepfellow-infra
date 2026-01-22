@@ -16,6 +16,7 @@ from collections.abc import AsyncGenerator
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
+from urllib.parse import urlparse, urlunparse
 
 from aiohttp import ClientSession
 from fastapi import HTTPException
@@ -157,7 +158,8 @@ class HuggingFaceRepoWithBlobsDownloader(BDownloader):
 
     async def download(self, url: str, model_dir: Path) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
-        model_id = url
+        url_parsed = urlparse(url)
+        model_id = urlunparse(url_parsed._replace(query=""))
         commit_id = await self._get_commit_id(model_id)
         files = await self._get_files(model_id)
         blobs_dir = model_dir / "blobs"
@@ -253,7 +255,8 @@ class HuggingFaceRepoDownloader(BaseDownloader):
 
     async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
-        model_id = url
+        url_parsed = urlparse(url)
+        model_id = urlunparse(url_parsed._replace(query=""))
         if model_id.startswith("http"):
             match = re.search(self.huggingface_url_pattern, url)
             if match:
@@ -302,12 +305,14 @@ class HuggingFaceModelDownloader(BaseDownloader):
 
     def check_url(self, url: str) -> bool:
         """Check is url handled by this downloader."""
-        return bool(url.startswith("https://huggingface.co/") and Path(url).suffix == ".gguf")
+        return bool(url.startswith("https://huggingface.co/") and ".gguf" in url)
 
     async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
+        url_parsed = urlparse(url)
+        url_without_query = urlunparse(url_parsed._replace(query=""))
         try:
-            async for packet in Utils.ensure_model_downloaded(url, model_dir, temp_dir, filename, self.headers):
+            async for packet in Utils.ensure_model_downloaded(url_without_query, model_dir, temp_dir, filename, self.headers):
                 yield packet
         except HttpClientError as e:
             raise HTTPException(500, self.create_error_msg(e.body)) from e
