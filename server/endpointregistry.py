@@ -9,19 +9,23 @@
 
 """Endpoint registry holds callbacks for given endpoints and models."""
 
+import asyncio
 import logging
+import time
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar
 from urllib.parse import urljoin
 
+import aiohttp
 from aiohttp import JsonPayload
 from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from server.config import AppSettings
+from server.metrics_registry import MetricsRegistry
 from server.models.api import (
     ApiModel,
     ApiModels,
@@ -38,7 +42,7 @@ from server.models.api import (
     ModelType,
 )
 from server.models.common import JsonSerializable, StarletteResponse
-from server.utils.core import Utils, make_http_request
+from server.utils.core import HttpClientError, Utils, make_http_request
 from server.websockets.models import RegistrationId, UsageChangeRequest
 from server.websockets.parent_infra import ParentInfra
 
@@ -218,11 +222,13 @@ class EndpointRegistry:
         config: AppSettings,
         parent_infra: ParentInfra,
         model_tester: "ModelTester",
+        metrics_registry: MetricsRegistry,
     ):
         self.config = config
         self.parent_infra = parent_infra
         self.parent_infra.endpoint_registry = self
         self.model_tester = model_tester
+        self.metrics_registry = metrics_registry
         self.registry = dict[RegistrationId, RegistryEntry]()
         self.chat_completion_endpoints = Endpoint[ChatCompletionEndpoint](self.registry, self.parent_infra)
         self.embeddings_endpoints = Endpoint[SimpleEndpoint[EmbeddingRequest]](self.registry, self.parent_infra)
@@ -768,9 +774,17 @@ class EndpointRegistry:
         if model.origin != "local":
             return await func()
         self._add_usage(model)
+        self.metrics_registry.requests_in_flight.labels(model_type=model.type).inc()
+        start_time = time.perf_counter()
+
         try:
             resp = await func()
-        except Exception:
+        except Exception as e:
+            duration = time.perf_counter() - start_time
+            self.metrics_registry.request_duration.labels(model_name=model.name, model_type=model.type).observe(duration)
+            self.metrics_registry.request_total.labels(model_name=model.name, model_type=model.type, status="error").inc()
+            self.metrics_registry.request_errors.labels(model_name=model.name, error_type=_classify_error(e)).inc()
+            self.metrics_registry.requests_in_flight.labels(model_type=model.type).dec()
             self._remove_usage(model)
             raise
 
@@ -787,10 +801,17 @@ class EndpointRegistry:
                 finally:
                     if log_payload:
                         logger.info(f"DUMP RESPONSE PAYLOAD {b''.join(chunks).decode('utf-8')}")  # noqa: G004
+                    duration = time.perf_counter() - start_time
+                    self.metrics_registry.request_duration.labels(model_name=model.name, model_type=model.type).observe(duration)
+                    self.metrics_registry.request_total.labels(model_name=model.name, model_type=model.type, status="success").inc()
+                    self.metrics_registry.requests_in_flight.labels(model_type=model.type).dec()
                     self._remove_usage(model)
 
             return StreamingResponse(create_generator(), media_type=resp.media_type, status_code=resp.status_code, headers=resp.headers)  # pyright: ignore[reportReturnType]
-
+        duration = time.perf_counter() - start_time
+        self.metrics_registry.request_duration.labels(model_name=model.name, model_type=model.type).observe(duration)
+        self.metrics_registry.request_total.labels(model_name=model.name, model_type=model.type, status="success").inc()
+        self.metrics_registry.requests_in_flight.labels(model_type=model.type).dec()
         self._remove_usage(model)
         return resp
 
@@ -812,6 +833,17 @@ class EndpointRegistry:
         if not entry:
             raise HTTPException(400, "Model not installed")
         return await self.model_tester.test_model(entry)
+
+
+def _classify_error(e: Exception) -> str:
+    """Classify an exception into an error type for metrics."""
+    if isinstance(e, asyncio.TimeoutError):
+        return "timeout"
+    if isinstance(e, aiohttp.ClientError):
+        return "connection_error"
+    if isinstance(e, HttpClientError):
+        return "http_error"
+    return "model_error"
 
 
 async def post_json(data: BaseModel, options: ProxyOptions, request: Request | None = None) -> StreamingResponse:
