@@ -2123,6 +2123,10 @@
       "size": "5.1GB"
     },
     {
+      "name": "SpeakLeash/bielik-11b-v3.0-instruct:Q4_K_M",
+      "size": "6.7GB"
+    },
+    {
       "name": "mannix/jan-nano",
       "size": "2.3GB"
     },

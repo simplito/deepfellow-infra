@@ -129,6 +129,11 @@ _const = LlamacppConst(
             size="6.7GB",
             jinja=True,
         ),
+        "speakleash/Bielik-11B-v3.0-Instruct": LlamacppModel(
+            url="https://huggingface.co/speakleash/Bielik-11B-v3.0-Instruct-GGUF/resolve/main/Bielik-11B-v3.0-Instruct.Q4_K_M.gguf",
+            size="6.7GB",
+            jinja=True,
+        ),
     },
 )
 
