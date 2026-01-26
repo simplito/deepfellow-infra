@@ -360,10 +360,13 @@ class DockerService:
                     and isinstance(digest, str)
                 ):
                     new_image = image.split("@")[0] + "@" + digest
-                    image_manifest = await self.get_docker_manifest(new_image)
-                    os = image_manifest.get("os", "")
-                    architecture = image_manifest.get("architecture", "")
-                    variant = image_manifest.get("variant", "")
+                    try:
+                        image_manifest = await self.get_docker_manifest(new_image)
+                        os = image_manifest.get("os", "")
+                        architecture = image_manifest.get("architecture", "")
+                        variant = image_manifest.get("variant", "")
+                    except RuntimeError:
+                        return []
                     return [normalize_docker_platform(f"{os}/{architecture}{'/' + variant if variant else ''}")]
 
                 return []
@@ -389,7 +392,7 @@ class DockerService:
         warnings: list[str] = []
         try:
             platforms = await self.get_image_platforms(image)
-            if self.host_platform not in platforms:
+            if self.host_platform not in platforms and platforms:
                 warnings.append(
                     f"The docker image {image} is not compatible with the current system, "
                     f"platform mismatch, {self.host_platform} not in [{','.join(platforms)}]."
