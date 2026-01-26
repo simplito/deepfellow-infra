@@ -437,7 +437,7 @@ async function showServicePage(id) {
         const filtered = list.filter(x =>
             (!filterl || x.id.toLowerCase().includes(filterl)) &&
             (modelType === "__all" || x.type === modelType) &&
-            (installed === null || x.installed === installed) &&
+            (installed === null || !!x.installed === !!installed) &&
             (downloaded === null || x.downloaded === downloaded) &&
             (custom === null || (!!x.custom) === custom)
         );
