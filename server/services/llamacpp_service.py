@@ -82,8 +82,8 @@ class LlamacppConst(BaseModel):
 
 _const = LlamacppConst(
     images={
-        "gpu": DockerImage(name="ghcr.io/ggml-org/llama.cpp:server-cuda-b6620", size="2.6 GB"),
-        "cpu": DockerImage(name="ghcr.io/ggml-org/llama.cpp:server-b6617", size="0.1 GB"),
+        "gpu": DockerImage(name="ghcr.io/ggml-org/llama.cpp:server-cuda-b7836", size="2.8 GB"),
+        "cpu": DockerImage(name="ghcr.io/ggml-org/llama.cpp:server-b7836", size="0.1 GB"),
     },
     model_type="llm",
     models={
