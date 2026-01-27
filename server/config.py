@@ -40,6 +40,10 @@ class AppSettings(BaseSettings):
     stop_containers_on_shutdown: str = ""
     nvidia_gpus_count: int = 1
 
+    # metrics are authorized by HTTPBasicAuth
+    metrics_username: str = ""
+    metrics_password: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

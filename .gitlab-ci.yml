@@ -49,6 +49,13 @@ pyright:
   script:
     - PYRIGHT_PYTHON_NODE_VERSION=24.10.0 uv run pyright
 
+check-auth:
+  <<: *uv
+  stage: analysis
+  script:
+    - uv run python ./server/scripts/check_auth.py static ./server/ -v
+    - uv run python ./server/scripts/check_auth.py runtime ./server/main.py -v
+
 pytest:
   <<: *uv
   stage: test
