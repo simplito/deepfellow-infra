@@ -40,6 +40,7 @@ from server.models.api import (
     ModelId,
     ModelProps,
     ModelType,
+    ResponsesRequest,
 )
 from server.models.common import JsonSerializable, StarletteResponse
 from server.utils.core import HttpClientError, Utils, make_http_request
@@ -67,6 +68,7 @@ class CustomEndpoint(NamedTuple):
 class ChatCompletionEndpoint:
     on_chat_completion: EndpointCallback[ChatCompletionRequest] | None = None
     on_completion: EndpointCallback[CompletionLegacyRequest] | None = None
+    on_responses: EndpointCallback[ResponsesRequest] | None = None
 
 
 class RegisteredModel[T](BaseModel):
@@ -279,11 +281,20 @@ class EndpointRegistry:
         registration_options: RegistrationOptions | None,
     ) -> RegistrationId:
         """Register chat completion endpoint for given model."""
-        model_type: ModelType = "llm"
-        if not endpoint.on_chat_completion and endpoint.on_completion:
-            model_type = "llm-only-v1"
-        if endpoint.on_chat_completion and not endpoint.on_completion:
-            model_type = "llm-only-v2"
+        if not endpoint.on_responses and endpoint.on_chat_completion and endpoint.on_completion:
+            model_type = "llm-v1-v2"
+        elif endpoint.on_responses and not endpoint.on_chat_completion and endpoint.on_completion:
+            model_type = "llm-v1-v3"
+        elif endpoint.on_responses and endpoint.on_chat_completion and not endpoint.on_completion:
+            model_type = "llm-v2-v3"
+        elif endpoint.on_responses and not endpoint.on_chat_completion and not endpoint.on_completion:
+            model_type = "llm-v3"
+        elif not endpoint.on_responses and endpoint.on_chat_completion and not endpoint.on_completion:
+            model_type = "llm-v2"
+        elif not endpoint.on_responses and not endpoint.on_chat_completion and endpoint.on_completion:
+            model_type = "llm-v1"
+        else:
+            model_type: ModelType = "llm"
         return self.chat_completion_endpoints.add_model(model, props, endpoint, model_type, registration_options)
 
     def register_chat_completion_as_proxy(
@@ -292,6 +303,7 @@ class EndpointRegistry:
         props: ModelProps,
         chat_completions: ProxyOptions | None,
         completions: ProxyOptions | None,
+        responses: ProxyOptions | None,
         registration_options: RegistrationOptions | None,
     ) -> RegistrationId:
         """Register chat completion for given model as a proxy."""
@@ -310,6 +322,12 @@ class EndpointRegistry:
                 return await post_json(body, completions, request)
 
             endpoint.on_completion = on_completion_request
+        if responses:
+
+            async def on_responses_request(body: ResponsesRequest, request: Request | None) -> StreamingResponse:
+                return await post_json(body, responses, request)
+
+            endpoint.on_responses = on_responses_request
 
         return self.register_chat_completion(model, props, endpoint, registration_options)
 
@@ -506,7 +524,7 @@ class EndpointRegistry:
         if changed:
             self.parent_infra.send_models_list()
 
-    def _register_proxy(
+    def _register_proxy(  # noqa: C901
         self,
         model_id: ModelId,
         type: ModelType,
@@ -528,9 +546,28 @@ class EndpointRegistry:
                     url=urljoin(url, "v1/completions"),
                     headers={"Authorization": f"Bearer {api_key}"},
                 ),
+                responses=ProxyOptions(
+                    url=urljoin(url, "v1/responses"),
+                    headers={"Authorization": f"Bearer {api_key}"},
+                ),
                 registration_options=registration_options,
             )
-        elif type == "llm-only-v1":
+        elif type == "llm-v1-v2":
+            self.register_chat_completion_as_proxy(
+                model=model_id,
+                props=props,
+                chat_completions=ProxyOptions(
+                    url=urljoin(url, "v1/chat/completions"),
+                    headers={"Authorization": f"Bearer {api_key}"},
+                ),
+                completions=ProxyOptions(
+                    url=urljoin(url, "v1/completions"),
+                    headers={"Authorization": f"Bearer {api_key}"},
+                ),
+                responses=None,
+                registration_options=registration_options,
+            )
+        elif type == "llm-v1-v3":
             self.register_chat_completion_as_proxy(
                 model=model_id,
                 props=props,
@@ -539,9 +576,13 @@ class EndpointRegistry:
                     url=urljoin(url, "v1/completions"),
                     headers={"Authorization": f"Bearer {api_key}"},
                 ),
+                responses=ProxyOptions(
+                    url=urljoin(url, "v1/responses"),
+                    headers={"Authorization": f"Bearer {api_key}"},
+                ),
                 registration_options=registration_options,
             )
-        elif type == "llm-only-v2":
+        elif type == "llm-v2-v3":
             self.register_chat_completion_as_proxy(
                 model=model_id,
                 props=props,
@@ -550,6 +591,46 @@ class EndpointRegistry:
                     headers={"Authorization": f"Bearer {api_key}"},
                 ),
                 completions=None,
+                responses=ProxyOptions(
+                    url=urljoin(url, "v1/responses"),
+                    headers={"Authorization": f"Bearer {api_key}"},
+                ),
+                registration_options=registration_options,
+            )
+        elif type == "llm-v1":
+            self.register_chat_completion_as_proxy(
+                model=model_id,
+                props=props,
+                chat_completions=None,
+                completions=ProxyOptions(
+                    url=urljoin(url, "v1/completions"),
+                    headers={"Authorization": f"Bearer {api_key}"},
+                ),
+                responses=None,
+                registration_options=registration_options,
+            )
+        elif type == "llm-v2":
+            self.register_chat_completion_as_proxy(
+                model=model_id,
+                props=props,
+                chat_completions=ProxyOptions(
+                    url=urljoin(url, "v1/chat/completions"),
+                    headers={"Authorization": f"Bearer {api_key}"},
+                ),
+                completions=None,
+                responses=None,
+                registration_options=registration_options,
+            )
+        elif type == "llm-v3":
+            self.register_chat_completion_as_proxy(
+                model=model_id,
+                props=props,
+                chat_completions=None,
+                completions=None,
+                responses=ProxyOptions(
+                    url=urljoin(url, "v1/responses"),
+                    headers={"Authorization": f"Bearer {api_key}"},
+                ),
                 registration_options=registration_options,
             )
         elif type == "tts":
@@ -635,6 +716,40 @@ class EndpointRegistry:
         """Check whether the custom endpoint is registered."""
         return self.custom_endpoints.has_model(url)
 
+    async def execute_responses(
+        self,
+        body: ResponsesRequest,
+        request: Request | None = None,
+        registration_id: RegistrationId | None = None,
+    ) -> StarletteResponse:
+        """Process chat completion request."""
+        if self.config.is_log_payloads_enabled():
+            logger.info(f"DUMP REQUEST PAYLOAD /v1/chat/responses {body.model_dump_json(exclude_none=True)}")  # noqa: G004
+
+        endpoint = self.chat_completion_endpoints.get_model(
+            body.model,
+            filter=lambda x: x.on_responses is not None,
+            registration_id=registration_id,
+        )
+        on_responses = endpoint.endpoint.on_responses if endpoint else None
+        if not endpoint or not on_responses:
+            msg = "Given model not support this endpoint.\n"
+            if endpoint:
+                supported_endpoints = []
+                if endpoint.endpoint.on_chat_completion:
+                    supported_endpoints.append("/v1/chat/completions")
+                if endpoint.endpoint.on_completion:
+                    supported_endpoints.append("/v1/completions")
+
+                msg = msg + "Supported endpoints:\n" + ", ".join(supported_endpoints)
+
+            raise HTTPException(400, msg)
+
+        async def func() -> StarletteResponse:
+            return await on_responses(body, request)
+
+        return await self.with_usage(endpoint, func, self.config.is_log_payloads_enabled())
+
     async def execute_chat_completion(
         self,
         body: ChatCompletionRequest,
@@ -652,11 +767,16 @@ class EndpointRegistry:
         )
         on_chat_completion = endpoint.endpoint.on_chat_completion if endpoint else None
         if not endpoint or not on_chat_completion:
-            msg = (
-                "Given model is only supported in legacy /v1/completions"
-                if endpoint and endpoint.endpoint.on_completion
-                else "Given model is not supported"
-            )
+            msg = "Given model not support this endpoint.\n"
+            if endpoint:
+                supported_endpoints = []
+                if endpoint.endpoint.on_chat_completion:
+                    supported_endpoints.append("/v1/chat/completions")
+                if endpoint.endpoint.on_completion:
+                    supported_endpoints.append("/v1/completions")
+
+                msg = msg + "Supported endpoints:\n" + ", ".join(supported_endpoints)
+
             raise HTTPException(400, msg)
 
         async def func() -> StarletteResponse:
@@ -678,11 +798,16 @@ class EndpointRegistry:
         )
         on_completion = endpoint.endpoint.on_completion if endpoint else None
         if not endpoint or not on_completion:
-            msg = (
-                "Given model is only supported in /v1/chat/completions"
-                if endpoint and endpoint.endpoint.on_chat_completion
-                else "Given model is not supported"
-            )
+            msg = "Given model not support this endpoint.\n"
+            if endpoint:
+                supported_endpoints = []
+                if endpoint.endpoint.on_chat_completion:
+                    supported_endpoints.append("/v1/chat/completions")
+                if endpoint.endpoint.on_completion:
+                    supported_endpoints.append("/v1/completions")
+
+                msg = msg + "Supported endpoints:\n" + ", ".join(supported_endpoints)
+
             raise HTTPException(400, msg)
 
         async def func() -> StarletteResponse:

@@ -25,6 +25,8 @@ from server.models.api import (
     CreateTranscriptionRequest,
     EmbeddingRequest,
     ImagesRequest,
+    ResponsesRequest,
+    ResponsesResponse,
 )
 from server.models.common import StarletteResponse
 
@@ -51,6 +53,17 @@ async def on_model(
 ) -> ApiModel:
     """Process model request."""
     return endpoint_registry.get_model(model_id)
+
+
+@router.post("/v1/responses")
+async def on_responses(
+    request: Request,
+    body: Annotated[ResponsesRequest, Body(...)],
+    _: Annotated[str, Depends(auth_server)],
+    endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+) -> ResponsesResponse | StarletteResponse:
+    """Process chat completions request."""
+    return await endpoint_registry.execute_responses(body, request)
 
 
 @router.post("/v1/chat/completions")
