@@ -12,7 +12,7 @@
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, WebSocket
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBasic, HTTPBasicCredentials, HTTPBearer
 
 from server.config import AppSettings
 from server.endpointregistry import EndpointRegistry
@@ -22,6 +22,7 @@ from server.websockets.infra_websocket_server import InfraWebsocketServer
 from server.websockets.parent_infra import ParentInfra
 
 oauth2_scheme = HTTPBearer()
+basic_security = HTTPBasic()
 
 
 def get_dependency(request: Request | WebSocket, name: str) -> Any:  # noqa: ANN401
@@ -83,3 +84,15 @@ def auth_admin(
         return api_key.credentials
 
     raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+async def auth_metrics(
+    request: Request,
+    auth: Annotated[HTTPBasicCredentials, Depends(basic_security)],
+) -> None:
+    """Authenticate using HTTP Basic Auth."""
+    config: AppSettings = request.app.state.config
+    if (auth.username == config.metrics_username) and (auth.password == config.metrics_password):
+        return
+
+    raise HTTPException(401, "Not Authenticated.")

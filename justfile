@@ -16,6 +16,12 @@ ruff *FLAGS:
 ruff-format *FLAGS:
     uv run ruff format server/ tests/ {{FLAGS}}
 
+auth-static:
+    uv run python ./server/scripts/check_auth.py static ./server/ -v
+
+auth-runtime:
+    uv run python ./server/scripts/check_auth.py runtime ./server/main.py -v
+
 pyright:
     uv run pyright
 
@@ -33,7 +39,7 @@ todo:
 license-check *FLAGS:
     uv run scripts/check_license_header.py {{FLAGS}}
 
-check: license-check ruff ruff-format pyright
+check: license-check ruff ruff-format pyright auth-static auth-runtime
 
 ui-rebuild:
    (cd $(git rev-parse --show-toplevel)/webui && npm run buildx)

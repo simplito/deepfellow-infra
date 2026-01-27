@@ -13,7 +13,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response
 
-from server.core.dependencies import get_metrics_service
+from server.core.dependencies import auth_metrics, get_metrics_service
 from server.metrics import MetricsService
 
 router = APIRouter(tags=["Metrics"])
@@ -22,6 +22,7 @@ router = APIRouter(tags=["Metrics"])
 @router.get("/metrics")
 async def metrics_endpoint(
     metrics_service: Annotated[MetricsService, Depends(get_metrics_service)],
+    _: Annotated[None, Depends(auth_metrics)],
 ) -> Response:
     """Get Prometheus metrics."""
     return Response(

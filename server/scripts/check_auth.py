@@ -26,10 +26,11 @@ from fastapi.routing import APIRoute
 
 app = typer.Typer(help="FastAPI authorization audit tool")
 
-AUTH_DEPENDENCIES = {"auth_admin", "auth_server"}
+AUTH_DEPENDENCIES = {"auth_admin", "auth_server", "auth_metrics"}
 
 PUBLIC_WHITELIST: dict[str, set[str] | None] = {
-    "/admin/services/model/test/{registration_id}": {"GET"},
+    "/health": {"GET"},
+    "/admin/mesh/check": {"POST"},
 }
 
 
