@@ -29,6 +29,7 @@ from server.models.api import (
     CreateTranscriptionRequest,
     EmbeddingRequest,
     ImagesRequest,
+    ResponsesRequest,
     UserMessage,
 )
 from server.models.common import JsonSerializable, StarletteResponse
@@ -82,9 +83,11 @@ class ModelTester:
             return {"error": "Internal Server Error"}
 
     async def _perform_test(self, entry: RegistryEntry) -> JsonSerializable:
-        if entry.registered_model.type == "llm" or entry.registered_model.type == "llm-only-v2":
+        if entry.registered_model.type in ["llm", "llm-v3", "llm-v2-v3", "llm-v1-v3"]:
+            return await self._test_responses(entry.registered_model.name, entry.registered_model.endpoint)
+        if entry.registered_model.type in ["llm-v2", "llm-v1-v2"]:
             return await self._test_chat_completions(entry.registered_model.name, entry.registered_model.endpoint)
-        if entry.registered_model.type == "llm-only-v1":
+        if entry.registered_model.type == "llm-v1":
             return await self._test_completions(entry.registered_model.name, entry.registered_model.endpoint)
         if entry.registered_model.type == "embedding":
             return await self._test_embedding(entry.registered_model.name, entry.registered_model.endpoint)
@@ -97,6 +100,20 @@ class ModelTester:
         if entry.registered_model.type == "custom":
             raise TestError("Custom model cannot be tested")
         raise RuntimeError(f"Given model cannot be tested, unsupported type {entry.registered_model.type}")  # noqa: EM102
+
+    async def _test_responses(self, model: str, endpoint: ChatCompletionEndpoint) -> JsonSerializable:
+        if not endpoint.on_responses:
+            raise RuntimeError("LLM has no on_responses callback")
+        (my_resp, json) = await self._read_json(
+            await endpoint.on_responses(
+                ResponsesRequest(model=model, max_output_tokens=20, input="Say hello!"),
+                None,
+            )
+        )
+        try:
+            return {"result": "ok", "output": json["output"][0]["summary"][0]["text"], "details": json}
+        except Exception:
+            raise TestError("Cannot read message content", my_resp)  # noqa: B904
 
     async def _test_chat_completions(self, model: str, endpoint: ChatCompletionEndpoint) -> JsonSerializable:
         if not endpoint.on_chat_completion:

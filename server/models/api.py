@@ -10,7 +10,9 @@
 """Models for chat completions."""
 
 from abc import abstractmethod
-from typing import Annotated, Any, Literal
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal, Union
+from uuid import uuid4
 
 from aiohttp import FormData
 from fastapi import File as FastApiFile
@@ -351,7 +353,9 @@ class ModelProps(BaseModel):
     private: bool
 
 
-ModelType = Literal["tts", "stt", "txt2img", "embedding", "llm", "llm-only-v1", "llm-only-v2", "custom"]
+ModelType = Literal[
+    "tts", "stt", "txt2img", "embedding", "llm", "llm-v1", "llm-v2", "llm-v1-v2", "llm-v2-v3", "llm-v1-v3", "llm-v3", "custom"
+]
 
 type ModelId = str
 type RegistrationId = str
@@ -693,3 +697,721 @@ class CompletionLegacyRequest(BaseModel):
         float | None, Field(ge=0.0, le=1.0, description="Nucleus sampling - consider tokens with top_p probability mass (0-1).")
     ] = None
     user: Annotated[str | None, Field(description="Unique identifier for end-user to help monitor and detect abuse.")] = None
+
+
+type SortOrder = Literal["asc", "desc"]
+
+
+class McpAllowedToolsFilter(BaseModel):
+    tool_names: list[str]
+
+
+class InputImageMask(BaseModel):
+    file_id: Annotated[str | None, Field(description="File ID for mask image")]
+    image_url: Annotated[str | None, Field(description="Base64 encoded image mask")]
+
+
+class FunctionDef(BaseModel):
+    type: Literal["function"] = "function"
+    name: str
+    parameters: str
+    strict: bool = True
+    description: str = ""
+
+
+class McpToolDef(BaseModel):
+    type: Literal["mcp"] = "mcp"
+    server_label: Annotated[str, Field(description="Label for MCP server identification", examples=["git mcp"])]
+    server_url: Annotated[str, Field(description="URL for MCP server endpoint", examples=["http://127.0.0.1:8001/mcp"])]
+    allowed_tools: Annotated[list[str] | McpAllowedToolsFilter | None, Field(description="List of allowed tool names or filter object")] = (
+        None
+    )
+    headers: Annotated[dict[str, str] | None, Field(description="HTTP headers to send")] = None
+    require_approval: Annotated[
+        dict[str, str] | str | None, Field(description="Tools requiring approval. Defaults to 'always'", examples=["always", "never"])
+    ] = "always"
+    server_description: str = ""
+
+
+class ImageGenToolDef(BaseModel):
+    type: Literal["image_generation"] = "image_generation"
+    background: Annotated[Literal["auto", "transparent", "opaque"] | None, Field(description="Background type for generated image")] = (
+        "auto"
+    )
+    input_image_mask: Annotated[
+        InputImageMask | None, Field(description="Mask for inpainting operation containing image URL or file ID")
+    ] = None
+    model: Annotated[str, Field(description="Generation model to use")]
+    moderation: Annotated[Literal["auto"] | None, Field(description="Moderation level")] = "auto"
+    output_compression: Annotated[int | None, Field(ge=0, le=100, description="Output compression level (0-100)")] = 100
+    output_format: Annotated[Literal["png", "webp", "jpeg"] | None, Field(description="Output format for generated image")] = "png"
+    partial_images: Annotated[int | None, Field(ge=0, le=3, description="Number of partial images to generate in streaming mode (0-3)")] = 0
+    quality: Annotated[Literal["low", "medium", "high", "auto"] | None, Field(description="Quality level for image")] = "auto"
+    size: Annotated[str | None, Field(description="Generated image dimensions (pixel)", examples=["1024x1024", "auto"])] = "auto"
+
+
+class ComparisonFilter(BaseModel):
+    """A filter used to compare a specified attribute key to a given value using a defined comparison operation."""
+
+    key: Annotated[str, Field(description="The key to compare against the value")]
+    type: Annotated[
+        Literal["eq", "ne", "gt", "gte", "lt", "lte"],
+        Field(
+            description="Specifies the comparison operator: eq (equals), ne (not equal), gt (greater than), "
+            "gte (greater than or equal), lt (less than), lte (less than or equal)"
+        ),
+    ]
+    value: Annotated[
+        str | int | float | bool,
+        Field(description="The value to compare against the attribute key; supports string, number, or boolean types"),
+    ]
+
+    def matches(self, attributes: dict[str, Any]) -> bool:
+        """Check if this filter matches the given attributes."""
+        attr_value = attributes.get(self.key)
+
+        if attr_value is None:
+            return False
+
+        if self.type == "eq":
+            return attr_value == self.value
+        if self.type == "ne":
+            return attr_value != self.value
+        if self.type == "lt":
+            return attr_value < self.value
+        if self.type == "lte":
+            return attr_value <= self.value
+        if self.type == "gt":
+            return attr_value > self.value
+        if self.type == "gte":
+            return attr_value >= self.value
+
+        return False  # pragma: no cover
+
+
+class CompoundFilter(BaseModel):
+    """Combine multiple filters using 'and' or 'or'."""
+
+    filters: Annotated[
+        list[Union["ComparisonFilter", "CompoundFilter"]],
+        Field(description="Array of filters to combine. Items can be ComparisonFilter or CompoundFilter"),
+    ]
+    type: Annotated[Literal["and", "or"], Field(description="Type of operation: 'and' or 'or'")]
+
+    def matches(self, attributes: dict[str, Any]) -> bool:
+        """Check if this compound filter matches the given attributes."""
+        if self.type == "and":
+            return all(f.matches(attributes) for f in self.filters)
+
+        return any(f.matches(attributes) for f in self.filters)
+
+
+CompoundFilter.model_rebuild()
+
+
+class RankingOptions(BaseModel):
+    """Ranking options for search."""
+
+    ranker: Annotated[str | None, Field(description="Ranking algorithm to use")] = "auto"
+    score_threshold: Annotated[float | None, Field(description="Minimum score threshold for results")] = 0.0
+
+
+class FileSearchToolDef(BaseModel):
+    type: Literal["file_search"] = "file_search"
+    vector_store_ids: Annotated[list[str], Field(description="List of vector store IDs to search")]
+    filters: Annotated[CompoundFilter | ComparisonFilter | None, Field(description="Filter to apply to results")] = None
+    max_num_results: Annotated[int, Field(ge=1, le=50, description="Maximum number of results")] = 25
+    ranking_options: Annotated[RankingOptions | None, Field(description="Ranking options")] = None
+
+
+ToolResponsesInDF = FileSearchToolDef | McpToolDef | ImageGenToolDef
+ToolResponses = ToolResponsesInDF | FunctionDef
+
+
+class HostedToolChoice(BaseModel):
+    type: Literal["file_search", "web_search_preview", "computer_use_preview", "code_interpreter", "image_generation"]
+
+
+class McpToolChoice(BaseModel):
+    type: Literal["mcp"] = "mcp"
+    server_label: str
+    name: str = ""
+
+
+class UserLocation(BaseModel):
+    type: Literal["approximate"]
+    city: str = ""
+    country: str = ""
+    region: str = ""
+    timezone: str = ""
+
+
+# Request
+
+
+class Message(BaseModel):
+    type: Literal["message"] = "message"
+    content: str
+    role: Literal["user", "assistant", "system", "developer"]
+
+
+class InputText(BaseModel):
+    type: Literal["input_text"] = "input_text"
+    text: str
+
+
+class InputImage(BaseModel):
+    type: Literal["input_image"] = "input_image"
+    file_id: str = ""
+    image_url: str = ""
+    detail: str = "auto"
+
+
+class InputFile(BaseModel):
+    type: Literal["input_file"] = "input_file"
+    file_data: str = ""
+    file_id: str = ""
+    file_url: str = ""
+    filename: str = ""
+
+
+InputMessageContent = InputText | InputImage | InputFile
+
+
+class InputMessage(BaseModel):
+    type: Literal["message"] = "message"
+    content: list[InputMessageContent]
+    role: Literal["user", "assistant", "system", "developer"]
+    status: Literal["in_progress", "completed", "incomplete"] = "completed"
+
+
+class TopLogprobsDetail(BaseModel):
+    bytes: list[int]
+    logprob: float
+    token: str
+
+
+class LogprobsDetail(BaseModel):
+    bytes: list[int]
+    logprob: float
+    token: str
+    top_logprobs: list[TopLogprobsDetail]
+
+
+class FileCitation(BaseModel):
+    type: Literal["file_citation"] = "file_citation"
+    file_id: str
+    filename: str
+    index: int
+
+
+class UrlCitation(BaseModel):
+    type: Literal["url_citation"] = "url_citation"
+    title: str
+    url: str
+    end_index: int
+    start_index: int
+
+
+class ContainerFileCitation(BaseModel):
+    type: Literal["container_file_citation"] = "container_file_citation"
+    container_id: str
+    file_id: str
+    filename: str
+    start_index: int
+    end_index: int
+
+
+class FilePath(BaseModel):
+    type: Literal["file_path"] = "file_path"
+    file_id: str
+    index: int
+
+
+class OutputText(BaseModel):
+    type: Literal["output_text"] = "output_text"
+    text: str = ""
+    annotations: list[FileCitation | UrlCitation | ContainerFileCitation | FilePath] = []
+    logprobs: list[LogprobsDetail] = []
+
+
+class Refusal(BaseModel):
+    type: Literal["refusal"] = "refusal"
+    refusal: str
+
+
+class OutputMessage(BaseModel):
+    id: str = str(uuid4())
+    type: Literal["message"] = "message"
+    status: Literal["in_progress", "completed", "incomplete"] = "completed"
+    content: list[OutputText | Refusal] = []
+    role: Literal["assistant"] = "assistant"
+
+
+class ItemReference(BaseModel):
+    id: str
+    type: Literal["item_reference"] = "item_reference"
+
+
+class FileSearchResult(BaseModel):
+    attributes: dict[str, str | bool | int | float] = {}
+    file_id: str = ""
+    filename: str = ""
+    score: float = 0
+    text: str = ""
+
+
+class FileSearchToolCall(BaseModel):
+    id: str = str(uuid4())
+    type: Literal["file_search_call"] = "file_search_call"
+    status: Literal["in_progress", "searching", "incomplete", "failed"] = "searching"
+    queries: list[str]
+    results: list[FileSearchResult] = []
+
+
+class FunctionToolCall(BaseModel):
+    id: str = str(uuid4())
+    type: Literal["function_call"] = "function_call"
+    status: Literal["in_progress", "completed", "incomplete"] = "completed"
+    call_id: str = str(uuid4())
+    name: str
+    arguments: str
+
+
+class ReasoningSummary(BaseModel):
+    type: Literal["summary_text"] = "summary_text"
+    text: str
+
+
+class Reasoning(BaseModel):
+    id: str = str(uuid4())
+    type: Literal["reasoning"] = "reasoning"
+    status: Literal["in_progress", "completed", "incomplete"] = "completed"
+    summary: list[ReasoningSummary]
+    encrypted_content: str = ""
+
+
+class ImageGenerationCall(BaseModel):
+    id: str = str(uuid4())
+    type: Literal["image_generation_call"] = "image_generation_call"
+    result: str = ""
+    status: str = "completed"
+
+
+class ToolResponse(BaseModel):
+    name: str
+    descriptions: str = ""
+    input_schema: dict[str, Any]
+    annotations: dict[str, Any] = {}
+
+
+class McpListTools(BaseModel):
+    id: str = str(uuid4())
+    type: Literal["mcp_list_tools"] = "mcp_list_tools"
+    server_label: str
+    tools: list[ToolResponse] = []
+    error: str = ""
+
+
+class McpApprovalRequest(BaseModel):
+    id: str = str(uuid4())
+    type: Literal["mcp_approval_request"] = "mcp_approval_request"
+    server_label: str
+    name: str
+    arguments: str
+
+
+class McpApprovalResponse(BaseModel):
+    id: str = str(uuid4())
+    type: Literal["mcp_approval_response"] = "mcp_approval_response"
+    approval_request_id: str
+    approve: bool
+    reason: str = ""
+
+
+class McpToolCall(BaseModel):
+    id: str = str(uuid4())
+    type: Literal["mcp_call"] = "mcp_call"
+    server_label: str
+    name: str
+    arguments: str = ""
+    output: str = ""
+    error: str = ""
+
+
+class Prompt(BaseModel):
+    id: str = str(uuid4())
+    variables: dict[str, Any] = {}
+    version: str = ""
+
+
+class ReasoningConfig(BaseModel):
+    effort: Literal["low", "medium", "high"] = "medium"
+    summary: str = ""
+
+
+class TextFormat(BaseModel):
+    type: Literal["text"] = "text"
+
+
+class JsonSchemaFormat(BaseModel):
+    type: Literal["json_schema"] = "json_schema"
+    name: str
+    description: str = ""
+    json_schema: Annotated[dict[str, Any], Field(alias="schema")]
+    strict: bool = False
+
+
+class JsonObjectFormat(BaseModel):
+    type: Literal["json_object"] = "json_object"
+
+
+class TextConfig(BaseModel):
+    format: TextFormat | JsonSchemaFormat | JsonObjectFormat
+
+
+Input = (
+    Message
+    | InputMessage
+    | OutputMessage
+    | FileSearchToolCall
+    | FunctionToolCall
+    | Reasoning
+    | ImageGenerationCall
+    | McpListTools
+    | McpApprovalRequest
+    | McpApprovalResponse
+    | ItemReference
+    | McpToolCall
+)
+
+
+class ResponsesRequest(BaseModel):
+    model: Annotated[
+        str,
+        Field(
+            title="model id",
+            description=(
+                "Model ID used to generate the response, like `llama3.1:8b` or `qwen3:1.7b`."
+                "DeepFellow supports a wide range of models with different capabilities, and performance characteristics."
+            ),
+        ),
+    ]
+    input: Annotated[str | list[Input], Field(description="Text, image, or file inputs to the model, used to generate a response.")] = []
+    instructions: Annotated[
+        str,
+        Field(
+            description=(
+                "Previous messages inserted into the model's context."
+                "When using along with `previous_response_id`, the instructions from a previous response will not be carried "
+                "over to the next response. This makes it simple to swap out system (or developer) messages in new responses."
+            ),
+        ),
+    ] = ""
+    text: Annotated[
+        TextConfig | None,
+        Field(description="Configuration options for a text response from the model. Can be plain text, JSON or structured JSON."),
+    ] = None
+    prompt: Annotated[Prompt | None, Field(description="Reference to a prompt template and its variables.")] = None
+    tool_choice: Annotated[
+        Literal["none", "auto", "required"] | HostedToolChoice | McpToolChoice,
+        Field(
+            description=(
+                "[Currently not supported] How the model should select which tool (or tools) to use when generating a response. "
+                "See the `tools` parameter below to see how to specify which tools the model can call."
+            ),
+        ),
+    ] = "auto"
+    tools: Annotated[
+        list[ToolResponses],
+        Field(
+            description=(
+                "An array of tools the model may call while generating a response. You can specify which tool to use by setting "
+                "the `tool_choice` parameter."
+                "We support the following categories of tools:"
+                "- Built-in tools: Tools that are provided by DeepFellow that extend the model's capabilities, like web search "
+                "or file search."
+                "- MCP Tools: Integrations with third-party systems via custom MCP servers or "
+                "predefined connectors such as Google Drive and SharePoint."
+                "- Function calls (custom tools): Functions that are defined by you, "
+                "enabling the model to call your own code with strongly "
+                "typed arguments and outputs. You can also use custom tools to call your own code."
+            ),
+        ),
+    ] = []
+    temperature: Annotated[
+        float,
+        Field(
+            ge=0.0,
+            le=2.0,
+            description=(
+                "What sampling temperature to use, between `0` and `2`. Higher values like `0.8` will make the output more random, "
+                "while lower values like `0.2` will make it more focused and deterministic. We generally recommend altering this "
+                "or `top_p` but not both."
+            ),
+        ),
+    ] = 1.0
+    top_p: Annotated[
+        float,
+        Field(
+            ge=0.0,
+            le=1.0,
+            description=(
+                "An alternative to sampling with `temperature`, called nucleus sampling, where the model considers the results of the "
+                "tokens with `top_p` probability mass. So `0.1` means only the tokens comprising the top 10% probability mass "
+                "are considered."
+                "We generally recommend altering this or `temperature` but not both."
+            ),
+        ),
+    ] = 1.0
+    reasoning: Annotated[ReasoningConfig | None, Field(description="Configuration options for reasoning models.")] = None
+    stream: Annotated[
+        bool,
+        Field(
+            description=(
+                "[Currently not supported] If set to true, the model response data will be streamed to the client as it "
+                "is generated using server-sent events."
+            ),
+        ),
+    ] = False
+    max_output_tokens: Annotated[
+        int | None,
+        Field(
+            description=(
+                "An upper bound for the number of tokens that can be generated for a response, "
+                "including visible output tokens and reasoning tokens."
+            ),
+        ),
+    ] = None
+    max_tool_calls: Annotated[
+        int,
+        Field(
+            ge=0,
+            le=10,
+            description=(
+                "The maximum number of total calls to built-in tools that can be processed in a response. "
+                "This maximum number applies across all built-in tool calls, not per individual tool. "
+                "Any further attempts to call a tool by the model will be ignored."
+            ),
+        ),
+    ] = 5
+    parallel_tool_calls: Annotated[bool, Field(description="Whether to allow the model to run tool calls in parallel.")] = False
+    include: Annotated[list[str], Field(description="Specify additional output data to include in the model response.")] = []
+    background: Annotated[bool, Field(description="Whether to run the model response in the background.")] = False
+    previous_response_id: Annotated[
+        str | None,
+        Field(
+            description=(
+                "[Currently not supported] The unique ID of the previous response to the model. Use this to create multi-turn "
+                "conversations. Cannot be used in conjunction with conversation."
+            ),
+        ),
+    ] = None
+    top_logprobs: Annotated[
+        int | None,
+        Field(
+            ge=0,
+            le=20,
+            description=(
+                "An integer between 0 and 20 specifying the number of most likely tokens to return at each token position, "
+                "each with an associated log probability."
+            ),
+        ),
+    ] = None
+    metadata: Annotated[
+        dict[str, str | int | float | bool],
+        Field(
+            description=(
+                "Set of 16 key-value pairs that can be attached to an object. This can be useful for storing additional information "
+                "about the object in a structured format, and querying for objects via API or the dashboard."
+            ),
+        ),
+    ] = {}
+    service_tier: Annotated[
+        Literal["auto", "default", "flex", "priority"],
+        Field(deprecated=True, description="[Not supported. Placeholder for compatibility]"),
+    ] = "auto"
+    store: Annotated[
+        bool, Field(description="[Currently not supported] Whether to store the generated model response for later retrieval via API.")
+    ] = True
+    truncation: Annotated[
+        Literal["auto", "disabled"],
+        Field(
+            description=(
+                "[Currently not supported] The truncation strategy to use for the model response."
+                "- auto: If the input to this Response exceeds the model's context window size, the model will truncate the response to "
+                "fit the context window by dropping items from the beginning of the conversation."
+                "- disabled (default): If the input size will exceed the context window size for a model, the request will "
+                "fail with a 400 error."
+            ),
+        ),
+    ] = "disabled"
+    user: Annotated[
+        str,
+        Field(
+            deprecated=True,
+            description=(
+                "This field is being replaced by `safety_identifier` and `prompt_cache_key`. "
+                "Use `prompt_cache_key` instead to maintain caching optimizations. A stable identifier for your end-users."
+            ),
+        ),
+    ] = ""
+
+    model_config = {"json_schema_extra": {"examples": [{"model": "llama3.1:8b", "input": "Say Hello World o/."}]}}
+
+
+# Response
+
+
+class ErrorDetail(BaseModel):
+    """An error object returned when the model fails."""
+
+    code: str
+    message: str
+
+
+class IncompleteDetails(BaseModel):
+    """Details about why the response is incomplete."""
+
+    reason: str
+
+
+class InputTokensDetails(BaseModel):
+    """Detailed breakdown of token usage."""
+
+    cached_tokens: int | None = None
+
+
+class OutputTokensDetails(BaseModel):
+    """Detailed breakdown of token usage."""
+
+    reasoning_tokens: int | None = None
+
+
+class Usage(BaseModel):
+    """Represents token usage details for the response."""
+
+    input_tokens: int
+    input_tokens_details: InputTokensDetails | None = None
+    output_tokens: int
+    output_tokens_details: OutputTokensDetails | None = None
+    total_tokens: int
+
+
+class ReasoningOutput(BaseModel):
+    effort: Literal["low", "medium", "high"] | None = None
+    summary: str = ""
+
+
+Instruction = (
+    Message
+    | InputMessage
+    | OutputMessage
+    | FileSearchToolCall
+    | FunctionToolCall
+    | Reasoning
+    | ImageGenerationCall
+    | McpListTools
+    | McpApprovalResponse
+    | ItemReference
+    | McpToolCall
+)
+
+
+Output = (
+    OutputMessage
+    | FunctionToolCall
+    | FileSearchToolCall
+    | Reasoning
+    | ImageGenerationCall
+    | McpListTools
+    | McpApprovalRequest
+    | McpToolCall
+    | ItemReference
+)
+
+
+class ResponsesResponse(BaseModel):
+    object: Literal["response"] = "response"
+    output: list[Output] = []
+    output_text: str = ""
+    text: TextFormat | JsonSchemaFormat | JsonObjectFormat | None = None
+    reasoning: ReasoningOutput | None = None
+    tool_choice: Literal["none", "auto", "required"] | HostedToolChoice | McpToolChoice = "auto"
+    model: str
+    prompt: Prompt | None = None
+    instructions: str | list[Instruction] = ""
+    tools: list[ToolResponses] = []
+    max_output_tokens: int | None = None
+    max_tool_calls: int | None = None
+    parallel_tool_calls: bool = False
+    background: bool = False
+    temperature: float | None = None
+    top_p: float | None = None
+    truncation: Literal["auto", "disabled"] = "disabled"
+    status: Literal["in_progress", "completed", "incomplete", "failed", "cancelled", "queued"] = "completed"
+    created_at: int = int(datetime.now(tz=UTC).timestamp())
+    top_logprobs: int | None = None
+    metadata: dict[str, Any] = {}
+    previous_response_id: str | None = None
+    usage: Usage | None = None
+    service_tier: str = ""
+    user: str = ""
+    id: str = ""
+    error: ErrorDetail | None = None
+    incomplete_details: IncompleteDetails | None = None
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "id": "67ccd2bed1ec8190b14f964abc0542670bb6a6b452d3795b",
+                    "object": "response",
+                    "created_at": 1741476542,
+                    "status": "completed",
+                    "error": None,
+                    "incomplete_details": None,
+                    "instructions": None,
+                    "max_output_tokens": None,
+                    "model": "qwen3:1.7b",
+                    "output": [
+                        {
+                            "type": "message",
+                            "id": "67ccd2bf17f0819081ff3bb2cf6508e60bb6a6b452d3795b",
+                            "status": "completed",
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": (
+                                        "In a peaceful grove beneath a silver moon, "
+                                        "a unicorn named Lumina discovered a hidden pool that reflected the stars. [...]"
+                                    ),
+                                    "annotations": [],
+                                }
+                            ],
+                        }
+                    ],
+                    "parallel_tool_calls": True,
+                    "previous_response_id": None,
+                    "reasoning": {"effort": None, "summary": None},
+                    "store": True,
+                    "temperature": 1.0,
+                    "text": {"format": {"type": "text"}},
+                    "tool_choice": "auto",
+                    "tools": [],
+                    "top_p": 1.0,
+                    "truncation": "disabled",
+                    "usage": {
+                        "input_tokens": 36,
+                        "input_tokens_details": {"cached_tokens": 0},
+                        "output_tokens": 87,
+                        "output_tokens_details": {"reasoning_tokens": 0},
+                        "total_tokens": 123,
+                    },
+                    "user": None,
+                    "metadata": {},
+                }
+            ]
+        }
+    }

@@ -13,11 +13,11 @@ from server.services.remote_service import RemoteConst, RemoteModel, RemoteServi
 
 _const = RemoteConst(
     models={
-        "davinci-002": RemoteModel(type="llm", completions=False),
-        "babbage-002": RemoteModel(type="llm", completions=False),
+        "davinci-002": RemoteModel(type="llm", completions=False, responses=False),
+        "babbage-002": RemoteModel(type="llm", completions=False, responses=False),
         "gpt-3.5-turbo": RemoteModel(type="llm"),
-        "gpt-3.5-turbo-instruct": RemoteModel(type="llm", completions=False),
-        "gpt-3.5-turbo-16k": RemoteModel(type="llm"),
+        "gpt-3.5-turbo-instruct": RemoteModel(type="llm", completions=False, responses=False),
+        "gpt-3.5-turbo-16k": RemoteModel(type="llm", legacy_completions=False, responses=False),
         "gpt-4-turbo": RemoteModel(type="llm"),
         "gpt-4.1": RemoteModel(type="llm"),
         "gpt-4.1-mini": RemoteModel(type="llm"),
@@ -32,17 +32,16 @@ _const = RemoteConst(
         "gpt-5-mini": RemoteModel(type="llm"),
         "gpt-5-nano": RemoteModel(type="llm"),
         "gpt-5.1": RemoteModel(type="llm"),
-        # "gpt-5.1-codex": RemoteModel(type="llm"), only /v1/responses
-        # "gpt-5.1-codex-mini": RemoteModel(type="llm"), only /v1/responses
+        "gpt-5.1-codex": RemoteModel(type="llm", completions=False, legacy_completions=False, responses=True),
+        "gpt-5.1-codex-mini": RemoteModel(type="llm", completions=False, legacy_completions=False, responses=True),
         "gpt-5.2": RemoteModel(type="llm"),
-        # "gpt-5.2-pro": RemoteModel(type="llm"), only /v1/responses
+        "gpt-5.2-pro": RemoteModel(type="llm", completions=False, legacy_completions=False, responses=True),
         "o1": RemoteModel(type="llm"),
-        "o1-mini": RemoteModel(type="llm"),
-        # "o1-pro": RemoteModel(type="llm"), only /v1/responses
+        "o1-pro": RemoteModel(type="llm", completions=False, legacy_completions=False, responses=True),
         "o3": RemoteModel(type="llm"),
         "o3-mini": RemoteModel(type="llm"),
         "o4-mini": RemoteModel(type="llm"),
-        # "o4-mini-deep-research": RemoteModel(type="llm"), only /v1/responses
+        "o4-mini-deep-research": RemoteModel(type="llm", completions=False, legacy_completions=False, responses=True),
         "text-embedding-ada-002": RemoteModel(type="embedding"),
         "text-embedding-3-small": RemoteModel(type="embedding"),
         "text-embedding-3-large": RemoteModel(type="embedding"),

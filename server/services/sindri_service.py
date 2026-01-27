@@ -324,6 +324,7 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
                 model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                     model=registered_name,
                     props=ModelProps(private=True),
+                    responses=None,
                     chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model.real_model_name),
                     completions=None,
                     registration_options=None,

@@ -461,6 +461,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
                 props=ModelProps(private=True),
                 chat_completions=ProxyOptions(url=f"{model_info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
                 completions=ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id),
+                responses=ProxyOptions(url=f"{model_info.base_url}/v1/responses", rewrite_model_to=model_id),
                 registration_options=None,
             )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))

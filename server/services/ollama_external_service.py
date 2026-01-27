@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
 from fastapi import HTTPException
+from packaging import version
 from pydantic import BaseModel, StringConstraints
 
 from server.config import get_main_dir
@@ -137,6 +138,7 @@ class DownloadedInfo:
 
 class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo]):
     models: dict[str, OllamaModel]
+    support_responses: bool
 
     def _after_init(self) -> None:
         self.models = _const.models.copy()
@@ -233,9 +235,15 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo])
             # Verify connection to external Ollama
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
             try:
-                res = await fetch_from(f"{parsed_options.url.rstrip('/')}/api/tags", "GET", None)
+                res = await fetch_from(f"{parsed_options.url.rstrip('/')}/api/version", "GET", None)
                 if res.status_code != 200:
                     _raise_connection_error(parsed_options.url)
+                try:
+                    data_json = json.loads(res.data)
+                    actual_version: str = data_json["version"]
+                    self.support_responses = bool(version.parse(actual_version) > version.parse("0.14.1"))
+                except json.JSONDecodeError as err:
+                    raise HTTPException(500, "Ollama external server doesn't return version.") from err
             except HTTPException:
                 raise
             except Exception as e:
@@ -360,6 +368,9 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo])
                     props=ModelProps(private=True),
                     chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
                     completions=ProxyOptions(url=f"{info.base_url}/v1/completions", rewrite_model_to=model_id),
+                    responses=ProxyOptions(url=f"{info.base_url}/v1/responses", rewrite_model_to=model_id)
+                    if self.support_responses
+                    else None,
                     registration_options=None,
                 )
             if model.type == "embedding":
