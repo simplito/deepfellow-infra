@@ -111,7 +111,7 @@ class ModelTester:
             )
         )
         try:
-            return {"result": "ok", "output": json["output"][0]["summary"][0]["text"], "details": json}
+            return {"result": "ok", "output": json["output"][0]["content"][0]["text"], "details": json}
         except Exception:
             raise TestError("Cannot read message content", my_resp)  # noqa: B904
 
