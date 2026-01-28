@@ -109,7 +109,7 @@ function showFormModal(title, mainButtonLabel, spec, onInstall) {
                         }
                         if (field.type === "oneof") {
                             return `<select name="${field.name}" ${field.required ? `required="required"` : ""}>
-                                ${field.values.map(x => `<option value="${x}">${x}</option>`).join("")}
+                                ${field.values.map(x => `<option value="${typeof(x) === "string" ? x : x.value}" ${(typeof(x) === "string" ? x : x.value) === field.default ? `selected="selected"` : ""}>${typeof(x) === "string" ? x : x.label}</option>`).join("")}
                             </select>`;
                         }
                         if (field.type === "list") {
@@ -583,7 +583,7 @@ root.addEventListener("click", async e => {
         else if (action === "uninstall-service") {
             showUninstallModal({
                 title: "Uninstalling Model",
-                text: "How do you want to uninstall service? It purge all service files.",
+                text: "How do you want to uninstall the service? The purge option removes all service files.",
                 onResult: async (removeType) => {
                     showLoadingPage()
                     await fetchJson(`/admin/services/${serviceId}`, {
@@ -652,7 +652,7 @@ root.addEventListener("click", async e => {
         else if (action === "uninstall-model") {
             showUninstallModal({
                 title: "Uninstalling Model",
-                text: "How do you want to uninstall model? Purge remove all model files.",
+                text: "How do you want to uninstall the model? The purge option removes all model files.",
                 onResult: async (removeType) => {
                     showLoadingPage()
                     await fetchJson(`/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`, {

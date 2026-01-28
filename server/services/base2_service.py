@@ -37,7 +37,14 @@ from server.models.models import (
     InstallModelProgress,
     UninstallModelIn,
 )
-from server.models.services import InstallServiceIn, InstallServiceOut, InstallServiceProgress, ServiceField, UninstallServiceIn
+from server.models.services import (
+    InstallServiceIn,
+    InstallServiceOut,
+    InstallServiceProgress,
+    OneOfOption,
+    ServiceField,
+    UninstallServiceIn,
+)
 from server.serviceprovider import ServiceProvider, ServiceRawConfig
 from server.services.base_service import BaseService
 from server.utils.core import PromiseWithProgress, Stream, StreamChunk, StreamChunkProgress, Utils, convert_size_to_bytes
@@ -406,13 +413,11 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     def get_specified_hardware_parts(self, hardware_specification: str | bool | None) -> Sequence[HardwarePartInfo]:
         """Get specified hardware parts."""
         if hardware_specification is None:
-            if self.hardware.gpus:
-                return self.hardware.gpus
-            return [self.hardware.cpu]
+            return self.hardware.gpus if self.hardware.gpus else [self.hardware.cpu]
         if (hardware_specification is False) or (isinstance(hardware_specification, str) and hardware_specification == "CPU"):
             return [self.hardware.cpu]
 
-        if (hardware_specification is True) or (hardware_specification == "GPUs"):
+        if (hardware_specification is True) or (hardware_specification == "GPUs") or (hardware_specification == "GPU"):
             return self.hardware.gpus
 
         gpus: list[GpuInfo] = []
@@ -431,22 +436,22 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     ) -> list[ServiceField]:
         """Add gpu field to specification."""
         fields = fields or []
-        options: list[str] = []
+        options: list[str | OneOfOption] = []
+        default: str | None = None
         if not add_cpu_option_only_on_avx512_support or self.hardware.cpu.avx512:
             options.append("CPU")
+            default = "CPU"
 
         gpus_quantity = len(self.hardware.gpus)
         if gpus_quantity == 1:
-            options.append("GPU")
+            options.append(OneOfOption(value="GPU", label="Default GPU"))
+            default = "GPU"
         elif gpus_quantity:
-            options.append("GPUs")
-            options.extend([f"GPU | {gpu.long_name}" for gpu in self.hardware.gpus])
+            options.append(OneOfOption(value="GPUs", label="All GPUs"))
+            default = "GPUs"
+        options.extend([f"GPU | {gpu.long_name}" for gpu in self.hardware.gpus])
 
-        if len(options) > 2:
-            gpus_select_field = ServiceField(type="oneof", name="hardware", description="Choose hardware:", values=options)
-            fields.append(gpus_select_field)
-        elif options == ["CPU", "GPU"]:
-            gpus_checkbox_field = ServiceField(type="bool", name="hardware", description="Use GPU?", values=options)
-            fields.append(gpus_checkbox_field)
+        gpus_select_field = ServiceField(type="oneof", name="hardware", description="Choose hardware:", values=options, default=default)
+        fields.append(gpus_select_field)
 
         return fields
