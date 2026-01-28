@@ -55,6 +55,7 @@ from server.utils.core import (
 class RemoteModel(BaseModel):
     type: str
     real_model_name: str | None = None
+    messages: bool = True
     responses: bool = True
     completions: bool = True
     legacy_completions: bool = True
@@ -307,6 +308,13 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
                 model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                     model=registered_name,
                     props=model.props,
+                    messages=ProxyOptions(
+                        url=urljoin(url_base, "messages"),
+                        rewrite_model_to=model.real_model_name,
+                        headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
+                    )
+                    if model.messages
+                    else None,
                     responses=ProxyOptions(
                         url=urljoin(url_base, "responses"),
                         rewrite_model_to=model.real_model_name,

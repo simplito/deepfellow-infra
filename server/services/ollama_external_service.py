@@ -139,6 +139,7 @@ class DownloadedInfo:
 class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo]):
     models: dict[str, OllamaModel]
     support_responses: bool
+    support_messages: bool
 
     def _after_init(self) -> None:
         self.models = _const.models.copy()
@@ -242,6 +243,7 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo])
                     data_json = json.loads(res.data)
                     actual_version: str = data_json["version"]
                     self.support_responses = bool(version.parse(actual_version) > version.parse("0.14.1"))
+                    self.support_messages = bool(version.parse(actual_version) >= version.parse("0.14.0"))
                 except json.JSONDecodeError as err:
                     raise HTTPException(500, "Ollama external server doesn't return version.") from err
             except HTTPException:
@@ -371,6 +373,7 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo])
                     responses=ProxyOptions(url=f"{info.base_url}/v1/responses", rewrite_model_to=model_id)
                     if self.support_responses
                     else None,
+                    messages=ProxyOptions(url=f"{info.base_url}/v1/messages", rewrite_model_to=model_id) if self.support_messages else None,
                     registration_options=None,
                 )
             if model.type == "embedding":
