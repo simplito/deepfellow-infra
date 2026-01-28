@@ -20,7 +20,8 @@ dependencies = [
     "py-cpuinfo>=9.0.0",
     "aiodocker>=0.24.0",
     "langdetect>=1.0.9",
-    "prometheus-client>=0.24.1"
+    "prometheus-client>=0.24.1",
+    "packaging>=25.0",
 ]
 
 [dependency-groups]
