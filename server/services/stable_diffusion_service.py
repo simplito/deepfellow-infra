@@ -631,7 +631,8 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
                 self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
 
         if options.purge and model_id in self.models_downloaded:
-            Path(self.models_downloaded[model_id].model_path).unlink()
+            if self.models_downloaded[model_id].model_path:
+                Path(self.models_downloaded[model_id].model_path).unlink()
             del self.models_downloaded[model_id]
 
         await self.refresh_models()
