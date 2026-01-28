@@ -434,10 +434,10 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
                 subnet=subnet,
                 healthcheck={
                     "test": "curl --fail http://localhost:8000/health || exit 1",
-                    "interval": "30s",
+                    "interval": "60s",
                     "timeout": "10s",
                     "retries": "3",
-                    "start_period": "60s",
+                    "start_period": "240s",
                 },
             )
             docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
@@ -462,6 +462,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
                 chat_completions=ProxyOptions(url=f"{model_info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
                 completions=ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id),
                 responses=ProxyOptions(url=f"{model_info.base_url}/v1/responses", rewrite_model_to=model_id),
+                messages=ProxyOptions(url=f"{model_info.base_url}/v1/messages", rewrite_model_to=model_id),
                 registration_options=None,
             )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))

@@ -25,6 +25,8 @@ from server.models.api import (
     CreateTranscriptionRequest,
     EmbeddingRequest,
     ImagesRequest,
+    MessagesRequest,
+    MessagesResponse,
     ResponsesRequest,
     ResponsesResponse,
 )
@@ -55,6 +57,17 @@ async def on_model(
     return endpoint_registry.get_model(model_id)
 
 
+@router.post("/v1/messages")
+async def on_messages(
+    request: Request,
+    body: Annotated[MessagesRequest, Body(...)],
+    _: Annotated[str, Depends(auth_server)],
+    endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+) -> MessagesResponse | StarletteResponse:
+    """Process messages request."""
+    return await endpoint_registry.execute_messages(body, request)
+
+
 @router.post("/v1/responses")
 async def on_responses(
     request: Request,
@@ -62,7 +75,7 @@ async def on_responses(
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
 ) -> ResponsesResponse | StarletteResponse:
-    """Process chat completions request."""
+    """Process responses request."""
     return await endpoint_registry.execute_responses(body, request)
 
 

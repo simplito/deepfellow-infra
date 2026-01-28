@@ -29,7 +29,10 @@ from server.models.api import (
     CreateTranscriptionRequest,
     EmbeddingRequest,
     ImagesRequest,
+    MessageParam,
+    MessagesRequest,
     ResponsesRequest,
+    ThinkingConfigDisabled,
     UserMessage,
 )
 from server.models.common import JsonSerializable, StarletteResponse
@@ -83,8 +86,19 @@ class ModelTester:
             return {"error": "Internal Server Error"}
 
     async def _perform_test(self, entry: RegistryEntry) -> JsonSerializable:
-        if entry.registered_model.type in ["llm", "llm-v3", "llm-v2-v3", "llm-v1-v3"]:
+        if entry.registered_model.type in [
+            "llm",
+            "llm-v1-v2-v3",
+            "llm-v3",
+            "llm-v3-ant",
+            "llm-v2-v3",
+            "llm-v2-v3-ant",
+            "llm-v1-v3",
+            "llm-v1-v3-ant",
+        ]:
             return await self._test_responses(entry.registered_model.name, entry.registered_model.endpoint)
+        if entry.registered_model.type in ["llm-v1-v2-ant", "llm-v1-ant", "llm-v2-ant", "llm-ant"]:
+            return await self._test_messages(entry.registered_model.name, entry.registered_model.endpoint)
         if entry.registered_model.type in ["llm-v2", "llm-v1-v2"]:
             return await self._test_chat_completions(entry.registered_model.name, entry.registered_model.endpoint)
         if entry.registered_model.type == "llm-v1":
@@ -100,6 +114,25 @@ class ModelTester:
         if entry.registered_model.type == "custom":
             raise TestError("Custom model cannot be tested")
         raise RuntimeError(f"Given model cannot be tested, unsupported type {entry.registered_model.type}")  # noqa: EM102
+
+    async def _test_messages(self, model: str, endpoint: ChatCompletionEndpoint) -> JsonSerializable:
+        if not endpoint.on_messages:
+            raise RuntimeError("LLM has no on_messages callback")
+        (my_resp, json) = await self._read_json(
+            await endpoint.on_messages(
+                MessagesRequest(
+                    model=model,
+                    max_tokens=40,
+                    messages=[MessageParam(role="user", content="Only say `hello!`")],
+                    thinking=ThinkingConfigDisabled(type="disabled"),
+                ),
+                None,
+            )
+        )
+        try:
+            return {"result": "ok", "output": json["content"][0].get("text") or json["content"][0].get("thinking"), "details": json}
+        except Exception:
+            raise TestError("Cannot read message content", my_resp)  # noqa: B904
 
     async def _test_responses(self, model: str, endpoint: ChatCompletionEndpoint) -> JsonSerializable:
         if not endpoint.on_responses:

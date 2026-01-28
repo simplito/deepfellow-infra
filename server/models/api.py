@@ -354,7 +354,26 @@ class ModelProps(BaseModel):
 
 
 ModelType = Literal[
-    "tts", "stt", "txt2img", "embedding", "llm", "llm-v1", "llm-v2", "llm-v1-v2", "llm-v2-v3", "llm-v1-v3", "llm-v3", "custom"
+    "tts",
+    "stt",
+    "txt2img",
+    "embedding",
+    "llm",
+    "llm-v1",
+    "llm-v2",
+    "llm-v3",
+    "llm-ant",
+    "llm-v1-v2",
+    "llm-v2-v3",
+    "llm-v1-v3",
+    "llm-v1-ant",
+    "llm-v2-ant",
+    "llm-v3-ant",
+    "llm-v1-v2-v3",
+    "llm-v1-v2-ant",
+    "llm-v2-v3-ant",
+    "llm-v1-v3-ant",
+    "custom",
 ]
 
 type ModelId = str
@@ -1415,3 +1434,404 @@ class ResponsesResponse(BaseModel):
             ]
         }
     }
+
+
+type MessagesRole = Literal["user", "assistant"]
+
+
+class CacheControlEphemeral(BaseModel):
+    type: Literal["ephemeral"]
+    ttl: Literal["5m", "1h"]
+
+
+class CitationCharLocationParam(BaseModel):
+    type: Literal["char_location"]
+    cited_text: str
+    document_index: int
+    document_title: str
+    end_char_index: int
+    start_char_index: int
+
+
+class CitationPageLocationParam(BaseModel):
+    type: Literal["page_location"]
+    cited_text: str
+    document_index: int
+    document_title: str
+    end_char_index: int
+    start_char_index: int
+
+
+class CitationContentBlockLocationParam(BaseModel):
+    type: Literal["content_block_location"]
+    cited_text: str
+    document_index: int
+    document_title: str
+    end_char_index: int
+    start_char_index: int
+
+
+class CitationWebSearchResultLocationParam(BaseModel):
+    type: Literal["web_search_result_location"]
+    cited_text: str
+    encrypted_index: str
+    title: str
+    url: str
+
+
+class CitationSearchResultLocationParam(BaseModel):
+    type: Literal["search_result_location"]
+    cited_text: str
+    end_block_index: int
+    search_result_index: int
+    source: str
+    start_block_index: int
+    title: str
+
+
+type TextCitationParam = (
+    CitationCharLocationParam
+    | CitationPageLocationParam
+    | CitationContentBlockLocationParam
+    | CitationWebSearchResultLocationParam
+    | CitationSearchResultLocationParam
+)
+
+
+class TextBlockParam(BaseModel):
+    type: Literal["text"]
+    text: str
+    cache_control: CacheControlEphemeral | None = None
+    citations: list[TextCitationParam]
+
+
+type MediaType = Literal["image/jpeg", "image/png", "image/gif", "image/webp"]
+
+
+class Base64ImageSource(BaseModel):
+    type: Literal["base64"]
+    data: str
+    media_type: MediaType
+
+
+class URLImageSource(BaseModel):
+    type: Literal["url"]
+    url: str
+
+
+class ImageBlockParam(BaseModel):
+    type: Literal["image"]
+    source: Base64ImageSource | URLImageSource
+    cache_control: CacheControlEphemeral | None = None
+
+
+class CitationsConfigParam(BaseModel):
+    enabled: bool | None = None
+
+
+class Base64PDFSource(BaseModel):
+    type: Literal["base64"]
+    media_type: Literal["application/pdf"]
+    data: str
+
+
+class PlainTextSource(BaseModel):
+    type: Literal["text"]
+    media_type: Literal["text/plain"]
+    data: str
+
+
+class ContentBlockSource(BaseModel):
+    type: Literal["content"]
+    content: str | list[TextBlockParam | ImageBlockParam]
+
+
+class URLPDFSource(BaseModel):
+    type: Literal["url"]
+    url: str
+
+
+class DocumentBlockParam(BaseModel):
+    type: Literal["document"]
+    source: Base64PDFSource | PlainTextSource | ContentBlockSource | URLPDFSource
+    cache_control: CacheControlEphemeral | None = None
+    citations: CitationsConfigParam | None = None
+    context: str | None = None
+    title: str | None = None
+
+
+class SearchResultParam(BaseModel):
+    type: Literal["search_result"]
+    content: list[TextBlockParam]
+    cache_control: CacheControlEphemeral | None = None
+    citations: CitationsConfigParam | None = None
+
+
+class ThinkingBlockParam(BaseModel):
+    type: Literal["thinking"]
+    thinking: str
+    signature: str
+
+
+class RedactedThinkingBlockParam(BaseModel):
+    type: Literal["redacted_thinking"]
+    data: str
+
+
+class ToolUseBlockParam(BaseModel):
+    type: Literal["tool_use"]
+    id: str
+    name: str
+    input: dict[Any, Any]
+    cache_control: CacheControlEphemeral | None = None
+
+
+class ToolResultBlockParam(BaseModel):
+    type: Literal["tool_result"]
+    tool_use_id: str
+    content: str | list[TextBlockParam | ImageBlockParam]
+    is_error: bool | None = None
+    cache_control: CacheControlEphemeral | None = None
+
+
+class ServerToolUseBlockParam(BaseModel):
+    type: Literal["server_tool_use"]
+    name: Literal["web_search"]
+    id: str
+    input: dict[Any, Any]
+    cache_control: CacheControlEphemeral | None = None
+
+
+class WebSearchToolResultBlockItem(BaseModel):
+    type: Literal["web_search_result"]
+    encrypted_content: str
+    title: str
+    url: str
+    page_age: str | None = None
+
+
+class WebSearchToolRequestError(BaseModel):
+    type: Literal["web_search_tool_result_error"]
+    error_code: Literal["invalid_tool_input", "unavailable", "max_uses_exceeded", "too_many_requests", "query_too_long"]
+
+
+type WebSearchToolResultBlockContent = list[WebSearchToolResultBlockItem] | WebSearchToolRequestError
+
+
+class WebSearchToolResultBlockParam(BaseModel):
+    type: Literal["web_search_tool_result"]
+    content: WebSearchToolResultBlockContent
+    tool_use_id: str
+    cache_control: CacheControlEphemeral | None = None
+
+
+type ContentBlockParam = (
+    TextBlockParam
+    | ImageBlockParam
+    | DocumentBlockParam
+    | SearchResultParam
+    | ThinkingBlockParam
+    | RedactedThinkingBlockParam
+    | ToolUseBlockParam
+    | ToolResultBlockParam
+    | ServerToolUseBlockParam
+    | WebSearchToolResultBlockParam
+)
+
+
+class MessageParam(BaseModel):
+    role: MessagesRole
+    content: str | ContentBlockParam
+
+
+class Metadata(BaseModel):
+    user_id: str | None = None
+
+
+class ThinkingConfigEnabled(BaseModel):
+    type: Literal["enabled"]
+    budget_tokens: int
+
+
+class ThinkingConfigDisabled(BaseModel):
+    type: Literal["disabled"]
+
+
+type ThinkingConfigParam = ThinkingConfigEnabled | ThinkingConfigDisabled
+
+
+class ToolChoiceAuto(BaseModel):
+    type: Literal["auto"]
+    disable_parallel_tool_use: bool = False
+
+
+class ToolChoiceAny(BaseModel):
+    type: Literal["any"]
+    disable_parallel_tool_use: bool = False
+
+
+class ToolChoiceTool(BaseModel):
+    type: Literal["tool"]
+    name: str
+    disable_parallel_tool_use: bool = False
+
+
+class ToolChoiceNone(BaseModel):
+    type: Literal["none"]
+
+
+type ToolChoice = ToolChoiceAuto | ToolChoiceAny | ToolChoiceTool | ToolChoiceNone
+
+
+class ToolInputSchema(BaseModel):
+    type: Literal["object"]
+    properties: dict[Any, Any] | None = None
+    required: list[str] | None = None
+
+
+class Tool(BaseModel):
+    type: Literal["custom"] = "custom"
+    name: str
+    description: str | None = None
+    input_schema: ToolInputSchema
+    cache_control: CacheControlEphemeral | None = None
+
+
+class ToolBash20250124(BaseModel):
+    type: Literal["bash_20250124"]
+    name: Literal["bash"]
+    cache_control: CacheControlEphemeral | None = None
+
+
+class ToolTextEditor20250124(BaseModel):
+    type: Literal["text_editor_20250124"]
+    name: Literal["str_replace_editor"]
+    cache_control: CacheControlEphemeral | None = None
+
+
+class ToolTextEditor20250429(BaseModel):
+    type: Literal["text_editor_20250429"]
+    name: Literal["str_replace_based_edit_tool"]
+    cache_control: CacheControlEphemeral | None = None
+
+
+class ToolTextEditor20250728(BaseModel):
+    type: Literal["text_editor_20250728"]
+    name: Literal["str_replace_based_edit_tool"]
+    cache_control: CacheControlEphemeral | None = None
+    max_characters: Annotated[int | None, Field(ge=1)] = None
+
+
+class MessagesUserLocation(BaseModel):
+    type: Literal["approximate"]
+    city: str = ""
+    country: str = ""
+    region: str = ""
+    timezone: str = ""
+
+
+class WebSearchTool20250305(BaseModel):
+    type: Literal["web_search_20250305"]
+    name: Literal["web_search"]
+    allowed_domains: list[str] | None = None
+    blocked_domains: list[str] | None = None
+    cache_control: CacheControlEphemeral | None = None
+    max_uses: int | None = None
+    user_location: MessagesUserLocation | None = None
+
+
+type ToolUnion = Tool | ToolBash20250124 | ToolTextEditor20250124 | ToolTextEditor20250429 | ToolTextEditor20250728 | WebSearchTool20250305
+
+
+class MessagesRequest(BaseModel):
+    max_tokens: int = 8000
+    messages: list[MessageParam]
+    model: str
+    metadata: Metadata | None = None
+    service_tier: Literal["auto", "standard_only"] | None = None
+    stop_sequences: list[str] | None = None
+    stream: bool = False
+    system: str | TextBlockParam = ""
+    temperature: Annotated[float, Field(ge=0, le=1)] | None = 1.0
+    thinking: ThinkingConfigParam | None = None
+    tool_choice: ToolChoice | None = None
+    tools: list[ToolUnion] | None = None
+    top_k: Annotated[float, Field(ge=0)] | None = None
+    top_p: Annotated[float, Field(ge=0, le=1)] | None = None
+
+    model_config = {
+        "json_schema_extra": {"examples": [{"model": "qwen3:0.6b", "messages": [{"role": "user", "content": "Say Hello World o/."}]}]}
+    }
+
+
+class TextBlock(BaseModel):
+    type: Literal["text"]
+    text: str
+    citations: list[TextCitationParam]
+
+
+class ThinkingBlock(BaseModel):
+    type: Literal["thinking"]
+    thinking: str
+    signature: str
+
+
+class RedactedThinkingBlock(BaseModel):
+    type: Literal["redacted_thinking"]
+    data: str
+
+
+class ToolUseBlock(BaseModel):
+    type: Literal["tool_use"]
+    id: str
+    name: str
+    input: dict[Any, Any]
+
+
+class ServerToolUseBlock(BaseModel):
+    type: Literal["server_tool_use"]
+    name: Literal["web_search"]
+    id: str
+    input: dict[Any, Any]
+
+
+class WebSearchToolResultBlock(BaseModel):
+    type: Literal["web_search_tool_result"]
+    content: WebSearchToolResultBlockContent
+    tool_use_id: str
+
+
+type Content = TextBlock | ThinkingBlock | RedactedThinkingBlock | ToolUseBlock
+
+
+type StopReason = Literal["end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn", "refusal"]
+
+
+class CacheCreation(BaseModel):
+    ephemeral_1h_input_tokens: int
+    ephemeral_5m_input_tokens: int
+
+
+class ServerToolUsage(BaseModel):
+    web_search_requests: int
+
+
+class MessagesUsage(BaseModel):
+    cache_creation: CacheCreation
+    cache_creation_inpuit_tokens: int
+    cache_read_input_tokens: int
+    input_tokens: int
+    output_tokens: int
+    server_tool_use: ServerToolUsage
+    service_tier: Literal["standard", "priority", "batch"]
+
+
+class MessagesResponse(BaseModel):
+    type: Literal["message"]
+    id: str
+    content: list[Content]
+    model: str
+    role: MessagesRole
+    stop_reason: StopReason
+    stop_sequence: str
+    usage: MessagesUsage
