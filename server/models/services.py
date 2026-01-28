@@ -37,6 +37,11 @@ class UninstallServiceOut(BaseModel):
     status: Literal["OK"]
 
 
+class OneOfOption(BaseModel):
+    value: str
+    label: str
+
+
 class ServiceField(BaseModel):
     type: str
     name: str
@@ -44,7 +49,7 @@ class ServiceField(BaseModel):
     default: str | None = None
     placeholder: str | None = None
     required: bool = True
-    values: list[str] | None = None
+    values: list[OneOfOption | str] | None = None
 
 
 class ServiceSpecification(BaseModel):
