@@ -427,7 +427,8 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
             await self.docker_service.uninstall_docker(model.docker)
 
         if options.purge and model_id in self.models_downloaded:
-            Path(self.models_downloaded[model_id].model_path).unlink()
+            if self.models_downloaded[model_id].model_path:
+                Path(self.models_downloaded[model_id].model_path).unlink()
             del self.models_downloaded[model_id]
 
     async def stop(self) -> None:

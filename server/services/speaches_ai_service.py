@@ -857,5 +857,6 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
                 self.endpoint_registry.unregister_audio_transcriptions(model.registered_name, model.registration_id)
 
         if options.purge and model_id in self.models_downloaded:
-            shutil.rmtree(Path(self.models_downloaded[model_id].model_path))
+            if self.models_downloaded[model_id].model_path:
+                shutil.rmtree(Path(self.models_downloaded[model_id].model_path))
             del self.models_downloaded[model_id]
