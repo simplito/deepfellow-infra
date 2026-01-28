@@ -96,7 +96,7 @@ def convert_mib_to_gb(mib: str) -> str:
 
 async def get_nvidia_gpu_info_raw() -> str:
     """Get Nvidia GPU info."""
-    cmd = "nvidia-smi --query-gpu=index,name,memory.total --format=csv"
+    cmd = "docker run --gpus all --rm gcr.io/distroless/base nvidia-smi --query-gpu=index,name,memory.total --format=csv"
     try:
         result = await Utils.run_command_for_success(cmd)
     except RuntimeError:
