@@ -473,7 +473,7 @@ class ModelInstalledInfo:
 
 
 class SpeachesAIOptions(BaseModel):
-    hardware: bool
+    hardware: str | bool | None = None
 
 
 class SpeachesAIModelOptions(BaseModel):
