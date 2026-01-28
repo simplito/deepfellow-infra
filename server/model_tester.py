@@ -106,12 +106,19 @@ class ModelTester:
             raise RuntimeError("LLM has no on_responses callback")
         (my_resp, json) = await self._read_json(
             await endpoint.on_responses(
-                ResponsesRequest(model=model, max_output_tokens=20, input="Say hello!"),
+                ResponsesRequest(model=model, max_output_tokens=50, input="Say hello!"),
                 None,
             )
         )
         try:
-            return {"result": "ok", "output": json["output"][0]["content"][0]["text"], "details": json}
+            for part in json["output"][::-1]:
+                if "summary" in part:
+                    if len(part["summary"]):
+                        return {"result": "ok", "output": part["summary"][0]["text"], "details": json}
+                    return {"result": "ok", "output": "", "details": json}
+                if "content" in part:
+                    return {"result": "ok", "output": part["content"][0]["text"], "details": json}
+            raise RuntimeError("No content output")  # noqa: TRY301
         except Exception:
             raise TestError("Cannot read message content", my_resp)  # noqa: B904
 
@@ -120,7 +127,7 @@ class ModelTester:
             raise RuntimeError("LLM has no on_chat_completion callback")
         (my_resp, json) = await self._read_json(
             await endpoint.on_chat_completion(
-                ChatCompletionRequest(model=model, max_completion_tokens=20, messages=[UserMessage(role="user", content="Say hello!")]),
+                ChatCompletionRequest(model=model, max_completion_tokens=50, messages=[UserMessage(role="user", content="Say hello!")]),
                 None,
             )
         )
@@ -134,7 +141,7 @@ class ModelTester:
             raise RuntimeError("LLM has no on_completion callback")
         (my_resp, json) = await self._read_json(
             await endpoint.on_completion(
-                CompletionLegacyRequest(model=model, max_tokens=20, prompt="Say hello!"),
+                CompletionLegacyRequest(model=model, max_tokens=50, prompt="Say hello!"),
                 None,
             )
         )
