@@ -29,12 +29,12 @@ class CpuInfo(HardwarePartInfo):
 @dataclass
 class GpuInfo(HardwarePartInfo):
     name: str
-    vram: str
+    vram: str | None
 
     @property
     def long_name(self) -> str:
         """Return long_name."""
-        return f"{self.name} | {self.vram}"
+        return f"{self.name}{f' | {self.vram}' if self.vram else ''}"
 
 
 @dataclass
@@ -44,7 +44,7 @@ class NvidiaGpuInfo(GpuInfo):
     @property
     def long_name(self) -> str:
         """Return long_name."""
-        return f"{self.name} | {self.vram} | {self.id}"
+        return f"{self.name}{f' | {self.vram}' if self.vram else ''} | {self.id}"
 
 
 @dataclass
@@ -105,7 +105,7 @@ async def get_nvidia_gpu_info_raw() -> str:
     return result.stdout
 
 
-async def create_nvidia_gpu_info_list(raw_info: str) -> list[NvidiaGpuInfo]:
+def create_nvidia_gpu_info_list(raw_info: str) -> list[NvidiaGpuInfo]:
     """From raw info create list of Nvidia GPU Info."""
     gpus_info: list[NvidiaGpuInfo] = []
     for i, line in enumerate(raw_info.split("\n")):
@@ -117,9 +117,10 @@ async def create_nvidia_gpu_info_list(raw_info: str) -> list[NvidiaGpuInfo]:
             continue
 
         parts = line.split(",")
-        id: int = int(parts[0])
-        name: str = parts[1]
-        vram: str = convert_mib_to_gb(parts[2])
+        id = int(parts[0])
+        name = parts[1].strip()
+        raw_vram = parts[2].strip()
+        vram = None if raw_vram == "[N/A]" else convert_mib_to_gb(parts[2])
         gpu_info = NvidiaGpuInfo(name, vram, id)
         gpus_info.append(gpu_info)
 
@@ -129,7 +130,7 @@ async def create_nvidia_gpu_info_list(raw_info: str) -> list[NvidiaGpuInfo]:
 async def get_nvidia_gpus_info() -> list[NvidiaGpuInfo]:
     """Get NVIDIA gpu info."""
     raw_info = await get_nvidia_gpu_info_raw()
-    return await create_nvidia_gpu_info_list(raw_info) if raw_info else []
+    return create_nvidia_gpu_info_list(raw_info) if raw_info else []
 
 
 async def get_hardware_info() -> list[HardwarePartInfo]:
