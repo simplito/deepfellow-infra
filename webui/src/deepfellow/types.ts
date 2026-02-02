@@ -13,7 +13,7 @@ export const MODEL_TYPES = {
   tts: "Text to speech (TTS)",
   stt: "Speech to text (STT)",
   llm: "Large Language Model (LLM)",
-  embedding: "Embedding (embedding)",
+  embedding: "Embedding Model (Embeddings)",
   lora: "LORA (lora)",
   txt2img: "Text to image (txt2img)",
 } as const;
@@ -42,7 +42,9 @@ export interface ServiceSpec {
 
 export interface Service {
   id: string;
-  installed: Record<string, any> | InstallProgress | null;
+  // Backend returns: bool | progress | installed options object
+  installed: boolean | Record<string, unknown> | InstallProgress | null;
+  downloaded?: boolean;
   spec: ServiceSpec;
   size: string | Record<string, string>;
   description?: string;
@@ -56,13 +58,19 @@ export interface ServiceListResponse {
 
 export interface ServiceModel {
   id: string;
+  service?: string;
   type: ModelType;
-  installed: {
-    spec?: Record<string, any>;
-    stage?: string;
-    value?: number;
-    registration_id?: string; // For test endpoint
-  } | null;
+  // Backend returns: bool | progress | installed info object
+  installed:
+    | boolean
+    | {
+        spec?: Record<string, unknown>;
+        stage?: string;
+        value?: number;
+        registration_id?: string; // For test endpoint
+      }
+    | null;
+  downloaded?: boolean;
   spec: ServiceSpec;
   size: string;
   custom?: string; // Custom model ID if custom
@@ -80,11 +88,11 @@ export interface TestResult {
     content_type: string; // e.g., "audio/wav", "image/png"
     data: string; // base64 encoded data
   };
-  details?: Record<string, any>; // Additional details
+  details?: Record<string, unknown>; // Additional details
 }
 
 export interface InstallRequest {
-  spec: Record<string, any>;
+  spec: Record<string, unknown>;
 }
 
 export interface UninstallRequest {

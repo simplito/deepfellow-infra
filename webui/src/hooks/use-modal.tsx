@@ -8,7 +8,16 @@ This software is Licensed under the DeepFellow Free License.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-import { createContext, useContext, useState, useCallback, type ReactNode, type ComponentType } from "react";
+import {
+  createContext,
+  memo,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 
 /**
  * Base props that all modal components must accept.
@@ -19,9 +28,19 @@ export interface ModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+type AnyModalComponent = ComponentType<ModalProps & Record<string, unknown>>;
+
+const StableChildren = memo(function StableChildrenImpl({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  return children;
+});
+
 interface ModalState {
-  Component: ComponentType<any>;
-  props: Record<string, any>;
+  Component: AnyModalComponent;
+  props: Record<string, unknown>;
 }
 
 interface ModalContextValue {
@@ -63,7 +82,10 @@ export function ModalProvider({ children }: ModalProviderProps) {
     Component: ComponentType<P>,
     props: Omit<P, keyof ModalProps>
   ) => {
-    setModalState({ Component, props });
+    setModalState({
+      Component: Component as unknown as AnyModalComponent,
+      props: props as unknown as Record<string, unknown>,
+    });
     return { close };
   }, [close]);
 
@@ -73,14 +95,11 @@ export function ModalProvider({ children }: ModalProviderProps) {
     }
   }, [close]);
 
-  const contextValue: ModalContextValue = {
-    open,
-    close,
-  };
+  const contextValue = useMemo<ModalContextValue>(() => ({ open, close }), [open, close]);
 
   return (
     <ModalContext.Provider value={contextValue}>
-      {children}
+      <StableChildren>{children}</StableChildren>
       {modalState && (
         <modalState.Component
           {...modalState.props}
@@ -119,4 +138,3 @@ export function useModal(): ModalContextValue {
   }
   return context;
 }
-

@@ -14,9 +14,16 @@ RUN rm -rf .venv/lib/python*/site-packages/*/test
 RUN rm -rf .venv/lib/python*/site-packages/*/tests
 RUN rm -rf tests .ruff_cache .pytest_cache
 
+FROM hub.simplito.com/public/node:22.20.0-bookworm AS webbuilder
+WORKDIR /app/webui
+COPY webui .
+RUN npm install
+RUN npm run build
+
 FROM base AS runner
 
 WORKDIR /app
 COPY --from=builder /app /app
+COPY --from=webbuilder /app/webui/dist /app/static
 
 CMD ["./.venv/bin/uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8086"]

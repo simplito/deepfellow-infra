@@ -8,3 +8,17 @@ __pycache__
 .env
 /.vscode
 CLAUDE.md
+
+
+/static/assets
+/static/favicon.ico
+/static/favicon.png
+/static/index.html
+/static/logo192.png
+/static/logo512.png
+/static/manifest.json
+/static/robots.txt
+
+/webui/node_modules
+/webui/dist
+

@@ -23,12 +23,6 @@ export function ListInput({ value, onChange, placeholder }: ListInputProps) {
     onChange([...value, ""]);
   };
 
-  const handleChange = (index: number, newValue: string) => {
-    const newList = [...value];
-    newList[index] = newValue;
-    // Filter out empty strings on change
-    onChange(newList.filter((item) => item.trim() !== ""));
-  };
 
   const handleRemove = (index: number) => {
     const newList = value.filter((_, i) => i !== index);

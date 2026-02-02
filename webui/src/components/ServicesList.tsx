@@ -9,12 +9,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 import { useState, useMemo, useEffect, useRef } from "react";
+import type { MouseEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { apiClient } from "@/deepfellow/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   DropdownMenu,
@@ -26,6 +28,7 @@ import {
 import { MoreVertical } from "lucide-react";
 import { DynamicFormModal } from "./DynamicFormModal";
 import { ConfirmModal } from "./ConfirmModal";
+import { UninstallWithPurgeModal } from "./UninstallWithPurgeModal";
 import { ProgressBadge } from "./ProgressBadge";
 import { ContentModal } from "./ContentModal";
 import { WarningsModal } from "./WarningsModal";
@@ -34,18 +37,24 @@ import { useModal } from "@/hooks/use-modal";
 import type { Service, InstallProgress } from "@/deepfellow/types";
 import { InstallationWarningsError } from "@/deepfellow/types";
 import type { ProgressEvent } from "@/utils/sse-stream";
+import {
+  clearServiceInstallProgress,
+  setServiceInstallProgress,
+  useInstallProgressSnapshot,
+} from "@/state/install-progress-store";
 import { toast } from "sonner";
 
 export function ServicesList() {
   const modal = useModal();
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [installingServiceId, setInstallingServiceId] = useState<string | null>(null);
-  const [installProgress, setInstallProgress] = useState<Record<string, { stage: "install" | "download", value: number }>>({});
-  const pendingInstallationRef = useRef<{ serviceId: string; spec: Record<string, any> } | null>(null);
+  const pendingInstallationRef = useRef<{ serviceId: string; spec: Record<string, unknown> } | null>(null);
   const hasWarningsRef = useRef(false);
   const restartDockerToastIdRef = useRef<string | number | null>(null);
   const uninstallToastIdRef = useRef<string | number | null>(null);
   const queryClient = useQueryClient();
+  const installProgress = useInstallProgressSnapshot().services;
 
   const { data: servicesData, isLoading } = useQuery({
     queryKey: ["admin", "services"],
@@ -56,83 +65,88 @@ export function ServicesList() {
   useEffect(() => {
     if (!servicesData?.list) return;
 
-    const progressPromises: Array<() => void> = [];
+    const cleanups: Array<() => void> = [];
 
-    servicesData.list.forEach((service) => {
-      // Check if service has installation in progress (has stage property)
+    for (const service of servicesData.list) {
       const installed = service.installed;
-      if (installed && typeof installed === "object" && "stage" in installed && "value" in installed) {
-        const serviceId = service.id;
+      if (!installed || typeof installed !== "object") continue;
 
-        // Start progress polling
-        const abortController = new AbortController();
-        let isCancelled = false;
+      const stage = (installed as { stage?: unknown }).stage;
+      const value = (installed as { value?: unknown }).value;
+      const installedIsProgress =
+        (stage === "install" || stage === "download") &&
+        typeof value === "number" &&
+        Number.isFinite(value);
 
-        const startProgress = async () => {
-          try {
-            await apiClient.getServiceProgress(serviceId, (event: ProgressEvent) => {
-              if (isCancelled) return;
+      if (!installedIsProgress) continue;
 
-              if (event.type === "progress" && event.stage && event.value !== undefined) {
-                setInstallProgress((prev) => ({
-                  ...prev,
-                  [serviceId]: { stage: event.stage!, value: event.value! },
-                }));
-              } else if (event.type === "finish") {
-                if (event.status === "ok") {
-                  queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
-                  setInstallProgress((prev) => {
-                    const newProgress = { ...prev };
-                    delete newProgress[serviceId];
-                    return newProgress;
-                  });
-                } else {
-                  setInstallProgress((prev) => {
-                    const newProgress = { ...prev };
-                    delete newProgress[serviceId];
-                    return newProgress;
-                  });
-                  toast.error(`Installation failed for ${serviceId}: ${event.details || "Unknown error"}`);
-                }
-              }
-            });
-          } catch (error) {
-            if (!isCancelled) {
-              console.error(`Error polling progress for ${serviceId}:`, error);
+      const serviceId = service.id;
+      const abortController = new AbortController();
+      let isCancelled = false;
+
+      apiClient
+        .getServiceProgress(
+          serviceId,
+          (event: ProgressEvent) => {
+            if (isCancelled) return;
+
+            const stage = event.stage;
+            const value = event.value;
+
+            if (event.type === "progress" && stage && value !== undefined) {
+              setServiceInstallProgress(serviceId, { stage, value });
+              return;
             }
+
+            if (event.type === "finish") {
+              if (event.status === "ok") {
+                queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
+                clearServiceInstallProgress(serviceId);
+              } else {
+                clearServiceInstallProgress(serviceId);
+                toast.error(`Installation failed for ${serviceId}: ${event.details || "Unknown error"}`);
+              }
+            }
+          },
+          abortController.signal
+        )
+        .catch((error) => {
+          if (isCancelled) return;
+          if (error instanceof Error && error.name === "AbortError") return;
+          if (!isCancelled) {
+            console.error(`Error polling progress for ${serviceId}:`, error);
           }
-        };
-
-        startProgress();
-
-        progressPromises.push(() => {
-          isCancelled = true;
-          abortController.abort();
         });
-      }
-    });
+
+      cleanups.push(() => {
+        isCancelled = true;
+        abortController.abort();
+      });
+    }
 
     return () => {
-      progressPromises.forEach((cleanup) => cleanup());
+      for (const cleanup of cleanups) cleanup();
     };
   }, [servicesData, queryClient]);
 
   const installMutation = useMutation({
-    mutationFn: ({ serviceId, spec, ignoreWarnings = false }: { serviceId: string; spec: Record<string, any>; ignoreWarnings?: boolean }) => {
+    mutationFn: ({ serviceId, spec, ignoreWarnings = false }: { serviceId: string; spec: Record<string, unknown>; ignoreWarnings?: boolean }) => {
       return new Promise<void>((resolve, reject) => {
         apiClient.installAdminServiceStreaming(
           serviceId,
           spec,
           (event: ProgressEvent) => {
-            if (event.type === "progress" && event.stage && event.value !== undefined) {
-              setInstallProgress((prev) => ({
-                ...prev,
-                [serviceId]: { stage: event.stage!, value: event.value! },
-              }));
+            const stage = event.stage;
+            const value = event.value;
+
+            if (event.type === "progress" && stage && value !== undefined) {
+              setServiceInstallProgress(serviceId, { stage, value });
             } else if (event.type === "finish") {
               if (event.status === "ok") {
+                clearServiceInstallProgress(serviceId);
                 resolve();
               } else {
+                clearServiceInstallProgress(serviceId);
                 reject(new Error(event.details || "Installation failed"));
               }
             }
@@ -145,17 +159,13 @@ export function ServicesList() {
     onMutate: ({ serviceId }) => {
       setInstallingServiceId(serviceId);
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
       pendingInstallationRef.current = null;
-      setInstallProgress((prev) => {
-        const newProgress = { ...prev };
-        delete newProgress[installingServiceId || ""];
-        return newProgress;
-      });
+      clearServiceInstallProgress(variables.serviceId);
       toast.success("Service installed successfully");
     },
-    onError: (error) => {
+    onError: (error, variables) => {
       if (error instanceof InstallationWarningsError) {
         // Show warnings modal instead of error toast
         hasWarningsRef.current = true;
@@ -168,11 +178,7 @@ export function ServicesList() {
       }
       
       hasWarningsRef.current = false;
-      setInstallProgress((prev) => {
-        const newProgress = { ...prev };
-        delete newProgress[installingServiceId || ""];
-        return newProgress;
-      });
+      clearServiceInstallProgress(variables.serviceId);
       toast.error(`Failed to install service: ${error.message}`);
     },
     onSettled: () => {
@@ -205,6 +211,20 @@ export function ServicesList() {
       } else {
         toast.error(`Failed to uninstall service: ${error.message}`);
       }
+    },
+  });
+
+  const purgeMutation = useMutation({
+    mutationFn: (serviceId: string) => apiClient.uninstallAdminService(serviceId, true),
+    onMutate: () => {
+      toast.loading("Purging...", { id: "purge-service" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
+      toast.success("Service purged successfully", { id: "purge-service" });
+    },
+    onError: (error) => {
+      toast.error(`Failed to purge service: ${error.message}`, { id: "purge-service" });
     },
   });
 
@@ -317,18 +337,28 @@ export function ServicesList() {
   };
 
   const handleInstallClick = async (service: Service) => {
+    modal.open(DynamicFormModal, {
+      title: `Install ${service.id}`,
+      fields: [],
+      isLoading: true,
+      isSubmitting: false,
+      onSubmit: () => {},
+    });
+
     try {
       const serviceDetail = await apiClient.getAdminService(service.id);
       modal.open(DynamicFormModal, {
         title: `Install ${serviceDetail.id}`,
         fields: serviceDetail.spec.fields,
-        onSubmit: (spec: Record<string, any>) => {
+        onSubmit: (spec: Record<string, unknown>) => {
           pendingInstallationRef.current = { serviceId: serviceDetail.id, spec };
           installMutation.mutate({ serviceId: serviceDetail.id, spec });
         },
-        isSubmitting: installMutation.isPending,
+        // Keep modal interactive; don't disable because another install is running.
+        isSubmitting: false,
       });
-    } catch (error) {
+    } catch {
+      modal.close();
       toast.error("Failed to load service details");
     }
   };
@@ -359,17 +389,54 @@ export function ServicesList() {
       ? `Are you sure you want to uninstall ${serviceId}? This will also remove ${customModelsCount} custom model${customModelsCount > 1 ? "s" : ""} associated with this service. This action cannot be undone.`
       : `Are you sure you want to uninstall ${serviceId}? This action cannot be undone.`;
 
-    modal.open(ConfirmModal, {
+    modal.open(UninstallWithPurgeModal, {
       title: "Uninstall Service",
       description,
       confirmText: "Uninstall",
       cancelText: "Cancel",
+      purgeLabel: "Purge",
+      purgeDescription: "Also remove downloaded service files and local data to free disk space. This cannot be undone.",
+      onConfirm: (purge) => {
+        modal.close();
+        if (purge) {
+          purgeMutation.mutate(serviceId);
+        } else {
+          uninstallMutation.mutate(serviceId);
+        }
+      },
+      isLoading: uninstallMutation.isPending || purgeMutation.isPending,
+      variant: "destructive",
+    });
+  };
+
+  const handlePurgeClick = (serviceId: string) => {
+    modal.open(ConfirmModal, {
+      title: "Purge Service",
+      description: "This will remove all downloaded files for the service. This action cannot be undone.",
+      confirmText: "Purge",
+      cancelText: "Cancel",
       onConfirm: () => {
         modal.close();
-        uninstallMutation.mutate(serviceId);
+        purgeMutation.mutate(serviceId);
       },
-      isLoading: uninstallMutation.isPending,
+      isLoading: purgeMutation.isPending,
       variant: "destructive",
+    });
+  };
+
+  const handleRowNavigate = (e: MouseEvent, serviceId: string) => {
+    // Don't hijack clicks on interactive controls inside the row.
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+
+    const interactive = target.closest(
+      "a,button,[role='button'],[role='menuitem'],input,select,textarea,label,[data-prevent-row-click]"
+    );
+    if (interactive) return;
+
+    navigate({
+      to: "/dashboard/services/$serviceId",
+      params: { serviceId },
     });
   };
 
@@ -382,13 +449,20 @@ export function ServicesList() {
     return services.filter((service) => {
       if (service.id.toLowerCase().includes(query)) return true;
 
-      if (service.installed) {
-        const installedValues = Object.entries(service.installed).some(([key, value]) => {
+      const installed = service.installed;
+      const installedIsObject = !!installed && typeof installed === "object";
+      const installedLooksLikeProgress =
+        installedIsObject && "stage" in installed && "value" in installed;
+
+      if (installedIsObject && !installedLooksLikeProgress) {
+        const installedValues = Object.entries(installed).some(([key, value]) => {
           const field = service.spec.fields.find((f) => f.name === key);
-          if (field?.type === "password") return false; 
-          
-          return key.toLowerCase().includes(query) ||
-                 String(value ?? "").toLowerCase().includes(query);
+          if (field?.type === "password") return false;
+
+          return (
+            key.toLowerCase().includes(query) ||
+            String(value ?? "").toLowerCase().includes(query)
+          );
         });
         if (installedValues) return true;
       }
@@ -404,7 +478,7 @@ export function ServicesList() {
   }, [services, searchQuery]);
 
   if (isLoading) {
-    return <div className="text-center py-8">Loading services...</div>;
+    return <ServicesListSkeleton />;
   }
 
   return (
@@ -432,10 +506,10 @@ export function ServicesList() {
           <TableHeader>
             <TableRow>
               <TableHead>Service ID</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead className="min-w-[150px]">Status</TableHead>
               <TableHead>Resources</TableHead>
               <TableHead>Configuration</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="text-right min-w-[165px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -448,6 +522,7 @@ export function ServicesList() {
             ) : (
               filteredServices.map((service) => {
                 const isInstalled = !!service.installed;
+                const isDownloaded = !!service.downloaded;
                 const sizeInfo = typeof service.size === "string"
                   ? service.size
                   : Object.entries(service.size).map(([key, val]) => `${key.toUpperCase()}: ${val}`).join(", ");
@@ -459,14 +534,25 @@ export function ServicesList() {
                 const installedIsProgress = service.installed && typeof service.installed === "object" && "stage" in service.installed && "value" in service.installed;
 
                 return (
-                  <TableRow key={service.id}>
-                    <TableCell className="font-medium">
+                  <TableRow
+                    key={service.id}
+                    onClick={(e) => {
+                      if (!isInstalled || installedIsProgress || isInProgress) return;
+                      handleRowNavigate(e, service.id);
+                    }}
+                    className={
+                      isInstalled && !installedIsProgress && !isInProgress
+                        ? "cursor-pointer hover:bg-muted/50"
+                        : undefined
+                    }
+                  >
+                    <TableCell className="font-semibold">
                       <div>
                         {isInstalled && !installedIsProgress ? (
                           <Link
                             to="/dashboard/services/$serviceId"
                             params={{ serviceId: service.id }}
-                            className="text-primary hover:underline"
+                            className="font-semibold text-primary hover:underline"
                           >
                             {service.id}
                           </Link>
@@ -486,14 +572,22 @@ export function ServicesList() {
                           variant="default"
                         />
                       ) : (
-                        <Badge variant={isInstalled ? "default" : "secondary"}>
-                          {isInstalled ? "Installed" : "Not installed"}
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={isInstalled ? "default" : "secondary"}>
+                            {isInstalled ? "Installed" : "Not installed"}
+                          </Badge>
+                          {!isInstalled && isDownloaded && (
+                            <Badge variant="outline">Downloaded</Badge>
+                          )}
+                        </div>
                       )}
                     </TableCell>
                     <TableCell className="font-mono text-sm">{sizeInfo || "N/A"}</TableCell>
                     <TableCell>
-                      {isInstalled && service.installed && !installedIsProgress ? (
+                      {isInstalled &&
+                      service.installed &&
+                      typeof service.installed === "object" &&
+                      !installedIsProgress ? (
                         <div className="space-y-1">
                           {Object.entries(service.installed).map(([key, value]) => {
                             const field = service.spec.fields.find((f) => f.name === key);
@@ -510,15 +604,37 @@ export function ServicesList() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex justify-end gap-2" data-prevent-row-click>
                         {isInProgress || installedIsProgress ? null : !isInstalled ? (
-                          <Button
-                            onClick={() => handleInstallClick(service)}
-                            size="sm"
-                            disabled={isInstallingCurrent}
-                          >
-                            {isInstallingCurrent ? "Installing..." : "Install"}
-                          </Button>
+                          <>
+                            <Button
+                              onClick={() => handleInstallClick(service)}
+                              size="sm"
+                              disabled={isInstallingCurrent}
+                            >
+                              {isInstallingCurrent ? "Installing..." : "Install"}
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={!isDownloaded}
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => handlePurgeClick(service.id)}
+                                  disabled={!isDownloaded || purgeMutation.isPending}
+                                  variant="destructive"
+                                >
+                                  Purge
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </>
                         ) : (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -544,9 +660,9 @@ export function ServicesList() {
                                   >
                                     Restart Docker
                                   </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
                                 </>
                               )}
-                              <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={() => handleUninstallClick(service.id)}
                                 variant="destructive"
@@ -564,6 +680,30 @@ export function ServicesList() {
             )}
           </TableBody>
         </Table>
+      </div>
+    </div>
+  );
+}
+
+function ServicesListSkeleton() {
+  return (
+    <div className="px-4 lg:px-6">
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <Skeleton className="h-9 w-40" />
+          <Skeleton className="h-10 w-36" />
+        </div>
+        <Skeleton className="h-10 w-[320px] max-w-full" />
+      </div>
+
+      <div className="border rounded-lg">
+        <div className="p-4 space-y-3">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+        </div>
       </div>
     </div>
   );
