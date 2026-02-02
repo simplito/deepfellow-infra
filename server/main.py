@@ -10,9 +10,9 @@
 """Main app module."""
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 
 from server.api import mesh, metrics, models, openai, services, utils
+from server.api.fallback import StaticFilesHandler
 from server.lifecycle import lifespan
 from server.websockets import api as websocket
 
@@ -25,4 +25,4 @@ app.include_router(mesh.router)
 app.include_router(metrics.router)
 app.include_router(utils.router)
 
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+app.mount("/", StaticFilesHandler(directory="static", html=True), name="static")

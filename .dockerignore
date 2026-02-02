@@ -14,8 +14,16 @@ Apply
 # Include "tests" directory
 !tests/
 
-# Include "tests" directory
+# Include "static" directory
 !static/
+static/assets
+static/favicon.ico
+static/favicon.png
+static/index.html
+static/logo192.png
+static/logo512.png
+static/manifest.json
+static/robots.txt
 
 # Do not match pyproject.* files
 !pyproject.toml
@@ -25,3 +33,7 @@ Apply
 
 # Include license
 LICENSE.md
+
+!webui/
+webui/dist
+webui/node_modules

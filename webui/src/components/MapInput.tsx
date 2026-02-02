@@ -11,7 +11,7 @@ limitations under the License.
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Plus, X } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface MapInputProps {
   value: Record<string, string>;
@@ -20,100 +20,77 @@ interface MapInputProps {
 }
 
 export function MapInput({ value, onChange, placeholder }: MapInputProps) {
-  // Convert map to array of entries for easier manipulation
-  const entries = Object.entries(value);
-  
-  // Track entries with unique IDs to handle key changes properly
-  // Use the key itself as part of the ID to maintain stability
-  const [entryKeys, setEntryKeys] = useState<string[]>(() => 
-    entries.length > 0 ? entries.map(([k]) => k) : []
-  );
+  type Row = { id: string; keyText: string; valueText: string };
 
-  // Sync entryKeys when value prop changes from outside
+  const [rows, setRows] = useState<Row[]>(() => mapToRows<Row>(value));
+
+  const lastEmittedRef = useRef<string>(serializeMap(value));
+
+  // If parent value changes externally (e.g. modal reset), resync local rows.
   useEffect(() => {
-    const currentKeys = Object.keys(value);
-    if (currentKeys.length === 0 && entryKeys.length === 0) {
-      // Both empty, ensure we have at least one empty entry
-      setEntryKeys([""]);
-    } else if (currentKeys.length !== entryKeys.length || 
-               !currentKeys.every(k => entryKeys.includes(k))) {
-      // Value changed from outside, sync the keys
-      setEntryKeys(currentKeys.length > 0 ? currentKeys : [""]);
-    }
+    const incoming = serializeMap(value);
+    if (incoming === lastEmittedRef.current) return;
+
+    setRows(mapToRows<Row>(value));
   }, [value]);
 
+  const emitChange = (nextRows: Row[]) => {
+    const nextMap: Record<string, string> = {};
+    for (const row of nextRows) {
+      const key = row.keyText.trim();
+      if (!key) continue;
+      nextMap[key] = row.valueText;
+    }
+    lastEmittedRef.current = serializeMap(nextMap);
+    onChange(nextMap);
+  };
+
   const handleAdd = () => {
-    const newKey = `__new_${Date.now()}`;
-    setEntryKeys([...entryKeys, newKey]);
-    onChange({ ...value, "": "" });
+    setRows((prev) => {
+      const next = [...prev, { id: newRowId(), keyText: "", valueText: "" }];
+      // Do not emit yet; empty key should not appear in the resulting map.
+      return next;
+    });
   };
 
-  const handleKeyChange = (oldKey: string, newKey: string, entryIndex: number) => {
-    const newMap = { ...value };
-    const currentValue = value[oldKey] || "";
-    
-    // Remove old key
-    delete newMap[oldKey];
-    
-    // Add new key if not empty
-    if (newKey.trim()) {
-      newMap[newKey.trim()] = currentValue;
-    }
-    
-    // Update entryKeys
-    const newEntryKeys = [...entryKeys];
-    if (newKey.trim()) {
-      newEntryKeys[entryIndex] = newKey.trim();
-    } else {
-      // Keep empty key for now
-      newEntryKeys[entryIndex] = "";
-    }
-    setEntryKeys(newEntryKeys);
-    
-    // Filter out entries with empty keys
-    const filtered: Record<string, string> = {};
-    for (const [k, v] of Object.entries(newMap)) {
-      if (k.trim()) {
-        filtered[k] = v;
-      }
-    }
-    onChange(filtered);
+  const handleKeyChange = (rowId: string, newKey: string) => {
+    setRows((prev) => {
+      const next = prev.map((r) => (r.id === rowId ? { ...r, keyText: newKey } : r));
+      emitChange(next);
+      return next;
+    });
   };
 
-  const handleValueChange = (key: string, newValue: string) => {
-    if (key.trim()) {
-      onChange({ ...value, [key]: newValue });
-    }
+  const handleValueChange = (rowId: string, newValue: string) => {
+    setRows((prev) => {
+      const next = prev.map((r) => (r.id === rowId ? { ...r, valueText: newValue } : r));
+      emitChange(next);
+      return next;
+    });
   };
 
-  const handleRemove = (key: string, index: number) => {
-    const newMap = { ...value };
-    delete newMap[key];
-    onChange(newMap);
-    
-    // Remove the corresponding key from entryKeys
-    const newEntryKeys = entryKeys.filter((_, i) => i !== index);
-    setEntryKeys(newEntryKeys.length > 0 ? newEntryKeys : [""]);
+  const handleRemove = (rowId: string) => {
+    setRows((prev) => {
+      const filtered = prev.filter((r) => r.id !== rowId);
+      const next = filtered.length ? filtered : [{ id: newRowId(), keyText: "", valueText: "" }];
+      emitChange(next);
+      return next;
+    });
   };
-
-  // Always show at least one empty pair if the map is empty
-  const displayEntries = entryKeys.length === 0 
-    ? [["", ""] as [string, string]] 
-    : entryKeys.map((k) => [k, value[k] || ""] as [string, string]);
 
   return (
     <div className="space-y-2">
-      {displayEntries.map(([key, val], index) => (
-        <div key={`${key}-${index}`} className="flex gap-2">
+      {rows.map((row) => (
+        <div key={row.id} className="flex gap-2">
           <Input
-            value={key}
-            onChange={(e) => handleKeyChange(key, e.target.value, index)}
+            value={row.keyText}
+            onChange={(e) => handleKeyChange(row.id, e.target.value)}
             placeholder="Key"
             className="flex-1"
           />
           <Input
-            value={val}
-            onChange={(e) => handleValueChange(key, e.target.value)}
+            value={row.valueText}
+            onChange={(e) => handleValueChange(row.id, e.target.value)}
             placeholder={placeholder || "Value"}
             className="flex-1"
           />
@@ -121,8 +98,8 @@ export function MapInput({ value, onChange, placeholder }: MapInputProps) {
             type="button"
             variant="ghost"
             size="icon"
-            onClick={() => handleRemove(key, index)}
-            disabled={displayEntries.length === 1 && key === "" && val === ""}
+            onClick={() => handleRemove(row.id)}
+            disabled={rows.length === 1 && row.keyText.trim() === "" && row.valueText.trim() === ""}
           >
             <X className="h-4 w-4" />
           </Button>
@@ -136,4 +113,23 @@ export function MapInput({ value, onChange, placeholder }: MapInputProps) {
   );
 }
 
+function newRowId(): string {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
+function serializeMap(map: Record<string, string>): string {
+  const sorted = Object.entries(map)
+    .map(([k, v]) => [k, v] as const)
+    .sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify(sorted);
+}
+
+function mapToRows<RowType extends { id: string; keyText: string; valueText: string }>(
+  value: Record<string, string>
+): RowType[] {
+  const entries = Object.entries(value);
+  if (entries.length === 0) {
+    return [{ id: newRowId(), keyText: "", valueText: "" } as RowType];
+  }
+  return entries.map(([k, v]) => ({ id: newRowId(), keyText: k, valueText: v } as RowType));
+}

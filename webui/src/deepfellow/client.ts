@@ -75,11 +75,7 @@ export class DeepFellowClient {
     if (!response.ok) {
       try {
         const errorData = JSON.parse(content);
-        const errorMessage =
-          errorData?.detail?.[0]?.msg ||
-          errorData?.detail ||
-          errorData?.message ||
-          content;
+        const errorMessage = formatApiErrorMessage(errorData, content);
         throw new Error(`HTTP ${response.status}: ${errorMessage}`);
       } catch (e) {
         if (e instanceof SyntaxError) {
@@ -107,7 +103,7 @@ export class DeepFellowClient {
     return this.makeRequest<Service>(`/admin/services/${serviceId}`);
   }
 
-  async installAdminService(serviceId: string, spec: Record<string, any>): Promise<void> {
+  async installAdminService(serviceId: string, spec: Record<string, unknown>): Promise<void> {
     return this.makeRequest<void>(`/admin/services/${serviceId}`, {
       method: "POST",
       body: JSON.stringify({ spec }),
@@ -123,7 +119,7 @@ export class DeepFellowClient {
 
   async installAdminServiceStreaming(
     serviceId: string,
-    spec: Record<string, any>,
+    spec: Record<string, unknown>,
     onProgress: (event: ProgressEvent) => void,
     ignoreWarnings = false
   ): Promise<void> {
@@ -138,7 +134,7 @@ export class DeepFellowClient {
       headers.Authorization = `Bearer ${adminApiKey}`;
     }
 
-    const body: Record<string, any> = { stream: true, spec };
+    const body: Record<string, unknown> = { stream: true, spec };
     if (ignoreWarnings) {
       body.ignore_warnings = true;
     }
@@ -159,11 +155,7 @@ export class DeepFellowClient {
           throw new InstallationWarningsError(errorData.warnings, errorData.detail || errorData.message);
         }
         
-        const errorMessage =
-          errorData?.detail?.[0]?.msg ||
-          errorData?.detail ||
-          errorData?.message ||
-          content;
+        const errorMessage = formatApiErrorMessage(errorData, content);
         throw new Error(`HTTP ${response.status}: ${errorMessage}`);
       } catch (e) {
         if (e instanceof InstallationWarningsError) {
@@ -187,7 +179,8 @@ export class DeepFellowClient {
 
   async getServiceProgress(
     serviceId: string,
-    onProgress: (event: ProgressEvent) => void
+    onProgress: (event: ProgressEvent) => void,
+    signal?: AbortSignal
   ): Promise<void> {
     const url = `${this.baseURL}/admin/services/${serviceId}/progress`;
     const adminApiKey = AdminApiKeyStorage.get();
@@ -197,7 +190,7 @@ export class DeepFellowClient {
       headers.Authorization = `Bearer ${adminApiKey}`;
     }
 
-    const response = await fetch(url, { headers });
+    const response = await fetch(url, { headers, signal });
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -217,7 +210,7 @@ export class DeepFellowClient {
     );
   }
 
-  async installAdminServiceModel(serviceId: string, modelId: string, spec: Record<string, any>): Promise<void> {
+  async installAdminServiceModel(serviceId: string, modelId: string, spec: Record<string, unknown>): Promise<void> {
     return this.makeRequest<void>(
       `/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`,
       {
@@ -240,7 +233,7 @@ export class DeepFellowClient {
   async installAdminServiceModelStreaming(
     serviceId: string,
     modelId: string,
-    spec: Record<string, any>,
+    spec: Record<string, unknown>,
     onProgress: (event: ProgressEvent) => void,
     ignoreWarnings = false
   ): Promise<void> {
@@ -255,7 +248,7 @@ export class DeepFellowClient {
       headers.Authorization = `Bearer ${adminApiKey}`;
     }
 
-    const body: Record<string, any> = { stream: true, spec };
+    const body: Record<string, unknown> = { stream: true, spec };
     if (ignoreWarnings) {
       body.ignore_warnings = true;
     }
@@ -276,11 +269,7 @@ export class DeepFellowClient {
           throw new InstallationWarningsError(errorData.warnings, errorData.detail || errorData.message);
         }
         
-        const errorMessage =
-          errorData?.detail?.[0]?.msg ||
-          errorData?.detail ||
-          errorData?.message ||
-          content;
+        const errorMessage = formatApiErrorMessage(errorData, content);
         throw new Error(`HTTP ${response.status}: ${errorMessage}`);
       } catch (e) {
         if (e instanceof InstallationWarningsError) {
@@ -305,7 +294,8 @@ export class DeepFellowClient {
   async getModelProgress(
     serviceId: string,
     modelId: string,
-    onProgress: (event: ProgressEvent) => void
+    onProgress: (event: ProgressEvent) => void,
+    signal?: AbortSignal
   ): Promise<void> {
     const url = `${this.baseURL}/admin/services/${serviceId}/models/progress?model_id=${encodeURIComponent(modelId)}`;
     const adminApiKey = AdminApiKeyStorage.get();
@@ -315,7 +305,7 @@ export class DeepFellowClient {
       headers.Authorization = `Bearer ${adminApiKey}`;
     }
 
-    const response = await fetch(url, { headers });
+    const response = await fetch(url, { headers, signal });
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -330,7 +320,7 @@ export class DeepFellowClient {
     });
   }
 
-  async addCustomModel(serviceId: string, spec: Record<string, any>): Promise<{ custom_model_id: string }> {
+  async addCustomModel(serviceId: string, spec: Record<string, unknown>): Promise<{ custom_model_id: string }> {
     return this.makeRequest<{ custom_model_id: string }>(
       `/admin/services/${serviceId}/models/custom`,
       {
@@ -375,6 +365,71 @@ export class DeepFellowClient {
   async getMeshInfo(): Promise<ShowMeshInfoOut> {
     return this.makeRequest<ShowMeshInfoOut>("/admin/mesh/info");
   }
+}
+
+type ApiErrorPayload = {
+  detail?: unknown;
+  message?: unknown;
+};
+
+function formatApiErrorMessage(errorData: unknown, fallback: string): string {
+  if (!errorData || typeof errorData !== "object") return fallback;
+
+  const data = errorData as ApiErrorPayload;
+  const detail = data.detail;
+  const message = data.message;
+
+  const detailString = formatDetail(detail);
+  if (detailString) return detailString;
+
+  if (typeof message === "string" && message.trim()) {
+    return message;
+  }
+
+  return fallback;
+}
+
+function formatDetail(detail: unknown): string {
+  if (typeof detail === "string") {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          const obj = item as Record<string, unknown>;
+          const msg = obj.msg ?? obj.message;
+          if (typeof msg === "string" && msg.trim()) {
+            const field = obj.field;
+            if (typeof field === "string" && field.trim()) {
+              return `${field}: ${msg}`;
+            }
+            return msg;
+          }
+          try {
+            return JSON.stringify(obj);
+          } catch {
+            return String(obj);
+          }
+        }
+        return String(item);
+      })
+      .filter((p) => typeof p === "string" && p.trim());
+
+    return parts.join("; ");
+  }
+
+  if (detail && typeof detail === "object") {
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return String(detail);
+    }
+  }
+
+  return "";
 }
 
 // Export a default instance

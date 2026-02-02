@@ -11,6 +11,7 @@ limitations under the License.
 import { createFileRoute } from "@tanstack/react-router";
 import { ServiceModels } from "@/components/ServiceModels";
 import { useRequireAuth } from "@/hooks/use-auth";
+import { SiteHeader } from "@/components/dashboard/site-header";
 
 export const Route = createFileRoute("/dashboard/services/$serviceId")({
   component: ServiceModelsPage,
@@ -20,5 +21,21 @@ function ServiceModelsPage() {
   useRequireAuth();
   const { serviceId } = Route.useParams();
 
-  return <ServiceModels serviceId={serviceId} />;
+  return (
+    <>
+      <SiteHeader
+        breadcrumbs={[
+          { label: "Services", href: "/dashboard" },
+          { label: serviceId },
+        ]}
+      />
+      <div className="flex flex-1 flex-col">
+        <div className="@container/main flex flex-1 flex-col gap-2">
+          <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+            <ServiceModels serviceId={serviceId} />
+          </div>
+        </div>
+      </div>
+    </>
+  );
 }

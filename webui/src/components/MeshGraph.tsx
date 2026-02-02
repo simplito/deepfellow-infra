@@ -8,18 +8,20 @@ This software is Licensed under the DeepFellow Free License.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState, useEffect } from "react";
 import {
   ReactFlow,
-  useNodesState,
-  useEdgesState,
   Controls,
   Background,
   Handle,
   Position,
+  applyNodeChanges,
+  applyEdgeChanges,
   type Node,
   type Edge,
   type NodeTypes,
+  type OnNodesChange,
+  type OnEdgesChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { MeshInfo, MeshInfoInfra } from "@/deepfellow/types";
@@ -129,8 +131,28 @@ export function MeshGraph({ meshInfo, currentServerName = "Current Server", onNo
     return { nodes: initialNodes, edges: initialEdges };
   }, [meshInfo, currentServerName]);
 
-  const [flowNodes, setNodes, onNodesChange] = useNodesState(nodes);
-  const [flowEdges, setEdges, onEdgesChange] = useEdgesState(edges);
+  const [flowNodes, setFlowNodes] = useState<Node[]>(nodes);
+  const [flowEdges, setFlowEdges] = useState<Edge[]>(edges);
+
+  // Sync nodes and edges when they change from props
+  useEffect(() => {
+    setFlowNodes(nodes);
+    setFlowEdges(edges);
+  }, [nodes, edges]);
+
+  const onNodesChange: OnNodesChange = useCallback(
+    (changes) => {
+      setFlowNodes((nds) => applyNodeChanges(changes, nds));
+    },
+    []
+  );
+
+  const onEdgesChange: OnEdgesChange = useCallback(
+    (changes) => {
+      setFlowEdges((eds) => applyEdgeChanges(changes, eds));
+    },
+    []
+  );
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
