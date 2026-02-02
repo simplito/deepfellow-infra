@@ -582,7 +582,7 @@ root.addEventListener("click", async e => {
         }
         else if (action === "uninstall-service") {
             showUninstallModal({
-                title: "Uninstalling Model",
+                title: "Uninstalling Service",
                 text: "How do you want to uninstall the service? The purge option removes all service files.",
                 onResult: async (removeType) => {
                     showLoadingPage()
