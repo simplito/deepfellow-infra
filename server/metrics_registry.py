@@ -34,6 +34,12 @@ class MetricsRegistry:
             registry=self.registry,
         )
 
+        self.subinfra_count = Gauge(
+            "deepfellow_subinfras_count",
+            "Number of connected subinfras",
+            registry=self.registry,
+        )
+
         self.gpu_count = Gauge(
             "deepfellow_infra_gpu_count",
             "Number of available GPUs",

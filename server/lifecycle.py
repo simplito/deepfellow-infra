@@ -79,8 +79,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         app.state.services_manager = services_manager = ServicesManager()
         app.state.model_tester = model_tester = ModelTester()
         app.state.endpoint_registry = endpoint_registry = EndpointRegistry(config, parent_infra, model_tester, metrics_registry)
-        app.state.metrics_service = MetricsService(endpoint_registry, config, hardware, services_manager, metrics_registry)
-        app.state.infra_websocket_server = InfraWebsocketServer(config, parent_infra, endpoint_registry)
+        app.state.infra_websocket_server = infra_websocket_server = InfraWebsocketServer(config, parent_infra, endpoint_registry)
+        app.state.metrics_service = MetricsService(
+            endpoint_registry, config, hardware, services_manager, metrics_registry, infra_websocket_server
+        )
         app.state.context = context = ApplicationContext(endpoint_registry, config, service_provider, services_manager)
         app.state.port_service = port_service = PortService()
         app.state.docker_service = docker_service = await create_docker_service(port_service, config)
