@@ -61,7 +61,7 @@ from server.utils.core import (
 )
 from server.utils.loading import Progress
 
-logger = logging.getLogger("uvicorn")
+logger = logging.getLogger("uvicorn.error")
 
 
 def _read_models_from_json() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]

@@ -48,4 +48,4 @@ env-copy:
     uv run python ./scripts/copy_envs.py
 
 replace-docker *FLAGS:
-    docker stop infra; just dev {{FLAGS}}
+    docker stop infra-infra-1; just dev {{FLAGS}}

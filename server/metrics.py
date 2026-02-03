@@ -16,6 +16,7 @@ from server.endpointregistry import EndpointRegistry
 from server.metrics_registry import MetricsRegistry
 from server.services_manager import ServicesManager
 from server.utils.hardware import Hardware
+from server.websockets.infra_websocket_server import InfraWebsocketServer
 
 
 class MetricsService:
@@ -26,12 +27,14 @@ class MetricsService:
         hardware: Hardware,
         services_manager: ServicesManager,
         metrics_registry: MetricsRegistry,
+        infra_websocket_server: InfraWebsocketServer,
     ):
         self.endpoint_registry = endpoint_registry
         self.config = config
         self.hardware = hardware
         self.services_manager = services_manager
         self.metrics_registry = metrics_registry
+        self.infra_websocket_server = infra_websocket_server
 
     def get_current_metrics(self) -> bytes:
         """Collect all metrics and return Prometheus text format output."""
@@ -47,6 +50,7 @@ class MetricsService:
         self.metrics_registry.models_installed.set(len(self.endpoint_registry.list_models()))
         self.metrics_registry.info.info({"name": self.config.name, "infra_url": self.config.infra_url})
         self.metrics_registry.gpu_count.set(len(self.hardware.gpus))
+        self.metrics_registry.subinfra_count.set(len(self.infra_websocket_server.connections))
 
         self.metrics_registry.model_usage.clear()
         for model in self.endpoint_registry.list_models():

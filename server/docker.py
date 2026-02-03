@@ -32,7 +32,7 @@ from server.utils.hardware import HardwarePartInfo, NvidiaGpuInfo
 from server.utils.loading import Progress
 from server.utils.logger import uvicorn_logger
 
-logger = logging.getLogger("uvicorn")
+logger = logging.getLogger("uvicorn.error")
 
 ARCH_ALIASES = {
     "x86_64": ("amd64", None),

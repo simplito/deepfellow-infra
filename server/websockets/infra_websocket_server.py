@@ -107,7 +107,8 @@ class InfraWebsocketServer(WebSocketServer[InfraWsData]):
 
         context.authorized = Authorized(name=params.name, url=params.url, api_key=params.api_key, models=params.models)
         self.endpoint_registry.update_models([], params.models, params.url, params.api_key)
-        logger.info(f"WS client connected {params.url}")  # noqa: G004
+        msg = f"Connected with subinfra {params.name} on {params.url}."
+        logger.info(msg)
         return "OK"
 
     def _on_usage_change(self, params: UsageChangeRequest, context: InfraWsData) -> Literal["OK"]:

@@ -192,7 +192,8 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
             return
         promise = await self.install(cfg.options, save=False)
         await promise.wait()
-        logger.info(f"{self.get_id()} service checked")  # noqa: G004
+        msg = f"{self.get_id()} service installed."
+        logger.info(msg)
         tasks = [asyncio.create_task(self.load_model(model)) for model in cfg.models or []]
         await asyncio.gather(*tasks)
 
@@ -273,6 +274,8 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
 
         async def func(data: InstallModelOut) -> InstallModelOut:
             await self._save()
+            msg = f"{model_id} model installed."
+            logger.debug(msg)
             del self.installing_model_progress[model_id]
             return data
 

@@ -9,6 +9,7 @@
 
 """Services API."""
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Path, Query
@@ -34,6 +35,8 @@ from server.models.services import (
 from server.services_manager import ServicesManager
 from server.utils.core import convert_promise_with_progress_to_fastapi_response
 
+logger = logging.getLogger("uvicorn.error")
+
 router = APIRouter(prefix="/admin/services", tags=["Services"])
 
 
@@ -48,11 +51,16 @@ async def install_service(
     _: Annotated[str, Depends(auth_admin)],
 ) -> Response:
     """Install the service."""
+    msg = f"{service_id} service installing."
+    logger.debug(msg)
     promise = await services_manager.install_service(service_id, model)
     if model.stream:
         return await convert_promise_with_progress_to_fastapi_response(promise)
     result = await promise.wait()
-    return JSONResponse(result.model_dump())
+    result_json = JSONResponse(result.model_dump())
+    msg = f"{service_id} service installed."
+    logger.info(msg)
+    return result_json
 
 
 @router.delete(
@@ -66,7 +74,11 @@ async def uninstall_service(
     _: Annotated[str, Depends(auth_admin)],
 ) -> UninstallServiceOut:
     """Uninstall the service."""
+    msg = f"{service_id} service uninstalling."
+    logger.debug(msg)
     await services_manager.uninstall_service(service_id, model)
+    msg = f"{service_id} service uninstalled."
+    logger.info(msg)
     return UninstallServiceOut(status="OK")
 
 
