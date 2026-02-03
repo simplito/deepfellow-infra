@@ -2159,6 +2159,10 @@
       "name": "PLLuM-12B-instruct-Q8_0",
       "size": "12.1GB",
       "modelfile": "FROM https://huggingface.co/mradermacher/PLLuM-12B-instruct-GGUF/resolve/main/PLLuM-12B-instruct.Q8_0.gguf"
+    },
+    {
+      "name": "HammerAI/mythomax-l2",
+      "size": "7.9GB"
     }
   ]
 }
