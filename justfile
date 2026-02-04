@@ -1,8 +1,8 @@
 dev:
-    uv run uvicorn server.main:app --host "localhost" --port 8086 --reload --log-level debug
+    uv run uvicorn server.main:app --host "localhost" --port 8086 --reload --log-level debug --log-config server/utils/logging_config.yaml
 
 dev-trace:
-    uv run uvicorn server.main:app --reload --log-level trace
+    uv run uvicorn server.main:app --reload --log-level trace --log-config server/utils/logging_config.yaml
 
 test *FLAGS:
     uv run pytest --showlocals --tb=auto -ra --cov server --cov scripts --cov-branch --cov-report=term-missing --no-cov-on-fail {{FLAGS}}

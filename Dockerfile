@@ -26,4 +26,4 @@ WORKDIR /app
 COPY --from=builder /app /app
 COPY --from=webbuilder /app/webui/dist /app/static
 
-CMD ["./.venv/bin/uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8086"]
+CMD ["./.venv/bin/uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8086", "--log-config", "server/utils/logging_config.yaml"]
