@@ -32,7 +32,7 @@ export interface SpecField {
   required: boolean;
   default?: string | number | boolean;
   placeholder?: string;
-  values?: string[]; // For oneof type
+  values?: (string|{label: string, value: string})[]; // For oneof type
   display?: string; // Conditional display: "fieldName=value"
 }
 
