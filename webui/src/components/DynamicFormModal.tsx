@@ -279,8 +279,8 @@ export function DynamicFormModal({
 										</SelectTrigger>
 										<SelectContent>
 											{field.values?.map((val) => (
-												<SelectItem key={val} value={val}>
-													{val}
+												<SelectItem key={typeof(val) === "string" ? val : val.value} value={typeof(val) === "string" ? val : val.value}>
+													{typeof(val) === "string" ? val : val.label}
 												</SelectItem>
 											))}
 										</SelectContent>
