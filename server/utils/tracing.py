@@ -45,6 +45,8 @@ class InfraTracer:
 
     def __init__(self, service_name: str) -> None:
         self.service_name = service_name
+        self.config = None
+        self.tracer = None
 
     def _get_config(self) -> AppSettings:
         if self.config is None:
