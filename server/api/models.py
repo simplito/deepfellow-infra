@@ -12,7 +12,7 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Path, Query
+from fastapi import APIRouter, Body, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 from server.core.dependencies import auth_admin, get_services_manager
@@ -30,6 +30,7 @@ from server.models.models import (
 )
 from server.services_manager import ServicesManager
 from server.utils.core import convert_promise_with_progress_to_fastapi_response
+from server.utils.tracing import tracer
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -40,7 +41,9 @@ router = APIRouter(prefix="/admin/services/{service_id}/models", tags=["Services
     "/_",
     summary="Install the model from the service.",
 )
+@tracer.trace_request()
 async def install_model(
+    request: Request,  # noqa: ARG001 needed for tracer
     model: Annotated[InstallModelIn, Body()],
     service_id: Annotated[str, Path(description="The ID of the service to use.")],
     query: Annotated[ModelIdQuery, Query()],
@@ -76,7 +79,9 @@ async def get_install_progress_model(
     "/_",
     summary="Uninstall the model from the service.",
 )
+@tracer.trace_request()
 async def uninstall_model(
+    request: Request,  # noqa: ARG001 needed for tracer
     model: Annotated[UninstallModelIn, Body()],
     service_id: Annotated[str, Path(description="The ID of the service to use.")],
     query: Annotated[ModelIdQuery, Query()],
@@ -124,7 +129,9 @@ async def list_model(
     "/custom",
     summary="Add custom model.",
 )
+@tracer.trace_request()
 async def add_custom_model(
+    request: Request,  # noqa: ARG001 needed for tracer
     model: Annotated[AddCustomModelIn, Body()],
     service_id: Annotated[str, Path(description="The ID of the service to use.")],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
@@ -139,7 +146,9 @@ async def add_custom_model(
     "/custom/{custom_model_id}",
     summary="Remove custom model.",
 )
+@tracer.trace_request()
 async def remove_custom_model(
+    request: Request,  # noqa: ARG001 needed for tracer
     service_id: Annotated[str, Path(description="The ID of the service to use.")],
     custom_model_id: Annotated[str, Path(description="The ID of the custom model to delete.")],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],

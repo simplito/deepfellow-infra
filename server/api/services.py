@@ -12,7 +12,7 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Path, Query
+from fastapi import APIRouter, Body, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 from server.core.dependencies import auth_admin, get_endpoint_registry, get_services_manager
@@ -34,6 +34,7 @@ from server.models.services import (
 )
 from server.services_manager import ServicesManager
 from server.utils.core import convert_promise_with_progress_to_fastapi_response
+from server.utils.tracing import tracer
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -44,7 +45,9 @@ router = APIRouter(prefix="/admin/services", tags=["Services"])
     "/{service_id}",
     summary="Install the service.",
 )
+@tracer.trace_request()
 async def install_service(
+    request: Request,  # noqa: ARG001 needed for tracer
     model: Annotated[InstallServiceIn, Body()],
     service_id: Annotated[str, Path(description="The ID of the service to install")],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
@@ -67,7 +70,9 @@ async def install_service(
     "/{service_id}",
     summary="Uninstall the service.",
 )
+@tracer.trace_request()
 async def uninstall_service(
+    request: Request,  # noqa: ARG001 needed for tracer
     model: Annotated[UninstallServiceIn, Body()],
     service_id: Annotated[str, Path(description="The ID of the service to uninstall")],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
@@ -180,7 +185,9 @@ async def retrieve_docker_compose_file(
     "/{service_id}/docker/restart",
     summary="Restart docker container.",
 )
+@tracer.trace_request()
 async def restart_docker_container(
+    request: Request,  # noqa: ARG001 needed for tracer
     service_id: Annotated[str, Path(description="The ID of the service")],
     query: Annotated[OptionalModelIdQuery, Query()],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
