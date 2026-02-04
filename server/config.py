@@ -44,6 +44,9 @@ class AppSettings(BaseSettings):
     metrics_username: str = ""
     metrics_password: str = ""
 
+    otel_exporter_otlp_endpoint: str = "http://localhost:4317"
+    otel_tracing_enabled: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

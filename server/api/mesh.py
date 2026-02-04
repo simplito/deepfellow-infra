@@ -29,7 +29,7 @@ async def show_mesh_info(
     infra_websocket_server: Annotated[InfraWebsocketServer, Depends(get_infra_websocket_server)],
     _: Annotated[str, Depends(auth_admin)],
 ) -> ShowMeshInfoOut:
-    """Install the service."""
+    """Show info about the mesh."""
     return ShowMeshInfoOut(info=infra_websocket_server.get_mesh_info())
 
 
