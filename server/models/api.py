@@ -17,7 +17,7 @@ from uuid import uuid4
 from aiohttp import FormData
 from fastapi import File as FastApiFile
 from fastapi import UploadFile
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class ImageUrl(BaseModel):
@@ -403,7 +403,7 @@ class ApiModels(BaseModel):
 
 type TranscriptionInclude = Literal["logprobs"]
 
-languages = [
+type Languages = Literal[
     "af",
     "am",
     "ar",
@@ -553,24 +553,14 @@ class FormSerializable(BaseModel):
         """Serialize to FormData."""
 
 
+type ResponseTranscriptionFormat = Literal["text", "json", "verbose_json", "srt", "vtt"]
+
+
 class CreateTranscriptionRequest(FormSerializable):
-    model: Annotated[str, Field(description="ID of the model to use.")]
     file: UploadFile = FastApiFile(
         description="The audio file object (not file name) in one of these formats: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, or webm.",
     )
-    temperature: Annotated[
-        float | None,
-        Field(
-            ge=0.0,
-            le=1.0,
-            description=(
-                "The sampling temperature, between 0 and 1. Higher values like 0.8 will make the output more random, "
-                "while lower values like 0.2 will make it more focused and deterministic. If set to 0, the model will use log probability "
-                "to automatically increase the temperature until certain thresholds are hit."
-            ),
-        ),
-    ] = None
-    type: Annotated[str | None, Field(description="The format type, either 'text' or 'json_object'")] = None
+    model: Annotated[str, Field(description="ID of the model to use.")]
     chunking_strategy: Annotated[
         Literal["auto"] | AudioChunkingStrategy | None,
         Field(
@@ -594,8 +584,30 @@ class CreateTranscriptionRequest(FormSerializable):
             ),
         ),
     ] = None
+    known_speaker_names: Annotated[
+        list[str] | None,
+        Field(
+            alias="known_speaker_names[]",
+            description=(
+                "Optional list of speaker names that correspond to the audio samples provided in "
+                "known_speaker_references[]. Each entry should be a short identifier "
+                "(for example customer or agent)."
+            ),
+        ),
+    ] = None
+    known_speaker_references: Annotated[
+        list[str] | None,
+        Field(
+            alias="known_speaker_references[]",
+            description=(
+                "Optional list of audio samples (as data URLs) that contain known speaker references "
+                "matching known_speaker_names[]. Each sample must be between 2 and 10 seconds, "
+                "and can use any of the same input audio formats supported by file."
+            ),
+        ),
+    ] = None
     language: Annotated[
-        str | None,
+        Languages | None,
         Field(
             description=(
                 "The language of the input audio. Supplying the input language in ISO-639-1 (e.g. en) "
@@ -612,12 +624,28 @@ class CreateTranscriptionRequest(FormSerializable):
             )
         ),
     ] = None
+    response_format: Annotated[
+        ResponseTranscriptionFormat | None,
+        Field(description=("The format of the output, in one of these options: json, text, srt, verbose_json, vtt, or diarized_json.")),
+    ] = None
     stream: Annotated[
         bool | None,
         Field(
             description=(
                 "If set to true, the model response data will be streamed to the client as it is generated using server-sent events."
             )
+        ),
+    ] = None
+    temperature: Annotated[
+        float | None,
+        Field(
+            ge=0.0,
+            le=1.0,
+            description=(
+                "The sampling temperature, between 0 and 1. Higher values like 0.8 will make the output more random, "
+                "while lower values like 0.2 will make it more focused and deterministic. If set to 0, the model will use log probability "
+                "to automatically increase the temperature until certain thresholds are hit."
+            ),
         ),
     ] = None
     timestamp_granularities: Annotated[
@@ -633,13 +661,6 @@ class CreateTranscriptionRequest(FormSerializable):
             ),
         ),
     ] = None
-
-    @field_validator("language", mode="after")
-    def _check_language(cls, v: str | None) -> str | None:  # noqa: N805
-        if v is not None and v not in languages:
-            msg = f"Unsupported value, available values: {', '.join(languages)}"
-            raise ValueError(msg)
-        return v
 
     async def to_form(self, remove_model: bool, rewrite_model_to: str | None) -> FormData:
         """Serialize to FormData."""
