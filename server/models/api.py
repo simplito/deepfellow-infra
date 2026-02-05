@@ -401,6 +401,18 @@ class ApiModels(BaseModel):
     data: list[ApiModel]
 
 
+class ApiModelCompatible(BaseModel):
+    id: str
+    object: Literal["model"]
+    created: int
+    owned_by: str
+
+
+class ApiModelsCompatible(BaseModel):
+    object: Literal["list"] = "list"
+    data: list[ApiModelCompatible]
+
+
 type TranscriptionInclude = Literal["logprobs"]
 
 type Languages = Literal[
