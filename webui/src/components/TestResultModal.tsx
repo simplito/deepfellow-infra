@@ -103,7 +103,7 @@ export function TestResultModal({ open, onOpenChange, result, isLoading = false,
             {result.details && (
               <div>
                 <h3 className="font-semibold mb-2">Details:</h3>
-                <pre className="p-4 bg-muted rounded text-sm overflow-auto max-h-48 whitespace-pre-wrap">
+                <pre className="p-4 bg-muted rounded text-sm overflow-auto max-h-48 whitespace-pre-wrap" style={({lineBreak: "anywhere"})}>
                   {JSON.stringify(result.details, null, 2)}
                 </pre>
               </div>
