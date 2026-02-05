@@ -12,13 +12,15 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Form, Path, Request
+from fastapi import APIRouter, Body, Depends, Form, Path, Query, Request
 
 from server.core.dependencies import auth_server, get_endpoint_registry
 from server.endpointregistry import EndpointRegistry
 from server.models.api import (
     ApiModel,
+    ApiModelCompatible,
     ApiModels,
+    ApiModelsCompatible,
     ChatCompletionRequest,
     CompletionLegacyRequest,
     CreateSpeechRequest,
@@ -42,9 +44,11 @@ router = APIRouter(prefix="", tags=["AI Endpoints"])
 async def on_models(
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
-) -> ApiModels:
+    additional_data: Annotated[bool, Query()] = False,
+) -> ApiModels | ApiModelsCompatible:
     """Process models request."""
-    return endpoint_registry.get_models()
+    models = endpoint_registry.get_models()
+    return models if additional_data else ApiModelsCompatible(**models.model_dump())
 
 
 @router.get("/v1/models/{model_id:path}")
@@ -52,9 +56,11 @@ async def on_model(
     _: Annotated[str, Depends(auth_server)],
     model_id: Annotated[str, Path(description="The ID of the model to use.")],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
-) -> ApiModel:
+    additional_data: Annotated[bool, Query()] = False,
+) -> ApiModel | ApiModelCompatible:
     """Process model request."""
-    return endpoint_registry.get_model(model_id)
+    model = endpoint_registry.get_model(model_id)
+    return model if additional_data else ApiModelCompatible(**model.model_dump())
 
 
 @router.post("/v1/messages")
