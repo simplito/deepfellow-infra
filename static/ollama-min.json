@@ -21,6 +21,10 @@
       "size": "622MB"
     },
     {
+      "name": "embeddinggemma:300m",
+      "size": "622MB"
+    },
+    {
       "name": "bge-m3",
       "size": "1.2GB"
     },
@@ -99,6 +103,26 @@
     {
       "name": "granite-embedding:278m",
       "size": "563MB"
+    },
+    {
+      "name": "nomic-embed-text-v2-moe",
+      "size": "956MB"
+    },
+    {
+      "name": "qwen3-embedding",
+      "size": "4.7GB"
+    },
+    {
+      "name": "qwen3-embedding:0.6",
+      "size": "639MB"
+    },
+    {
+      "name": "qwen3-embedding:4b",
+      "size": "2.5GB"
+    },
+    {
+      "name": "qwen3-embedding:8b",
+      "size": "4.7GB"
     }
   ],
   "llms": [
@@ -2163,6 +2187,216 @@
     {
       "name": "HammerAI/mythomax-l2",
       "size": "7.9GB"
+    },
+    {
+      "name": "qwen3-coder-next",
+      "size": "52GB"
+    },
+    {
+      "name": "qwen3-coder-next:q4_K_M",
+      "size": "52GB"
+    },
+    {
+      "name": "qwen3-coder-next:q8_0",
+      "size": "85GB"
+    },
+    {
+      "name": "glm-ocr",
+      "size": "2.2GB"
+    },
+    {
+      "name": "glm-ocr:q8_0",
+      "size": "1.6GB"
+    },
+    {
+      "name": "glm-ocr:bf16",
+      "size": "2.2GB"
+    },
+    {
+      "name": "glm-4.7-flash",
+      "size": "19GB"
+    },
+    {
+      "name": "glm-4.7-flash:q4_K_M",
+      "size": "19GB"
+    },
+    {
+      "name": "glm-4.7-flash:q8_0",
+      "size": "32GB"
+    },
+    {
+      "name": "glm-4.7-flash:bf16",
+      "size": "60GB"
+    },
+    {
+      "name": "lfm2.5-thinking",
+      "size": "731MB"
+    },
+    {
+      "name": "lfm2.5-thinking:1.2b",
+      "size": "731MB"
+    },
+    {
+      "name": "translategemma",
+      "size": "3.3GB"
+    },
+    {
+      "name": "translategemma:4b",
+      "size": "3.3GB"
+    },
+    {
+      "name": "translategemma:12b",
+      "size": "8.1GB"
+    },
+    {
+      "name": "translategemma:27b",
+      "size": "17GB"
+    },
+    {
+      "name": "functiongemma",
+      "size": "301MB"
+    },
+    {
+      "name": "functiongemma:270m",
+      "size": "301MB"
+    },
+    {
+      "name": "nemotron-3-nano",
+      "size": "24GB"
+    },
+    {
+      "name": "nemotron-3-nano:30b",
+      "size": "24GB"
+    },
+    {
+      "name": "olmo-3",
+      "size": "4.5GB"
+    },
+    {
+      "name": "olmo-3:7b",
+      "size": "4.5GB"
+    },
+    {
+      "name": "olmo-3:32b",
+      "size": "19GB"
+    },
+    {
+      "name": "olmo-3.1",
+      "size": "19GB"
+    },
+    {
+      "name": "olmo-3.1:32b",
+      "size": "19GB"
+    },
+    {
+      "name": "devstral-small-2",
+      "size": "15GB"
+    },
+    {
+      "name": "devstral-small-2:24b",
+      "size": "15GB"
+    },
+    {
+      "name": "rnj-1",
+      "size": "5.1GB"
+    },
+    {
+      "name": "rnj-1:8b",
+      "size": "5.1GB"
+    },
+    {
+      "name": "qwen3-next",
+      "size": "50GB"
+    },
+    {
+      "name": "qwen3-next:80b",
+      "size": "50GB"
+    },
+    {
+      "name": "ministral-3",
+      "size": "6GB"
+    },
+    {
+      "name": "ministral-3:3b",
+      "size": "3GB"
+    },
+    {
+      "name": "ministral-3:8b",
+      "size": "6GB"
+    },
+    {
+      "name": "ministral-3:14b",
+      "size": "9.1GB"
+    },
+    {
+      "name": "deepseek-ocr",
+      "size": "6.7GB"
+    },
+    {
+      "name": "deepseek-ocr:3b",
+      "size": "6.7GB"
+    },
+    {
+      "name": "cogito-2.1",
+      "size": "1.3TB"
+    },
+    {
+      "name": "cogito-2.1:671b",
+      "size": "1.3TB"
+    },
+    {
+      "name": "qwen3-vl",
+      "size": "6.1GB"
+    },
+    {
+      "name": "qwen3-vl:2b",
+      "size": "1.9GB"
+    },
+    {
+      "name": "qwen3-vl:4b",
+      "size": "3.3GB"
+    },
+    {
+      "name": "qwen3-vl:8b",
+      "size": "6.1GB"
+    },
+    {
+      "name": "qwen3-vl:30b",
+      "size": "20GB"
+    },
+    {
+      "name": "qwen3-vl:32b",
+      "size": "21GB"
+    },
+    {
+      "name": "qwen3-vl:235b",
+      "size": "143GB"
+    }
+  ],
+  "txt2img": [
+    {
+      "name": "x/flux2-klein",
+      "size": "5.7GB"
+    },
+    {
+      "name": "x/flux2-klein:4b",
+      "size": "5.7GB"
+    },
+    {
+      "name": "x/flux2-klein:9b",
+      "size": "12GB"
+    },
+    {
+      "name": "x/z-image-turbo",
+      "size": "13GB"
+    },
+    {
+      "name": "x/z-image-turbo:fp8",
+      "size": "13GB"
+    },
+    {
+      "name": "x/z-image-turbo:bf16",
+      "size": "33GB"
     }
   ]
 }

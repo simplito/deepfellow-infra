@@ -109,6 +109,7 @@ class OllamaRegistryEntry(TypedDict):
 class OllamaRegistry(TypedDict):
     llms: list[OllamaRegistryEntry]
     embeddings: list[OllamaRegistryEntry]
+    txt2img: list[OllamaRegistryEntry]
 
 
 def _read_models() -> dict[str, OllamaModel]:
@@ -132,6 +133,14 @@ def _read_models() -> dict[str, OllamaModel]:
                 modelfile=tag.get("modelfile", ""),
                 quantization=tag.get("quantization", ""),
             )
+        for tag in registry["txt2img"]:
+            map[tag["name"]] = OllamaModel(
+                id=tag["name"],
+                size=tag["size"],
+                type="txt2img",
+                modelfile=tag.get("modelfile", ""),
+                quantization=tag.get("quantization", ""),
+            )
         return map
 
 
@@ -141,7 +150,7 @@ class OllamaAiConst(BaseModel):
 
 
 _const = OllamaAiConst(
-    image=DockerImage(name="ollama/ollama:0.15.1", size="5.6 GB"),
+    image=DockerImage(name="ollama/ollama:0.16.1", size="5.6 GB"),
     models=_read_models(),
 )
 
@@ -285,7 +294,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             fields=[
                 CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
                 CustomModelField(type="text", name="size", description="Model size", placeholder="1GB"),
-                CustomModelField(type="oneof", name="type", description="Model type", values=["llm", "embedding"]),
+                CustomModelField(type="oneof", name="type", description="Model type", values=["llm", "embedding", "txt2img"]),
                 CustomModelField(
                     type="textarea",
                     name="modelfile",
@@ -386,6 +395,8 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                     self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
                 if model.type == "embedding":
                     self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
+                if model.type == "txt2img":
+                    self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
             await self.docker_service.uninstall_docker(self.installed.docker)
         self.installed = None
         if options.purge:
@@ -699,6 +710,14 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                     options=ProxyOptions(url=f"{info.base_url}/v1/embeddings", rewrite_model_to=rewrite_model_to),
                     registration_options=None,
                 )
+            if model.type == "txt2img":
+                model_info.registration_id = self.endpoint_registry.register_image_generations_as_proxy(
+                    model=registered_name,
+                    props=ModelProps(private=True),
+                    options=ProxyOptions(url=f"{info.base_url}/v1/images/generations", rewrite_model_to=rewrite_model_to),
+                    registration_options=None,
+                )
+
             input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
             self.models_downloaded[model_id] = DownloadedInfo()
             return InstallModelOut(status="OK", details="Installed")
@@ -714,6 +733,8 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                 self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
             if model.type == "embedding":
                 self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
+            if model.type == "txt2img":
+                self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
 
         if options.purge and model_id in self.models_downloaded:
             await fetch_from(f"{info.base_url}/api/delete", "DELETE", {"name": model_id})
