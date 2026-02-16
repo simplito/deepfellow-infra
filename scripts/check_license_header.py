@@ -17,6 +17,8 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+# ruff: noqa: T201
+
 LICENSE_HEADER_TEMPLATE = """\
 # DeepFellow Software Framework.
 # Copyright © {year} Simplito sp. z o.o.
