@@ -18,6 +18,8 @@ import sys
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
+# ruff: noqa: T201
+
 
 def check_health() -> int:
     """Check if the infra is healthy."""

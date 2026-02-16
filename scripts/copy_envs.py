@@ -11,10 +11,12 @@
 # Used to fast copy paste .env from infra created by DeepFellow CLI, and replace docker hosts with localhost.
 # Allows to connect local deepfellow infra to docker subservices.
 
-
 #!/usr/bin/env python3
+
 import re
 from pathlib import Path
+
+# ruff: noqa: T201
 
 # Source and destination paths
 HOME = Path.home()
