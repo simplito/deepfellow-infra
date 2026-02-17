@@ -168,3 +168,22 @@ async def on_custom_endpoint(
 ) -> StarletteResponse:
     """Process custom endpoint request."""
     return await endpoint_registry.execute_custom_endpoints(full_path, request)
+
+
+# Replacement from router.api_route which is kind bugged in swagger.
+# Also FastAPI creators doesn't recommend using api_route method.
+@router.get("/mcp/{full_path:path}")
+@router.post("/mcp/{full_path:path}")
+@router.put("/mcp/{full_path:path}")
+@router.delete("/mcp/{full_path:path}")
+@router.patch("/mcp/{full_path:path}")
+@router.head("/mcp/{full_path:path}")
+@router.options("/mcp/{full_path:path}")
+async def on_mcp_endpoint(
+    request: Request,
+    _: Annotated[str, Depends(auth_server)],
+    endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+    full_path: str,
+) -> StarletteResponse:
+    """Process mcp endpoint request."""
+    return await endpoint_registry.execute_mcp_endpoints(full_path, request)

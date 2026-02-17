@@ -42,7 +42,7 @@ from server.models.services import (
     ServiceSpecification,
     UninstallServiceIn,
 )
-from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
+from server.services.base2_service import Base2Service, CustomModel, Instance, InstanceConfig, ModelConfig
 from server.utils.core import (
     DownloadedPacket,
     PreDownloadPacket,
@@ -115,6 +115,10 @@ _const = LlamacppConst(
             url="https://huggingface.co/bartowski/google_gemma-3-1b-it-GGUF/resolve/main/google_gemma-3-1b-it-Q4_K_M.gguf",
             size="0.9GB",
         ),
+        "lmstudio-community/gemma-3-270m-it-16f": LlamacppModel(
+            url="https://huggingface.co/lmstudio-community/gemma-3-270m-it-GGUF/resolve/main/gemma-3-270m-it-F16.gguf",
+            size="0.6GB",
+        ),
         "google/gemma-2b": LlamacppModel(
             url="https://huggingface.co/google/gemma-2b/resolve/main/gemma-2b.gguf",
             size="10.0GB",
@@ -177,12 +181,17 @@ class DownloadedInfo:
 
 
 class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
-    models: dict[str, LlamacppModel]
+    models: dict[str, dict[str, LlamacppModel]]
 
     def _after_init(self) -> None:
-        self.models = _const.models.copy()
+        self.models = {}
+        self.load_default_models("default")
 
-    def get_id(self) -> str:
+    def load_default_models(self, instance: str) -> None:
+        """Load default models to instance."""
+        self.models[instance] = _const.models.copy()
+
+    def get_type(self) -> str:
         """Return the service id."""
         return "llamacpp"
 
@@ -199,7 +208,7 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
-        fields = self.add_gpu_field_to_spec()
+        fields = self.add_hardware_field_to_spec()
         return ServiceSpecification(fields=fields)
 
     def get_model_spec(self) -> ModelSpecification:
@@ -222,23 +231,25 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
             ]
         )
 
-    def get_installed_info(self) -> bool | InstallServiceProgress | ServiceOptions:
+    def get_installed_info(self, instance: str) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""
-        return self._get_service_installed_info() if self.installed is None else self.installed.options.spec
+        installed = self.get_instance_info(instance).installed
+        return self._get_service_installed_info(instance) if installed is None else installed.options.spec
 
-    def _generate_config(self, info: InstalledInfo | None) -> ServiceConfig:
-        return ServiceConfig(
+    def _generate_instance_config(self, info: InstalledInfo | None, custom: list[CustomModel] | None) -> InstanceConfig:
+        return InstanceConfig(
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
-            custom=self.custom,
-            downloaded=self.models_downloaded,
-            service_downloaded=self.service_downloaded,
+            custom=custom,
         )
 
     def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
         return DownloadedInfo(**data)
 
-    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+    async def _install_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+        if not self.models.get(instance):
+            self.load_default_models(instance)
+
         if "hardware" not in options.spec:
             options.spec["hardware"] = options.spec.get("gpu", self.docker_service.has_gpu_support)
         parsed_options = try_parse_pydantic(LLamacppOptions, options.spec)
@@ -246,81 +257,114 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
         await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
-            await self._docker_pull(image, stream)
+            await self._download_image_or_set_progress(stream, image)
             self.service_downloaded = True
             return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
 
         return PromiseWithProgress(func=func)
 
-    async def _uninstall(self, options: UninstallServiceIn) -> None:
-        if info := self.installed:
-            for model in info.models.copy().values():
-                await self._uninstall_model(model.id, UninstallModelIn(purge=options.purge))
-        self.installed = None
+    async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
+        installed = self.get_instance_info(instance).installed
+        if installed:
+            for model in installed.models.copy().values():
+                if not self.is_model_installed_in_other_instance(instance, model.id):
+                    await self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
+
+        self.instances_info[instance].installed = None
+
         if options.purge:
-            self.service_downloaded = False
-            for image in _const.images.values():
-                await self.docker_service.remove_image(image.name)
+            if len(self.instances_info) < 2:
+                self.service_downloaded = False
+                for image in _const.images.values():
+                    await self.docker_service.remove_image(image.name)
 
-            await self._clear_working_dir()
-            self.models_downloaded = {}
+                await self._clear_working_dir()
+                self.models_downloaded = {}
 
-    def get_docker_compose_file_path(self, model_id: str | None) -> Path:
+            if instance == "default":
+                self.instances_info["default"] = Instance(None, None, {}, InstanceConfig())
+            else:
+                del self.instances_info[instance]
+
+    def get_docker_compose_file_path(self, instance: str, model_id: str | None) -> Path:
         """Get docker compose file path."""
-        info = self.installed
-        if not info:
-            raise HTTPException(400, "Service not installed")
+        info = self.get_instance_installed_info(instance)
         if not model_id:
             raise HTTPException(400, "Docker is not bound with this object")
-        installed = info.models.get(model_id, None)
-        if not installed:
+
+        model_installed = info.models.get(model_id, None)
+        if not model_installed:
             raise HTTPException(status_code=400, detail="Model not installed")
-        return self.docker_service.get_docker_compose_file_path(installed.docker.name)
 
-    def _add_custom_model(self, model: CustomModel) -> None:
+        return self.docker_service.get_docker_compose_file_path(model_installed.docker.name)
+
+    def _add_custom_model(self, instance: str, model: CustomModel) -> None:
         parsed = try_parse_pydantic(LlamacppCustomModel, model.data)
-        if parsed.id in self.models:
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
+        if parsed.id in self.models[instance]:
             raise HTTPException(400, "Model with given id already exists.")
-        self.models[parsed.id] = LlamacppModel(url=parsed.url, size=parsed.size, custom=model.id)
+        self.models[instance][parsed.id] = LlamacppModel(url=parsed.url, size=parsed.size, custom=model.id)
 
-    def _remove_custom_model(self, model: CustomModel) -> None:
+    def _remove_custom_model(self, instance: str, model: CustomModel) -> None:
+        installed = self.get_instance_info(instance).installed
         parsed = try_parse_pydantic(LlamacppCustomModel, model.data)
-        if self.installed and parsed.id in self.installed.models:
+        if installed and parsed.id in installed.models:
             raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
-        del self.models[parsed.id]
+        del self.models[instance][parsed.id]
 
-    async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
+    async def list_models(self, input_instance: str | list[str] | None, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
-        info = self._check_installed()
+        instances = [input_instance] if isinstance(input_instance, str) else input_instance if input_instance else self.instances_info
+
+        for instance in instances:
+            if instance not in self.instances_info:
+                raise HTTPException(404, f"Instance {instance} doesn't exist.")
+
         out_list: list[RetrieveModelOut] = []
-        for model_id, model in self.models.items():
-            installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
-            if filters.installed is None or filters.installed == installed:
-                out_list.append(
-                    RetrieveModelOut(
-                        id=model_id,
-                        service=self.get_id(),
-                        type=_const.model_type,
-                        installed=installed,
-                        downloaded=model_id in self.models_downloaded,
-                        size=model.size,
-                        custom=model.custom,
-                        spec=self.get_model_spec(),
-                        has_docker=True,
+        for instance_name, instance_models in self.models.items():
+            if instance_name not in instances:
+                continue
+
+            info = self.get_instance_installed_info(instance_name)
+            for model_id, model in instance_models.items():
+                if model_id in info.models:
+                    installed = info.models[model_id].get_info()
+                else:
+                    installed = self._get_model_installed_info(instance_name, model_id)
+
+                if filters.installed is None or filters.installed == bool(installed):
+                    out_list.append(
+                        RetrieveModelOut(
+                            id=model_id,
+                            service=self.get_id(instance_name),
+                            type=_const.model_type,
+                            installed=installed,
+                            downloaded=model_id in self.models_downloaded,
+                            size=model.size,
+                            custom=model.custom,
+                            spec=self.get_model_spec(),
+                            has_docker=True,
+                        )
                     )
-                )
+
         return ListModelsOut(list=out_list)
 
-    async def get_model(self, model_id: str) -> RetrieveModelOut:
+    async def get_model(self, instance: str, model_id: str) -> RetrieveModelOut:
         """Get the model."""
-        info = self._check_installed()
-        if model_id not in self.models:
+        info = self.get_instance_installed_info(instance)
+        if model_id not in self.models[instance]:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = self.models[model_id]
-        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
+        model = self.models[instance][model_id]
+        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(instance, model_id)
         return RetrieveModelOut(
             id=model_id,
-            service=self.get_id(),
+            service=self.get_id(instance),
             type=_const.model_type,
             installed=installed,
             downloaded=model_id in self.models_downloaded,
@@ -330,35 +374,72 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
             has_docker=True,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:  # noqa: C901
+    async def _download_model(self, stream: Stream[StreamChunk], model: LlamacppModel) -> tuple[Path | None, str]:
+        model_dir = self._get_working_dir() / "models"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        progress = Progress(convert_size_to_bytes(model.size) or 0)
+        local_model_path: Path | None = None
+        filename: str = ""
+        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
+        async for packet in self.model_downloader.download(model.url, model_dir):
+            if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
+                progress.add_to_actual_value(packet.downloaded_bytes_size)
+                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data={}))
+            elif isinstance(packet, PreDownloadPacket):
+                if max := packet.file_bytes_size:
+                    progress.set_max_value(max)
+            elif isinstance(packet, SuccessDownloadPacket):
+                local_model_path = packet.local_path
+                filename = packet.filename
+
+        stream.emit(
+            StreamChunkProgress(
+                type="progress", stage="download", value=0, data={"local_model_path": str(local_model_path), "filename": filename}
+            )
+        )
+        return local_model_path, filename
+
+    async def _download_model_or_set_progress(
+        self, stream: Stream[StreamChunk], model: LlamacppModel, model_id: str
+    ) -> tuple[Path | None, str]:
+        local_model_path: Path | None = None
+        filename: str = ""
+        if model_id not in self.models_download_progress:
+            self.models_download_progress[model_id] = stream
+            local_model_path, filename = await self._download_model(stream, model)
+            del self.models_download_progress[model_id]
+        else:
+            chunk: StreamChunk
+            async for chunk in self.models_download_progress[model_id].as_generator():
+                if chunk.get("type") == "progress" and chunk.get("stage") == "download":
+                    if data := chunk.get("data"):
+                        local_model_path = Path(data.get("local_model_path", local_model_path) or "")
+                        filename = str(data.get("filename", filename))
+                    stream.emit(chunk)
+                else:
+                    break
+
+        return local_model_path, filename
+
+    async def _install_model(
+        self, instance: str, model_id: str, options: InstallModelIn
+    ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         parsed_model_options = try_parse_pydantic(LLamacppModelOptions, options.spec) if options.spec else LLamacppModelOptions()
-        info = self._check_installed()
-        if model_id in info.models:
+        installed = self.get_instance_installed_info(instance)
+        if model_id in installed.models:
             return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
-        if model_id not in self.models:
+        if model_id not in self.models[instance]:
             raise HTTPException(400, "Model not found")
-        model = self.models[model_id]
+        if not self.models.get(instance):
+            self.models[instance] = {}
+        model = self.models[instance][model_id]
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
-            model_dir = self._get_working_dir() / "models"
-            model_dir.mkdir(parents=True, exist_ok=True)
-            progress = Progress(convert_size_to_bytes(model.size) or 0)
-            local_model_path: Path | None = None
-            model_filename: str = ""
-            stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
-            async for packet in self.model_downloader.download(model.url, model_dir):
-                if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
-                    progress.add_to_actual_value(packet.downloaded_bytes_size)
-                    stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
-                elif isinstance(packet, PreDownloadPacket):
-                    if max := packet.file_bytes_size:
-                        progress.set_max_value(max)
-                elif isinstance(packet, SuccessDownloadPacket):
-                    local_model_path = packet.local_path
-                    model_filename = packet.filename
+            local_model_path, model_filename = await self._download_model_or_set_progress(stream, model, model_id)
 
-            stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
+            stream.emit(StreamChunkProgress(type="progress", stage="download", value=1, data={}))
+
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
             if not local_model_path or not model_filename:
                 raise HTTPException(400, "Local model path was not set up and not return by downloader.")
             if not model_filename:
@@ -371,8 +452,8 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
                 command_options.append("--jinja")
             command = " ".join(command_options)
             subnet = self.docker_service.get_docker_subnet()
-            service_name = f"{self.get_id()}-{normalize_name(model_id)}"
-            image = self._get_image(self.is_given_hardware_support_gpu(info.parsed_options.hardware))
+            image = self._get_image(self.is_given_hardware_support_gpu(installed.parsed_options.hardware))
+            service_name = f"{self.get_service_id(instance)}-{normalize_name(model_id)}"
             docker_options = DockerOptions(
                 name=service_name,
                 container_name=self.docker_service.get_docker_container_name(service_name),
@@ -381,14 +462,14 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
                 image_port=8080,
                 restart="unless-stopped",
                 volumes=volumes,
-                hardware=self.get_specified_hardware_parts(info.parsed_options.hardware),
+                hardware=self.get_specified_hardware_parts(installed.parsed_options.hardware),
                 subnet=subnet,
             )
             docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             container_host = self.docker_service.get_container_host(subnet, docker_options.name)
             container_port = self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port)
-            info.models[model_id] = model_info = ModelInstalledInfo(
+            installed.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
                 registered_name=registered_name,
                 options=options,
@@ -409,7 +490,7 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
                 messages=ProxyOptions(url=f"{model_info.base_url}/v1/messages", rewrite_model_to=model_id),
                 registration_options=None,
             )
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             self.models_downloaded[model_id] = DownloadedInfo(str(local_model_path))
             return InstallModelOut(status="OK", details="Installed")
 
@@ -418,8 +499,8 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
     def _get_image(self, gpu: bool) -> DockerImage:
         return _const.images["gpu"] if gpu else _const.images["cpu"]
 
-    async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
-        info = self._check_installed()
+    async def _uninstall_model(self, instance: str, model_id: str, options: UninstallModelIn) -> None:
+        info = self.get_instance_installed_info(instance)
         if model_id in info.models:
             model = info.models[model_id]
             del info.models[model_id]
@@ -431,9 +512,9 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
                 Path(self.models_downloaded[model_id].model_path).unlink()
             del self.models_downloaded[model_id]
 
-    async def stop(self) -> None:
+    async def stop_instance(self, instance: str) -> None:
         """Stop all the Llamacpp service Docker containers."""
-        info = self.installed
-        if not info:
+        installed = self.get_instance_info(instance).installed
+        if not installed:
             return
-        await self._stop_dockers_parallel([model.docker for model in info.models.values()])
+        await self._stop_dockers_parallel([model.docker for model in installed.models.values()])

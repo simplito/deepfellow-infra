@@ -161,3 +161,7 @@ pythonVersion = "3.13"
 reportUnknownMemberType = "none"
 reportUnknownVariableType = "none"
 reportUnknownArgumentType = "none"
+
+[tool.ruff.lint.flake8-annotations]
+# This specifically suppresses ANN002 and ANN003 
+allow-star-arg-any = true

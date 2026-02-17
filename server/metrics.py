@@ -41,12 +41,21 @@ class MetricsService:
         self._collect()
         return self._get_metrics()
 
+    def get_installed_instances_quantity(self) -> int:
+        """Get installed instances quantity."""
+        instance_count = 0
+        for service in self.services_manager.services.values():
+            for _, instance in service.instances_info.items():
+                if instance.installed is not None:
+                    instance_count += 1
+
+        return instance_count
+
     def _collect(
         self,
     ) -> None:
         """Collect all metrics from current state."""
-        installed_count = sum(1 for s in self.services_manager.services.values() if s.is_installed())
-        self.metrics_registry.services_installed.set(installed_count)
+        self.metrics_registry.services_installed.set(self.get_installed_instances_quantity())
         self.metrics_registry.models_installed.set(len(self.endpoint_registry.list_models()))
         self.metrics_registry.info.info({"name": self.config.name, "infra_url": self.config.infra_url})
         self.metrics_registry.gpu_count.set(len(self.hardware.gpus))

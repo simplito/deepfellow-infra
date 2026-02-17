@@ -7,7 +7,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Custom service."""
+"""Mcp service."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -53,11 +53,11 @@ from server.utils.core import (
     try_parse_pydantic,
 )
 
-type SrvCustomModelX = Callable[["CustomService", str | None], SrvCustomModel]
+type SrvPcpModelX = Callable[["McpService", str | None], SrvMcpModel]
 
 
 @dataclass
-class SrvCustomModel:
+class SrvMcpModel:
     model_props: ModelProps
     model_spec: ModelSpecification
     model_type: str
@@ -67,7 +67,7 @@ class SrvCustomModel:
     custom: CustomModelId | None = None
 
 
-class SrvCustomCustomModel(BaseModel):
+class SrvMcpCustomModel(BaseModel):
     id: str
     private: bool = True
     default_prefix: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]+$")]
@@ -83,11 +83,11 @@ class SrvCustomCustomModel(BaseModel):
 
 
 @dataclass
-class CustomConst:
-    models: dict[str, SrvCustomModelX]
+class McpConst:
+    models: dict[str, SrvPcpModelX]
 
 
-class CustomModelOptions(BaseModel):
+class McpModelOptions(BaseModel):
     prefix: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]+$")]
 
 
@@ -119,8 +119,8 @@ class DownloadedInfo:
     image: str
 
 
-class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
-    models: dict[str, dict[str, "SrvCustomModel"]]
+class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
+    models: dict[str, dict[str, "SrvMcpModel"]]
 
     def _after_init(self) -> None:
         self.models = {}
@@ -135,11 +135,11 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_type(self) -> str:
         """Return the service id."""
-        return "custom"
+        return "mcp"
 
     def get_description(self) -> str:
         """Return the service description."""
-        return "Your option to add custom service."
+        return "Your option to add MCP server."
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
@@ -165,7 +165,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
         )
 
     async def stop_instance(self, instance: str) -> None:
-        """Stop all custom service Docker containers."""
+        """Stop all MCP service Docker containers."""
         installed = self.get_instance_info(instance).installed
         if not installed:
             return
@@ -264,7 +264,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
         return self.docker_service.get_docker_compose_file_path(model_installed.docker_options.name)
 
     def _add_custom_model(self, instance: str, model: CustomModel) -> None:
-        parsed = try_parse_pydantic(SrvCustomCustomModel, model.data)
+        parsed = try_parse_pydantic(SrvMcpCustomModel, model.data)
 
         if not self.models.get(instance):
             self.models[instance] = {}
@@ -273,10 +273,10 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
             raise HTTPException(400, "Model with given id already exists.")
         name = normalize_name(f"{parsed.id}-{instance}")
         subnet = self.docker_service.get_docker_subnet()
-        self.models[instance][parsed.id] = SrvCustomModel(
+        self.models[instance][parsed.id] = SrvMcpModel(
             model_props=ModelProps(private=parsed.private),
             model_spec=self.get_default_model_spec(parsed.default_prefix),
-            model_type="custom",
+            model_type="mcp",
             default_prefix=parsed.default_prefix,
             size=parsed.size,
             options=DockerOptions(
@@ -305,7 +305,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def _remove_custom_model(self, instance: str, model: CustomModel) -> None:
         installed = self.get_instance_info(instance).installed
-        parsed = try_parse_pydantic(SrvCustomCustomModel, model.data)
+        parsed = try_parse_pydantic(SrvMcpCustomModel, model.data)
         if installed and parsed.id in installed.models:
             raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
         del self.models[instance][parsed.id]
@@ -384,7 +384,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
             options.spec = {}
         if "prefix" not in options.spec:
             options.spec["prefix"] = model.default_prefix
-        parsed_model_options = try_parse_pydantic(CustomModelOptions, options.spec)
+        parsed_model_options = try_parse_pydantic(McpModelOptions, options.spec)
         await self._verify_docker_image(model.options.image, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
@@ -409,10 +409,14 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
                 prefix=parsed_model_options.prefix,
                 base_url=get_base_url(container_host, container_port),
             )
-            model_info.registration_id = self.endpoint_registry.register_custom_endpoint_as_proxy(
+            model_info.registration_id = self.endpoint_registry.register_mcp_endpoint_as_proxy(
                 url=model_info.prefix,
                 props=model.model_props,
-                options=ProxyOptions(url=model_info.base_url),
+                options=ProxyOptions(
+                    url=model_info.base_url,
+                    allowed_request_headers=["accept", "mcp-session-id"],
+                    allowed_response_headers=["accept", "mcp-session-id"],
+                ),
                 registration_options=None,
             )
             self.models_downloaded[model_id] = DownloadedInfo(image.name)
@@ -425,7 +429,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
         info = self.get_instance_installed_info(instance)
         if model_id in info.models:
             model = info.models[model_id]
-            self.endpoint_registry.unregister_custom_endpoint(model.prefix, model.registration_id)
+            self.endpoint_registry.unregister_mcp_endpoint(model.prefix, model.registration_id)
             await self.docker_service.uninstall_docker(model.docker_options)
             del info.models[model_id]
 
@@ -438,38 +442,65 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
         return self._get_working_dir()
 
 
-_const = CustomConst(
+_const = McpConst(
     models={
-        "bentoml/example-summarization": lambda custom_service, subnet: SrvCustomModel(
+        "open-websearch": lambda mcp_service, subnet: SrvMcpModel(
             model_props=ModelProps(private=True),
-            model_spec=custom_service.get_default_model_spec("bentoml-summarize"),
-            model_type="custom",
-            default_prefix="bentoml-summarize",
-            size="12013.49MB",
+            model_spec=mcp_service.get_default_model_spec("open-websearch"),
+            model_type="mcp",
+            default_prefix="open-websearch",
+            size="1GB",
             options=DockerOptions(
                 image_port=3000,
-                name="bentoml",
-                container_name=custom_service.docker_service.get_docker_container_name("bentoml"),
-                image="gitlab2.simplito.com:5050/df/deepfellow-infra/bentomlexample:1.0.1",
-                command="serve",
+                name="open-websearch",
+                container_name=mcp_service.docker_service.get_docker_container_name("open-websearch"),
+                image="hub.simplito.com/deepfellow/open-websearch:v1.2.0",
                 env_vars={},
                 subnet=subnet,
             ),
         ),
-        "easyOCR": lambda custom_service, subnet: SrvCustomModel(
+        "brave-search": lambda mcp_service, subnet: SrvMcpModel(
             model_props=ModelProps(private=True),
-            model_spec=custom_service.get_default_model_spec("ocr"),
-            model_type="custom",
-            default_prefix="ocr",
-            size="10075.38MB",
+            model_spec=mcp_service.get_default_model_spec("brave-search"),
+            model_type="mcp",
+            default_prefix="brave-search",
+            size="1GB",
             options=DockerOptions(
-                image_port=8000,
-                name="easyocr",
-                container_name=custom_service.docker_service.get_docker_container_name("easyocr"),
-                image="gitlab2.simplito.com:5050/df/df-ocr:1.0.1",
+                image_port=3000,
+                name="brave-search",
+                container_name=mcp_service.docker_service.get_docker_container_name("brave-search"),
+                image="hub.simplito.com/deepfellow/brave-search-mcp-server:v2.0.72",
                 env_vars={},
-                restart="unless-stopped",
-                volumes=[f"{custom_service.get_working_dir()}/easyocr/model:/root/.EasyOCR/model"],
+                subnet=subnet,
+            ),
+        ),
+        "web-search": lambda mcp_service, subnet: SrvMcpModel(
+            model_props=ModelProps(private=True),
+            model_spec=mcp_service.get_default_model_spec("web-search"),
+            model_type="mcp",
+            default_prefix="web-search",
+            size="1GB",
+            options=DockerOptions(
+                image_port=3000,
+                name="web-search",
+                container_name=mcp_service.docker_service.get_docker_container_name("web-search"),
+                image="hub.simplito.com/deepfellow/web-search-mcp:v0.3.2",
+                env_vars={},
+                subnet=subnet,
+            ),
+        ),
+        "serpapi": lambda mcp_service, subnet: SrvMcpModel(
+            model_props=ModelProps(private=True),
+            model_spec=mcp_service.get_default_model_spec("serpapi"),
+            model_type="mcp",
+            default_prefix="serpapi",
+            size="1GB",
+            options=DockerOptions(
+                image_port=3000,
+                name="serpapi",
+                container_name=mcp_service.docker_service.get_docker_container_name("serpapi"),
+                image="hub.simplito.com/deepfellow/serpapi-mcp:61998a0",
+                env_vars={},
                 subnet=subnet,
             ),
         ),

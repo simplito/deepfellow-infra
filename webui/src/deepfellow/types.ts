@@ -42,6 +42,8 @@ export interface ServiceSpec {
 
 export interface Service {
   id: string;
+  type: string;
+  instance: string;
   // Backend returns: bool | progress | installed options object
   installed: boolean | Record<string, unknown> | InstallProgress | null;
   downloaded?: boolean;

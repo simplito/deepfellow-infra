@@ -31,6 +31,7 @@ from server.services.coqui_service import CoquiService
 from server.services.custom_service import CustomService
 from server.services.googleai_service import GoogleAIService
 from server.services.llamacpp_service import LLamacppService
+from server.services.mcp_service import McpService
 from server.services.ollama_external_service import OllamaExternalService
 from server.services.ollama_service import OllamaService
 from server.services.openai_service import OpenAIService
@@ -102,6 +103,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         services_manager.register_service(SindriService(*model_input))
         services_manager.register_service(OpenAIService(*model_input))
         services_manager.register_service(GoogleAIService(*model_input))
+        services_manager.register_service(McpService(*model_input))
 
         # Load functions
         await context.load_services()
@@ -111,6 +113,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         os._exit(1)
     yield
     # Shutdown: stop all services gracefully if enabled
+    logger.debug("Shutdown all containers gracefully")
     if config.is_stop_containers_on_shutdown_enabled():
         await services_manager.stop_all_services()
 

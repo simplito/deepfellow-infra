@@ -48,7 +48,7 @@ class ApplicationContext:
 
     async def load_services(self) -> None:
         """Load all service from bootstrap."""
-        info = self.service_provider.load()
+        info = await self.service_provider.load()
         tasks = [asyncio.create_task(self._load_service(service_id, service_cfg)) for service_id, service_cfg in info["services"].items()]
         await asyncio.gather(*tasks)
 

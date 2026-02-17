@@ -172,47 +172,52 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
   }, [modelsData, serviceId, queryClient]);
 
   const installMutation = useMutation({
-    mutationFn: ({ modelId, spec, ignoreWarnings = false }: { modelId: string; spec: Record<string, unknown>; ignoreWarnings?: boolean }) => {
-      return new Promise<void>((resolve, reject) => {
-        apiClient.installAdminServiceModelStreaming(
-          serviceId,
-          modelId,
-          spec,
-          (event: ProgressEvent) => {
-            const stage = event.stage;
-            const value = event.value;
+    mutationFn: async ({ modelId, spec, ignoreWarnings = false }: { modelId: string; spec: Record<string, unknown>; ignoreWarnings?: boolean }) => {
+      try {
+        return await new Promise<void>((resolve, reject) => {
+          apiClient.installAdminServiceModelStreaming(
+            serviceId,
+            modelId,
+            spec,
+            (event: ProgressEvent) => {
+              const stage = event.stage;
+              const value = event.value;
 
-            if (event.type === "progress" && stage && value !== undefined) {
-              setModelInstallProgress(serviceId, modelId, { stage, value });
-              const toastId = toastIdsRef.current[modelId];
-              if (toastId) {
-                const percentage = (value * 100).toFixed(1);
-                const stageLabel = getStageLabel(stage);
-                toast.loading(`${stageLabel} ${modelId}: ${percentage}%`, { id: toastId });
-              }
-            } else if (event.type === "finish") {
-              if (event.status === "ok") {
-                clearModelInstallProgress(serviceId, modelId);
+              if (event.type === "progress" && stage && value !== undefined) {
+                setModelInstallProgress(serviceId, modelId, { stage, value });
                 const toastId = toastIdsRef.current[modelId];
                 if (toastId) {
-                  toast.success(`Model ${modelId} installed successfully`, { id: toastId });
-                  delete toastIdsRef.current[modelId];
+                  const percentage = (value * 100).toFixed(1);
+                  const stageLabel = getStageLabel(stage);
+                  toast.loading(`${stageLabel} ${modelId}: ${percentage}%`, { id: toastId });
                 }
-                resolve();
-              } else {
-                clearModelInstallProgress(serviceId, modelId);
-                const toastId = toastIdsRef.current[modelId];
-                if (toastId) {
-                  toast.error(`Failed to install model ${modelId}: ${event.details || "Installation failed"}`, { id: toastId });
-                  delete toastIdsRef.current[modelId];
+              } else if (event.type === "finish") {
+                if (event.status === "ok") {
+                  clearModelInstallProgress(serviceId, modelId);
+                  const toastId = toastIdsRef.current[modelId];
+                  if (toastId) {
+                    toast.success(`Model ${modelId} installed successfully`, { id: toastId });
+                    delete toastIdsRef.current[modelId];
+                  }
+                  resolve();
+                } else {
+                  
+                  reject(new Error(event.details || "Installation failed"));
                 }
-                reject(new Error(event.details || "Installation failed"));
               }
-            }
-          },
-          ignoreWarnings
-        ).catch(reject);
-      });
+            },
+            ignoreWarnings
+          ).catch(reject);
+        });
+      }
+      catch (e) {
+        clearModelInstallProgress(serviceId, modelId);
+        const toastId = toastIdsRef.current[modelId];
+        if (toastId) {
+          toast.error(`Failed to install model ${modelId}: ${(e instanceof Error ? e.message : "") || "Installation failed"}`, { id: toastId });
+          delete toastIdsRef.current[modelId];
+        }
+      }
     },
     onMutate: ({ modelId }) => {
       setInstallingModelId(modelId);

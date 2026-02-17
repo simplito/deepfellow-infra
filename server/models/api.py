@@ -374,6 +374,7 @@ ModelType = Literal[
     "llm-v2-v3-ant",
     "llm-v1-v3-ant",
     "custom",
+    "mcp",
 ]
 
 type ModelId = str
