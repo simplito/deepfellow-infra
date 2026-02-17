@@ -60,14 +60,20 @@ export function ServicesList() {
     queryKey: ["admin", "services"],
     queryFn: () => apiClient.listAdminServices(),
   });
+  const [anotherInstances, setAnotherInstances] = useState([] as Service[]);
+  const servicesList = useMemo(() => {
+    const newList = [...(servicesData ? servicesData.list : []), ...anotherInstances];
+    newList.sort((a, b) => a.type.localeCompare(b.type) || a.id.localeCompare(b.id));
+    return newList;
+  }, [servicesData, anotherInstances])
 
   // Progress polling for existing installations
   useEffect(() => {
-    if (!servicesData?.list) return;
+    if (!servicesList.length) return;
 
     const cleanups: Array<() => void> = [];
 
-    for (const service of servicesData.list) {
+    for (const service of servicesList) {
       const installed = service.installed;
       if (!installed || typeof installed !== "object") continue;
 
@@ -127,7 +133,7 @@ export function ServicesList() {
     return () => {
       for (const cleanup of cleanups) cleanup();
     };
-  }, [servicesData, queryClient]);
+  }, [servicesList, queryClient]);
 
   const installMutation = useMutation({
     mutationFn: ({ serviceId, spec, ignoreWarnings = false }: { serviceId: string; spec: Record<string, unknown>; ignoreWarnings?: boolean }) => {
@@ -185,6 +191,7 @@ export function ServicesList() {
       // Only reset if not showing warnings modal
       if (!hasWarningsRef.current) {
         setInstallingServiceId(null);
+        setAnotherInstances([]);
       }
     },
   });
@@ -336,7 +343,7 @@ export function ServicesList() {
     }
   };
 
-  const handleInstallClick = async (service: Service) => {
+  const handleInstallClick = async (service: Service, installAnotherInstance: boolean) => {
     modal.open(DynamicFormModal, {
       title: `Install ${service.id}`,
       fields: [],
@@ -347,12 +354,43 @@ export function ServicesList() {
 
     try {
       const serviceDetail = await apiClient.getAdminService(service.id);
+      const orgInstance = serviceDetail.id.split("|")[1] || "default";
+      let instanceDefaulValue = "default";
+      if (installAnotherInstance) {
+        let i = 0;
+        while (true) {
+          instanceDefaulValue = "new" + (i === 0 ? "" : "-" + i);
+          const id = serviceDetail.type + "|" + instanceDefaulValue;
+          if (servicesList.find(x => x.id === id)) {
+            i++;
+          }
+          else {
+            break;
+          }
+        }
+      }
       modal.open(DynamicFormModal, {
         title: `Install ${serviceDetail.id}`,
-        fields: serviceDetail.spec.fields,
+        fields: installAnotherInstance ? [{
+          name: "instance",
+          description: "Instance ID",
+          type: "text",
+          required: true,
+          default: instanceDefaulValue,
+          placeholder: "default",
+        }, ...serviceDetail.spec.fields] : serviceDetail.spec.fields,
         onSubmit: (spec: Record<string, unknown>) => {
-          pendingInstallationRef.current = { serviceId: serviceDetail.id, spec };
-          installMutation.mutate({ serviceId: serviceDetail.id, spec });
+          const instance = installAnotherInstance ? spec.instance as string : orgInstance;
+          const serviceId = installAnotherInstance ? serviceDetail.type + (instance && instance !== "default" ? "|" + instance : "") : service.id;
+          if (installAnotherInstance && servicesList.find(x => x.id === serviceId)) {
+            toast.error("Given Instance ID already in use");
+            return;
+          }
+          pendingInstallationRef.current = { serviceId: serviceId, spec };
+          if (installAnotherInstance) {
+            setAnotherInstances([...anotherInstances, {...serviceDetail, id: serviceId, instance: instance, installed: false}]);
+          }
+          installMutation.mutate({ serviceId: serviceId, spec });
         },
         // Keep modal interactive; don't disable because another install is running.
         isSubmitting: false,
@@ -440,7 +478,7 @@ export function ServicesList() {
     });
   };
 
-  const services = servicesData?.list || [];
+  const services = servicesList;
 
   const filteredServices = useMemo(() => {
     if (!searchQuery.trim()) return services;
@@ -608,7 +646,7 @@ export function ServicesList() {
                         {isInProgress || installedIsProgress ? null : !isInstalled ? (
                           <>
                             <Button
-                              onClick={() => handleInstallClick(service)}
+                              onClick={() => handleInstallClick(service, false)}
                               size="sm"
                               disabled={isInstallingCurrent}
                             >
@@ -643,6 +681,11 @@ export function ServicesList() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => handleInstallClick(service, true)}
+                              >
+                                Install another instance
+                              </DropdownMenuItem>
                               {service.has_docker && (
                                 <>
                                   <DropdownMenuItem

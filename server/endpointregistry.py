@@ -56,6 +56,7 @@ T = TypeVar("T")
 
 type EndpointCallback[T] = Callable[[T, Request | None], Awaitable[StarletteResponse]]
 type CustomEndpointCallback = Callable[[Request], Awaitable[StarletteResponse]]
+type McpEndpointCallback = Callable[[Request], Awaitable[StarletteResponse]]
 
 
 class SimpleEndpoint[T](NamedTuple):
@@ -64,6 +65,10 @@ class SimpleEndpoint[T](NamedTuple):
 
 class CustomEndpoint(NamedTuple):
     on_request: CustomEndpointCallback
+
+
+class McpEndpoint(NamedTuple):
+    on_request: McpEndpointCallback
 
 
 class ChatCompletionEndpoint:
@@ -240,6 +245,7 @@ class EndpointRegistry:
         self.audio_transcriptions_endpoints = Endpoint[SimpleEndpoint[CreateTranscriptionRequest]](self.registry, self.parent_infra)
         self.custom_endpoints = Endpoint[CustomEndpoint](self.registry, self.parent_infra)
         self.images_generations_endpoints = Endpoint[SimpleEndpoint[ImagesRequest]](self.registry, self.parent_infra)
+        self.mcp_endpoints = Endpoint[McpEndpoint](self.registry, self.parent_infra)
 
     def get_models(self) -> ApiModels:
         """Get models for api."""
@@ -273,6 +279,7 @@ class EndpointRegistry:
         models.extend(self.audio_transcriptions_endpoints.list_models())
         models.extend(self.images_generations_endpoints.list_models())
         models.extend(self.custom_endpoints.list_models())
+        models.extend(self.mcp_endpoints.list_models())
         return models
 
     def register_chat_completion(  # noqa: C901
@@ -510,6 +517,44 @@ class EndpointRegistry:
     def unregister_custom_endpoint(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister custom endpoint."""
         self.custom_endpoints.remove_model(model, registration_id)
+
+    def register_mcp_endpoint(
+        self,
+        url: str,
+        props: ModelProps,
+        endpoint: McpEndpoint,
+        registration_options: RegistrationOptions | None,
+    ) -> RegistrationId:
+        """Register mcp endpoint."""
+        return self.mcp_endpoints.add_model(url, props, endpoint, "mcp", registration_options)
+
+    def register_mcp_endpoint_as_proxy(
+        self,
+        url: str,
+        props: ModelProps,
+        options: ProxyOptions,
+        registration_options: RegistrationOptions | None,
+    ) -> RegistrationId:
+        """Register mcp endpoint as a proxy."""
+
+        async def on_request(request: Request) -> StreamingResponse:
+            headers = options.get_request_headers(request)
+            headers["content-type"] = request.headers.get("content-type") or "application/octet-stream"
+            full_url = Utils.join_url(options.url, request.path_params["full_path"].split("/", 1)[-1])
+            return (
+                await make_http_request(
+                    url=full_url,
+                    method=request.method,
+                    data=request.stream(),
+                    headers=headers,
+                )
+            ).as_streaming_response(options.allowed_response_headers)
+
+        return self.register_mcp_endpoint(url, props, McpEndpoint(on_request=on_request), registration_options)
+
+    def unregister_mcp_endpoint(self, model: str, registration_id: RegistrationId) -> None:
+        """Unregister mcp endpoint."""
+        self.mcp_endpoints.remove_model(model, registration_id)
 
     def update_usage(self, usage: UsageChangeRequest) -> None:
         """Update model usage."""
@@ -856,6 +901,16 @@ class EndpointRegistry:
                 ),
                 registration_options=registration_options,
             )
+        elif type == "mcp":
+            self.register_mcp_endpoint_as_proxy(
+                url=model_id,
+                props=props,
+                options=ProxyOptions(
+                    url=urljoin(url, "mcp"),
+                    headers={"Authorization": f"Bearer {api_key}"},
+                ),
+                registration_options=registration_options,
+            )
         else:
             logger.warning(f"Cannot register proxy with model_type={type}")  # noqa: G004
 
@@ -888,6 +943,10 @@ class EndpointRegistry:
     def has_custom_endpoint(self, url: str) -> bool:
         """Check whether the custom endpoint is registered."""
         return self.custom_endpoints.has_model(url)
+
+    def has_mcp_endpoint(self, url: str) -> bool:
+        """Check whether the mcp endpoint is registered."""
+        return self.mcp_endpoints.has_model(url)
 
     async def execute_messages(
         self,
@@ -1109,6 +1168,17 @@ class EndpointRegistry:
 
         return await self.with_usage(endpoint, func)
 
+    async def execute_mcp_endpoints(self, url: str, request: Request) -> StarletteResponse:
+        """Process mcp endpoint request."""
+        endpoint = self.mcp_endpoints.get_model(url.split("/")[0])
+        if not endpoint:
+            raise HTTPException(400, "Given url is not supported")
+
+        async def func() -> StarletteResponse:
+            return await endpoint.endpoint.on_request(request)
+
+        return await self.with_usage(endpoint, func)
+
     async def with_usage(self, model: RegisteredModel[Any], func: Callable[[], Awaitable[T]], log_payload: bool = False) -> T:
         """With usage."""
         if model.origin != "local":
@@ -1190,9 +1260,9 @@ async def post_json(data: BaseModel, options: ProxyOptions, request: Request | N
     """Make HTTP POST request sending data as JSON."""
     raw = data.model_dump(exclude_none=True)
     if options.remove_model:
-        del raw["model"]  # pyright: ignore[reportIndexIssue]
+        del raw["model"]
     if options.rewrite_model_to:
-        raw["model"] = options.rewrite_model_to  # pyright: ignore[reportIndexIssue]
+        raw["model"] = options.rewrite_model_to
     return (
         await make_http_request(
             url=options.url,

@@ -57,7 +57,7 @@ from server.models.services import (
     ServiceSpecification,
     UninstallServiceIn,
 )
-from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
+from server.services.base2_service import Base2Service, CustomModel, Instance, InstanceConfig, ModelConfig
 from server.utils.core import (
     DownloadedPacket,
     PreDownloadPacket,
@@ -272,12 +272,17 @@ class DefaultSdNextConfig(NamedTuple):
 
 
 class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
-    models: dict[str, StableDiffusionModel]
+    models: dict[str, dict[str, StableDiffusionModel]]
 
     def _after_init(self) -> None:
-        self.models = _const.models.copy()
+        self.models = {}
+        self.load_default_models("default")
 
-    def get_id(self) -> str:
+    def load_default_models(self, instance: str) -> None:
+        """Load default models to instance."""
+        self.models[instance] = _const.models.copy()
+
+    def get_type(self) -> str:
         """Return the service id."""
         return "stable-diffusion"
 
@@ -297,7 +302,7 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
         fields: list[ServiceField] = [
             ServiceField(type="text", name="expose_api_at_prefix", description="Expose SD API at prefix", required=False, default="sd")
         ]
-        fields = self.add_gpu_field_to_spec(fields)
+        fields = self.add_hardware_field_to_spec(fields)
         return ServiceSpecification(fields=fields)
 
     def get_model_spec(self) -> ModelSpecification:
@@ -325,17 +330,16 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
             ]
         )
 
-    def get_installed_info(self) -> bool | InstallServiceProgress | ServiceOptions:
+    def get_installed_info(self, instance: str) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""
-        return self._get_service_installed_info() if self.installed is None else self.installed.options.spec
+        installed = self.get_instance_info(instance).installed
+        return self._get_service_installed_info(instance) if installed is None else installed.options.spec
 
-    def _generate_config(self, info: InstalledInfo | None) -> ServiceConfig:
-        return ServiceConfig(
+    def _generate_instance_config(self, info: InstalledInfo | None, custom: list[CustomModel] | None) -> InstanceConfig:
+        return InstanceConfig(
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
-            custom=self.custom,
-            downloaded=self.models_downloaded,
-            service_downloaded=self.service_downloaded,
+            custom=custom,
         )
 
     async def update_config(self) -> None:
@@ -367,7 +371,10 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
     def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
         return DownloadedInfo(**data)
 
-    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+    async def _install_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+        if not self.models.get(instance):
+            self.load_default_models(instance)
+
         if "hardware" not in options.spec:
             options.spec["hardware"] = options.spec.get("gpu", self.docker_service.has_gpu_support)
         if platform.system() == "Darwin":
@@ -382,14 +389,15 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
         await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
-            await self._docker_pull(image, stream)
+            await self._download_image_or_set_progress(stream, image)
             self.service_downloaded = True
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
             await self.update_config()
             subnet = self.docker_service.get_docker_subnet()
+            name = f"{self.get_service_id(instance)}"
             docker_options = DockerOptions(
-                name="stable-diffusion",
-                container_name=self.docker_service.get_docker_container_name("stable-diffusion"),
+                name=name,
+                container_name=self.docker_service.get_docker_container_name(name),
                 image=image.name,
                 env_vars={
                     "SD_DOCS": "true",
@@ -435,58 +443,69 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
                 proxy_registration_id=proxy_registration_id,
                 base_url=get_base_url(host, port),
             )
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             return info
 
         return PromiseWithProgress(func=func)
 
-    async def _uninstall(self, options: UninstallServiceIn) -> None:
-        if info := self.installed:
-            if info.parsed_options.expose_api_at_prefix and info.proxy_registration_id:
+    async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
+        installed = self.get_instance_info(instance).installed
+        if installed:
+            if installed.parsed_options.expose_api_at_prefix and installed.proxy_registration_id:
                 self.endpoint_registry.unregister_custom_endpoint(
-                    info.parsed_options.expose_api_at_prefix,
-                    info.proxy_registration_id,
+                    installed.parsed_options.expose_api_at_prefix,
+                    installed.proxy_registration_id,
                 )
-            for model in info.models.copy().values():
+            for model in installed.models.copy().values():
                 if model.type == "txt2img":
                     self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
 
-            await self.docker_service.uninstall_docker(info.docker)
+            await self.docker_service.uninstall_docker(installed.docker)
 
-        self.installed = None
+        self.instances_info[instance].installed = None
 
         if options.purge:
-            self.service_downloaded = False
-            for image in _const.images.values():
-                await self.docker_service.remove_image(image.name)
-            await self._clear_working_dir()
-            self.models_downloaded = {}
+            if len(self.instances_info) < 2:
+                self.service_downloaded = False
+                for image in _const.images.values():
+                    await self.docker_service.remove_image(image.name)
+                await self._clear_working_dir()
+                self.models_downloaded = {}
 
-    async def stop(self) -> None:
+            if instance == "default":
+                self.instances_info["default"] = Instance(None, None, {}, InstanceConfig())
+            else:
+                del self.instances_info[instance]
+
+    async def stop_instance(self, instance: str) -> None:
         """Stop the Stable Diffusion service Docker container."""
-        info = self.installed
-        if not info:
+        installed = self.get_instance_info(instance).installed
+        if not installed:
             return
-        await self._stop_docker(info.docker)
+        await self._stop_docker(installed.docker)
 
-    def get_docker_compose_file_path(self, model_id: str | None) -> Path:
+    def get_docker_compose_file_path(self, instance: str, model_id: str | None) -> Path:
         """Get docker compose file path."""
-        info = self.installed
-        if not info:
-            raise HTTPException(400, "Service not installed")
+        info = self.get_instance_installed_info(instance)
         if model_id:
             raise HTTPException(400, "Docker is not bound with this object")
+
         return self.docker_service.get_docker_compose_file_path(info.docker.name)
 
     def service_has_docker(self) -> bool:
         """Return true when docker is started when service is installed."""
         return True
 
-    def _add_custom_model(self, model: CustomModel) -> None:
+    def _add_custom_model(self, instance: str, model: CustomModel) -> None:
         parsed = try_parse_pydantic(StableDiffusionCustomModel, model.data)
-        if parsed.id in self.models:
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
+        if parsed.id in self.models[instance]:
             raise HTTPException(400, "Model with given id already exists.")
-        self.models[parsed.id] = StableDiffusionModel(
+
+        self.models[instance][parsed.id] = StableDiffusionModel(
             filetype=parsed.filetype,
             type="txt2img" if parsed.filetype == "Stable-diffusion" else "lora",
             url=parsed.url,
@@ -496,44 +515,65 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
             custom=model.id,
         )
 
-    def _remove_custom_model(self, model: CustomModel) -> None:
+    def _remove_custom_model(self, instance: str, model: CustomModel) -> None:
+        installed = self.get_instance_info(instance).installed
         parsed = try_parse_pydantic(StableDiffusionCustomModel, model.data)
-        if self.installed and parsed.id in self.installed.models:
+        if installed and parsed.id in installed.models:
             raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
-        del self.models[parsed.id]
+        del self.models[instance][parsed.id]
 
-    async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
+    async def list_models(self, input_instance: str | list[str] | None, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
-        info = self._check_installed()
+        instances = [input_instance] if isinstance(input_instance, str) else input_instance if input_instance else self.instances_info
+
+        for instance in instances:
+            if instance not in self.instances_info:
+                raise HTTPException(404, f"Instance {instance} doesn't exist.")
+
         out_list: list[RetrieveModelOut] = []
-        for model_id, model in self.models.items():
-            installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
-            if filters.installed is None or filters.installed == installed:
-                out_list.append(
-                    RetrieveModelOut(
-                        id=model_id,
-                        service=self.get_id(),
-                        type=model.type,
-                        installed=installed,
-                        downloaded=model_id in self.models_downloaded,
-                        size=model.size,
-                        custom=model.custom,
-                        spec=self.get_model_spec(),
-                        has_docker=False,
+        for instance_name, instance_models in self.models.items():
+            if instance_name not in instances:
+                continue
+
+            info = self.get_instance_installed_info(instance_name)
+            for model_id, model in instance_models.items():
+                if model_id in info.models:
+                    installed = info.models[model_id].get_info()
+                else:
+                    installed = self._get_model_installed_info(instance_name, model_id)
+
+                if filters.installed is None or filters.installed == bool(installed):
+                    out_list.append(
+                        RetrieveModelOut(
+                            id=model_id,
+                            service=self.get_id(instance_name),
+                            type=model.type,
+                            installed=installed,
+                            downloaded=model_id in self.models_downloaded,
+                            size=model.size,
+                            custom=model.custom,
+                            spec=self.get_model_spec(),
+                            has_docker=False,
+                        )
                     )
-                )
+
         return ListModelsOut(list=out_list)
 
-    async def get_model(self, model_id: str) -> RetrieveModelOut:
+    async def get_model(self, instance: str, model_id: str) -> RetrieveModelOut:
         """Get the model."""
-        info = self._check_installed()
-        if model_id not in self.models:
+        info = self.get_instance_installed_info(instance)
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
+        if model_id not in self.models[instance]:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = self.models[model_id]
-        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
+
+        model = self.models[instance][model_id]
+        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(instance, model_id)
         return RetrieveModelOut(
             id=model_id,
-            service=self.get_id(),
+            service=self.get_id(instance),
             type=model.type,
             installed=installed,
             downloaded=model_id in self.models_downloaded,
@@ -555,46 +595,84 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
         """Refresh SD Next loras models."""
         await client.post(base_url + "/sdapi/v1/refresh-loras")  # type: ignore
 
-    async def refresh_models(self) -> None:
+    async def refresh_models(self, instance: str) -> None:
         """Refresh models in SD Next."""
-        info = self._check_installed()
+        info = self.get_instance_installed_info(instance)
         async with ClientSession(info.base_url) as client:
             refresh_functions = [self.refresh_checkpoints, self.refresh_vae, self.refresh_loras]
             tasks = [asyncio.create_task(f(client, info.base_url)) for f in refresh_functions]
             await asyncio.gather(*tasks)
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:  # noqa: C901
+    async def _download_model(self, stream: Stream[StreamChunk], model: StableDiffusionModel) -> tuple[Path | None, str]:
+        model_dir = self._get_working_models_dir() / model.filetype
+        local_model_path: Path | None = None
+        filename = ""
+        progress = Progress(convert_size_to_bytes(model.size) or 0)
+        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
+        async for packet in self.model_downloader.download(model.url, model_dir, model.filename):
+            if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
+                progress.add_to_actual_value(packet.downloaded_bytes_size)
+            elif isinstance(packet, PreDownloadPacket):
+                if max := packet.file_bytes_size:
+                    progress.set_max_value(max)
+            elif isinstance(packet, SuccessDownloadPacket):
+                local_model_path = packet.local_path
+                filename = packet.filename
+
+            stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data={}))
+        stream.emit(
+            StreamChunkProgress(
+                type="progress", stage="download", value=1, data={"local_model_path": str(local_model_path), "filename": filename}
+            )
+        )
+        return local_model_path, filename
+
+    async def _download_model_or_set_progress(
+        self,
+        stream: Stream[StreamChunk],
+        model: StableDiffusionModel,
+        model_id: str,
+    ) -> tuple[Path | None, str]:
+        local_model_path: Path | None = None
+        filename: str = ""
+        if model_id not in self.models_download_progress:
+            self.models_download_progress[model_id] = stream
+            local_model_path, filename = await self._download_model(stream, model)
+            del self.models_download_progress[model_id]
+        else:
+            chunk: StreamChunk
+            async for chunk in self.models_download_progress[model_id].as_generator():
+                if chunk.get("type") == "progress" and chunk.get("stage") == "download":
+                    if data := chunk.get("data"):
+                        local_model_path = Path(data.get("local_model_path", local_model_path) or "")
+                        filename = str(data.get("filename", filename))
+                    stream.emit(chunk)
+                else:
+                    break
+
+        return local_model_path, filename
+
+    async def _install_model(
+        self, instance: str, model_id: str, options: InstallModelIn
+    ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         parsed_model_options = try_parse_pydantic(SDModelOptions, options.spec) if options.spec else SDModelOptions()
-        info = self._check_installed()
+        info = self.get_instance_installed_info(instance)
+
         if model_id in info.models:
             return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
-        if model_id not in self.models:
+
+        if model_id not in self.models[instance]:
             raise HTTPException(400, "Model not found")
-        model = self.models[model_id]
+
+        model = self.models[instance][model_id]
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
-            model_dir = self._get_working_models_dir() / model.filetype
-            progress = Progress(convert_size_to_bytes(model.size) or 0)
-            local_model_path: Path | None = None
-            model_filename = ""
-            stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
-            async for packet in self.model_downloader.download(model.url, model_dir, model.filename):
-                if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
-                    progress.add_to_actual_value(packet.downloaded_bytes_size)
-                elif isinstance(packet, PreDownloadPacket):
-                    if max := packet.file_bytes_size:
-                        progress.set_max_value(max)
-                elif isinstance(packet, SuccessDownloadPacket):
-                    local_model_path = packet.local_path
-                    model_filename = packet.filename
-
-                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
+            local_model_path, model_filename = await self._download_model_or_set_progress(stream, model, model_id)
 
             if not local_model_path:
                 raise HTTPException(400, "Something went wrong with downloading")
 
-            stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
 
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             model_path = local_model_path.absolute()
@@ -615,27 +693,30 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
                     registration_options=None,
                 )
 
-            await self.refresh_models()
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            await self.refresh_models(instance)
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             self.models_downloaded[model_id] = DownloadedInfo(str(model_path))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
 
-    async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
-        info = self._check_installed()
+    async def _uninstall_model(self, instance: str, model_id: str, options: UninstallModelIn) -> None:
+        info = self.get_instance_installed_info(instance)
         if model_id in info.models:
             model = info.models[model_id]
             del info.models[model_id]
             if model.type == "txt2img":
                 self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
 
+            if not self.is_model_installed_in_other_instance(instance, model.id):
+                await self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
+
         if options.purge and model_id in self.models_downloaded:
             if self.models_downloaded[model_id].model_path:
                 Path(self.models_downloaded[model_id].model_path).unlink()
             del self.models_downloaded[model_id]
 
-        await self.refresh_models()
+        await self.refresh_models(instance)
 
     def _get_working_models_dir(self) -> Path:
         path = self._get_working_dir() / "models"

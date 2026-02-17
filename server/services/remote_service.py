@@ -42,7 +42,7 @@ from server.models.services import (
     ServiceSpecification,
     UninstallServiceIn,
 )
-from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
+from server.services.base2_service import Base2Service, CustomModel, Instance, InstanceConfig, ModelConfig
 from server.utils.core import (
     PromiseWithProgress,
     Stream,
@@ -112,16 +112,21 @@ class DownloadedInfo:
 
 class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
     api_version: str = "v1/"
-    models: dict[str, RemoteModel]
+    models: dict[str, dict[str, RemoteModel]]
 
     def _after_init(self) -> None:
-        self.models = self.get_models_registry().models.copy()
+        self.models = {}
+        self.load_default_models("default")
+
+    def load_default_models(self, instance: str) -> None:
+        """Load default models to instance."""
+        self.models[instance] = self.get_models_registry().models.copy()
 
     def get_size(self) -> ServiceSize:
         """Return the service size."""
         return ""
 
-    async def stop(self) -> None:
+    async def stop_instance(self, instance: str) -> None:
         """Stop the service gracefully.
 
         Remote service has no containers to stop.
@@ -175,23 +180,25 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
             ]
         )
 
-    def get_installed_info(self) -> bool | InstallServiceProgress | ServiceOptions:
+    def get_installed_info(self, instance: str) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""
-        return self._get_service_installed_info() if self.installed is None else self.installed.options.spec
+        installed = self.get_instance_info(instance).installed
+        return self._get_service_installed_info(instance) if installed is None else installed.options.spec
 
-    def _generate_config(self, info: InstalledInfo | None) -> ServiceConfig:
-        return ServiceConfig(
+    def _generate_instance_config(self, info: InstalledInfo | None, custom: list[CustomModel] | None) -> InstanceConfig:
+        return InstanceConfig(
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
-            custom=self.custom,
-            downloaded=self.models_downloaded,
-            service_downloaded=self.service_downloaded,
+            custom=custom,
         )
 
     def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
         return DownloadedInfo(**data)
 
-    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+    async def _install_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+        if not self.models.get(instance):
+            self.load_default_models(instance)
+
         if "api_url" not in options.spec:
             options.spec["api_url"] = self.get_default_url()
         parsed_options = try_parse_pydantic(RemoteOptions, options.spec)
@@ -202,9 +209,10 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         return PromiseWithProgress(func=func)
 
-    async def _uninstall(self, options: UninstallServiceIn) -> None:
-        if info := self.installed:
-            for model in info.models.copy().values():
+    async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:  # noqa: C901
+        instance_info = self.get_instance_info(instance)
+        if instance_info.installed:
+            for model in instance_info.installed.models.copy().values():
                 if model.type == "llm":
                     self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
                 if model.type == "tts":
@@ -215,17 +223,33 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
                     self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
                 if model.type == "embedding":
                     self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
-        self.installed = None
-        if options.purge:
-            self.service_downloaded = False
-            await self._clear_working_dir()
-            self.models_downloaded = {}
 
-    def _add_custom_model(self, model: CustomModel) -> None:
+                if not self.is_model_installed_in_other_instance(instance, model.id):
+                    await self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
+
+        self.instances_info[instance].installed = None
+
+        if options.purge:
+            if len(self.instances_info) < 2:
+                self.service_downloaded = False
+                await self._clear_working_dir()
+                self.models_downloaded = {}
+
+            if instance == "default":
+                self.instances_info["default"] = Instance(None, None, {}, InstanceConfig())
+            else:
+                del self.instances_info[instance]
+
+    def _add_custom_model(self, instance: str, model: CustomModel) -> None:
         parsed = try_parse_pydantic(RemoteCustomModel, model.data)
-        if parsed.id in self.models:
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
+        if parsed.id in self.models[instance]:
             raise HTTPException(400, "Model with given id already exists.")
-        self.models[parsed.id] = RemoteModel(
+
+        self.models[instance][parsed.id] = RemoteModel(
             type=parsed.type,
             completions=parsed.completions,
             legacy_completions=parsed.legacy_completions,
@@ -234,44 +258,65 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
             custom=model.id,
         )
 
-    def _remove_custom_model(self, model: CustomModel) -> None:
+    def _remove_custom_model(self, instance: str, model: CustomModel) -> None:
+        installed = self.get_instance_info(instance).installed
         parsed = try_parse_pydantic(RemoteCustomModel, model.data)
-        if self.installed and parsed.id in self.installed.models:
+        if installed and parsed.id in installed.models:
             raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
-        del self.models[parsed.id]
+        del self.models[instance][parsed.id]
 
-    async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
+    async def list_models(self, input_instance: str | list[str] | None, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
-        info = self._check_installed()
+        instances = [input_instance] if isinstance(input_instance, str) else input_instance if input_instance else self.instances_info
+
+        for instance in instances:
+            if instance not in self.instances_info:
+                raise HTTPException(404, f"Instance {instance} doesn't exist.")
+
         out_list: list[RetrieveModelOut] = []
-        for model_id, model in self.models.items():
-            installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
-            if filters.installed is None or filters.installed == installed:
-                out_list.append(
-                    RetrieveModelOut(
-                        id=model_id,
-                        service=self.get_id(),
-                        type=model.type,
-                        installed=installed,
-                        downloaded=model_id in self.models_downloaded,
-                        size="",
-                        custom=model.custom,
-                        spec=self.get_model_spec(),
-                        has_docker=False,
+        for instance_name, instance_models in self.models.items():
+            if instance_name not in instances:
+                continue
+
+            info = self.get_instance_installed_info(instance_name)
+            for model_id, model in instance_models.items():
+                if model_id in info.models:
+                    installed = info.models[model_id].get_info()
+                else:
+                    installed = self._get_model_installed_info(instance_name, model_id)
+
+                if filters.installed is None or filters.installed == bool(installed):
+                    out_list.append(
+                        RetrieveModelOut(
+                            id=model_id,
+                            service=self.get_id(instance_name),
+                            type=model.type,
+                            installed=installed,
+                            downloaded=model_id in self.models_downloaded,
+                            size="",
+                            custom=model.custom,
+                            spec=self.get_model_spec(),
+                            has_docker=False,
+                        )
                     )
-                )
+
         return ListModelsOut(list=out_list)
 
-    async def get_model(self, model_id: str) -> RetrieveModelOut:
+    async def get_model(self, instance: str, model_id: str) -> RetrieveModelOut:
         """Get the model."""
-        info = self._check_installed()
-        if model_id not in self.models:
+        info = self.get_instance_installed_info(instance)
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
+        if model_id not in self.models[instance]:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = self.models[model_id]
-        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
+
+        model = self.models[instance][model_id]
+        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(instance, model_id)
         return RetrieveModelOut(
             id=model_id,
-            service=self.get_id(),
+            service=self.get_id(instance),
             type=model.type,
             installed=installed,
             downloaded=model_id in self.models_downloaded,
@@ -281,17 +326,25 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
             has_docker=False,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
+    async def _install_model(
+        self, instance: str, model_id: str, options: InstallModelIn
+    ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         parsed_model_options = try_parse_pydantic(RemoteModelOptions, options.spec) if options.spec else RemoteModelOptions()
-        info = self._check_installed()
+        info = self.get_instance_installed_info(instance)
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
         if model_id in info.models:
             return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
-        if model_id not in self.models:
+
+        if model_id not in self.models[instance]:
             raise HTTPException(400, "Model not found")
-        model = self.models[model_id]
+
+        model = self.models[instance][model_id]
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
@@ -386,14 +439,14 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
                     ),
                     registration_options=None,
                 )
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             self.models_downloaded[model_id] = DownloadedInfo()
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
 
-    async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
-        info = self._check_installed()
+    async def _uninstall_model(self, instance: str, model_id: str, options: UninstallModelIn) -> None:
+        info = self.get_instance_installed_info(instance)
         if model_id in info.models:
             model = info.models[model_id]
             del info.models[model_id]

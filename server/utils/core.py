@@ -17,6 +17,7 @@ import platform
 import re
 import shlex
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, NamedTuple, TypedDict
 from urllib.parse import parse_qs, quote, urlencode, urlparse, urlunparse
@@ -25,7 +26,6 @@ from uuid import uuid4
 import aiofiles
 import aiohttp
 from aiohttp import ClientResponse, ClientSession, ClientTimeout, FormData, Payload
-from attr import dataclass
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from multidict import CIMultiDictProxy
@@ -370,6 +370,7 @@ class StreamChunkProgress(TypedDict):
     type: Literal["progress"]
     stage: Literal["install", "download"]
     value: float
+    data: dict[str, Any]
 
 
 type StreamChunk = StreamChunkFinish | StreamChunkProgress

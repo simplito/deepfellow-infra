@@ -17,6 +17,7 @@ import re
 import shutil
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
@@ -73,6 +74,57 @@ def normalize_docker_platform(platform_str: str) -> str:
         msg = f"Platform '{platform_str}' requires a variant for architecture '{arch_normalized}'"
         raise ValueError(msg)
     return f"{os_part}/{arch_normalized}/{variant_normalized}" if variant_normalized else f"{os_part}/{arch_normalized}"
+
+
+def get_docker_auths() -> dict[str, str]:
+    """Get docker auth."""
+    config_path = Path.home() / ".docker" / "config.json"
+    if not config_path.exists():
+        return {}
+    try:
+        # .read_text() handles opening and closing the file automatically
+        config: dict[str, Any] = json.loads(config_path.read_text())
+        auths_raw: dict[str, dict[str, str]] = config.get("auths", {})
+        return {host: host_data["auth"] for host, host_data in auths_raw.items() if host_data.get("auth")}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+@dataclass(frozen=True)
+class DockerImageNameInfo:
+    registry: str
+    namespace: str
+    image_name: str
+
+    @classmethod
+    def parse(cls, full_image: str) -> "DockerImageNameInfo":
+        """Parse docker image name to registry, namespace and image_name."""
+        parts = full_image.split("/")
+
+        registry = "docker.io"  # Default
+        namespace = "library"  # Default for official Docker Hub images
+        image_name = ""
+
+        # Check if the first part is a registry host
+        # Registries usually have a '.' (ghcr.io) or a ':' (localhost:5000)
+        if len(parts) > 1 and ("." in parts[0] or ":" in parts[0]):
+            registry = parts[0]
+            remaining = parts[1:]
+        else:
+            remaining = parts
+
+        # Handle namespace and image name
+        if len(remaining) == 2:
+            namespace = remaining[0]
+            image_name = remaining[1]
+        elif len(remaining) == 1:
+            image_name = remaining[0]
+        else:
+            # For complex paths like ECR or deeply nested registries
+            namespace = "/".join(remaining[:-1])
+            image_name = remaining[-1]
+
+        return cls(registry, namespace, image_name)
 
 
 class DockerOptions:
@@ -173,6 +225,8 @@ class DockerImage(BaseModel):
 
 
 class DockerService:
+    auths: dict[str, str]
+
     def __init__(
         self,
         config: AppSettings,
@@ -192,6 +246,7 @@ class DockerService:
         self.os = os
         self.architecture = architecture
         self.host_platform = host_platform
+        self.auths = get_docker_auths()
 
     def calculate_total_layer_size(self, manifest: dict[str, Any]) -> int:
         """Parse an docker image manifest and calculates the total size.
@@ -488,8 +543,14 @@ class DockerService:
         """Pull given docker image."""
         progress = Progress(image_size)
         bytes_per_id: dict[str, float] = {}
+        additional_params = {}
+
+        image_name_info = DockerImageNameInfo.parse(full_image_name)
+        if image_name_info.registry in self.auths:
+            additional_params = {"auth": self.auths[image_name_info.registry]}
+
         async with Docker() as docker:
-            async for chunk in docker.images.pull(full_image_name, stream=True, timeout=24 * 60 * 60):
+            async for chunk in docker.images.pull(full_image_name, stream=True, timeout=24 * 60 * 60, **additional_params):
                 if (
                     (id := chunk.get("id"))
                     and (chunk.get("status") == "Downloading")
@@ -737,20 +798,20 @@ class DockerService:
             dir.mkdir(parents=True)
         return dir / "compose.yaml"
 
-    def get_docker_container_name(self, name: str) -> str | None:
+    def get_docker_container_name(self, name: str) -> str:
         """Return docker container name."""
-        return self.config.container_name_prefix + name if self.config.container_name_prefix else None
+        return self.config.container_name_prefix + name if self.config.container_name_prefix else name
 
     def get_docker_subnet(self) -> str | None:
         """Return docker subnet name or None if it is not set."""
         return self.config.docker_subnet if self.config.docker_subnet else None
 
     def get_container_host(self, subnet: str | None, container_name: str) -> str:
-        """Return container_name if there is docker_subnet in config otherwise return locaahost."""
+        """Return container_name if there is docker_subnet in config otherwise return localhost."""
         return container_name if subnet else "localhost"
 
     def get_container_port(self, subnet: str | None, exposed_port: int, original_port: int) -> int:
-        """Return container_name if there is docker_subnet in config otherwise return locaahost."""
+        """Return container_name if there is docker_subnet in config otherwise return localhost."""
         return original_port if subnet else exposed_port
 
 

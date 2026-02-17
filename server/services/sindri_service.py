@@ -41,7 +41,7 @@ from server.models.services import (
     ServiceSpecification,
     UninstallServiceIn,
 )
-from server.services.base2_service import Base2Service, ModelConfig, ServiceConfig
+from server.services.base2_service import Base2Service, CustomModel, Instance, InstanceConfig, ModelConfig
 from server.utils.core import (
     PromiseWithProgress,
     Stream,
@@ -109,17 +109,27 @@ class DownloadedInfo:
 
 
 class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
-    def get_id(self) -> str:
+    models: dict[str, dict[str, SindriAiModel]]
+
+    def _after_init(self) -> None:
+        self.models = {}
+        self.load_default_models("default")
+
+    def load_default_models(self, instance: str) -> None:
+        """Load default models to instance."""
+        self.models[instance] = _const.models.copy()
+
+    def get_type(self) -> str:
         """Return the service id."""
         return "sindri"
-
-    def get_size(self) -> ServiceSize:
-        """Return the service size."""
-        return _const.image.size
 
     def get_description(self) -> str:
         """Return the service description."""
         return "Remote encrypted access to Sindri models."
+
+    def get_size(self) -> ServiceSize:
+        """Return the service size."""
+        return _const.image.size
 
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
@@ -144,17 +154,16 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
         """Return the custom model specification or None if custom model is not supported."""
         return None
 
-    def get_installed_info(self) -> bool | InstallServiceProgress | ServiceOptions:
+    def get_installed_info(self, instance: str) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""
-        return self._get_service_installed_info() if self.installed is None else self.installed.options.spec
+        installed = self.get_instance_info(instance).installed
+        return self._get_service_installed_info(instance) if installed is None else installed.options.spec
 
-    def _generate_config(self, info: InstalledInfo | None) -> ServiceConfig:
-        return ServiceConfig(
+    def _generate_instance_config(self, info: InstalledInfo | None, custom: list[CustomModel] | None) -> InstanceConfig:
+        return InstanceConfig(
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
-            custom=self.custom,
-            downloaded=self.models_downloaded,
-            service_downloaded=self.service_downloaded,
+            custom=custom,
         )
 
     def _get_image(self) -> DockerImage:
@@ -163,15 +172,18 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
     def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
         return DownloadedInfo(**data)
 
-    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+    async def _install_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+        if not self.models.get(instance):
+            self.load_default_models(instance)
+
         parsed_options = try_parse_pydantic(SindriOptions, options.spec)
         image = self._get_image()
         await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
-            await self._docker_pull(image, stream)
+            await self._download_image_or_set_progress(stream, image)
             self.service_downloaded = True
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
             config_path = self._get_working_dir() / "config.yaml"
             data = (
                 "listenAddress: 0.0.0.0\n"
@@ -191,9 +203,10 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
                 f.write(data)
             volumes = [f"{config_path}:/config.yaml"]
             subnet = self.docker_service.get_docker_subnet()
+            name = f"{self.get_service_id(instance)}"
             docker_options = DockerOptions(
-                name="sindri",
-                container_name=self.docker_service.get_docker_container_name("sindri"),
+                name=name,
+                container_name=self.docker_service.get_docker_container_name(name),
                 image=image.name,
                 command="serve /config.yaml",
                 image_port=8080,
@@ -221,78 +234,107 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
                 docker_exposed_port=docker_exposed_port,
                 base_url=get_base_url(container_host, container_port),
             )
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             return info
 
         return PromiseWithProgress(func=func)
 
-    async def _uninstall(self, options: UninstallServiceIn) -> None:
-        if info := self.installed:
-            for model in info.models.copy().values():
+    async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
+        installed = self.get_instance_info(instance).installed
+        if installed:
+            for model in installed.models.copy().values():
                 if model.type == "llm":
                     self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
 
-            await self.docker_service.uninstall_docker(info.docker)
+                if not self.is_model_installed_in_other_instance(instance, model.id):
+                    await self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
 
-        self.installed = None
+            await self.docker_service.uninstall_docker(installed.docker)
+
+        self.instances_info[instance].installed = None
+
         if options.purge:
-            self.service_downloaded = False
-            image = self._get_image()
-            await self.docker_service.remove_image(image.name)
-            await self._clear_working_dir()
-            self.models_downloaded = {}
+            if len(self.instances_info) < 2:
+                self.service_downloaded = False
+                image = self._get_image()
+                await self.docker_service.remove_image(image.name)
+                await self._clear_working_dir()
+                self.models_downloaded = {}
 
-    def get_docker_compose_file_path(self, model_id: str | None) -> Path:
+            if instance == "default":
+                self.instances_info["default"] = Instance(None, None, {}, InstanceConfig())
+            else:
+                del self.instances_info[instance]
+
+    def get_docker_compose_file_path(self, instance: str, model_id: str | None) -> Path:
         """Get docker compose file path."""
-        info = self.installed
-        if not info:
-            raise HTTPException(400, "Service not installed")
+        info = self.get_instance_installed_info(instance)
         if model_id:
             raise HTTPException(400, "Docker is not bound with this object")
+
         return self.docker_service.get_docker_compose_file_path(info.docker.name)
 
     def service_has_docker(self) -> bool:
         """Return true when docker is started when service is installed."""
         return True
 
-    async def stop(self) -> None:
+    async def stop_instance(self, instance: str) -> None:
         """Stop the Sindri service Docker container."""
-        info = self.installed
-        if not info:
+        installed = self.get_instance_info(instance).installed
+        if not installed:
             return
-        await self._stop_docker(info.docker)
+        await self._stop_docker(installed.docker)
 
-    async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
+    async def list_models(self, input_instance: str | list[str] | None, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
-        info = self._check_installed()
+        instances = [input_instance] if isinstance(input_instance, str) else input_instance if input_instance else self.instances_info
+
+        for instance in instances:
+            if instance not in self.instances_info:
+                raise HTTPException(404, f"Instance {instance} doesn't exist.")
+
         out_list: list[RetrieveModelOut] = []
-        for model_id, model in _const.models.items():
-            installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
-            if filters.installed is None or filters.installed == installed:
-                out_list.append(
-                    RetrieveModelOut(
-                        id=model_id,
-                        service=self.get_id(),
-                        type=model.type,
-                        installed=installed,
-                        downloaded=model_id in self.models_downloaded,
-                        size="",
-                        spec=self.get_model_spec(),
-                        has_docker=False,
+        for instance_name, instance_models in self.models.items():
+            if instance_name not in instances:
+                continue
+
+            info = self.get_instance_installed_info(instance_name)
+            for model_id, model in instance_models.items():
+                if model_id in info.models:
+                    installed = info.models[model_id].get_info()
+                else:
+                    installed = self._get_model_installed_info(instance_name, model_id)
+
+                if filters.installed is None or filters.installed == bool(installed):
+                    out_list.append(
+                        RetrieveModelOut(
+                            id=model_id,
+                            service=self.get_id(instance_name),
+                            type=model.type,
+                            installed=installed,
+                            downloaded=model_id in self.models_downloaded,
+                            size="",
+                            spec=self.get_model_spec(),
+                            has_docker=False,
+                        )
                     )
-                )
         return ListModelsOut(list=out_list)
 
-    async def get_model(self, model_id: str) -> RetrieveModelOut:
+    async def get_model(self, instance: str, model_id: str) -> RetrieveModelOut:
         """Get the model."""
-        info = self._check_installed()
+        info = self.get_instance_installed_info(instance)
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
         if model_id not in _const.models:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = _const.models[model_id]
-        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
+
+        model = self.models[instance][model_id]
+        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(instance, model_id)
         return RetrieveModelOut(
             id=model_id,
-            service=self.get_id(),
+            service=self.get_id(instance),
             type=model.type,
             installed=installed,
             downloaded=model_id in self.models_downloaded,
@@ -301,17 +343,25 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
             has_docker=False,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
+    async def _install_model(
+        self, instance: str, model_id: str, options: InstallModelIn
+    ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         parsed_model_options = try_parse_pydantic(SindriModelOptions, options.spec) if options.spec else SindriModelOptions()
-        info = self._check_installed()
+        info = self.get_instance_installed_info(instance)
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
         if model_id in info.models:
             return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
+
         if model_id not in _const.models:
             raise HTTPException(400, "Model not found")
-        model = _const.models[model_id]
+
+        model = self.models[instance][model_id]
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
@@ -330,14 +380,14 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
                     completions=None,
                     registration_options=None,
                 )
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             self.models_downloaded[model_id] = DownloadedInfo()
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
 
-    async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
-        info = self._check_installed()
+    async def _uninstall_model(self, instance: str, model_id: str, options: UninstallModelIn) -> None:
+        info = self.get_instance_installed_info(instance)
         if model_id in info.models:
             model = info.models[model_id]
             del info.models[model_id]

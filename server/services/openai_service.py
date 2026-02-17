@@ -56,7 +56,7 @@ _const = RemoteConst(
 
 
 class OpenAIService(RemoteService):
-    def get_id(self) -> str:
+    def get_type(self) -> str:
         """Return the service id."""
         return "openai"
 

@@ -42,7 +42,7 @@ from server.models.services import (
     ServiceSpecification,
     UninstallServiceIn,
 )
-from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
+from server.services.base2_service import Base2Service, CustomModel, Instance, InstanceConfig, ModelConfig
 from server.utils.core import (
     PromiseWithProgress,
     Stream,
@@ -124,7 +124,7 @@ class OllamaModelOptions(BaseModel):
 
 
 @dataclass
-class InstalledExternalInfo:
+class InstalledInfo:
     models: dict[str, ModelInstalledInfo]
     options: InstallServiceIn
     parsed_options: OllamaExternalOptions
@@ -136,15 +136,20 @@ class DownloadedInfo:
     pass
 
 
-class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo]):
-    models: dict[str, OllamaModel]
+class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
+    models: dict[str, dict[str, OllamaModel]]
     support_responses: bool
     support_messages: bool
 
     def _after_init(self) -> None:
-        self.models = _const.models.copy()
+        self.models = {}
+        self.load_default_models("default")
 
-    def get_id(self) -> str:
+    def load_default_models(self, instance: str) -> None:
+        """Load default models to instance."""
+        self.models[instance] = _const.models.copy()
+
+    def get_type(self) -> str:
         """Return the service id."""
         return "ollama-external"
 
@@ -188,53 +193,62 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo])
             ]
         )
 
-    def get_installed_info(self) -> bool | InstallServiceProgress | ServiceOptions:
+    def get_installed_info(self, instance: str) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""
-        return self._get_service_installed_info() if self.installed is None else self.installed.options.spec
+        installed = self.get_instance_info(instance).installed
+        return self._get_service_installed_info(instance) if installed is None else installed.options.spec
 
-    def _generate_config(self, info: InstalledExternalInfo | None) -> ServiceConfig:
-        return ServiceConfig(
+    def _generate_instance_config(self, info: InstalledInfo | None, custom: list[CustomModel] | None) -> InstanceConfig:
+        return InstanceConfig(
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
-            custom=self.custom,
-            downloaded=self.models_downloaded,
+            custom=custom,
         )
 
     def service_has_docker(self) -> bool:
         """Return true when docker is started when service is installed."""
         return False
 
-    async def stop(self) -> None:
+    async def stop_instance(self, instance: str) -> None:
         """Stop the service gracefully.
 
         External Ollama service has no containers to stop.
         """
 
-    def _add_custom_model(self, model: CustomModel) -> None:
+    def _add_custom_model(self, instance: str, model: CustomModel) -> None:
         parsed = try_parse_pydantic(OllamaCustomModel, model.data)
-        if parsed.id in self.models:
-            raise HTTPException(400, "Model with given id already exists.")
-        self.models[parsed.id] = OllamaModel(id=parsed.id, size=parsed.size, type=parsed.type, custom=model.id)
 
-    def _remove_custom_model(self, model: CustomModel) -> None:
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
+        if parsed.id in self.models[instance]:
+            raise HTTPException(400, "Model with given id already exists.")
+
+        self.models[instance][parsed.id] = OllamaModel(id=parsed.id, size=parsed.size, type=parsed.type, custom=model.id)
+
+    def _remove_custom_model(self, instance: str, model: CustomModel) -> None:
+        installed = self.get_instance_info(instance).installed
         parsed = try_parse_pydantic(OllamaCustomModel, model.data)
-        if self.installed and parsed.id in self.installed.models:
+        if installed and parsed.id in installed.models:
             raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
-        del self.models[parsed.id]
+        del self.models[instance][parsed.id]
 
     def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
         return DownloadedInfo(**data)
 
-    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledExternalInfo, StreamChunk]:
+    async def _install_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+        if not self.models.get(instance):
+            self.load_default_models(instance)
+
         parsed_options = try_parse_pydantic(OllamaExternalOptions, options.spec)
 
         def _raise_connection_error(url: str) -> None:
             msg = f"Cannot connect to Ollama at {url}"
             raise HTTPException(status_code=400, detail=msg)
 
-        async def func(stream: Stream[StreamChunk]) -> InstalledExternalInfo:
+        async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
             # Verify connection to external Ollama
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
             try:
                 res = await fetch_from(f"{parsed_options.url.rstrip('/')}/api/version", "GET", None)
                 if res.status_code != 200:
@@ -252,57 +266,87 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo])
                 msg = f"Cannot connect to Ollama at {parsed_options.url}: {e!s}"
                 raise HTTPException(status_code=400, detail=msg) from e
 
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
-            return InstalledExternalInfo(models={}, options=options, parsed_options=parsed_options, base_url=parsed_options.url.rstrip("/"))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
+            return InstalledInfo(models={}, options=options, parsed_options=parsed_options, base_url=parsed_options.url.rstrip("/"))
 
         return PromiseWithProgress(func=func)
 
-    async def _uninstall(self, options: UninstallServiceIn) -> None:
-        if info := self.installed:
-            for model in info.models.copy().values():
+    async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
+        installed = self.get_instance_info(instance).installed
+        if installed:
+            for model in installed.models.copy().values():
                 if model.type == "llm":
                     self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
                 if model.type == "embedding":
                     self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
-            self.installed = None
+
+                if not self.is_model_installed_in_other_instance(instance, model.id):
+                    await self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
+
+        self.instances_info[instance].installed = None
 
         if options.purge:
-            self.service_downloaded = False
-            await self._clear_working_dir()
-            self.models_downloaded = {}
+            if len(self.instances_info) < 2:
+                self.service_downloaded = False
+                await self._clear_working_dir()
+                self.models_downloaded = {}
 
-    async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
+            if instance == "default":
+                self.instances_info["default"] = Instance(None, None, {}, InstanceConfig())
+            else:
+                del self.instances_info[instance]
+
+    async def list_models(self, input_instance: str | list[str] | None, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
-        info = self._check_installed()
+        instances = [input_instance] if isinstance(input_instance, str) else input_instance if input_instance else self.instances_info
+
+        for instance in instances:
+            if instance not in self.instances_info:
+                raise HTTPException(404, f"Instance {instance} doesn't exist.")
+
         out_list: list[RetrieveModelOut] = []
-        for model_id, model in self.models.items():
-            installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
-            if filters.installed is None or filters.installed == installed:
-                out_list.append(
-                    RetrieveModelOut(
-                        id=model_id,
-                        service=self.get_id(),
-                        type=model.type,
-                        installed=installed,
-                        downloaded=model_id in self.models_downloaded,
-                        size=model.size,
-                        custom=model.custom,
-                        spec=self.get_model_spec(),
-                        has_docker=False,
+        for instance_name, instance_models in self.models.items():
+            if instance_name not in instances:
+                continue
+
+            info = self.get_instance_installed_info(instance_name)
+            for model_id, model in instance_models.items():
+                if model_id in info.models:
+                    installed = info.models[model_id].get_info()
+                else:
+                    installed = self._get_model_installed_info(instance_name, model_id)
+
+                if filters.installed is None or filters.installed == bool(installed):
+                    out_list.append(
+                        RetrieveModelOut(
+                            id=model_id,
+                            service=self.get_id(instance_name),
+                            type=model.type,
+                            installed=installed,
+                            downloaded=model_id in self.models_downloaded,
+                            size=model.size,
+                            custom=model.custom,
+                            spec=self.get_model_spec(),
+                            has_docker=False,
+                        )
                     )
-                )
         return ListModelsOut(list=out_list)
 
-    async def get_model(self, model_id: str) -> RetrieveModelOut:
+    async def get_model(self, instance: str, model_id: str) -> RetrieveModelOut:
         """Get the model."""
-        info = self._check_installed()
-        if model_id not in self.models:
+        info = self.get_instance_installed_info(instance)
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
+        if model_id not in self.models[instance]:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = self.models[model_id]
-        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
+
+        model = self.models[instance][model_id]
+        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(instance, model_id)
         return RetrieveModelOut(
             id=model_id,
-            service=self.get_id(),
+            service=self.get_id(instance),
             type=model.type,
             installed=installed,
             downloaded=model_id in self.models_downloaded,
@@ -312,43 +356,74 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo])
             has_docker=False,
         )
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:  # noqa: C901
+    async def _download_model(self, stream: Stream[StreamChunk], model: OllamaModel, model_id: str, base_url: str) -> None:
+        progress = Progress(convert_size_to_bytes(model.size) or 0)
+        last_diggest: str = ""
+        last_value: int = 0
+
+        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
+        async for ollama_stream in stream_fetch_from(f"{base_url}/api/pull", "POST", {"model": model_id}, timeout=24 * 60 * 60):
+            if (ollama_stream.status_code != 200 and ollama_stream.status_code != 201) or "error" in ollama_stream.data:
+                raise HTTPException(400, "Model not available")
+
+            data_cleared: list[str] = ollama_stream.data.rstrip().split("\n")
+            records = [json.loads(s) for s in data_cleared]
+            if progress.max != 0:
+                for record in records:
+                    if value := record.get("completed"):
+                        digest = record.get("digest")
+                        batch_download_bytes_size = value - last_value if digest == last_diggest else value
+                        progress.add_to_actual_value(batch_download_bytes_size)
+                        last_value = value
+                        last_diggest = digest
+
+                    elif record.get("status") == "success":
+                        progress.set_actual_value(progress.max)
+
+                    stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data={}))
+
+        stream.emit(StreamChunkProgress(type="progress", stage="download", value=1, data={}))
+
+    async def _download_model_or_set_progress(
+        self,
+        stream: Stream[StreamChunk],
+        model: OllamaModel,
+        model_id: str,
+        base_url: str,
+    ) -> None:
+        if model_id not in self.models_download_progress:
+            self.models_download_progress[model_id] = stream
+            await self._download_model(stream, model, model_id, base_url)
+            del self.models_download_progress[model_id]
+        else:
+            chunk: StreamChunk
+            async for chunk in self.models_download_progress[model_id].as_generator():
+                if chunk.get("type") == "progress" and chunk.get("stage") == "download":
+                    stream.emit(chunk)
+                else:
+                    break
+
+    async def _install_model(
+        self, instance: str, model_id: str, options: InstallModelIn
+    ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         parsed_model_options = try_parse_pydantic(OllamaModelOptions, options.spec) if options.spec else OllamaModelOptions()
-        info = self._check_installed()
+        info = self.get_instance_installed_info(instance)
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
         if model_id in info.models:
             return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
-        if model_id not in self.models:
+
+        if model_id not in self.models[instance]:
             raise HTTPException(400, "Model not found")
-        model = self.models[model_id]
+
+        model = self.models[instance][model_id]
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
-            progress = Progress(convert_size_to_bytes(model.size) or 0)
-            last_diggest: str = ""
-            last_value: int = 0
+            await self._download_model_or_set_progress(stream, model, model_id, info.base_url)
 
-            stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
-            async for ollama_stream in stream_fetch_from(f"{info.base_url}/api/pull", "POST", {"model": model_id}, timeout=24 * 60 * 60):
-                if (ollama_stream.status_code != 200 and ollama_stream.status_code != 201) or "error" in ollama_stream.data:
-                    raise HTTPException(400, "Model not available")
-
-                data_cleared: list[str] = ollama_stream.data.rstrip().split("\n")
-                records = [json.loads(s) for s in data_cleared]
-                if progress.max != 0:
-                    for record in records:
-                        if value := record.get("completed"):
-                            digest = record.get("digest")
-                            batch_download_bytes_size = value - last_value if digest == last_diggest else value
-                            progress.add_to_actual_value(batch_download_bytes_size)
-                            last_value = value
-                            last_diggest = digest
-
-                        elif record.get("status") == "success":
-                            progress.set_actual_value(progress.max)
-
-                        stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
-
-            stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
             if parsed_model_options.alive_time != "":
                 await fetch_from(
                     f"{info.base_url}/api/generate",
@@ -373,7 +448,9 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo])
                     responses=ProxyOptions(url=f"{info.base_url}/v1/responses", rewrite_model_to=model_id)
                     if self.support_responses
                     else None,
-                    messages=ProxyOptions(url=f"{info.base_url}/v1/messages", rewrite_model_to=model_id) if self.support_messages else None,
+                    messages=(
+                        ProxyOptions(url=f"{info.base_url}/v1/messages", rewrite_model_to=model_id) if self.support_messages else None
+                    ),
                     registration_options=None,
                 )
             if model.type == "embedding":
@@ -383,14 +460,14 @@ class OllamaExternalService(Base2Service[InstalledExternalInfo, DownloadedInfo])
                     options=ProxyOptions(url=f"{info.base_url}/v1/embeddings", rewrite_model_to=model_id),
                     registration_options=None,
                 )
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             self.models_downloaded[model_id] = DownloadedInfo()
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
 
-    async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
-        info = self._check_installed()
+    async def _uninstall_model(self, instance: str, model_id: str, options: UninstallModelIn) -> None:
+        info = self.get_instance_installed_info(instance)
         if model_id in info.models:
             model = info.models[model_id]
             del info.models[model_id]

@@ -10,11 +10,13 @@
 """Base2 service."""
 
 import asyncio
+import contextlib
 import logging
 import shutil
 import uuid
 from abc import abstractmethod
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, TypeVar
 
@@ -62,10 +64,14 @@ class CustomModel(BaseModel):
     data: CustomModelDefiniton
 
 
-class ServiceConfig(BaseModel):
+class InstanceConfig(BaseModel):
     options: InstallServiceIn | None = None
     models: list[ModelConfig] | None = None
     custom: list[CustomModel] | None = None
+
+
+class ServiceConfig(BaseModel):
+    instances: dict[str, InstanceConfig] | None = None
     downloaded: dict[str, Any] | None = None
     service_downloaded: bool | None = True
 
@@ -89,7 +95,7 @@ class InstallingModel:
         self.task = asyncio.create_task(the_func())
 
 
-class InstallingService:
+class InstallingInstance:
     last_chunk: StreamChunk | None = None
 
     def __init__(self, promise: PromiseWithProgress[InstallServiceOut, StreamChunk]):
@@ -102,6 +108,14 @@ class InstallingService:
         self.task = asyncio.create_task(the_func())
 
 
+@dataclass
+class Instance[InstalledInfoType]:
+    installed: InstalledInfoType | None
+    installing: InstallingInstance | None
+    installing_model_progress: dict[str, InstallingModel]
+    config: InstanceConfig
+
+
 class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  # noqa: UP046
     config: AppSettings
     endpoint_registry: EndpointRegistry
@@ -110,10 +124,10 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     docker_service: DockerService
     models_downloaded: dict[str, DownloadInfoType]
     service_downloaded: bool
-    custom: list[CustomModel]
-    installing_model_progress: dict[str, InstallingModel]
-    installing: InstallingService | None
     hardware: Hardware
+    instances_info: dict[str, Instance[InstalledInfoType]]
+    images_download_progress: dict[str, Stream[StreamChunk]]
+    models_download_progress: dict[str, Stream[StreamChunk]]
 
     def __init__(
         self,
@@ -131,184 +145,242 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         self.model_downloader = model_downloader
         self.docker_service = docker_service
         self.hardware = hardware
-        self.installed: InstalledInfoType | None = None
-        self.installing = None
         self.models_downloaded = {}
         self.service_downloaded = False
-        self.custom = list[CustomModel]()
-        self.installing_model_progress = {}
+        self.instances_info = {"default": Instance(None, None, {}, InstanceConfig())}
+        self.models_download_progress = {}
+        self.images_download_progress = {}
         self._after_init()
 
     def _after_init(self) -> None:
         """Do some custom initialization."""
 
+    def load_default_models(self, instance: str) -> None:
+        """Load default models to instance."""
+
     @abstractmethod
-    def get_id(self) -> str:
-        """Return the service id."""
+    def get_type(self) -> str:
+        """Return the type."""
 
     @abstractmethod
     def get_description(self) -> str:
         """Return the service description."""
 
-    def get_model_install_progress(self, model: str) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
+    def check_instance_exists(self, instance: str) -> None:
+        """Check is instance exists."""
+        if not self.instances_info.get(instance):
+            raise HTTPException(404, "Instance doesn't exist.")
+
+    def is_model_installed_in_other_instance(self, instance: str, model: str) -> bool:
+        """Check is model installed in other instance."""
+        return any(model in getattr(self.instances_info[i].installed, "models", []) for i in self.instances_info if i != instance)
+
+    def get_instance_info(self, instance: str) -> Instance[InstalledInfoType]:
+        """Return instance info."""
+        instance_info = self.instances_info.get(instance)
+        if not instance_info:
+            raise HTTPException(404, "Instance doesn't exist.")
+        return instance_info
+
+    def get_model_install_progress(self, instance: str, model: str) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         """Return actually installing models."""
-        if installing := self.installing_model_progress.get(model):
-            return installing.promise
+        installing = self.get_instance_info(instance).installing_model_progress.get(model)
 
-        raise HTTPException(404, "This model is not installing now.")
+        if not installing:
+            raise HTTPException(404, "This model is not installing now.")
 
-    def get_service_install_progress(self) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
+        return installing.promise
+
+    def get_instance_install_progress(self, instance: str) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
         """Return actually installing service."""
-        if self.installing:
-            return self.installing.promise
+        installing = self.get_instance_info(instance).installing
 
-        raise HTTPException(404, "This service is not installing now.")
+        if not installing:
+            raise HTTPException(404, "This service is not installing now.")
 
-    def is_installed(self) -> bool:
+        return installing.promise
+
+    def is_installed(self, instance: str) -> bool:
         """Check whether service is installed."""
-        return self.installed is not None
+        return self.get_instance_info(instance).installed is not None
 
     def get_downloaded(self) -> bool:
         """Get service downloaded info."""
         return self.service_downloaded
 
-    async def load_model(self, model: ModelConfig) -> None:
+    async def load_model(self, instance: str, model: ModelConfig) -> None:
         """Load single model."""
-        logger.info(f"{self.get_id()} loading model {model.model_id}")  # noqa: G004
+        logger.info(f"{self.get_id(instance)} loading model {model.model_id}")  # noqa: G004
         try:
-            await (await self._install_model(model.model_id, model.options)).wait()
+            await (await self._install_model(instance, model.model_id, model.options)).wait()
         except Exception:
-            logger.exception(f"{self.get_id()} get error while loading model {model.model_id}")  # noqa: G004
+            logger.exception(f"{self.get_id(instance)} get error while loading model {model.model_id}")  # noqa: G004
 
-    async def load(self, config: ServiceRawConfig) -> None:
+    async def load_instance(self, instance: str, instance_data: InstanceConfig) -> None:
+        """Load instance of service."""
+        if not instance_data.options:
+            return
+
+        self.load_default_models(instance)
+
+        if instance_data.custom:
+            for custom in instance_data.custom:
+                self._add_custom_model(instance, custom)
+
+        promise = await self.install_instance(instance, instance_data.options, instance_data, save=False)
+        await promise.wait()
+        logger.info(f"{self.get_id(instance)} service checked")  # noqa: G004
+        tasks = [asyncio.create_task(self.load_model(instance, model)) for model in instance_data.models or []]
+        await asyncio.gather(*tasks)
+
+    async def load_service(self, config: ServiceRawConfig) -> None:
         """Load service using the config."""
         cfg = ServiceConfig(**config)
         self.models_downloaded = ({key: self._load_download_info(value) for key, value in cfg.downloaded.items()}) if cfg.downloaded else {}
-        self.service_downloaded = cfg.service_downloaded or (cfg.options is not None)  # backward compatibility
-        self.custom = cfg.custom or []
-        for custom in self.custom:
-            self._add_custom_model(custom)
-        if not cfg.options:
-            return
-        promise = await self.install(cfg.options, save=False)
-        await promise.wait()
-        msg = f"{self.get_id()} service installed."
+        self.service_downloaded = cfg.service_downloaded or False
+
+        msg = f"{self.get_type()} service installed."
         logger.info(msg)
-        tasks = [asyncio.create_task(self.load_model(model)) for model in cfg.models or []]
-        await asyncio.gather(*tasks)
+        if cfg.instances:
+            tasks = [asyncio.create_task(self.load_instance(name, instance)) for name, instance in cfg.instances.items()]
+            await asyncio.gather(*tasks)
 
     @abstractmethod
     def _load_download_info(self, data: dict[str, Any]) -> DownloadInfoType:
         pass
 
     async def _save(self) -> None:
-        cfg = self._generate_config(self.installed)
-        await self.service_provider.save_service_config(self.get_id(), cfg.model_dump())
+        instances_config = {}
+        for instance_name, instance in self.instances_info.items():
+            instances_config[instance_name] = self._generate_instance_config(instance.installed, instance.config.custom)
+        cfg = self.service_config(instances_config)
+        await self.service_provider.save_service_config(self.get_type(), cfg.model_dump())
 
     @abstractmethod
-    def _generate_config(self, info: InstalledInfoType | None) -> ServiceConfig:
-        """Generate config."""
+    def _generate_instance_config(self, info: InstalledInfoType | None, custom: list[CustomModel] | None) -> InstanceConfig:
+        """Generate instance config."""
 
-    async def install(self, options: InstallServiceIn, save: bool = True) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
+    def service_config(self, instances_config: dict[str, InstanceConfig]) -> ServiceConfig:
+        """Generate service config."""
+        return ServiceConfig(instances=instances_config, downloaded=self.models_downloaded, service_downloaded=self.service_downloaded)
+
+    async def install_instance(
+        self, instance: str, options: InstallServiceIn, instance_config: InstanceConfig | None = None, save: bool = True
+    ) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
         """Install the service."""
-        if self.installed is not None:
-            raise HTTPException(status_code=400, detail=f"Service {self.get_id()} already installed")
-        if self.installing:
-            raise HTTPException(status_code=400, detail=f"Service {self.get_id()} already installing")
+        if self.instances_info and self.instances_info.get(instance):
+            if self.instances_info[instance].installed:
+                raise HTTPException(status_code=400, detail=f"Service {self.get_id(instance)} on {instance} instance already installed")
+            if self.instances_info[instance].installing:
+                raise HTTPException(status_code=400, detail=f"Service {self.get_id(instance)} on {instance} instance already installing")
+
+        self.instances_info[instance] = Instance(None, None, {}, instance_config or InstanceConfig())
 
         async def func(data: InstalledInfoType) -> InstallServiceOut:
-            self.installed = data
-            self.installing = None
+            self.instances_info[instance].installed = data
             if save:
                 await self._save()
+            self.instances_info[instance].installing = None
             return InstallServiceOut(status="OK")
 
         def on_error(_e: Exception) -> None:
-            self.installing = None
+            self.instances_info[instance].installing = None
 
-        promise = await self._install_core(options)
+        promise = await self._install_instance(instance, options)
         next_promise = promise.next(func, on_error)
-        self.installing = InstallingService(promise=next_promise)
+        self.instances_info[instance].installing = InstallingInstance(promise=next_promise)
         return next_promise
 
     @abstractmethod
-    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfoType, StreamChunk]:
+    async def _install_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfoType, StreamChunk]:
         """Install service."""
 
-    async def uninstall(self, options: UninstallServiceIn) -> None:
+    async def uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
         """Uninstall the service."""
-        await self._uninstall(options)
+        await self._uninstall_instance(instance, options)
         await self._save()
 
     @abstractmethod
-    async def _uninstall(self, options: UninstallServiceIn) -> None:
-        """Uninstall service."""
+    async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
+        """Uninstall instance."""
 
-    async def add_custom_model(self, options: AddCustomModelIn) -> CustomModelId:
+    async def add_custom_model(self, instance: str, options: AddCustomModelIn) -> CustomModelId:
         """Add custom model."""
         model = CustomModel(id=str(uuid.uuid4()), data=options.spec)
-        self._add_custom_model(model)
-        self.custom.append(model)
+        custom = self.get_instance_info(instance).config.custom
+        self._add_custom_model(instance, model)
+        if custom is not None:
+            custom.append(model)
+
         await self._save()
         return model.id
 
-    def _add_custom_model(self, model: CustomModel) -> None:  # noqa: ARG002
+    def _add_custom_model(self, instance: str, model: CustomModel) -> None:  # noqa: ARG002
         """Add custom model."""
         raise HTTPException(400, "This service does not support custom models.")
 
-    async def remove_custom_model(self, custom_model_id: CustomModelId) -> None:
+    async def remove_custom_model(self, instance: str, custom_model_id: CustomModelId) -> None:
         """Remove custom model."""
-        model = next(x for x in self.custom if x.id == custom_model_id)
+        custom = self.get_instance_info(instance).config.custom
+        model = next(x for x in custom or {} if x.id == custom_model_id)
         if not model:
             return
-        self._remove_custom_model(model)
-        self.custom = [x for x in self.custom if x.id != custom_model_id]
+        self._remove_custom_model(instance, model)
+        custom = [x for x in custom or {} if x.id != custom_model_id]
         await self._save()
 
-    def _remove_custom_model(self, model: CustomModel) -> None:  # noqa: ARG002
+    def _remove_custom_model(self, instance: str, model: CustomModel) -> None:  # noqa: ARG002
         """Remove custom model."""
         raise HTTPException(400, "This service does not support custom models.")
 
-    async def install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
+    async def install_model(
+        self, instance: str, model_id: str, options: InstallModelIn
+    ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         """Install the model."""
+        installing_model_progress = self.get_instance_info(instance).installing_model_progress
 
         async def func(data: InstallModelOut) -> InstallModelOut:
             await self._save()
             msg = f"{model_id} model installed."
             logger.debug(msg)
-            del self.installing_model_progress[model_id]
+            with contextlib.suppress(KeyError):
+                del installing_model_progress[model_id]
             return data
 
         def on_error(_e: Exception) -> None:
-            del self.installing_model_progress[model_id]
+            del installing_model_progress[model_id]
 
-        promise = await self._install_model(model_id, options)
+        promise = await self._install_model(instance, model_id, options)
 
-        self.installing_model_progress[model_id] = InstallingModel(promise)
+        installing_model_progress[model_id] = InstallingModel(promise)
 
         return promise.next(func, on_error)
 
     @abstractmethod
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
+    async def _install_model(
+        self, instance: str, model_id: str, options: InstallModelIn
+    ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         """Install the model."""
 
-    async def uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
+    async def uninstall_model(self, instance: str, model_id: str, options: UninstallModelIn) -> None:
         """Uninstall the model."""
-        await self._uninstall_model(model_id, options)
+        await self._uninstall_model(instance, model_id, options)
         await self._save()
 
     @abstractmethod
-    async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
+    async def _uninstall_model(self, instance: str, model_id: str, options: UninstallModelIn) -> None:
         """Uninstall the model."""
 
-    async def get_docker_logs(self, model_id: str | None) -> str:
+    async def get_docker_logs(self, instance: str, model_id: str | None) -> str:
         """Get docker logs."""
-        docker_compose_file_path = self.get_docker_compose_file_path(model_id)
+        docker_compose_file_path = self.get_docker_compose_file_path(instance, model_id)
         return await self.docker_service.get_docker_compose_logs(docker_compose_file_path)
 
-    def _get_model_installed_info(self, model_id: str) -> bool | InstallModelProgress:
-        if model_id in self.installing_model_progress:
-            installing = self.installing_model_progress[model_id]
+    def _get_model_installed_info(self, instance: str, model_id: str) -> bool | InstallModelProgress:
+        installing_model_progress = self.get_instance_info(instance).installing_model_progress
+
+        if model_id in installing_model_progress:
+            installing = installing_model_progress[model_id]
             if installing.last_chunk and installing.last_chunk["type"] == "progress":
                 return InstallModelProgress(stage=installing.last_chunk["stage"], value=installing.last_chunk["value"])
             if installing.last_chunk and installing.last_chunk["type"] == "finish":
@@ -316,33 +388,35 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
             return InstallModelProgress(stage="download", value=0)
         return False
 
-    def _get_service_installed_info(self) -> bool | InstallServiceProgress:
-        if not self.installing:
+    def _get_service_installed_info(self, instance: str) -> bool | InstallServiceProgress:
+        installing = self.get_instance_info(instance).installing
+
+        if not installing:
             return False
-        if self.installing.last_chunk and self.installing.last_chunk["type"] == "progress":
-            return InstallServiceProgress(stage=self.installing.last_chunk["stage"], value=self.installing.last_chunk["value"])
-        if self.installing.last_chunk and self.installing.last_chunk["type"] == "finish":
+        if installing.last_chunk and installing.last_chunk["type"] == "progress":
+            return InstallServiceProgress(stage=installing.last_chunk["stage"], value=installing.last_chunk["value"])
+        if installing.last_chunk and installing.last_chunk["type"] == "finish":
             return InstallServiceProgress(stage="install", value=1)
         return InstallServiceProgress(stage="download", value=0)
 
-    async def get_docker_compose_file(self, model_id: str | None) -> str:
+    async def get_docker_compose_file(self, instance: str, model_id: str | None) -> str:
         """Get docker compose file."""
-        docker_compose_file_path = self.get_docker_compose_file_path(model_id)
+        docker_compose_file_path = self.get_docker_compose_file_path(instance, model_id)
         return await Utils.read_file(docker_compose_file_path)
 
-    async def restart_docker(self, model_id: str | None) -> None:
+    async def restart_docker(self, instance: str, model_id: str | None) -> None:
         """Get docker compose file."""
-        docker_compose_file_path = self.get_docker_compose_file_path(model_id)
+        docker_compose_file_path = self.get_docker_compose_file_path(instance, model_id)
         await self.docker_service.restart_docker_compose(docker_compose_file_path)
 
-    def get_docker_compose_file_path(self, model_id: str | None) -> Path:  # noqa: ARG002
+    def get_docker_compose_file_path(self, instance: str, model_id: str | None) -> Path:  # noqa: ARG002
         """Get docker compose file path."""
-        if not self.is_installed():
-            raise HTTPException(400, "Service not installed")
+        if not self.is_installed(instance):
+            raise HTTPException(400, "Instance not installed")
         raise HTTPException(400, "Docker is not bound with this object")
 
     def _get_working_dir(self) -> Path:
-        return self._get_service_dir(self.get_id())
+        return self._get_service_dir(self.get_type())
 
     def _get_service_dir(self, service: str) -> Path:
         """Get service dir."""
@@ -356,10 +430,12 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         if working_dir.exists():
             shutil.rmtree(working_dir)
 
-    def _check_installed(self) -> InstalledInfoType:
-        if self.installed is None:
-            raise HTTPException(status_code=400, detail=f"Service {self.get_id()} not installed")
-        return self.installed
+    def get_instance_installed_info(self, instance: str) -> InstalledInfoType:
+        """Get instance installed info or return exception."""
+        installed = self.get_instance_info(instance).installed
+        if installed is None:
+            raise HTTPException(status_code=400, detail=f"Service {self.get_id(instance)} not installed")
+        return installed
 
     def get_hugging_face_token(self) -> str:
         """Return Hugging Face Key."""
@@ -372,18 +448,31 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     def _has_gpu_for_spec(self) -> str:
         return "true" if self.docker_service.has_gpu_support else "false"
 
+    async def _download_image_or_set_progress(self, stream: Stream[StreamChunk], image: DockerImage) -> None:
+        if image.name not in self.images_download_progress:
+            self.images_download_progress[image.name] = stream
+            await self._docker_pull(image, stream)
+            del self.images_download_progress[image.name]
+        else:
+            chunk: StreamChunk
+            async for chunk in self.images_download_progress[image.name].as_generator():
+                if chunk.get("type") == "progress" and chunk.get("stage") == "download":
+                    stream.emit(chunk)
+                else:
+                    break
+
     async def _docker_pull(
         self,
         image: DockerImage,
         stream: Stream[StreamChunk],
     ) -> None:
         """Docker pull only if image does not exist."""
-        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
+        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
         if not await self.docker_service.is_docker_image_pulled(image.name):
             size = await self.docker_service.get_docker_image_size(image.name)
             async for progress in self.docker_service.docker_pull(image.name, size or convert_size_to_bytes(image.size) or 0):
-                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress))
-        stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
+                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress, data={}))
+        stream.emit(StreamChunkProgress(type="progress", stage="download", value=1, data={}))
 
     async def _stop_docker(self, docker_options: DockerOptions) -> None:
         """Stop docker and log error if it occurs."""
@@ -432,19 +521,18 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
 
         return gpus
 
-    def add_gpu_field_to_spec(
+    def add_hardware_field_to_spec(
         self,
         fields: list[ServiceField] | None = None,
         add_cpu_option_only_on_avx512_support: bool = False,
     ) -> list[ServiceField]:
-        """Add gpu field to specification."""
+        """Add hardware (CPU/GPU/GPUs) field to specification."""
         fields = fields or []
         options: list[str | OneOfOption] = []
         default: str | None = None
         if not add_cpu_option_only_on_avx512_support or self.hardware.cpu.avx512:
             options.append("CPU")
             default = "CPU"
-
         gpus_quantity = len(self.hardware.gpus)
         if gpus_quantity == 1:
             options.append(OneOfOption(value="GPU", label="Default GPU"))

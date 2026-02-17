@@ -63,6 +63,8 @@ class InstallServiceProgress(BaseModel):
 
 class RetrieveServiceOut(BaseModel):
     id: str
+    type: str
+    instance: str
     description: str
     installed: bool | InstallServiceProgress | ServiceOptions
     downloaded: bool

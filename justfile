@@ -1,5 +1,5 @@
 dev:
-    uv run uvicorn server.main:app --host "localhost" --port 8086 --reload --log-level debug --log-config server/utils/logging_config.yaml
+    uv run uvicorn server.main:app --host "localhost" --port 8086 --reload --log-level debug --log-config server/utils/logging_config.yaml --timeout-graceful-shutdown 5
 
 dev-trace:
     uv run uvicorn server.main:app --reload --log-level trace --log-config server/utils/logging_config.yaml
@@ -49,3 +49,7 @@ env-copy:
 
 replace-docker *FLAGS:
     docker stop infra-infra-1; just dev {{FLAGS}}
+
+inspector:
+    npx @modelcontextprotocol/inspector node build/index.js
+

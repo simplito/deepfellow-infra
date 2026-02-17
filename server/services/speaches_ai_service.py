@@ -44,7 +44,7 @@ from server.models.services import (
     ServiceSpecification,
     UninstallServiceIn,
 )
-from server.services.base2_service import Base2Service, CustomModel, ModelConfig, ServiceConfig
+from server.services.base2_service import Base2Service, CustomModel, Instance, InstanceConfig, ModelConfig
 from server.utils.core import (
     DownloadedPacket,
     PreDownloadPacket,
@@ -514,16 +514,21 @@ class SpeachesModel:
 
 
 class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
-    models: dict[str, SpeachesModel]
+    models: dict[str, dict[str, SpeachesModel]]
 
     def _after_init(self) -> None:
         self.models = {}
-        for model in _const.audio_speech_models.copy():
-            self.models[model[0]] = SpeachesModel(id=model[0], type="tts", size=model[1])
-        for model in _const.audio_transcriptions_models.copy():
-            self.models[model[0]] = SpeachesModel(id=model[0], type="stt", size=model[1])
+        self.load_default_models("default")
 
-    def get_id(self) -> str:
+    def load_default_models(self, instance: str) -> None:
+        """Load default models to instance."""
+        self.models[instance] = {}
+        for model in _const.audio_speech_models.copy():
+            self.models[instance][model[0]] = SpeachesModel(id=model[0], type="tts", size=model[1])
+        for model in _const.audio_transcriptions_models.copy():
+            self.models[instance][model[0]] = SpeachesModel(id=model[0], type="stt", size=model[1])
+
+    def get_type(self) -> str:
         """Return the service id."""
         return "speaches-ai"
 
@@ -540,7 +545,7 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
-        fields = self.add_gpu_field_to_spec()
+        fields = self.add_hardware_field_to_spec()
         return ServiceSpecification(fields=fields)
 
     def get_model_spec(self) -> ModelSpecification:
@@ -567,17 +572,16 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
             ]
         )
 
-    def get_installed_info(self) -> bool | InstallServiceProgress | ServiceOptions:
+    def get_installed_info(self, instance: str) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""
-        return self._get_service_installed_info() if self.installed is None else self.installed.options.spec
+        installed = self.get_instance_info(instance).installed
+        return self._get_service_installed_info(instance) if installed is None else installed.options.spec
 
-    def _generate_config(self, info: InstalledInfo | None) -> ServiceConfig:
-        return ServiceConfig(
+    def _generate_instance_config(self, info: InstalledInfo | None, custom: list[CustomModel] | None) -> InstanceConfig:
+        return InstanceConfig(
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
-            custom=self.custom,
-            downloaded=self.models_downloaded,
-            service_downloaded=self.service_downloaded,
+            custom=custom,
         )
 
     def _get_image(self, gpu: bool) -> DockerImage:
@@ -586,7 +590,10 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
     def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
         return DownloadedInfo(**data)
 
-    async def _install_core(self, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+    async def _install_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+        if not self.models.get(instance):
+            self.load_default_models(instance)
+
         if "hardware" not in options.spec:
             options.spec["hardware"] = options.spec.get("gpu", self.docker_service.has_gpu_support)
         parsed_options = try_parse_pydantic(SpeachesAIOptions, options.spec)
@@ -597,13 +604,14 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
         await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
-            await self._docker_pull(image, stream)
+            await self._download_image_or_set_progress(stream, image)
             self.service_downloaded = True
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
             subnet = self.docker_service.get_docker_subnet()
+            name = f"{self.get_service_id(instance)}"
             docker_options = DockerOptions(
-                name="speaches-ai",
-                container_name=self.docker_service.get_docker_container_name("speaches-ai"),
+                name=name,
+                container_name=f"{self.docker_service.get_docker_container_name(name)}",
                 image=image.name,
                 image_port=8000,
                 hardware=self.get_specified_hardware_parts(parsed_options.hardware),
@@ -635,69 +643,83 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
                 docker_exposed_port=docker_exposed_port,
                 base_url=get_base_url(container_host, container_port),
             )
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             return info
 
         return PromiseWithProgress(func=func)
 
-    async def _uninstall(self, options: UninstallServiceIn) -> None:
-        if info := self.installed:
-            for model in info.models.copy().values():
+    async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
+        installed = self.get_instance_info(instance).installed
+        if installed:
+            for model in installed.models.copy().values():
                 if model.type == "tts":
                     self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
                 if model.type == "stt":
                     self.endpoint_registry.unregister_audio_transcriptions(model.registered_name, model.registration_id)
 
-            await self.docker_service.uninstall_docker(info.docker)
+                if not self.is_model_installed_in_other_instance(instance, model.id):
+                    await self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
 
-        self.installed = None
+            await self.docker_service.uninstall_docker(installed.docker)
+
+        self.instances_info[instance].installed = None
+
         if options.purge:
-            self.service_downloaded = False
-            for image in _const.images.values():
-                await self.docker_service.remove_image(image.name)
-            await self._clear_working_dir()
-            self.models_downloaded = {}
+            if len(self.instances_info) < 2:
+                self.service_downloaded = False
+                for image in _const.images.values():
+                    await self.docker_service.remove_image(image.name)
+                await self._clear_working_dir()
+                self.models_downloaded = {}
 
-    async def stop(self) -> None:
+            if instance == "default":
+                self.instances_info["default"] = Instance(None, None, {}, InstanceConfig())
+            else:
+                del self.instances_info[instance]
+
+    async def stop_instance(self, instance: str) -> None:
         """Stop the Speaches AI service Docker container."""
-        info = self.installed
-        if not info:
+        installed = self.get_instance_info(instance).installed
+        if not installed:
             return
-        await self._stop_docker(info.docker)
+        await self._stop_docker(installed.docker)
 
-    def get_docker_compose_file_path(self, model_id: str | None) -> Path:
+    def get_docker_compose_file_path(self, instance: str, model_id: str | None) -> Path:
         """Get docker compose file path."""
-        info = self.installed
-        if not info:
-            raise HTTPException(400, "Service not installed")
+        info = self.get_instance_installed_info(instance)
         if model_id:
             raise HTTPException(400, "Docker is not bound with this object")
+
         return self.docker_service.get_docker_compose_file_path(info.docker.name)
 
     def service_has_docker(self) -> bool:
         """Return true when docker is started when service is installed."""
         return True
 
-    def _add_custom_model(self, model: CustomModel) -> None:
+    def _add_custom_model(self, instance: str, model: CustomModel) -> None:
         parsed = try_parse_pydantic(SrvSpeachesCustomModel, model.data)
-        if parsed.id in self.models:
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
+        if parsed.id in self.models[instance]:
             raise HTTPException(400, "Model with given id already exists.")
 
         if parsed.langs_models:
             for lang_model_id in parsed.langs_models.values():
-                if lang_model_id not in self.models:
+                if lang_model_id not in self.models[instance]:
                     raise HTTPException(400, f"Model {lang_model_id} not found")
 
-                if lang_model_id not in self.models:
+                if lang_model_id not in self.models[instance]:
                     raise HTTPException(400, f"Model {lang_model_id} not installed. Install it first.")
         if parsed.default_model:
-            if parsed.default_model not in self.models:
+            if parsed.default_model not in self.models[instance]:
                 raise HTTPException(400, f"Model {parsed.default_model} not found")
 
-            if parsed.default_model not in self.models:
+            if parsed.default_model not in self.models[instance]:
                 raise HTTPException(400, f"Model {parsed.default_model} not installed. Install it first.")
 
-        self.models[parsed.id] = SpeachesModel(
+        self.models[instance][parsed.id] = SpeachesModel(
             id=parsed.id,
             type="tts",
             custom=model.id,
@@ -705,44 +727,65 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
             langs_models=parsed.langs_models if parsed.langs_models else {},
         )
 
-    def _remove_custom_model(self, model: CustomModel) -> None:
+    def _remove_custom_model(self, instance: str, model: CustomModel) -> None:
+        installed = self.get_instance_info(instance).installed
         parsed = try_parse_pydantic(SrvSpeachesCustomModel, model.data)
-        if self.installed and parsed.id in self.installed.models:
+        if installed and parsed.id in installed.models:
             raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
-        del self.models[parsed.id]
+        del self.models[instance][parsed.id]
 
-    async def list_models(self, filters: ListModelsFilters) -> ListModelsOut:
+    async def list_models(self, input_instance: str | list[str] | None, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
-        info = self._check_installed()
+        instances = [input_instance] if isinstance(input_instance, str) else input_instance if input_instance else self.instances_info
+
+        for instance in instances:
+            if instance not in self.instances_info:
+                raise HTTPException(404, f"Instance {instance} doesn't exist.")
+
         out_list: list[RetrieveModelOut] = []
-        for model_id, model in self.models.items():
-            installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
-            if filters.installed is None or filters.installed == installed:
-                out_list.append(
-                    RetrieveModelOut(
-                        id=model_id,
-                        service=self.get_id(),
-                        type=model.type,
-                        installed=installed,
-                        downloaded=model_id in self.models_downloaded,
-                        size=model.size,
-                        custom=model.custom,
-                        spec=self.get_model_spec(),
-                        has_docker=False,
+        for instance_name, instance_models in self.models.items():
+            if instance_name not in instances:
+                continue
+
+            info = self.get_instance_installed_info(instance_name)
+            for model_id, model in instance_models.items():
+                if model_id in info.models:
+                    installed = info.models[model_id].get_info()
+                else:
+                    installed = self._get_model_installed_info(instance_name, model_id)
+
+                if filters.installed is None or filters.installed == bool(installed):
+                    out_list.append(
+                        RetrieveModelOut(
+                            id=model_id,
+                            service=self.get_id(instance_name),
+                            type=model.type,
+                            installed=installed,
+                            downloaded=model_id in self.models_downloaded,
+                            size=model.size,
+                            custom=model.custom,
+                            spec=self.get_model_spec(),
+                            has_docker=False,
+                        )
                     )
-                )
+
         return ListModelsOut(list=out_list)
 
-    async def get_model(self, model_id: str) -> RetrieveModelOut:
+    async def get_model(self, instance: str, model_id: str) -> RetrieveModelOut:
         """Get the model."""
-        info = self._check_installed()
-        if model_id not in self.models:
+        info = self.get_instance_installed_info(instance)
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
+        if model_id not in self.models[instance]:
             raise HTTPException(status_code=400, detail="Model not found")
-        model = self.models[model_id]
-        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(model_id)
+
+        model = self.models[instance][model_id]
+        installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(instance, model_id)
         return RetrieveModelOut(
             id=model_id,
-            service=self.get_id(),
+            service=self.get_id(instance),
             type=model.type,
             installed=installed,
             downloaded=model_id in self.models_downloaded,
@@ -762,41 +805,62 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         return default_model
 
-    async def _install_model(self, model_id: str, options: InstallModelIn) -> PromiseWithProgress[InstallModelOut, StreamChunk]:  # noqa: C901
+    async def _download_model(self, stream: Stream[StreamChunk], model: SpeachesModel, model_id: str, model_dir: Path) -> None:
+        progress = Progress(convert_size_to_bytes(model.size) or 0)
+        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
+        async for packet in self.model_downloader.hugging_face_repo_with_blobs_downloader.download(model_id, model_dir):
+            if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
+                progress.add_to_actual_value(packet.downloaded_bytes_size)
+                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data={}))
+            elif isinstance(packet, PreDownloadPacket):
+                if max := packet.file_bytes_size:
+                    progress.set_max_value(max)
+
+        stream.emit(StreamChunkProgress(type="progress", stage="download", value=1, data={}))
+
+    async def _download_model_or_set_progress(
+        self, stream: Stream[StreamChunk], model: SpeachesModel, model_id: str, model_dir: Path
+    ) -> None:
+        if model_id not in self.models_download_progress:
+            self.models_download_progress[model_id] = stream
+            await self._download_model(stream, model, model_id, model_dir)
+            del self.models_download_progress[model_id]
+        else:
+            chunk: StreamChunk
+            async for chunk in self.models_download_progress[model_id].as_generator():
+                if chunk.get("type") == "progress" and chunk.get("stage") == "download":
+                    stream.emit(chunk)
+                else:
+                    break
+
+    async def _install_model(
+        self, instance: str, model_id: str, options: InstallModelIn
+    ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         parsed_model_options = try_parse_pydantic(SpeachesAIModelOptions, options.spec) if options.spec else SpeachesAIModelOptions()
-        info = self._check_installed()
+        info = self.get_instance_installed_info(instance)
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
         if model_id in info.models:
             return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
-        if model_id not in self.models:
+
+        if model_id not in self.models[instance]:
             raise HTTPException(400, "Model not found")
 
-        model = self.models[model_id]
+        model = self.models[instance][model_id]
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
             model_dir = Path()
+            model_id_fixed = f"models--{model_id.replace('/', '--')}"
+            models_dir = self._get_working_dir() / "cache"
+            model_dir = models_dir / model_id_fixed
+            model_dir.mkdir(parents=True, exist_ok=True)
 
             if not model.custom and not model.langs_models:
-                model_id_fixed = f"models--{model_id.replace('/', '--')}"
+                await self._download_model_or_set_progress(stream, model, model_id, model_dir)
 
-                models_dir = self._get_working_dir() / "cache"
-
-                model_dir = models_dir / model_id_fixed
-                model_dir.mkdir(parents=True, exist_ok=True)
-
-                progress = Progress(convert_size_to_bytes(model.size) or 0)
-
-                stream.emit(StreamChunkProgress(type="progress", stage="download", value=0))
-                async for packet in self.model_downloader.hugging_face_repo_with_blobs_downloader.download(model_id, model_dir):
-                    if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
-                        progress.add_to_actual_value(packet.downloaded_bytes_size)
-                        stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage()))
-                    elif isinstance(packet, PreDownloadPacket):
-                        if max := packet.file_bytes_size:
-                            progress.set_max_value(max)
-
-                stream.emit(StreamChunkProgress(type="progress", stage="download", value=1))
-
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
 
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             info.models[model_id] = model_info = ModelInstalledInfo(
@@ -833,14 +897,14 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
                     options=ProxyOptions(url=f"{info.base_url}/v1/audio/transcriptions", rewrite_model_to=model_id),
                     registration_options=None,
                 )
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1))
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             self.models_downloaded[model_id] = DownloadedInfo(model_path=str(model_dir))
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
 
-    async def _uninstall_model(self, model_id: str, options: UninstallModelIn) -> None:
-        info = self._check_installed()
+    async def _uninstall_model(self, instance: str, model_id: str, options: UninstallModelIn) -> None:
+        info = self.get_instance_installed_info(instance)
         if model_id in info.models:
             model = info.models[model_id]
 
