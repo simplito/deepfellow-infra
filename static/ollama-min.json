@@ -41,7 +41,27 @@
       "size": "46MB"
     },
     {
+      "name": "all-minilm:l6",
+      "size": "46MB"
+    },
+    {
+      "name": "all-minilm:v2",
+      "size": "46MB"
+    },
+    {
+      "name": "all-minilm:l6-v2",
+      "size": "46MB"
+    },
+    {
       "name": "all-minilm:33m",
+      "size": "67MB"
+    },
+    {
+      "name": "all-minilm:l12",
+      "size": "67MB"
+    },
+    {
+      "name": "all-minilm:l12-v2",
       "size": "67MB"
     },
     {
