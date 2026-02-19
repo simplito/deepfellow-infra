@@ -126,6 +126,7 @@ class ToolChat(BaseModel):
 
 class ResponseFormat(BaseModel):
     type: Annotated[str, Field(description="The format type, either 'text' or 'json_object'")] = "text"
+    json_schema: dict[str, Any] | None
 
 
 class ChatCompletionRequest(BaseModel):
