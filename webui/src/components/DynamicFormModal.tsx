@@ -85,9 +85,25 @@ export function DynamicFormModal({
 			if (field.type === "bool") {
 				initial[field.name] = field.default === true;
 			} else if (field.type === "list") {
-				initial[field.name] = [];
+				if (typeof field.default === 'string' && field.default.startsWith('[')) {
+					try {
+						initial[field.name] = JSON.parse(field.default) ?? [];
+					} catch (e) {
+						initial[field.name] = [];
+					}
+				} else {
+					initial[field.name] = Array.isArray(field.default) ? field.default : [];
+				}
 			} else if (field.type === "map") {
-				initial[field.name] = {};
+				if (typeof field.default === 'string' && field.default.startsWith('{')) {
+				try {
+					initial[field.name] = JSON.parse(field.default) ?? {};
+				} catch (e) {
+					initial[field.name] = {};
+				}
+				} else {
+					initial[field.name] = field.default ?? {};
+				}
 			} else if (field.default !== undefined && field.default !== null) {
 				initial[field.name] = field.default;
 			}

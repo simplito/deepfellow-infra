@@ -9,13 +9,15 @@
 
 """Mcp service."""
 
+import json
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from server.applicationcontext import get_base_url
 from server.docker import DockerImage, DockerOptions
@@ -57,6 +59,15 @@ type SrvPcpModelX = Callable[["McpService", str | None], SrvMcpModel]
 
 
 @dataclass
+class DynamicField:
+    name: str
+    description: str
+    default: str | None = None
+    placeholder: str | None = None
+    required: bool = True
+
+
+@dataclass
 class SrvMcpModel:
     model_props: ModelProps
     model_spec: ModelSpecification
@@ -64,6 +75,10 @@ class SrvMcpModel:
     default_prefix: str
     size: str
     options: DockerOptions
+    required_envs: list[str] | None = None
+    required_headers: list[str] | None = None
+    envs: dict[str, str] | None = None
+    headers: dict[str, str] | None = None
     custom: CustomModelId | None = None
 
 
@@ -78,8 +93,11 @@ class SrvMcpCustomModel(BaseModel):
     hardware: str | bool | None = None
     volumes: list[str] | None = None
     envs: dict[str, str] | None = None
+    headers: dict[str, str] | None = None
     healthcheck_cmd: str | None = None
     healthcheck_start_period: str | None = None  # TODO change to str time
+    required_envs: dict[str, str] | None = None
+    required_headers: dict[str, str] | None = None
 
 
 @dataclass
@@ -89,6 +107,16 @@ class McpConst:
 
 class McpModelOptions(BaseModel):
     prefix: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]+$")]
+    envs: dict[str, str] = {}
+    headers: dict[str, str] = {}
+
+    @field_validator("headers", "envs", mode="before")
+    @classmethod
+    def empty_string_to_dict(cls, v: Literal[""] | dict[str, str]) -> dict[str, str]:
+        """If the input is an empty string, return an empty dictionary."""
+        if v == "":
+            return {}
+        return v
 
 
 @dataclass
@@ -102,6 +130,8 @@ class ModelInstalledInfo:
     registration_id: RegistrationId
     prefix: str
     base_url: str
+    headers: dict[str, str]
+    envs: dict[str, str]
 
     def get_info(self) -> ModelInfo:
         """Get info."""
@@ -120,7 +150,7 @@ class DownloadedInfo:
 
 
 class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
-    models: dict[str, dict[str, "SrvMcpModel"]]
+    models: dict[str, dict[str, SrvMcpModel]]
 
     def _after_init(self) -> None:
         self.models = {}
@@ -149,7 +179,12 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
         """Return the service specification."""
         return ServiceSpecification(fields=[])
 
-    def get_default_model_spec(self, default_prefix: str) -> ModelSpecification:
+    def get_default_model_spec(
+        self,
+        default_prefix: str,
+        required_envs: list[str] | dict[str, str] | None = None,
+        required_headers: list[str] | dict[str, str] | None = None,
+    ) -> ModelSpecification:
         """Return the model specification."""
         return ModelSpecification(
             fields=[
@@ -160,6 +195,36 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                     required=True,
                     placeholder="my-prefix",
                     default=default_prefix,
+                ),
+                ModelField(
+                    type="map",
+                    name="envs",
+                    description=(
+                        "\n".join(
+                            ["Custom enviromental variables.", f"Required variables: {', '.join(required_envs)}" if required_envs else ""]
+                        )
+                    ),
+                    required=False,
+                    placeholder="envs",
+                    default=(
+                        json.dumps(dict.fromkeys(required_envs, "") if isinstance(required_envs, list) else required_envs)
+                        if required_envs
+                        else ""
+                    ),
+                ),
+                ModelField(
+                    type="map",
+                    name="headers",
+                    description=(
+                        "\n".join(["Custom headers.", f"Required headers: {', '.join(required_headers)}" if required_headers else ""])
+                    ),
+                    required=False,
+                    placeholder="headers",
+                    default=(
+                        json.dumps(dict.fromkeys(required_headers, "") if isinstance(required_headers, list) else required_headers)
+                        if required_headers
+                        else ""
+                    ),
                 ),
             ]
         )
@@ -201,8 +266,18 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                     placeholder="10s",
                     required=False,
                 ),
-                CustomModelField(type="list", name="volumes", description="Docker volumes", placeholder="/work/storage"),
-                CustomModelField(type="map", name="envs", description="Docker environment variables"),
+                CustomModelField(type="list", name="volumes", description="Docker volumes", placeholder="/work/storage", required=False),
+                CustomModelField(type="map", name="envs", description="Docker environment variables", required=False),
+                CustomModelField(type="map", name="headers", description="Headers for mcp connection", required=False),
+                CustomModelField(
+                    type="map", name="required_envs", description="Required envs in installation. Key values can be empty.", required=False
+                ),
+                CustomModelField(
+                    type="map",
+                    name="required_headers",
+                    description="Required headers in installation. Key values can be empty.",
+                    required=False,
+                ),
             ]
         )
 
@@ -270,12 +345,14 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             self.models[instance] = {}
 
         if parsed.id in self.models[instance]:
-            raise HTTPException(400, "Model with given id already exists.")
+            raise HTTPException(400, f"Model with {parsed.id} id already exists.")
         name = normalize_name(f"{parsed.id}-{instance}")
         subnet = self.docker_service.get_docker_subnet()
+        required_envs = list(parsed.required_envs.keys() if parsed.required_envs else [])
+        required_headers = list(parsed.required_headers.keys() if parsed.required_headers else [])
         self.models[instance][parsed.id] = SrvMcpModel(
             model_props=ModelProps(private=parsed.private),
-            model_spec=self.get_default_model_spec(parsed.default_prefix),
+            model_spec=self.get_default_model_spec(parsed.default_prefix, parsed.required_envs, parsed.required_headers),
             model_type="mcp",
             default_prefix=parsed.default_prefix,
             size=parsed.size,
@@ -301,6 +378,9 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                 else None,
             ),
             custom=model.id,
+            headers=parsed.headers,
+            required_envs=required_envs,
+            required_headers=required_headers,
         )
 
     def _remove_custom_model(self, instance: str, model: CustomModel) -> None:
@@ -369,6 +449,36 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             has_docker=True,
         )
 
+    def check_envs(self, required_envs: list[str] | None, envs: dict[str, str]) -> None:
+        """Check enviromental variables."""
+        if required_envs and envs:
+            missing_keys = [key for key in required_envs if key not in envs]
+            if missing_keys:
+                raise HTTPException(
+                    status_code=422, detail=f"The following required environment variables are missing: {', '.join(missing_keys)}"
+                )
+
+            empty_keys = [key for key in required_envs if not envs.get(key)]
+            if empty_keys:
+                raise HTTPException(
+                    status_code=422, detail=f"The following environment variables are present but have no value: {', '.join(empty_keys)}"
+                )
+
+    def check_headers(self, required_headers: list[str] | None, headers: dict[str, str]) -> None:
+        """Check headers."""
+        if required_headers and headers:
+            missing_keys = [key for key in required_headers if key not in headers]
+            if missing_keys:
+                raise HTTPException(status_code=422, detail=f"The following required headers are missing: {', '.join(missing_keys)}")
+
+            empty_keys = [key for key in required_headers if not headers.get(key)]
+            if empty_keys:
+                raise HTTPException(status_code=422, detail=f"The following headers are present but have no value: {', '.join(empty_keys)}")
+
+    def get_header(self, model: SrvMcpModel, options: McpModelOptions) -> dict[str, str]:
+        """Return common header for model and options."""
+        return model.headers | options.headers if model.headers else options.headers
+
     async def _install_model(
         self, instance: str, model_id: str, options: InstallModelIn
     ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
@@ -385,6 +495,10 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
         if "prefix" not in options.spec:
             options.spec["prefix"] = model.default_prefix
         parsed_model_options = try_parse_pydantic(McpModelOptions, options.spec)
+
+        self.check_envs(model.required_envs, parsed_model_options.envs)
+        self.check_headers(model.required_headers, parsed_model_options.headers)
+
         await self._verify_docker_image(model.options.image, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
@@ -395,19 +509,23 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             image = DockerImage(name=docker_options.image, size=model.size)
             await self._download_image_or_set_progress(stream, image)
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
-            docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
-            container_host = self.docker_service.get_container_host(subnet, docker_options.name)
-            container_port = self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port)
+            docker_options_edited = deepcopy(docker_options)
+            docker_options_edited.env_vars = docker_options_edited.env_vars | parsed_model_options.envs
+            docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options_edited)
+            container_host = self.docker_service.get_container_host(subnet, docker_options_edited.name)
+            container_port = self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options_edited.image_port)
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
                 options=options,
-                docker_options=docker_options,
+                docker_options=docker_options_edited,
                 container_host=container_host,
                 container_port=container_port,
                 docker_exposed_port=docker_exposed_port,
                 registration_id="",
                 prefix=parsed_model_options.prefix,
                 base_url=get_base_url(container_host, container_port),
+                headers=parsed_model_options.headers,
+                envs=parsed_model_options.envs,
             )
             model_info.registration_id = self.endpoint_registry.register_mcp_endpoint_as_proxy(
                 url=model_info.prefix,
@@ -416,6 +534,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                     url=model_info.base_url,
                     allowed_request_headers=["accept", "mcp-session-id"],
                     allowed_response_headers=["accept", "mcp-session-id"],
+                    headers=model.headers | parsed_model_options.headers if model.headers else parsed_model_options.headers,
                 ),
                 registration_options=None,
             )
@@ -449,7 +568,7 @@ _const = McpConst(
             model_spec=mcp_service.get_default_model_spec("open-websearch"),
             model_type="mcp",
             default_prefix="open-websearch",
-            size="1GB",
+            size="427MB",
             options=DockerOptions(
                 image_port=3000,
                 name="open-websearch",
@@ -461,27 +580,28 @@ _const = McpConst(
         ),
         "brave-search": lambda mcp_service, subnet: SrvMcpModel(
             model_props=ModelProps(private=True),
-            model_spec=mcp_service.get_default_model_spec("brave-search"),
+            model_spec=mcp_service.get_default_model_spec(default_prefix="brave-search", required_envs=["BRAVE_API_KEY"]),
             model_type="mcp",
             default_prefix="brave-search",
-            size="1GB",
+            size="316MB",
             options=DockerOptions(
-                image_port=3000,
+                image_port=8080,
                 name="brave-search",
                 container_name=mcp_service.docker_service.get_docker_container_name("brave-search"),
                 image="hub.simplito.com/deepfellow/brave-search-mcp-server:v2.0.72",
                 env_vars={},
                 subnet=subnet,
             ),
+            required_envs=["BRAVE_API_KEY"],
         ),
         "web-search": lambda mcp_service, subnet: SrvMcpModel(
             model_props=ModelProps(private=True),
             model_spec=mcp_service.get_default_model_spec("web-search"),
             model_type="mcp",
             default_prefix="web-search",
-            size="1GB",
+            size="3.84GB",
             options=DockerOptions(
-                image_port=3000,
+                image_port=8080,
                 name="web-search",
                 container_name=mcp_service.docker_service.get_docker_container_name("web-search"),
                 image="hub.simplito.com/deepfellow/web-search-mcp:v0.3.2",
@@ -491,18 +611,19 @@ _const = McpConst(
         ),
         "serpapi": lambda mcp_service, subnet: SrvMcpModel(
             model_props=ModelProps(private=True),
-            model_spec=mcp_service.get_default_model_spec("serpapi"),
+            model_spec=mcp_service.get_default_model_spec(default_prefix="serpapi", required_headers={"Authorization": "Bearer "}),
             model_type="mcp",
             default_prefix="serpapi",
-            size="1GB",
+            size="454MB",
             options=DockerOptions(
-                image_port=3000,
+                image_port=8000,
                 name="serpapi",
                 container_name=mcp_service.docker_service.get_docker_container_name("serpapi"),
                 image="hub.simplito.com/deepfellow/serpapi-mcp:61998a0",
                 env_vars={},
                 subnet=subnet,
             ),
+            required_headers=["Authorization"],
         ),
     },
 )

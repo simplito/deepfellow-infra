@@ -201,8 +201,8 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
                     placeholder="10s",
                     required=False,
                 ),
-                CustomModelField(type="list", name="volumes", description="Docker volumes", placeholder="/work/storage"),
-                CustomModelField(type="map", name="envs", description="Docker environment variables"),
+                CustomModelField(type="list", name="volumes", description="Docker volumes", placeholder="/work/storage", required=False),
+                CustomModelField(type="map", name="envs", description="Docker environment variables", required=False),
             ]
         )
 
