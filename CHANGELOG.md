@@ -6,16 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+# Added
 
-- Add option to create many service instances.
+- Option to create many service instances.
   - Service instance have independent options, models and custom models.
   - Service instance share download models.
-- Add new services.json scheme (because of server instances).
+- New services.json scheme.
   - Old service.json (v1) will be automatically converted to v2.
   - Services.json v2 has not backward compatibility.
-- Add Mcp Service.
-  - Add option to host docker streamable HTTP and SSE MCP servers.
-  - Add websearch mcp servers to install..
+- Added Mcp Service.
+  - Added option to host docker streamable HTTP and SSE MCP servers.
+  - Added websearch mcp servers to install.
+  - Added headers support.
+  - Added required envs and headers for specified model.
+
+### Fixed
+- volumes and environmental variables in custom services are not required.
 
 ## [0.22.0] - 2026-02-13
 

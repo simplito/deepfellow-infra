@@ -309,9 +309,10 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         model = CustomModel(id=str(uuid.uuid4()), data=options.spec)
         custom = self.get_instance_info(instance).config.custom
         self._add_custom_model(instance, model)
-        if custom is not None:
-            custom.append(model)
+        if custom is None:
+            custom = []
 
+        custom.append(model)
         await self._save()
         return model.id
 
