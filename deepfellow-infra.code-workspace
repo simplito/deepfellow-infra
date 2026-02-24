@@ -41,5 +41,31 @@
 			"almenon.arepl",
 			"mdw.vscode-todo-plus-plus"
 		]
+	},
+	"launch": {
+		"version": "0.2.0",
+		"configurations": [
+			{
+				"name": "Debugger",
+				"type": "debugpy",
+				"request": "launch",
+				"module": "uvicorn",
+				"args": [
+					"server.main:app",
+					"--reload",
+					"--host",
+					"localhost",
+					"--port",
+					"8086",
+					"--log-level",
+					"debug",
+					"--log-config",
+					"server/utils/logging_config.yaml",
+					"--timeout-graceful-shutdown",
+					"5"
+				],
+				"jinja": true
+			}
+		]
 	}
 }
