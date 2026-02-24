@@ -818,12 +818,14 @@ class DockerService:
 async def create_docker_service(port_service: PortService, config: AppSettings) -> DockerService:
     """Create docker service."""
 
-    def get_docker_compose_cmd() -> str:
+    async def get_docker_compose_cmd() -> str:
         """Return docker compose command."""
-        if shutil.which("docker-compose"):
-            return "docker-compose"
         if shutil.which("docker"):
-            return "docker compose"
+            result = await Utils.run_command("docker compose version")
+            if result.exit_code == 0:
+                return "docker compose"
+            if shutil.which("docker-compose"):
+                return "docker-compose"
 
         raise DockerNotInstalledError("Docker is not installed.")
 
@@ -845,7 +847,7 @@ async def create_docker_service(port_service: PortService, config: AppSettings) 
     return DockerService(
         config,
         port_service,
-        get_docker_compose_cmd(),
+        await get_docker_compose_cmd(),
         await has_gpu_support(),
         get_os(),
         get_cpu_architecture(),
