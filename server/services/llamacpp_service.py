@@ -9,6 +9,7 @@
 
 """Llamacpp service."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -55,6 +56,7 @@ from server.utils.core import (
     normalize_name,
     try_parse_pydantic,
 )
+from server.utils.hardware import HardwarePartInfo, IntelGpuInfo, NvidiaGpuInfo
 from server.utils.loading import Progress
 
 
@@ -71,7 +73,7 @@ class LlamacppCustomModel(BaseModel):
     size: str
 
 
-type ImageTypes = Literal["cpu", "gpu"]
+type ImageTypes = Literal["cpu", "gpu", "vulkan"]
 
 
 class LlamacppConst(BaseModel):
@@ -83,6 +85,7 @@ class LlamacppConst(BaseModel):
 _const = LlamacppConst(
     images={
         "gpu": DockerImage(name="ghcr.io/ggml-org/llama.cpp:server-cuda-b7836", size="2.8 GB"),
+        "vulkan": DockerImage(name="ghcr.io/ggml-org/llama.cpp:server-vulkan-b7836", size="0.1 GB"),
         "cpu": DockerImage(name="ghcr.io/ggml-org/llama.cpp:server-b7836", size="0.1 GB"),
     },
     model_type="llm",
@@ -202,8 +205,10 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
     def get_size(self) -> ServiceSize:
         """Return the service size."""
         sizes = {"cpu": _const.images["cpu"].size}
-        if self.hardware.gpus:
+        if self.hardware.nvidia_gpus:
             sizes["gpu"] = _const.images["gpu"].size
+        if self.hardware.intel_gpus:
+            sizes["vulkan"] = _const.images["vulkan"].size
         return sizes
 
     def get_spec(self) -> ServiceSpecification:
@@ -253,7 +258,8 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
         if "hardware" not in options.spec:
             options.spec["hardware"] = options.spec.get("gpu", self.docker_service.has_gpu_support)
         parsed_options = try_parse_pydantic(LLamacppOptions, options.spec)
-        image = self._get_image(self.is_given_hardware_support_gpu(parsed_options.hardware))
+        hardware_parts = self.get_specified_hardware_parts(parsed_options.hardware)
+        image = self._get_image(hardware_parts)
         await self._verify_docker_image(image.name, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstalledInfo:
@@ -452,8 +458,9 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
                 command_options.append("--jinja")
             command = " ".join(command_options)
             subnet = self.docker_service.get_docker_subnet()
-            image = self._get_image(self.is_given_hardware_support_gpu(installed.parsed_options.hardware))
-            service_name = f"{self.get_service_id(instance)}-{normalize_name(model_id)}"
+            service_name = f"{self.get_id(instance)}-{normalize_name(model_id)}"
+            hardware_parts = self.get_specified_hardware_parts(installed.parsed_options.hardware)
+            image = self._get_image(hardware_parts)
             docker_options = DockerOptions(
                 name=service_name,
                 container_name=self.docker_service.get_docker_container_name(service_name),
@@ -462,7 +469,7 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
                 image_port=8080,
                 restart="unless-stopped",
                 volumes=volumes,
-                hardware=self.get_specified_hardware_parts(installed.parsed_options.hardware),
+                hardware=hardware_parts,
                 subnet=subnet,
             )
             docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
@@ -496,8 +503,12 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         return PromiseWithProgress(func=func)
 
-    def _get_image(self, gpu: bool) -> DockerImage:
-        return _const.images["gpu"] if gpu else _const.images["cpu"]
+    def _get_image(self, hardware: Sequence[HardwarePartInfo]) -> DockerImage:
+        if any(isinstance(h, NvidiaGpuInfo) for h in hardware):
+            return _const.images["gpu"]
+        if any(isinstance(h, IntelGpuInfo) for h in hardware):
+            return _const.images["vulkan"]
+        return _const.images["cpu"]
 
     async def _uninstall_model(self, instance: str, model_id: str, options: UninstallModelIn) -> None:
         info = self.get_instance_installed_info(instance)

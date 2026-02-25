@@ -9,11 +9,17 @@
 
 """Hardware module."""
 
+import re
 from dataclasses import dataclass
+from pathlib import Path
 
 import cpuinfo  # type: ignore
 
 from server.utils.core import Utils
+
+INTEL_VENDOR_ID = "0x8086"
+DRM_PATH = Path("/sys/class/drm")
+DRM_DEBUG_PATH = Path("/sys/kernel/debug/dri")
 
 
 @dataclass
@@ -54,7 +60,12 @@ class AmdGpuInfo(GpuInfo):
 
 @dataclass
 class IntelGpuInfo(GpuInfo):
-    pass
+    id: int
+
+    @property
+    def long_name(self) -> str:
+        """Return long_name."""
+        return f"{self.name}{f' | {self.vram}' if self.vram else ''} | {self.id}"
 
 
 def is_cpu_has_avx512() -> bool:
@@ -77,7 +88,7 @@ def convert_mib_to_gb(mib: str) -> str:
     Eg: "16303 MiB" -> "16 GB"
     Eg: "400 MiB" -> "512 MB"
     """
-    mib_int = int(mib.split()[0])
+    mib_int = int(float(mib.split()[0]))
 
     # Handle values less than 1 GB (1024 MiB)
     if mib_int < 800:
@@ -133,6 +144,65 @@ async def get_nvidia_gpus_info() -> list[NvidiaGpuInfo]:
     return create_nvidia_gpu_info_list(raw_info) if raw_info else []
 
 
+def _read_text_file(path: Path) -> str | None:
+    """Read a sysfs file, returning None on any error."""
+    try:
+        return path.read_text().strip()
+    except OSError:
+        return None
+
+
+def _get_intel_gpu_vram_mib(card_num: str) -> str | None:
+    """Read VRAM total from debugfs vram0_mm (requires root)."""
+    content = _read_text_file(DRM_DEBUG_PATH / card_num / "vram0_mm")
+    if content is None:
+        return None
+    match = re.search(r"total:\s*(\d+)MiB", content)
+    return f"{match.group(1)} MiB" if match else None
+
+
+async def _get_intel_gpu_name(card_path: Path) -> str | None:
+    """Get GPU name via lspci using the PCI BDF address."""
+    bdf = (card_path / "device").resolve().name
+    try:
+        result = await Utils.run_command_for_success(f"lspci -s {bdf}")
+    except RuntimeError:
+        return None
+    # lspci output: "01:00.0 VGA compatible controller: Intel Corporation"
+    parts = result.stdout.split(": ", 1)
+    return parts[1] if len(parts) > 1 else None
+
+
+async def get_intel_gpus_info() -> list[IntelGpuInfo]:
+    """Get Intel discrete GPU info by scanning sysfs."""
+    gpus_info: list[IntelGpuInfo] = []
+
+    if not DRM_PATH.exists():
+        return gpus_info
+
+    for card in sorted(DRM_PATH.iterdir()):
+        if not re.fullmatch(r"card\d+", card.name):
+            continue
+
+        device_path = card / "device"
+        if _read_text_file(device_path / "vendor") != INTEL_VENDOR_ID:
+            continue
+
+        if _read_text_file(device_path / "boot_vga") != "0":
+            continue
+
+        card_num = card.name.removeprefix("card")
+        name = await _get_intel_gpu_name(card)
+        if name is None:
+            continue
+
+        raw_vram = _get_intel_gpu_vram_mib(card_num)
+        vram = convert_mib_to_gb(raw_vram) if raw_vram else None
+        gpus_info.append(IntelGpuInfo(name, vram, int(card_num)))
+
+    return gpus_info
+
+
 async def get_hardware_info() -> list[HardwarePartInfo]:
     """Return hardware info."""
     cpu_info = await get_cpu_info()
@@ -161,9 +231,9 @@ class Hardware:
         """Init async."""
         self._cpu = await get_cpu_info()
         self._nvidia_gpus = await get_nvidia_gpus_info()
+        self._intel_gpus = await get_intel_gpus_info()
         # Ensure these are assigned (even if empty) before calling set_gpus
         self._amd_gpus = []
-        self._intel_gpus = []
 
         self._gpus = self.set_gpus()
         self._parts = self.set_info()
