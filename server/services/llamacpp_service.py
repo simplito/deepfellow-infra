@@ -169,6 +169,7 @@ class LLamacppOptions(BaseModel):
 
 class LLamacppModelOptions(BaseModel):
     alias: str | None = None
+    max_model_length: int | None = None
 
 
 @dataclass
@@ -221,6 +222,7 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
         return ModelSpecification(
             fields=[
                 ModelField(type="text", name="alias", description="Model alias", required=False),
+                ModelField(type="number", name="max_model_length", description="Max model length ex. 4096", required=False),
             ]
         )
 
@@ -451,9 +453,14 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
             if not model_filename:
                 raise HTTPException(400, "Model filename was not set up or and return by downloader.")
 
+            additional_options = []
+
+            if max_model_length := parsed_model_options.max_model_length:
+                additional_options.extend([" --ctx-size", str(max_model_length)])
+
             model_in_container = f"/models/{model_filename}"
             volumes = [f"{local_model_path.absolute()}:{model_in_container}:ro"]
-            command_options = ["--host 0.0.0.0", "--port 8080", f"--model {model_in_container}"]
+            command_options = ["--host 0.0.0.0", "--port 8080", f"--model {model_in_container}", *additional_options]
             if model.jinja:
                 command_options.append("--jinja")
             command = " ".join(command_options)
