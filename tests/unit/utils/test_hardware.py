@@ -7,9 +7,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from pathlib import Path
+
 import pytest
 
-from server.utils.hardware import NvidiaGpuInfo, create_nvidia_gpu_info_list
+import server.utils.hardware as hw
+from server.utils.hardware import (
+    IntelGpuInfo,
+    NvidiaGpuInfo,
+    _get_intel_gpu_vram_mib,  # pyright: ignore[reportPrivateUsage]
+    create_nvidia_gpu_info_list,
+)
 
 
 @pytest.mark.parametrize(
@@ -53,3 +61,37 @@ def test_join_url(nvida_smi_output: str, expectation: list[tuple[NvidiaGpuInfo, 
         assert res.vram == exp[0].vram, f"VRAM on index does not match index={i}: '{res.vram}' != '{exp[0].vram}'"
         assert res.long_name == exp[0].long_name, f"Long name on index does not match index={i}: '{res.long_name}' != '{exp[0].long_name}'"
         assert res.long_name == exp[1], f"Long name (2) on index does not match index={i}: '{res.long_name}' != '{exp[1]}'"
+
+
+@pytest.mark.parametrize(
+    ("vram0_mm_content", "expected"),
+    [
+        ("chunk_size: 4KiB, total: 16304MiB, free: 16282MiB, clear_free: 0MiB", "16304 MiB"),
+        ("chunk_size: 4KiB, total: 14336MiB, free: 14000MiB, clear_free: 0MiB", "14336 MiB"),
+        ("chunk_size: 4KiB, total:   6144MiB, free: 6000MiB, clear_free: 0MiB", "6144 MiB"),
+        ("some unrelated content without total", None),
+    ],
+)
+def test_get_intel_gpu_vram_mib(tmp_path: Path, vram0_mm_content: str, expected: str | None):
+    original = hw.DRM_DEBUG_PATH
+    hw.DRM_DEBUG_PATH = tmp_path
+    try:
+        card_dir = tmp_path / "1"
+        card_dir.mkdir()
+        (card_dir / "vram0_mm").write_text(vram0_mm_content)
+        assert _get_intel_gpu_vram_mib("1") == expected
+    finally:
+        hw.DRM_DEBUG_PATH = original
+
+
+@pytest.mark.parametrize(
+    ("name", "vram", "id", "expected_long_name"),
+    [
+        ("Intel Corporation Battlemage G21 [Intel Graphics]", "16 GB", 1, "Intel Corporation Battlemage G21 [Intel Graphics] | 16 GB | 1"),
+        ("Intel Corporation Arc A770", "16 GB", 0, "Intel Corporation Arc A770 | 16 GB | 0"),
+        ("Intel Corporation Device e212", None, 2, "Intel Corporation Device e212 | 2"),
+    ],
+)
+def test_intel_gpu_info_long_name(name: str, vram: str | None, id: int, expected_long_name: str):
+    gpu = IntelGpuInfo(name=name, vram=vram, id=id)
+    assert gpu.long_name == expected_long_name

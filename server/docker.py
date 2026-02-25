@@ -9,6 +9,7 @@
 
 """Docker backend."""
 
+import grp
 import json
 import logging
 import os
@@ -29,7 +30,7 @@ from server.config import AppSettings
 from server.portservice import PortService
 from server.utils.core import CommandResult2, Utils, get_cpu_architecture, get_os
 from server.utils.exceptions import AppError, DockerImageAuthorizationError, DockerImageDoesNotExistError
-from server.utils.hardware import HardwarePartInfo, NvidiaGpuInfo
+from server.utils.hardware import HardwarePartInfo, IntelGpuInfo, NvidiaGpuInfo
 from server.utils.loading import Progress
 from server.utils.logger import uvicorn_logger
 
@@ -207,6 +208,8 @@ class DockerComposeService(TypedDict):
     entrypoint: NotRequired[str]
     user: NotRequired[str]
     deploy: NotRequired[DockerComposeDeploy]
+    devices: NotRequired[list[str]]
+    group_add: NotRequired[list[str]]
     networks: NotRequired[list[str]]
 
 
@@ -644,6 +647,15 @@ class DockerService:
                         }
                     }
                 }
+            intel_gpus = [gpu for gpu in options.hardware if isinstance(gpu, IntelGpuInfo)]
+            if intel_gpus:
+                service["devices"] = ["/dev/dri:/dev/dri"]
+                gids: list[str] = []
+                for name in ("render", "video"):
+                    with suppress(KeyError):
+                        gids.append(str(grp.getgrnam(name).gr_gid))
+                if gids:
+                    service["group_add"] = gids
         if options.subnet:
             service["networks"] = [options.subnet]
         docker_compose_content: DockerComposeContent = {"services": {options.service_name: service}}
