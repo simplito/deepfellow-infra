@@ -1,2422 +1,3024 @@
 {
-  "embeddings": [
-    {
-      "name": "nomic-embed-text",
-      "size": "274MB"
-    },
-    {
-      "name": "nomic-embed-text:v1.5",
-      "size": "274MB"
-    },
-    {
-      "name": "mxbai-embed-large",
-      "size": "670MB"
-    },
-    {
-      "name": "mxbai-embed-large:335m",
-      "size": "670MB"
-    },
-    {
-      "name": "embeddinggemma",
-      "size": "622MB"
-    },
-    {
-      "name": "embeddinggemma:300m",
-      "size": "622MB"
-    },
-    {
-      "name": "bge-m3",
-      "size": "1.2GB"
-    },
-    {
-      "name": "bge-m3:567m",
-      "size": "1.2GB"
-    },
-    {
-      "name": "all-minilm",
-      "size": "46MB"
-    },
-    {
-      "name": "all-minilm:22m",
-      "size": "46MB"
-    },
-    {
-      "name": "all-minilm:l6",
-      "size": "46MB"
-    },
-    {
-      "name": "all-minilm:v2",
-      "size": "46MB"
-    },
-    {
-      "name": "all-minilm:l6-v2",
-      "size": "46MB"
-    },
-    {
-      "name": "all-minilm:33m",
-      "size": "67MB"
-    },
-    {
-      "name": "all-minilm:l12",
-      "size": "67MB"
-    },
-    {
-      "name": "all-minilm:l12-v2",
-      "size": "67MB"
-    },
-    {
-      "name": "snowflake-arctic-embed",
-      "size": "669MB"
-    },
-    {
-      "name": "snowflake-arctic-embed:22m",
-      "size": "46MB"
-    },
-    {
-      "name": "snowflake-arctic-embed:33m",
-      "size": "67MB"
-    },
-    {
-      "name": "snowflake-arctic-embed:110m",
-      "size": "219MB"
-    },
-    {
-      "name": "snowflake-arctic-embed:137m",
-      "size": "274MB"
-    },
-    {
-      "name": "snowflake-arctic-embed:335m",
-      "size": "669MB"
-    },
-    {
-      "name": "snowflake-arctic-embed2",
-      "size": "1.2GB"
-    },
-    {
-      "name": "snowflake-arctic-embed2:568m",
-      "size": "1.2GB"
-    },
-    {
-      "name": "bge-large",
-      "size": "671MB"
-    },
-    {
-      "name": "bge-large:335m",
-      "size": "671MB"
-    },
-    {
-      "name": "paraphrase-multilingual",
-      "size": "563MB"
-    },
-    {
-      "name": "paraphrase-multilingual:278m",
-      "size": "563MB"
-    },
-    {
-      "name": "granite-embedding",
-      "size": "63MB"
-    },
-    {
-      "name": "granite-embedding:30m",
-      "size": "63MB"
-    },
-    {
-      "name": "granite-embedding:278m",
-      "size": "563MB"
-    },
-    {
-      "name": "nomic-embed-text-v2-moe",
-      "size": "956MB"
-    },
-    {
-      "name": "qwen3-embedding",
-      "size": "4.7GB"
-    },
-    {
-      "name": "qwen3-embedding:0.6",
-      "size": "639MB"
-    },
-    {
-      "name": "qwen3-embedding:4b",
-      "size": "2.5GB"
-    },
-    {
-      "name": "qwen3-embedding:8b",
-      "size": "4.7GB"
-    }
-  ],
-  "llms": [
-    {
-      "name": "gpt-oss",
-      "size": "14GB"
-    },
-    {
-      "name": "gpt-oss:20b",
-      "size": "14GB"
-    },
-    {
-      "name": "gpt-oss:120b",
-      "size": "65GB"
-    },
-    {
-      "name": "deepseek-r1",
-      "size": "5.2GB"
-    },
-    {
-      "name": "deepseek-r1:1.5b",
-      "size": "1.1GB"
-    },
-    {
-      "name": "deepseek-r1:7b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "deepseek-r1:8b",
-      "size": "5.2GB"
-    },
-    {
-      "name": "deepseek-r1:14b",
-      "size": "9.0GB"
-    },
-    {
-      "name": "deepseek-r1:32b",
-      "size": "20GB"
-    },
-    {
-      "name": "deepseek-r1:70b",
-      "size": "43GB"
-    },
-    {
-      "name": "deepseek-r1:671b",
-      "size": "404GB"
-    },
-    {
-      "name": "gemma3",
-      "size": "3.3GB"
-    },
-    {
-      "name": "gemma3:270m",
-      "size": "292MB"
-    },
-    {
-      "name": "gemma3:1b",
-      "size": "815MB"
-    },
-    {
-      "name": "gemma3:4b",
-      "size": "3.3GB"
-    },
-    {
-      "name": "gemma3:12b",
-      "size": "8.1GB"
-    },
-    {
-      "name": "gemma3:27b",
-      "size": "17GB"
-    },
-    {
-      "name": "qwen3",
-      "size": "5.2GB"
-    },
-    {
-      "name": "qwen3:0.6b",
-      "size": "523MB"
-    },
-    {
-      "name": "qwen3:1.7b",
-      "size": "1.4GB"
-    },
-    {
-      "name": "qwen3:4b",
-      "size": "2.5GB"
-    },
-    {
-      "name": "qwen3:8b",
-      "size": "5.2GB"
-    },
-    {
-      "name": "qwen3:14b",
-      "size": "9.3GB"
-    },
-    {
-      "name": "qwen3:30b",
-      "size": "19GB"
-    },
-    {
-      "name": "qwen3:32b",
-      "size": "20GB"
-    },
-    {
-      "name": "qwen3:235b",
-      "size": "142GB"
-    },
-    {
-      "name": "llama3.1",
-      "size": "4.9GB"
-    },
-    {
-      "name": "llama3.1:8b",
-      "size": "4.9GB"
-    },
-    {
-      "name": "llama3.1:70b",
-      "size": "43GB"
-    },
-    {
-      "name": "llama3.1:405b",
-      "size": "243GB"
-    },
-    {
-      "name": "llama3.2",
-      "size": "2.0GB"
-    },
-    {
-      "name": "llama3.2:1b",
-      "size": "1.3GB"
-    },
-    {
-      "name": "llama3.2:3b",
-      "size": "2.0GB"
-    },
-    {
-      "name": "mistral",
-      "size": "4.4GB"
-    },
-    {
-      "name": "mistral:7b",
-      "size": "4.4GB"
-    },
-    {
-      "name": "qwen2.5",
-      "size": "4.7GB"
-    },
-    {
-      "name": "qwen2.5:0.5b",
-      "size": "398MB"
-    },
-    {
-      "name": "qwen2.5:1.5b",
-      "size": "986MB"
-    },
-    {
-      "name": "qwen2.5:3b",
-      "size": "1.9GB"
-    },
-    {
-      "name": "qwen2.5:7b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "qwen2.5:14b",
-      "size": "9.0GB"
-    },
-    {
-      "name": "qwen2.5:32b",
-      "size": "20GB"
-    },
-    {
-      "name": "qwen2.5:72b",
-      "size": "47GB"
-    },
-    {
-      "name": "llama3",
-      "size": "4.7GB"
-    },
-    {
-      "name": "llama3:8b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "llama3:70b",
-      "size": "40GB"
-    },
-    {
-      "name": "llava",
-      "size": "4.7GB"
-    },
-    {
-      "name": "llava:7b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "llava:13b",
-      "size": "8.0GB"
-    },
-    {
-      "name": "llava:34b",
-      "size": "20GB"
-    },
-    {
-      "name": "phi3",
-      "size": "2.2GB"
-    },
-    {
-      "name": "phi3:3.8b",
-      "size": "2.2GB"
-    },
-    {
-      "name": "phi3:14b",
-      "size": "7.9GB"
-    },
-    {
-      "name": "gemma2",
-      "size": "5.4GB"
-    },
-    {
-      "name": "gemma2:2b",
-      "size": "1.6GB"
-    },
-    {
-      "name": "gemma2:9b",
-      "size": "5.4GB"
-    },
-    {
-      "name": "gemma2:27b",
-      "size": "16GB"
-    },
-    {
-      "name": "qwen2.5-coder",
-      "size": "4.7GB"
-    },
-    {
-      "name": "qwen2.5-coder:0.5b",
-      "size": "398MB"
-    },
-    {
-      "name": "qwen2.5-coder:1.5b",
-      "size": "986MB"
-    },
-    {
-      "name": "qwen2.5-coder:3b",
-      "size": "1.9GB"
-    },
-    {
-      "name": "qwen2.5-coder:7b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "qwen2.5-coder:14b",
-      "size": "9.0GB"
-    },
-    {
-      "name": "qwen2.5-coder:32b",
-      "size": "20GB"
-    },
-    {
-      "name": "gemma",
-      "size": "5.0GB"
-    },
-    {
-      "name": "gemma:2b",
-      "size": "1.7GB"
-    },
-    {
-      "name": "gemma:7b",
-      "size": "5.0GB"
-    },
-    {
-      "name": "qwen",
-      "size": "2.3GB"
-    },
-    {
-      "name": "qwen:0.5b",
-      "size": "395MB"
-    },
-    {
-      "name": "qwen:1.8b",
-      "size": "1.1GB"
-    },
-    {
-      "name": "qwen:4b",
-      "size": "2.3GB"
-    },
-    {
-      "name": "qwen:7b",
-      "size": "4.5GB"
-    },
-    {
-      "name": "qwen:14b",
-      "size": "8.2GB"
-    },
-    {
-      "name": "qwen:32b",
-      "size": "18GB"
-    },
-    {
-      "name": "qwen:72b",
-      "size": "41GB"
-    },
-    {
-      "name": "qwen:110b",
-      "size": "63GB"
-    },
-    {
-      "name": "qwen2",
-      "size": "4.4GB"
-    },
-    {
-      "name": "qwen2:0.5b",
-      "size": "352MB"
-    },
-    {
-      "name": "qwen2:1.5b",
-      "size": "935MB"
-    },
-    {
-      "name": "qwen2:7b",
-      "size": "4.4GB"
-    },
-    {
-      "name": "qwen2:72b",
-      "size": "41GB"
-    },
-    {
-      "name": "phi4",
-      "size": "9.1GB"
-    },
-    {
-      "name": "phi4:14b",
-      "size": "9.1GB"
-    },
-    {
-      "name": "llama2",
-      "size": "3.8GB"
-    },
-    {
-      "name": "llama2:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "llama2:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "llama2:70b",
-      "size": "39GB"
-    },
-    {
-      "name": "minicpm-v",
-      "size": "5.5GB"
-    },
-    {
-      "name": "minicpm-v:8b",
-      "size": "5.5GB"
-    },
-    {
-      "name": "codellama",
-      "size": "3.8GB"
-    },
-    {
-      "name": "codellama:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "codellama:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "codellama:34b",
-      "size": "19GB"
-    },
-    {
-      "name": "codellama:70b",
-      "size": "39GB"
-    },
-    {
-      "name": "tinyllama",
-      "size": "638MB"
-    },
-    {
-      "name": "tinyllama:1.1b",
-      "size": "638MB"
-    },
-    {
-      "name": "dolphin3",
-      "size": "4.9GB"
-    },
-    {
-      "name": "dolphin3:8b",
-      "size": "4.9GB"
-    },
-    {
-      "name": "mistral-nemo",
-      "size": "7.1GB"
-    },
-    {
-      "name": "mistral-nemo:12b",
-      "size": "7.1GB"
-    },
-    {
-      "name": "olmo2",
-      "size": "4.5GB"
-    },
-    {
-      "name": "olmo2:7b",
-      "size": "4.5GB"
-    },
-    {
-      "name": "olmo2:13b",
-      "size": "8.4GB"
-    },
-    {
-      "name": "llama3.3",
-      "size": "43GB"
-    },
-    {
-      "name": "llama3.3:70b",
-      "size": "43GB"
-    },
-    {
-      "name": "llama3.2-vision",
-      "size": "7.8GB"
-    },
-    {
-      "name": "llama3.2-vision:11b",
-      "size": "7.8GB"
-    },
-    {
-      "name": "llama3.2-vision:90b",
-      "size": "55GB"
-    },
-    {
-      "name": "deepseek-v3",
-      "size": "404GB"
-    },
-    {
-      "name": "deepseek-v3:671b",
-      "size": "404GB"
-    },
-    {
-      "name": "qwq",
-      "size": "20GB"
-    },
-    {
-      "name": "qwq:32b",
-      "size": "20GB"
-    },
-    {
-      "name": "mistral-small",
-      "size": "14GB"
-    },
-    {
-      "name": "mistral-small:22b",
-      "size": "13GB"
-    },
-    {
-      "name": "mistral-small:24b",
-      "size": "14GB"
-    },
-    {
-      "name": "smollm2",
-      "size": "1.8GB"
-    },
-    {
-      "name": "smollm2:135m",
-      "size": "271MB"
-    },
-    {
-      "name": "smollm2:360m",
-      "size": "726MB"
-    },
-    {
-      "name": "smollm2:1.7b",
-      "size": "1.8GB"
-    },
-    {
-      "name": "llava-llama3",
-      "size": "5.5GB"
-    },
-    {
-      "name": "llava-llama3:8b",
-      "size": "5.5GB"
-    },
-    {
-      "name": "mixtral",
-      "size": "26GB"
-    },
-    {
-      "name": "mixtral:8x7b",
-      "size": "26GB"
-    },
-    {
-      "name": "mixtral:8x22b",
-      "size": "80GB"
-    },
-    {
-      "name": "llama2-uncensored",
-      "size": "3.8GB"
-    },
-    {
-      "name": "llama2-uncensored:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "llama2-uncensored:70b",
-      "size": "39GB"
-    },
-    {
-      "name": "starcoder2",
-      "size": "1.7GB"
-    },
-    {
-      "name": "starcoder2:3b",
-      "size": "1.7GB"
-    },
-    {
-      "name": "starcoder2:7b",
-      "size": "4.0GB"
-    },
-    {
-      "name": "starcoder2:15b",
-      "size": "9.1GB"
-    },
-    {
-      "name": "deepseek-coder",
-      "size": "776MB"
-    },
-    {
-      "name": "deepseek-coder:1.3b",
-      "size": "776MB"
-    },
-    {
-      "name": "deepseek-coder:6.7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "deepseek-coder:33b",
-      "size": "19GB"
-    },
-    {
-      "name": "deepseek-coder-v2",
-      "size": "8.9GB"
-    },
-    {
-      "name": "deepseek-coder-v2:16b",
-      "size": "8.9GB"
-    },
-    {
-      "name": "deepseek-coder-v2:236b",
-      "size": "133GB"
-    },
-    {
-      "name": "codegemma",
-      "size": "5.0GB"
-    },
-    {
-      "name": "codegemma:2b",
-      "size": "1.6GB"
-    },
-    {
-      "name": "codegemma:7b",
-      "size": "5.0GB"
-    },
-    {
-      "name": "phi",
-      "size": "1.6GB"
-    },
-    {
-      "name": "phi:2.7b",
-      "size": "1.6GB"
-    },
-    {
-      "name": "llama4",
-      "size": "67GB"
-    },
-    {
-      "name": "llama4:16x17b",
-      "size": "67GB"
-    },
-    {
-      "name": "llama4:128x17b",
-      "size": "245GB"
-    },
-    {
-      "name": "dolphin-mixtral",
-      "size": "26GB"
-    },
-    {
-      "name": "dolphin-mixtral:8x7b",
-      "size": "26GB"
-    },
-    {
-      "name": "dolphin-mixtral:8x22b",
-      "size": "80GB"
-    },
-    {
-      "name": "openthinker",
-      "size": "4.7GB"
-    },
-    {
-      "name": "openthinker:7b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "openthinker:32b",
-      "size": "20GB"
-    },
-    {
-      "name": "orca-mini",
-      "size": "2.0GB"
-    },
-    {
-      "name": "orca-mini:3b",
-      "size": "2.0GB"
-    },
-    {
-      "name": "orca-mini:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "orca-mini:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "orca-mini:70b",
-      "size": "39GB"
-    },
-    {
-      "name": "qwen2.5vl",
-      "size": "6.0GB"
-    },
-    {
-      "name": "qwen2.5vl:3b",
-      "size": "3.2GB"
-    },
-    {
-      "name": "qwen2.5vl:7b",
-      "size": "6.0GB"
-    },
-    {
-      "name": "qwen2.5vl:32b",
-      "size": "21GB"
-    },
-    {
-      "name": "qwen2.5vl:72b",
-      "size": "49GB"
-    },
-    {
-      "name": "smollm",
-      "size": "991MB"
-    },
-    {
-      "name": "smollm:135m",
-      "size": "92MB"
-    },
-    {
-      "name": "smollm:360m",
-      "size": "229MB"
-    },
-    {
-      "name": "smollm:1.7b",
-      "size": "991MB"
-    },
-    {
-      "name": "codestral",
-      "size": "13GB"
-    },
-    {
-      "name": "codestral:22b",
-      "size": "13GB"
-    },
-    {
-      "name": "wizardlm2",
-      "size": "4.1GB"
-    },
-    {
-      "name": "wizardlm2:7b",
-      "size": "4.1GB"
-    },
-    {
-      "name": "wizardlm2:8x22b",
-      "size": "80GB"
-    },
-    {
-      "name": "dolphin-llama3",
-      "size": "4.7GB"
-    },
-    {
-      "name": "dolphin-llama3:8b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "dolphin-llama3:70b",
-      "size": "40GB"
-    },
-    {
-      "name": "gemma3n",
-      "size": "7.5GB"
-    },
-    {
-      "name": "gemma3n:e2b",
-      "size": "5.6GB"
-    },
-    {
-      "name": "gemma3n:e4b",
-      "size": "7.5GB"
-    },
-    {
-      "name": "dolphin-mistral",
-      "size": "4.1GB"
-    },
-    {
-      "name": "dolphin-mistral:7b",
-      "size": "4.1GB"
-    },
-    {
-      "name": "granite3.3",
-      "size": "4.9GB"
-    },
-    {
-      "name": "granite3.3:2b",
-      "size": "1.5GB"
-    },
-    {
-      "name": "granite3.3:8b",
-      "size": "4.9GB"
-    },
-    {
-      "name": "falcon3",
-      "size": "4.6GB"
-    },
-    {
-      "name": "falcon3:1b",
-      "size": "1.8GB"
-    },
-    {
-      "name": "falcon3:3b",
-      "size": "2.0GB"
-    },
-    {
-      "name": "falcon3:7b",
-      "size": "4.6GB"
-    },
-    {
-      "name": "falcon3:10b",
-      "size": "6.3GB"
-    },
-    {
-      "name": "phi4-reasoning",
-      "size": "11GB"
-    },
-    {
-      "name": "phi4-reasoning:14b",
-      "size": "11GB"
-    },
-    {
-      "name": "granite3.1-moe",
-      "size": "2.0GB"
-    },
-    {
-      "name": "granite3.1-moe:1b",
-      "size": "1.4GB"
-    },
-    {
-      "name": "granite3.1-moe:3b",
-      "size": "2.0GB"
-    },
-    {
-      "name": "command-r",
-      "size": "19GB"
-    },
-    {
-      "name": "command-r:35b",
-      "size": "19GB"
-    },
-    {
-      "name": "hermes3",
-      "size": "4.7GB"
-    },
-    {
-      "name": "hermes3:3b",
-      "size": "2.0GB"
-    },
-    {
-      "name": "hermes3:8b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "hermes3:70b",
-      "size": "40GB"
-    },
-    {
-      "name": "hermes3:405b",
-      "size": "229GB"
-    },
-    {
-      "name": "cogito",
-      "size": "4.9GB"
-    },
-    {
-      "name": "cogito:3b",
-      "size": "2.2GB"
-    },
-    {
-      "name": "cogito:8b",
-      "size": "4.9GB"
-    },
-    {
-      "name": "cogito:14b",
-      "size": "9.0GB"
-    },
-    {
-      "name": "cogito:32b",
-      "size": "20GB"
-    },
-    {
-      "name": "cogito:70b",
-      "size": "43GB"
-    },
-    {
-      "name": "phi3.5",
-      "size": "2.2GB"
-    },
-    {
-      "name": "phi3.5:3.8b",
-      "size": "2.2GB"
-    },
-    {
-      "name": "magistral",
-      "size": "14GB"
-    },
-    {
-      "name": "magistral:24b",
-      "size": "14GB"
-    },
-    {
-      "name": "qwen3-coder",
-      "size": "19GB"
-    },
-    {
-      "name": "qwen3-coder:30b",
-      "size": "19GB"
-    },
-    {
-      "name": "qwen3-coder:480b",
-      "size": "290GB"
-    },
-    {
-      "name": "phi4-mini",
-      "size": "2.5GB"
-    },
-    {
-      "name": "phi4-mini:3.8b",
-      "size": "2.5GB"
-    },
-    {
-      "name": "devstral",
-      "size": "14GB"
-    },
-    {
-      "name": "devstral:24b",
-      "size": "14GB"
-    },
-    {
-      "name": "yi",
-      "size": "3.5GB"
-    },
-    {
-      "name": "yi:6b",
-      "size": "3.5GB"
-    },
-    {
-      "name": "yi:9b",
-      "size": "5.0GB"
-    },
-    {
-      "name": "yi:34b",
-      "size": "19GB"
-    },
-    {
-      "name": "zephyr",
-      "size": "4.1GB"
-    },
-    {
-      "name": "zephyr:7b",
-      "size": "4.1GB"
-    },
-    {
-      "name": "zephyr:141b",
-      "size": "80GB"
-    },
-    {
-      "name": "deepcoder",
-      "size": "9.0GB"
-    },
-    {
-      "name": "deepcoder:1.5b",
-      "size": "1.1GB"
-    },
-    {
-      "name": "deepcoder:14b",
-      "size": "9.0GB"
-    },
-    {
-      "name": "granite3.2-vision",
-      "size": "2.4GB"
-    },
-    {
-      "name": "granite3.2-vision:2b",
-      "size": "2.4GB"
-    },
-    {
-      "name": "mistral-large",
-      "size": "73GB"
-    },
-    {
-      "name": "mistral-large:123b",
-      "size": "73GB"
-    },
-    {
-      "name": "moondream",
-      "size": "1.7GB"
-    },
-    {
-      "name": "moondream:1.8b",
-      "size": "1.7GB"
-    },
-    {
-      "name": "mistral-small3.1",
-      "size": "15GB"
-    },
-    {
-      "name": "mistral-small3.1:24b",
-      "size": "15GB"
-    },
-    {
-      "name": "deepscaler",
-      "size": "3.6GB"
-    },
-    {
-      "name": "deepscaler:1.5b",
-      "size": "3.6GB"
-    },
-    {
-      "name": "mistral-small3.2",
-      "size": "15GB"
-    },
-    {
-      "name": "mistral-small3.2:24b",
-      "size": "15GB"
-    },
-    {
-      "name": "wizard-vicuna-uncensored",
-      "size": "3.8GB"
-    },
-    {
-      "name": "wizard-vicuna-uncensored:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "wizard-vicuna-uncensored:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "wizard-vicuna-uncensored:30b",
-      "size": "18GB"
-    },
-    {
-      "name": "granite-code",
-      "size": "2.0GB"
-    },
-    {
-      "name": "granite-code:3b",
-      "size": "2.0GB"
-    },
-    {
-      "name": "granite-code:8b",
-      "size": "4.6GB"
-    },
-    {
-      "name": "granite-code:20b",
-      "size": "12GB"
-    },
-    {
-      "name": "granite-code:34b",
-      "size": "19GB"
-    },
-    {
-      "name": "dolphin-phi",
-      "size": "1.6GB"
-    },
-    {
-      "name": "dolphin-phi:2.7b",
-      "size": "1.6GB"
-    },
-    {
-      "name": "starcoder",
-      "size": "1.8GB"
-    },
-    {
-      "name": "starcoder:1b",
-      "size": "726MB"
-    },
-    {
-      "name": "starcoder:3b",
-      "size": "1.8GB"
-    },
-    {
-      "name": "starcoder:7b",
-      "size": "4.3GB"
-    },
-    {
-      "name": "starcoder:15b",
-      "size": "9.0GB"
-    },
-    {
-      "name": "deepseek-llm",
-      "size": "4.0GB"
-    },
-    {
-      "name": "deepseek-llm:7b",
-      "size": "4.0GB"
-    },
-    {
-      "name": "deepseek-llm:67b",
-      "size": "38GB"
-    },
-    {
-      "name": "vicuna",
-      "size": "3.8GB"
-    },
-    {
-      "name": "vicuna:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "vicuna:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "vicuna:33b",
-      "size": "18GB"
-    },
-    {
-      "name": "openchat",
-      "size": "4.1GB"
-    },
-    {
-      "name": "openchat:7b",
-      "size": "4.1GB"
-    },
-    {
-      "name": "mistral-openorca",
-      "size": "4.1GB"
-    },
-    {
-      "name": "mistral-openorca:7b",
-      "size": "4.1GB"
-    },
-    {
-      "name": "deepseek-v2",
-      "size": "8.9GB"
-    },
-    {
-      "name": "deepseek-v2:16b",
-      "size": "8.9GB"
-    },
-    {
-      "name": "deepseek-v2:236b",
-      "size": "133GB"
-    },
-    {
-      "name": "codegeex4",
-      "size": "5.5GB"
-    },
-    {
-      "name": "codegeex4:9b",
-      "size": "5.5GB"
-    },
-    {
-      "name": "openhermes",
-      "size": "4.1GB"
-    },
-    {
-      "name": "openhermes:v2",
-      "size": "4.1GB"
-    },
-    {
-      "name": "openhermes:v2.5",
-      "size": "4.1GB"
-    },
-    {
-      "name": "codeqwen",
-      "size": "4.2GB"
-    },
-    {
-      "name": "codeqwen:7b",
-      "size": "4.2GB"
-    },
-    {
-      "name": "qwen2-math",
-      "size": "4.4GB"
-    },
-    {
-      "name": "qwen2-math:1.5b",
-      "size": "935MB"
-    },
-    {
-      "name": "qwen2-math:7b",
-      "size": "4.4GB"
-    },
-    {
-      "name": "qwen2-math:72b",
-      "size": "41GB"
-    },
-    {
-      "name": "llama2-chinese",
-      "size": "3.8GB"
-    },
-    {
-      "name": "llama2-chinese:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "llama2-chinese:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "aya",
-      "size": "4.8GB"
-    },
-    {
-      "name": "aya:8b",
-      "size": "4.8GB"
-    },
-    {
-      "name": "aya:35b",
-      "size": "20GB"
-    },
-    {
-      "name": "tinydolphin",
-      "size": "637MB"
-    },
-    {
-      "name": "tinydolphin:1.1b",
-      "size": "637MB"
-    },
-    {
-      "name": "nous-hermes",
-      "size": "3.8GB"
-    },
-    {
-      "name": "nous-hermes:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "nous-hermes:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "glm4",
-      "size": "5.5GB"
-    },
-    {
-      "name": "glm4:9b",
-      "size": "5.5GB"
-    },
-    {
-      "name": "stable-code",
-      "size": "1.6GB"
-    },
-    {
-      "name": "stable-code:3b",
-      "size": "1.6GB"
-    },
-    {
-      "name": "granite3.2",
-      "size": "4.9GB"
-    },
-    {
-      "name": "granite3.2:2b",
-      "size": "1.5GB"
-    },
-    {
-      "name": "granite3.2:8b",
-      "size": "4.9GB"
-    },
-    {
-      "name": "exaone-deep",
-      "size": "4.8GB"
-    },
-    {
-      "name": "exaone-deep:2.4b",
-      "size": "1.6GB"
-    },
-    {
-      "name": "exaone-deep:7.8b",
-      "size": "4.8GB"
-    },
-    {
-      "name": "exaone-deep:32b",
-      "size": "19GB"
-    },
-    {
-      "name": "nous-hermes2",
-      "size": "6.1GB"
-    },
-    {
-      "name": "nous-hermes2:10.7b",
-      "size": "6.1GB"
-    },
-    {
-      "name": "nous-hermes2:34b",
-      "size": "19GB"
-    },
-    {
-      "name": "falcon",
-      "size": "4.2GB"
-    },
-    {
-      "name": "falcon:7b",
-      "size": "4.2GB"
-    },
-    {
-      "name": "falcon:40b",
-      "size": "24GB"
-    },
-    {
-      "name": "falcon:180b",
-      "size": "101GB"
-    },
-    {
-      "name": "wizardcoder",
-      "size": "3.8GB"
-    },
-    {
-      "name": "wizardcoder:33b",
-      "size": "19GB"
-    },
-    {
-      "name": "command-r-plus",
-      "size": "59GB"
-    },
-    {
-      "name": "command-r-plus:104b",
-      "size": "59GB"
-    },
-    {
-      "name": "neural-chat",
-      "size": "4.1GB"
-    },
-    {
-      "name": "neural-chat:7b",
-      "size": "4.1GB"
-    },
-    {
-      "name": "bakllava",
-      "size": "4.7GB"
-    },
-    {
-      "name": "bakllava:7b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "stablelm2",
-      "size": "983MB"
-    },
-    {
-      "name": "stablelm2:1.6b",
-      "size": "983MB"
-    },
-    {
-      "name": "stablelm2:12b",
-      "size": "7.0GB"
-    },
-    {
-      "name": "sqlcoder",
-      "size": "4.1GB"
-    },
-    {
-      "name": "sqlcoder:7b",
-      "size": "4.1GB"
-    },
-    {
-      "name": "sqlcoder:15b",
-      "size": "9.0GB"
-    },
-    {
-      "name": "llama3-chatqa",
-      "size": "4.7GB"
-    },
-    {
-      "name": "llama3-chatqa:8b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "llama3-chatqa:70b",
-      "size": "40GB"
-    },
-    {
-      "name": "opencoder",
-      "size": "4.7GB"
-    },
-    {
-      "name": "opencoder:1.5b",
-      "size": "1.4GB"
-    },
-    {
-      "name": "opencoder:8b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "llava-phi3",
-      "size": "2.9GB"
-    },
-    {
-      "name": "llava-phi3:3.8b",
-      "size": "2.9GB"
-    },
-    {
-      "name": "yi-coder",
-      "size": "5.0GB"
-    },
-    {
-      "name": "yi-coder:1.5b",
-      "size": "866MB"
-    },
-    {
-      "name": "yi-coder:9b",
-      "size": "5.0GB"
-    },
-    {
-      "name": "wizard-math",
-      "size": "4.1GB"
-    },
-    {
-      "name": "wizard-math:7b",
-      "size": "4.1GB"
-    },
-    {
-      "name": "wizard-math:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "wizard-math:70b",
-      "size": "39GB"
-    },
-    {
-      "name": "reflection",
-      "size": "40GB"
-    },
-    {
-      "name": "reflection:70b",
-      "size": "40GB"
-    },
-    {
-      "name": "granite3.1-dense",
-      "size": "5.0GB"
-    },
-    {
-      "name": "granite3.1-dense:2b",
-      "size": "1.6GB"
-    },
-    {
-      "name": "granite3.1-dense:8b",
-      "size": "5.0GB"
-    },
-    {
-      "name": "granite3-dense",
-      "size": "1.6GB"
-    },
-    {
-      "name": "granite3-dense:2b",
-      "size": "1.6GB"
-    },
-    {
-      "name": "granite3-dense:8b",
-      "size": "4.9GB"
-    },
-    {
-      "name": "llama3-gradient",
-      "size": "4.7GB"
-    },
-    {
-      "name": "llama3-gradient:8b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "llama3-gradient:70b",
-      "size": "40GB"
-    },
-    {
-      "name": "exaone3.5",
-      "size": "4.8GB"
-    },
-    {
-      "name": "exaone3.5:2.4b",
-      "size": "1.6GB"
-    },
-    {
-      "name": "exaone3.5:7.8b",
-      "size": "4.8GB"
-    },
-    {
-      "name": "exaone3.5:32b",
-      "size": "19GB"
-    },
-    {
-      "name": "dbrx",
-      "size": "74GB"
-    },
-    {
-      "name": "dbrx:132b",
-      "size": "74GB"
-    },
-    {
-      "name": "samantha-mistral",
-      "size": "4.1GB"
-    },
-    {
-      "name": "samantha-mistral:7b",
-      "size": "4.1GB"
-    },
-    {
-      "name": "dolphincoder",
-      "size": "4.2GB"
-    },
-    {
-      "name": "dolphincoder:7b",
-      "size": "4.2GB"
-    },
-    {
-      "name": "dolphincoder:15b",
-      "size": "9.1GB"
-    },
-    {
-      "name": "tulu3",
-      "size": "4.9GB"
-    },
-    {
-      "name": "tulu3:8b",
-      "size": "4.9GB"
-    },
-    {
-      "name": "tulu3:70b",
-      "size": "43GB"
-    },
-    {
-      "name": "nemotron-mini",
-      "size": "2.7GB"
-    },
-    {
-      "name": "nemotron-mini:4b",
-      "size": "2.7GB"
-    },
-    {
-      "name": "r1-1776",
-      "size": "43GB"
-    },
-    {
-      "name": "r1-1776:70b",
-      "size": "43GB"
-    },
-    {
-      "name": "r1-1776:671b",
-      "size": "404GB"
-    },
-    {
-      "name": "starling-lm",
-      "size": "4.1GB"
-    },
-    {
-      "name": "starling-lm:7b",
-      "size": "4.1GB"
-    },
-    {
-      "name": "phind-codellama",
-      "size": "19GB"
-    },
-    {
-      "name": "phind-codellama:34b",
-      "size": "19GB"
-    },
-    {
-      "name": "solar",
-      "size": "6.1GB"
-    },
-    {
-      "name": "solar:10.7b",
-      "size": "6.1GB"
-    },
-    {
-      "name": "internlm2",
-      "size": "4.5GB"
-    },
-    {
-      "name": "internlm2:1m",
-      "size": "4.5GB"
-    },
-    {
-      "name": "internlm2:1.8b",
-      "size": "1.1GB"
-    },
-    {
-      "name": "internlm2:7b",
-      "size": "4.5GB"
-    },
-    {
-      "name": "internlm2:20b",
-      "size": "11GB"
-    },
-    {
-      "name": "xwinlm",
-      "size": "3.8GB"
-    },
-    {
-      "name": "xwinlm:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "xwinlm:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "athene-v2",
-      "size": "47GB"
-    },
-    {
-      "name": "athene-v2:72b",
-      "size": "47GB"
-    },
-    {
-      "name": "nemotron",
-      "size": "43GB"
-    },
-    {
-      "name": "nemotron:70b",
-      "size": "43GB"
-    },
-    {
-      "name": "yarn-llama2",
-      "size": "3.8GB"
-    },
-    {
-      "name": "yarn-llama2:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "yarn-llama2:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "llama3-groq-tool-use",
-      "size": "4.7GB"
-    },
-    {
-      "name": "llama3-groq-tool-use:8b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "llama3-groq-tool-use:70b",
-      "size": "40GB"
-    },
-    {
-      "name": "meditron",
-      "size": "3.8GB"
-    },
-    {
-      "name": "meditron:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "meditron:70b",
-      "size": "39GB"
-    },
-    {
-      "name": "granite3-moe",
-      "size": "822MB"
-    },
-    {
-      "name": "granite3-moe:1b",
-      "size": "822MB"
-    },
-    {
-      "name": "granite3-moe:3b",
-      "size": "2.1GB"
-    },
-    {
-      "name": "wizardlm-uncensored",
-      "size": "7.4GB"
-    },
-    {
-      "name": "wizardlm-uncensored:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "aya-expanse",
-      "size": "5.1GB"
-    },
-    {
-      "name": "aya-expanse:8b",
-      "size": "5.1GB"
-    },
-    {
-      "name": "aya-expanse:32b",
-      "size": "20GB"
-    },
-    {
-      "name": "wizardlm:7b-q2_K",
-      "size": "2.8GB"
-    },
-    {
-      "name": "wizardlm:7b-q3_K_S",
-      "size": "2.9GB"
-    },
-    {
-      "name": "wizardlm:7b-q3_K_M",
-      "size": "3.3GB"
-    },
-    {
-      "name": "smallthinker",
-      "size": "3.6GB"
-    },
-    {
-      "name": "smallthinker:3b",
-      "size": "3.6GB"
-    },
-    {
-      "name": "llama-guard3",
-      "size": "4.9GB"
-    },
-    {
-      "name": "llama-guard3:1b",
-      "size": "1.6GB"
-    },
-    {
-      "name": "llama-guard3:8b",
-      "size": "4.9GB"
-    },
-    {
-      "name": "orca2",
-      "size": "3.8GB"
-    },
-    {
-      "name": "orca2:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "orca2:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "medllama2",
-      "size": "3.8GB"
-    },
-    {
-      "name": "medllama2:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "nous-hermes2-mixtral",
-      "size": "26GB"
-    },
-    {
-      "name": "nous-hermes2-mixtral:8x7b",
-      "size": "26GB"
-    },
-    {
-      "name": "stable-beluga",
-      "size": "3.8GB"
-    },
-    {
-      "name": "stable-beluga:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "stable-beluga:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "stable-beluga:70b",
-      "size": "39GB"
-    },
-    {
-      "name": "deepseek-v2.5",
-      "size": "133GB"
-    },
-    {
-      "name": "deepseek-v2.5:236b",
-      "size": "133GB"
-    },
-    {
-      "name": "reader-lm",
-      "size": "935MB"
-    },
-    {
-      "name": "reader-lm:0.5b",
-      "size": "352MB"
-    },
-    {
-      "name": "reader-lm:1.5b",
-      "size": "935MB"
-    },
-    {
-      "name": "llama-pro",
-      "size": "4.7GB"
-    },
-    {
-      "name": "llama-pro:instruct",
-      "size": "4.7GB"
-    },
-    {
-      "name": "llama-pro:text",
-      "size": "4.7GB"
-    },
-    {
-      "name": "yarn-mistral",
-      "size": "4.1GB"
-    },
-    {
-      "name": "yarn-mistral:7b",
-      "size": "4.1GB"
-    },
-    {
-      "name": "command-r7b",
-      "size": "5.1GB"
-    },
-    {
-      "name": "command-r7b:7b",
-      "size": "5.1GB"
-    },
-    {
-      "name": "shieldgemma",
-      "size": "5.8GB"
-    },
-    {
-      "name": "shieldgemma:2b",
-      "size": "1.7GB"
-    },
-    {
-      "name": "shieldgemma:9b",
-      "size": "5.8GB"
-    },
-    {
-      "name": "shieldgemma:27b",
-      "size": "17GB"
-    },
-    {
-      "name": "nexusraven",
-      "size": "7.4GB"
-    },
-    {
-      "name": "nexusraven:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "mathstral",
-      "size": "4.1GB"
-    },
-    {
-      "name": "mathstral:7b",
-      "size": "4.1GB"
-    },
-    {
-      "name": "command-a",
-      "size": "67GB"
-    },
-    {
-      "name": "command-a:111b",
-      "size": "67GB"
-    },
-    {
-      "name": "everythinglm",
-      "size": "7.4GB"
-    },
-    {
-      "name": "everythinglm:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "phi4-mini-reasoning",
-      "size": "3.2GB"
-    },
-    {
-      "name": "phi4-mini-reasoning:3.8b",
-      "size": "3.2GB"
-    },
-    {
-      "name": "codeup",
-      "size": "7.4GB"
-    },
-    {
-      "name": "codeup:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "marco-o1",
-      "size": "4.7GB"
-    },
-    {
-      "name": "marco-o1:7b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "stablelm-zephyr",
-      "size": "1.6GB"
-    },
-    {
-      "name": "stablelm-zephyr:3b",
-      "size": "1.6GB"
-    },
-    {
-      "name": "solar-pro",
-      "size": "13GB"
-    },
-    {
-      "name": "solar-pro:22b",
-      "size": "13GB"
-    },
-    {
-      "name": "duckdb-nsql",
-      "size": "3.8GB"
-    },
-    {
-      "name": "duckdb-nsql:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "falcon2",
-      "size": "6.4GB"
-    },
-    {
-      "name": "falcon2:11b",
-      "size": "6.4GB"
-    },
-    {
-      "name": "magicoder",
-      "size": "3.8GB"
-    },
-    {
-      "name": "magicoder:7b",
-      "size": "3.8GB"
-    },
-    {
-      "name": "mistrallite",
-      "size": "4.1GB"
-    },
-    {
-      "name": "mistrallite:7b",
-      "size": "4.1GB"
-    },
-    {
-      "name": "codebooga",
-      "size": "19GB"
-    },
-    {
-      "name": "codebooga:34b",
-      "size": "19GB"
-    },
-    {
-      "name": "bespoke-minicheck",
-      "size": "4.7GB"
-    },
-    {
-      "name": "bespoke-minicheck:7b",
-      "size": "4.7GB"
-    },
-    {
-      "name": "wizard-vicuna",
-      "size": "7.4GB"
-    },
-    {
-      "name": "wizard-vicuna:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "nuextract",
-      "size": "2.2GB"
-    },
-    {
-      "name": "nuextract:3.8b",
-      "size": "2.2GB"
-    },
-    {
-      "name": "granite3-guardian",
-      "size": "2.7GB"
-    },
-    {
-      "name": "granite3-guardian:2b",
-      "size": "2.7GB"
-    },
-    {
-      "name": "granite3-guardian:8b",
-      "size": "5.8GB"
-    },
-    {
-      "name": "megadolphin",
-      "size": "68GB"
-    },
-    {
-      "name": "megadolphin:120b",
-      "size": "68GB"
-    },
-    {
-      "name": "notux",
-      "size": "26GB"
-    },
-    {
-      "name": "notux:8x7b",
-      "size": "26GB"
-    },
-    {
-      "name": "open-orca-platypus2",
-      "size": "7.4GB"
-    },
-    {
-      "name": "open-orca-platypus2:13b",
-      "size": "7.4GB"
-    },
-    {
-      "name": "notus",
-      "size": "4.1GB"
-    },
-    {
-      "name": "notus:7b",
-      "size": "4.1GB"
-    },
-    {
-      "name": "goliath",
-      "size": "66GB"
-    },
-    {
-      "name": "sailor2",
-      "size": "5.2GB"
-    },
-    {
-      "name": "sailor2:1b",
-      "size": "1.1GB"
-    },
-    {
-      "name": "sailor2:8b",
-      "size": "5.2GB"
-    },
-    {
-      "name": "sailor2:20b",
-      "size": "12GB"
-    },
-    {
-      "name": "firefunction-v2",
-      "size": "40GB"
-    },
-    {
-      "name": "firefunction-v2:70b",
-      "size": "40GB"
-    },
-    {
-      "name": "alfred",
-      "size": "24GB"
-    },
-    {
-      "name": "alfred:40b",
-      "size": "24GB"
-    },
-    {
-      "name": "command-r7b-arabic",
-      "size": "5.1GB"
-    },
-    {
-      "name": "command-r7b-arabic:7b",
-      "size": "5.1GB"
-    },
-    {
-      "name": "deepseek-v3.1:671b",
-      "size": "404GB"
-    },
-    {
-      "name": "antoniprzybylik/pllum:12b",
-      "size": "25G"
-    },
-    {
-      "name": "antoniprzybylik/pllum:8x7b",
-      "size": "93GB"
-    },
-    {
-      "name": "antoniprzybylik/llama-pllum:8b",
-      "size": "16GB"
-    },
-    {
-      "name": "antoniprzybylik/llama-pllum:70b",
-      "size": "141GB"
-    },
-    {
-      "name": "SpeakLeash/bielik-7b-instruct-v0.1-gguf",
-      "size": "4.1GB"
-    },
-    {
-      "name": "SpeakLeash/bielik-11b-v2.0-instruct:Q4_K_M",
-      "size": "6.7GB"
-    },
-    {
-      "name": "SpeakLeash/bielik-11b-v2.1-instruct:Q4_K_M",
-      "size": "6.7GB"
-    },
-    {
-      "name": "SpeakLeash/bielik-11b-v2.2-instruct:Q4_K_M",
-      "size": "6.7GB"
-    },
-    {
-      "name": "SpeakLeash/bielik-11b-v2.3-instruct:Q4_K_M",
-      "size": "6.7GB"
-    },
-    {
-      "name": "SpeakLeash/bielik-1.5b-v3.0-instruct:Q8_0",
-      "size": "1.7GB"
-    },
-    {
-      "name": "SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0",
-      "size": "5.1GB"
-    },
-    {
-      "name": "SpeakLeash/bielik-11b-v3.0-instruct:Q4_K_M",
-      "size": "6.7GB"
-    },
-    {
-      "name": "mannix/jan-nano",
-      "size": "2.3GB"
-    },
-    {
-      "name": "Llama-PLLuM-8B-chat",
-      "size": "16.1GB",
-      "modelfile": "FROM https://huggingface.co/CYFRAGOVPL/Llama-PLLuM-8B-chat"
-    },
-    {
-      "name": "Llama-PLLuM-8B-chat-Q4_K_M",
-      "size": "4.6GB",
-      "modelfile": "FROM https://huggingface.co/tensorblock/Llama-PLLuM-8B-chat-GGUF/resolve/main/Llama-PLLuM-8B-chat-Q4_K_M.gguf"
-    },
-    {
-      "name": "Llama-PLLuM-8B-chat-Q8_0",
-      "size": "8GB",
-      "modelfile": "FROM https://huggingface.co/tsej/Llama-PLLuM-8B-chat-GGUF/resolve/main/Llama-PLLuM-8B-chat-Q8_0.gguf"
-    },
-    {
-      "name": "Llama-PLLuM-8B-instruct-Q4_K_M",
-      "size": "4.6GB",
-      "modelfile": "FROM https://huggingface.co/mradermacher/Llama-PLLuM-8B-instruct-GGUF/resolve/main/Llama-PLLuM-8B-instruct.Q4_K_M.gguf"
-    },
-    {
-      "name": "PLLuM-12B-instruct-Q4_K_M",
-      "size": "7GB",
-      "modelfile": "FROM https://huggingface.co/mradermacher/PLLuM-12B-instruct-GGUF/resolve/main/PLLuM-12B-instruct.Q4_K_M.gguf"
-    },
-    {
-      "name": "PLLuM-12B-instruct-Q8_0",
-      "size": "12.1GB",
-      "modelfile": "FROM https://huggingface.co/mradermacher/PLLuM-12B-instruct-GGUF/resolve/main/PLLuM-12B-instruct.Q8_0.gguf"
-    },
-    {
-      "name": "HammerAI/mythomax-l2",
-      "size": "7.9GB"
-    },
-    {
-      "name": "qwen3-coder-next",
-      "size": "52GB"
-    },
-    {
-      "name": "qwen3-coder-next:q4_K_M",
-      "size": "52GB"
-    },
-    {
-      "name": "qwen3-coder-next:q8_0",
-      "size": "85GB"
-    },
-    {
-      "name": "glm-ocr",
-      "size": "2.2GB"
-    },
-    {
-      "name": "glm-ocr:q8_0",
-      "size": "1.6GB"
-    },
-    {
-      "name": "glm-ocr:bf16",
-      "size": "2.2GB"
-    },
-    {
-      "name": "glm-4.7-flash",
-      "size": "19GB"
-    },
-    {
-      "name": "glm-4.7-flash:q4_K_M",
-      "size": "19GB"
-    },
-    {
-      "name": "glm-4.7-flash:q8_0",
-      "size": "32GB"
-    },
-    {
-      "name": "glm-4.7-flash:bf16",
-      "size": "60GB"
-    },
-    {
-      "name": "lfm2.5-thinking",
-      "size": "731MB"
-    },
-    {
-      "name": "lfm2.5-thinking:1.2b",
-      "size": "731MB"
-    },
-    {
-      "name": "translategemma",
-      "size": "3.3GB"
-    },
-    {
-      "name": "translategemma:4b",
-      "size": "3.3GB"
-    },
-    {
-      "name": "translategemma:12b",
-      "size": "8.1GB"
-    },
-    {
-      "name": "translategemma:27b",
-      "size": "17GB"
-    },
-    {
-      "name": "functiongemma",
-      "size": "301MB"
-    },
-    {
-      "name": "functiongemma:270m",
-      "size": "301MB"
-    },
-    {
-      "name": "nemotron-3-nano",
-      "size": "24GB"
-    },
-    {
-      "name": "nemotron-3-nano:30b",
-      "size": "24GB"
-    },
-    {
-      "name": "olmo-3",
-      "size": "4.5GB"
-    },
-    {
-      "name": "olmo-3:7b",
-      "size": "4.5GB"
-    },
-    {
-      "name": "olmo-3:32b",
-      "size": "19GB"
-    },
-    {
-      "name": "olmo-3.1",
-      "size": "19GB"
-    },
-    {
-      "name": "olmo-3.1:32b",
-      "size": "19GB"
-    },
-    {
-      "name": "devstral-small-2",
-      "size": "15GB"
-    },
-    {
-      "name": "devstral-small-2:24b",
-      "size": "15GB"
-    },
-    {
-      "name": "rnj-1",
-      "size": "5.1GB"
-    },
-    {
-      "name": "rnj-1:8b",
-      "size": "5.1GB"
-    },
-    {
-      "name": "qwen3-next",
-      "size": "50GB"
-    },
-    {
-      "name": "qwen3-next:80b",
-      "size": "50GB"
-    },
-    {
-      "name": "ministral-3",
-      "size": "6GB"
-    },
-    {
-      "name": "ministral-3:3b",
-      "size": "3GB"
-    },
-    {
-      "name": "ministral-3:8b",
-      "size": "6GB"
-    },
-    {
-      "name": "ministral-3:14b",
-      "size": "9.1GB"
-    },
-    {
-      "name": "deepseek-ocr",
-      "size": "6.7GB"
-    },
-    {
-      "name": "deepseek-ocr:3b",
-      "size": "6.7GB"
-    },
-    {
-      "name": "cogito-2.1",
-      "size": "1.3TB"
-    },
-    {
-      "name": "cogito-2.1:671b",
-      "size": "1.3TB"
-    },
-    {
-      "name": "qwen3-vl",
-      "size": "6.1GB"
-    },
-    {
-      "name": "qwen3-vl:2b",
-      "size": "1.9GB"
-    },
-    {
-      "name": "qwen3-vl:4b",
-      "size": "3.3GB"
-    },
-    {
-      "name": "qwen3-vl:8b",
-      "size": "6.1GB"
-    },
-    {
-      "name": "qwen3-vl:30b",
-      "size": "20GB"
-    },
-    {
-      "name": "qwen3-vl:32b",
-      "size": "21GB"
-    },
-    {
-      "name": "qwen3-vl:235b",
-      "size": "143GB"
-    }
-  ],
-  "txt2img": [
-    {
-      "name": "x/flux2-klein",
-      "size": "5.7GB"
-    },
-    {
-      "name": "x/flux2-klein:4b",
-      "size": "5.7GB"
-    },
-    {
-      "name": "x/flux2-klein:9b",
-      "size": "12GB"
-    },
-    {
-      "name": "x/z-image-turbo",
-      "size": "13GB"
-    },
-    {
-      "name": "x/z-image-turbo:fp8",
-      "size": "13GB"
-    },
-    {
-      "name": "x/z-image-turbo:bf16",
-      "size": "33GB"
-    }
-  ]
+    "embeddings": [
+        {
+            "name": "nomic-embed-text",
+            "size": "274MB",
+            "hash": "0a109f422b47"
+        },
+        {
+            "name": "nomic-embed-text:v1.5",
+            "size": "274MB",
+            "hash": "0a109f422b47"
+        },
+        {
+            "name": "mxbai-embed-large",
+            "size": "670MB",
+            "hash": "468836162de7"
+        },
+        {
+            "name": "mxbai-embed-large:335m",
+            "size": "670MB",
+            "hash": "468836162de7"
+        },
+        {
+            "name": "embeddinggemma",
+            "size": "622MB",
+            "hash": "85462619ee72"
+        },
+        {
+            "name": "embeddinggemma:300m",
+            "size": "622MB",
+            "hash": "85462619ee72"
+        },
+        {
+            "name": "bge-m3",
+            "size": "1.2GB",
+            "hash": "790764642607"
+        },
+        {
+            "name": "bge-m3:567m",
+            "size": "1.2GB",
+            "hash": "790764642607"
+        },
+        {
+            "name": "all-minilm",
+            "size": "46MB",
+            "hash": "1b226e2802db"
+        },
+        {
+            "name": "all-minilm:22m",
+            "size": "46MB",
+            "hash": "1b226e2802db"
+        },
+        {
+            "name": "all-minilm:l6",
+            "size": "46MB",
+            "hash": "1b226e2802db"
+        },
+        {
+            "name": "all-minilm:v2",
+            "size": "46MB",
+            "hash": "1b226e2802db"
+        },
+        {
+            "name": "all-minilm:l6-v2",
+            "size": "46MB",
+            "hash": "1b226e2802db"
+        },
+        {
+            "name": "all-minilm:33m",
+            "size": "67MB",
+            "hash": "4f5da3bd944d"
+        },
+        {
+            "name": "all-minilm:l12",
+            "size": "67MB",
+            "hash": "4f5da3bd944d"
+        },
+        {
+            "name": "all-minilm:l12-v2",
+            "size": "67MB",
+            "hash": "4f5da3bd944d"
+        },
+        {
+            "name": "snowflake-arctic-embed",
+            "size": "669MB",
+            "hash": "21ab8b9b0545"
+        },
+        {
+            "name": "snowflake-arctic-embed:22m",
+            "size": "46MB",
+            "hash": "bf75350e1752"
+        },
+        {
+            "name": "snowflake-arctic-embed:33m",
+            "size": "67MB",
+            "hash": "e8db018629b4"
+        },
+        {
+            "name": "snowflake-arctic-embed:110m",
+            "size": "219MB",
+            "hash": "8a0d86a3ca1d"
+        },
+        {
+            "name": "snowflake-arctic-embed:137m",
+            "size": "274MB",
+            "hash": "12616299a158"
+        },
+        {
+            "name": "snowflake-arctic-embed:335m",
+            "size": "669MB",
+            "hash": "21ab8b9b0545"
+        },
+        {
+            "name": "snowflake-arctic-embed2",
+            "size": "1.2GB",
+            "hash": "5de93a84837d"
+        },
+        {
+            "name": "snowflake-arctic-embed2:568m",
+            "size": "1.2GB",
+            "hash": "5de93a84837d"
+        },
+        {
+            "name": "bge-large",
+            "size": "671MB",
+            "hash": "b3d71c928059"
+        },
+        {
+            "name": "bge-large:335m",
+            "size": "671MB",
+            "hash": "b3d71c928059"
+        },
+        {
+            "name": "paraphrase-multilingual",
+            "size": "563MB",
+            "hash": "ba13c2e06707"
+        },
+        {
+            "name": "paraphrase-multilingual:278m",
+            "size": "563MB",
+            "hash": "ba13c2e06707"
+        },
+        {
+            "name": "granite-embedding",
+            "size": "63MB",
+            "hash": "eb4c533ba6f7"
+        },
+        {
+            "name": "granite-embedding:30m",
+            "size": "63MB",
+            "hash": "eb4c533ba6f7"
+        },
+        {
+            "name": "granite-embedding:278m",
+            "size": "563MB",
+            "hash": "1a37926bf842"
+        },
+        {
+            "name": "nomic-embed-text-v2-moe",
+            "size": "956MB",
+            "hash": "ff9c2f10ef5e"
+        },
+        {
+            "name": "qwen3-embedding",
+            "size": "4.7GB",
+            "hash": "64b933495768"
+        },
+        {
+            "name": "qwen3-embedding:0.6b",
+            "size": "639MB",
+            "hash": "ac6da0dfba84"
+        },
+        {
+            "name": "qwen3-embedding:4b",
+            "size": "2.5GB",
+            "hash": "df5bd2e3c74c"
+        },
+        {
+            "name": "qwen3-embedding:8b",
+            "size": "4.7GB",
+            "hash": "64b933495768"
+        }
+    ],
+    "llms": [
+        {
+            "name": "gpt-oss",
+            "size": "14GB",
+            "hash": "17052f91a42e"
+        },
+        {
+            "name": "gpt-oss:20b",
+            "size": "14GB",
+            "hash": "17052f91a42e"
+        },
+        {
+            "name": "gpt-oss:120b",
+            "size": "65GB",
+            "hash": "a951a23b46a1"
+        },
+        {
+            "name": "deepseek-r1",
+            "size": "5.2GB",
+            "hash": "6995872bfe4c"
+        },
+        {
+            "name": "deepseek-r1:1.5b",
+            "size": "1.1GB",
+            "hash": "e0979632db5a"
+        },
+        {
+            "name": "deepseek-r1:7b",
+            "size": "4.7GB",
+            "hash": "755ced02ce7b"
+        },
+        {
+            "name": "deepseek-r1:8b",
+            "size": "5.2GB",
+            "hash": "6995872bfe4c"
+        },
+        {
+            "name": "deepseek-r1:14b",
+            "size": "9.0GB",
+            "hash": "c333b7232bdb"
+        },
+        {
+            "name": "deepseek-r1:32b",
+            "size": "20GB",
+            "hash": "edba8017331d"
+        },
+        {
+            "name": "deepseek-r1:70b",
+            "size": "43GB",
+            "hash": "d37b54d01a76"
+        },
+        {
+            "name": "deepseek-r1:671b",
+            "size": "404GB",
+            "hash": "14a4e575643d"
+        },
+        {
+            "name": "gemma3",
+            "size": "3.3GB",
+            "hash": "a2af6cc3eb7f"
+        },
+        {
+            "name": "gemma3:270m",
+            "size": "292MB",
+            "hash": "e7d36fb2c3b3"
+        },
+        {
+            "name": "gemma3:1b",
+            "size": "815MB",
+            "hash": "8648f39daa8f"
+        },
+        {
+            "name": "gemma3:4b",
+            "size": "3.3GB",
+            "hash": "a2af6cc3eb7f"
+        },
+        {
+            "name": "gemma3:12b",
+            "size": "8.1GB",
+            "hash": "f4031aab637d"
+        },
+        {
+            "name": "gemma3:27b",
+            "size": "17GB",
+            "hash": "a418f5838eaf"
+        },
+        {
+            "name": "qwen3",
+            "size": "5.2GB",
+            "hash": "500a1f067a9f"
+        },
+        {
+            "name": "qwen3:0.6b",
+            "size": "523MB",
+            "hash": "7df6b6e09427"
+        },
+        {
+            "name": "qwen3:1.7b",
+            "size": "1.4GB",
+            "hash": "8f68893c685c"
+        },
+        {
+            "name": "qwen3:4b",
+            "size": "2.5GB",
+            "hash": "359d7dd4bcda"
+        },
+        {
+            "name": "qwen3:8b",
+            "size": "5.2GB",
+            "hash": "500a1f067a9f"
+        },
+        {
+            "name": "qwen3:14b",
+            "size": "9.3GB",
+            "hash": "bdbd181c33f2"
+        },
+        {
+            "name": "qwen3:30b",
+            "size": "19GB",
+            "hash": "ad815644918f"
+        },
+        {
+            "name": "qwen3:32b",
+            "size": "20GB",
+            "hash": "030ee887880f"
+        },
+        {
+            "name": "qwen3:235b",
+            "size": "142GB",
+            "hash": "754a872f1290"
+        },
+        {
+            "name": "llama3.1",
+            "size": "4.9GB",
+            "hash": "46e0c10c039e"
+        },
+        {
+            "name": "llama3.1:8b",
+            "size": "4.9GB",
+            "hash": "46e0c10c039e"
+        },
+        {
+            "name": "llama3.1:70b",
+            "size": "43GB",
+            "hash": "711a9e8463af"
+        },
+        {
+            "name": "llama3.1:405b",
+            "size": "243GB",
+            "hash": "dbd6b9ea93de"
+        },
+        {
+            "name": "llama3.2",
+            "size": "2.0GB",
+            "hash": "a80c4f17acd5"
+        },
+        {
+            "name": "llama3.2:1b",
+            "size": "1.3GB",
+            "hash": "baf6a787fdff"
+        },
+        {
+            "name": "llama3.2:3b",
+            "size": "2.0GB",
+            "hash": "a80c4f17acd5"
+        },
+        {
+            "name": "mistral",
+            "size": "4.4GB",
+            "hash": "6577803aa9a0"
+        },
+        {
+            "name": "mistral:7b",
+            "size": "4.4GB",
+            "hash": "6577803aa9a0"
+        },
+        {
+            "name": "qwen2.5",
+            "size": "4.7GB",
+            "hash": "845dbda0ea48"
+        },
+        {
+            "name": "qwen2.5:0.5b",
+            "size": "398MB",
+            "hash": "a8b0c5157701"
+        },
+        {
+            "name": "qwen2.5:1.5b",
+            "size": "986MB",
+            "hash": "65ec06548149"
+        },
+        {
+            "name": "qwen2.5:3b",
+            "size": "1.9GB",
+            "hash": "357c53fb659c"
+        },
+        {
+            "name": "qwen2.5:7b",
+            "size": "4.7GB",
+            "hash": "845dbda0ea48"
+        },
+        {
+            "name": "qwen2.5:14b",
+            "size": "9.0GB",
+            "hash": "7cdf5a0187d5"
+        },
+        {
+            "name": "qwen2.5:32b",
+            "size": "20GB",
+            "hash": "9f13ba1299af"
+        },
+        {
+            "name": "qwen2.5:72b",
+            "size": "47GB",
+            "hash": "424bad2cc13f"
+        },
+        {
+            "name": "llama3",
+            "size": "4.7GB",
+            "hash": "365c0bd3c000"
+        },
+        {
+            "name": "llama3:8b",
+            "size": "4.7GB",
+            "hash": "365c0bd3c000"
+        },
+        {
+            "name": "llama3:70b",
+            "size": "40GB",
+            "hash": "786f3184aec0"
+        },
+        {
+            "name": "llava",
+            "size": "4.7GB",
+            "hash": "8dd30f6b0cb1"
+        },
+        {
+            "name": "llava:7b",
+            "size": "4.7GB",
+            "hash": "8dd30f6b0cb1"
+        },
+        {
+            "name": "llava:13b",
+            "size": "8.0GB",
+            "hash": "0d0eb4d7f485"
+        },
+        {
+            "name": "llava:34b",
+            "size": "20GB",
+            "hash": "3d2d24f46674"
+        },
+        {
+            "name": "phi3",
+            "size": "2.2GB",
+            "hash": "4f2222927938"
+        },
+        {
+            "name": "phi3:3.8b",
+            "size": "2.2GB",
+            "hash": "4f2222927938"
+        },
+        {
+            "name": "phi3:14b",
+            "size": "7.9GB",
+            "hash": "cf611a26b048"
+        },
+        {
+            "name": "gemma2",
+            "size": "5.4GB",
+            "hash": "ff02c3702f32"
+        },
+        {
+            "name": "gemma2:2b",
+            "size": "1.6GB",
+            "hash": "8ccf136fdd52"
+        },
+        {
+            "name": "gemma2:9b",
+            "size": "5.4GB",
+            "hash": "ff02c3702f32"
+        },
+        {
+            "name": "gemma2:27b",
+            "size": "16GB",
+            "hash": "53261bc9c192"
+        },
+        {
+            "name": "qwen2.5-coder",
+            "size": "4.7GB",
+            "hash": "dae161e27b0e"
+        },
+        {
+            "name": "qwen2.5-coder:0.5b",
+            "size": "398MB",
+            "hash": "4ff64a7f502a"
+        },
+        {
+            "name": "qwen2.5-coder:1.5b",
+            "size": "986MB",
+            "hash": "d7372fd82851"
+        },
+        {
+            "name": "qwen2.5-coder:3b",
+            "size": "1.9GB",
+            "hash": "f72c60cabf62"
+        },
+        {
+            "name": "qwen2.5-coder:7b",
+            "size": "4.7GB",
+            "hash": "dae161e27b0e"
+        },
+        {
+            "name": "qwen2.5-coder:14b",
+            "size": "9.0GB",
+            "hash": "9ec8897f747e"
+        },
+        {
+            "name": "qwen2.5-coder:32b",
+            "size": "20GB",
+            "hash": "b92d6a0bd47e"
+        },
+        {
+            "name": "gemma",
+            "size": "5.0GB",
+            "hash": "a72c7f4d0a15"
+        },
+        {
+            "name": "gemma:2b",
+            "size": "1.7GB",
+            "hash": "b50d6c999e59"
+        },
+        {
+            "name": "gemma:7b",
+            "size": "5.0GB",
+            "hash": "a72c7f4d0a15"
+        },
+        {
+            "name": "qwen",
+            "size": "2.3GB",
+            "hash": "d53d04290064"
+        },
+        {
+            "name": "qwen:0.5b",
+            "size": "395MB",
+            "hash": "b5dc5e784f2a"
+        },
+        {
+            "name": "qwen:1.8b",
+            "size": "1.1GB",
+            "hash": "b6e8ec2e7126"
+        },
+        {
+            "name": "qwen:4b",
+            "size": "2.3GB",
+            "hash": "d53d04290064"
+        },
+        {
+            "name": "qwen:7b",
+            "size": "4.5GB",
+            "hash": "2091ee8c8d8f"
+        },
+        {
+            "name": "qwen:14b",
+            "size": "8.2GB",
+            "hash": "80362ced6553"
+        },
+        {
+            "name": "qwen:32b",
+            "size": "18GB",
+            "hash": "26e7e8447f5d"
+        },
+        {
+            "name": "qwen:72b",
+            "size": "41GB",
+            "hash": "e1c64582de5c"
+        },
+        {
+            "name": "qwen:110b",
+            "size": "63GB",
+            "hash": "7fed4b7787da"
+        },
+        {
+            "name": "qwen2",
+            "size": "4.4GB",
+            "hash": "dd314f039b9d"
+        },
+        {
+            "name": "qwen2:0.5b",
+            "size": "352MB",
+            "hash": "6f48b936a09f"
+        },
+        {
+            "name": "qwen2:1.5b",
+            "size": "935MB",
+            "hash": "f6daf2b25194"
+        },
+        {
+            "name": "qwen2:7b",
+            "size": "4.4GB",
+            "hash": "dd314f039b9d"
+        },
+        {
+            "name": "qwen2:72b",
+            "size": "41GB",
+            "hash": "93563ef658b2"
+        },
+        {
+            "name": "phi4",
+            "size": "9.1GB",
+            "hash": "ac896e5b8b34"
+        },
+        {
+            "name": "phi4:14b",
+            "size": "9.1GB",
+            "hash": "ac896e5b8b34"
+        },
+        {
+            "name": "llama2",
+            "size": "3.8GB",
+            "hash": "78e26419b446"
+        },
+        {
+            "name": "llama2:7b",
+            "size": "3.8GB",
+            "hash": "78e26419b446"
+        },
+        {
+            "name": "llama2:13b",
+            "size": "7.4GB",
+            "hash": "d475bf4c50bc"
+        },
+        {
+            "name": "llama2:70b",
+            "size": "39GB",
+            "hash": "e7f6c06ffef4"
+        },
+        {
+            "name": "minicpm-v",
+            "size": "5.5GB",
+            "hash": "c92bfad01205"
+        },
+        {
+            "name": "minicpm-v:8b",
+            "size": "5.5GB",
+            "hash": "c92bfad01205"
+        },
+        {
+            "name": "codellama",
+            "size": "3.8GB",
+            "hash": "8fdf8f752f6e"
+        },
+        {
+            "name": "codellama:7b",
+            "size": "3.8GB",
+            "hash": "8fdf8f752f6e"
+        },
+        {
+            "name": "codellama:13b",
+            "size": "7.4GB",
+            "hash": "9f438cb9cd58"
+        },
+        {
+            "name": "codellama:34b",
+            "size": "19GB",
+            "hash": "685be00e1532"
+        },
+        {
+            "name": "codellama:70b",
+            "size": "39GB",
+            "hash": "e59b580dfce7"
+        },
+        {
+            "name": "tinyllama",
+            "size": "638MB",
+            "hash": "2644915ede35"
+        },
+        {
+            "name": "tinyllama:1.1b",
+            "size": "638MB",
+            "hash": "2644915ede35"
+        },
+        {
+            "name": "dolphin3",
+            "size": "4.9GB",
+            "hash": "d5ab9ae8e1f2"
+        },
+        {
+            "name": "dolphin3:8b",
+            "size": "4.9GB",
+            "hash": "d5ab9ae8e1f2"
+        },
+        {
+            "name": "mistral-nemo",
+            "size": "7.1GB",
+            "hash": "e7e06d107c6c"
+        },
+        {
+            "name": "mistral-nemo:12b",
+            "size": "7.1GB",
+            "hash": "e7e06d107c6c"
+        },
+        {
+            "name": "olmo2",
+            "size": "4.5GB",
+            "hash": "4208d3b406db"
+        },
+        {
+            "name": "olmo2:7b",
+            "size": "4.5GB",
+            "hash": "4208d3b406db"
+        },
+        {
+            "name": "olmo2:13b",
+            "size": "8.4GB",
+            "hash": "6c279ebc980f"
+        },
+        {
+            "name": "llama3.3",
+            "size": "43GB",
+            "hash": "a6eb4748fd29"
+        },
+        {
+            "name": "llama3.3:70b",
+            "size": "43GB",
+            "hash": "a6eb4748fd29"
+        },
+        {
+            "name": "llama3.2-vision",
+            "size": "7.8GB",
+            "hash": "6f2f9757ae97"
+        },
+        {
+            "name": "llama3.2-vision:11b",
+            "size": "7.8GB",
+            "hash": "6f2f9757ae97"
+        },
+        {
+            "name": "llama3.2-vision:90b",
+            "size": "55GB",
+            "hash": "bee2a956f3a8"
+        },
+        {
+            "name": "deepseek-v3",
+            "size": "404GB",
+            "hash": "5da0e2d4a9e0"
+        },
+        {
+            "name": "deepseek-v3:671b",
+            "size": "404GB",
+            "hash": "5da0e2d4a9e0"
+        },
+        {
+            "name": "qwq",
+            "size": "20GB",
+            "hash": "009cb3f08d74"
+        },
+        {
+            "name": "qwq:32b",
+            "size": "20GB",
+            "hash": "009cb3f08d74"
+        },
+        {
+            "name": "mistral-small",
+            "size": "14GB",
+            "hash": "8039dd90c113"
+        },
+        {
+            "name": "mistral-small:22b",
+            "size": "13GB",
+            "hash": "d095cd553b04"
+        },
+        {
+            "name": "mistral-small:24b",
+            "size": "14GB",
+            "hash": "8039dd90c113"
+        },
+        {
+            "name": "smollm2",
+            "size": "1.8GB",
+            "hash": "cef4a1e09247"
+        },
+        {
+            "name": "smollm2:135m",
+            "size": "271MB",
+            "hash": "9077fe9d2ae1"
+        },
+        {
+            "name": "smollm2:360m",
+            "size": "726MB",
+            "hash": "297281b699fc"
+        },
+        {
+            "name": "smollm2:1.7b",
+            "size": "1.8GB",
+            "hash": "cef4a1e09247"
+        },
+        {
+            "name": "llava-llama3",
+            "size": "5.5GB",
+            "hash": "44c161b1f465"
+        },
+        {
+            "name": "llava-llama3:8b",
+            "size": "5.5GB",
+            "hash": "44c161b1f465"
+        },
+        {
+            "name": "mixtral",
+            "size": "26GB",
+            "hash": "a3b6bef0f836"
+        },
+        {
+            "name": "mixtral:8x7b",
+            "size": "26GB",
+            "hash": "a3b6bef0f836"
+        },
+        {
+            "name": "mixtral:8x22b",
+            "size": "80GB",
+            "hash": "e8479ee1cb51"
+        },
+        {
+            "name": "llama2-uncensored",
+            "size": "3.8GB",
+            "hash": "44040b922233"
+        },
+        {
+            "name": "llama2-uncensored:7b",
+            "size": "3.8GB",
+            "hash": "44040b922233"
+        },
+        {
+            "name": "llama2-uncensored:70b",
+            "size": "39GB",
+            "hash": "bdd0ec2f5ec5"
+        },
+        {
+            "name": "starcoder2",
+            "size": "1.7GB",
+            "hash": "9f4ae0aff61e"
+        },
+        {
+            "name": "starcoder2:3b",
+            "size": "1.7GB",
+            "hash": "9f4ae0aff61e"
+        },
+        {
+            "name": "starcoder2:7b",
+            "size": "4.0GB",
+            "hash": "1550ab21b10d"
+        },
+        {
+            "name": "starcoder2:15b",
+            "size": "9.1GB",
+            "hash": "21ae152d49e0"
+        },
+        {
+            "name": "deepseek-coder",
+            "size": "776MB",
+            "hash": "3ddd2d3fc8d2"
+        },
+        {
+            "name": "deepseek-coder:1.3b",
+            "size": "776MB",
+            "hash": "3ddd2d3fc8d2"
+        },
+        {
+            "name": "deepseek-coder:6.7b",
+            "size": "3.8GB",
+            "hash": "ce298d984115"
+        },
+        {
+            "name": "deepseek-coder:33b",
+            "size": "19GB",
+            "hash": "acec7c0b0fd9"
+        },
+        {
+            "name": "deepseek-coder-v2",
+            "size": "8.9GB",
+            "hash": "63fb193b3a9b"
+        },
+        {
+            "name": "deepseek-coder-v2:16b",
+            "size": "8.9GB",
+            "hash": "63fb193b3a9b"
+        },
+        {
+            "name": "deepseek-coder-v2:236b",
+            "size": "133GB",
+            "hash": "c78d80129305"
+        },
+        {
+            "name": "codegemma",
+            "size": "5.0GB",
+            "hash": "0c96700aaada"
+        },
+        {
+            "name": "codegemma:2b",
+            "size": "1.6GB",
+            "hash": "926331004170"
+        },
+        {
+            "name": "codegemma:7b",
+            "size": "5.0GB",
+            "hash": "0c96700aaada"
+        },
+        {
+            "name": "phi",
+            "size": "1.6GB",
+            "hash": "e2fd6321a5fe"
+        },
+        {
+            "name": "phi:2.7b",
+            "size": "1.6GB",
+            "hash": "e2fd6321a5fe"
+        },
+        {
+            "name": "llama4",
+            "size": "67GB",
+            "hash": "bf31604e25c2"
+        },
+        {
+            "name": "llama4:16x17b",
+            "size": "67GB",
+            "hash": "bf31604e25c2"
+        },
+        {
+            "name": "llama4:128x17b",
+            "size": "245GB",
+            "hash": "b4832b93e292"
+        },
+        {
+            "name": "dolphin-mixtral",
+            "size": "26GB",
+            "hash": "4f76c28c0414"
+        },
+        {
+            "name": "dolphin-mixtral:8x7b",
+            "size": "26GB",
+            "hash": "4f76c28c0414"
+        },
+        {
+            "name": "dolphin-mixtral:8x22b",
+            "size": "80GB",
+            "hash": "0772a1b884bf"
+        },
+        {
+            "name": "openthinker",
+            "size": "4.7GB",
+            "hash": "4e61774f7d1c"
+        },
+        {
+            "name": "openthinker:7b",
+            "size": "4.7GB",
+            "hash": "4e61774f7d1c"
+        },
+        {
+            "name": "openthinker:32b",
+            "size": "20GB",
+            "hash": "04b5937dcb16"
+        },
+        {
+            "name": "orca-mini",
+            "size": "2.0GB",
+            "hash": "2dbd9f439647"
+        },
+        {
+            "name": "orca-mini:3b",
+            "size": "2.0GB",
+            "hash": "2dbd9f439647"
+        },
+        {
+            "name": "orca-mini:7b",
+            "size": "3.8GB",
+            "hash": "9c9618e2e895"
+        },
+        {
+            "name": "orca-mini:13b",
+            "size": "7.4GB",
+            "hash": "1b4877c90807"
+        },
+        {
+            "name": "orca-mini:70b",
+            "size": "39GB",
+            "hash": "f184c0860491"
+        },
+        {
+            "name": "qwen2.5vl",
+            "size": "6.0GB",
+            "hash": "5ced39dfa4ba"
+        },
+        {
+            "name": "qwen2.5vl:3b",
+            "size": "3.2GB",
+            "hash": "fb90415cde1e"
+        },
+        {
+            "name": "qwen2.5vl:7b",
+            "size": "6.0GB",
+            "hash": "5ced39dfa4ba"
+        },
+        {
+            "name": "qwen2.5vl:32b",
+            "size": "21GB",
+            "hash": "3edc3a52fe98"
+        },
+        {
+            "name": "qwen2.5vl:72b",
+            "size": "49GB",
+            "hash": "05ea68274581"
+        },
+        {
+            "name": "smollm",
+            "size": "991MB",
+            "hash": "95f6557a0f0f"
+        },
+        {
+            "name": "smollm:135m",
+            "size": "92MB",
+            "hash": "b0b2a4617438"
+        },
+        {
+            "name": "smollm:360m",
+            "size": "229MB",
+            "hash": "b3ba1ccba2b8"
+        },
+        {
+            "name": "smollm:1.7b",
+            "size": "991MB",
+            "hash": "95f6557a0f0f"
+        },
+        {
+            "name": "codestral",
+            "size": "13GB",
+            "hash": "0898a8b286d5"
+        },
+        {
+            "name": "codestral:22b",
+            "size": "13GB",
+            "hash": "0898a8b286d5"
+        },
+        {
+            "name": "wizardlm2",
+            "size": "4.1GB",
+            "hash": "c9b1aff820f2"
+        },
+        {
+            "name": "wizardlm2:7b",
+            "size": "4.1GB",
+            "hash": "c9b1aff820f2"
+        },
+        {
+            "name": "wizardlm2:8x22b",
+            "size": "80GB",
+            "hash": "abda6e58fd1d"
+        },
+        {
+            "name": "dolphin-llama3",
+            "size": "4.7GB",
+            "hash": "613f068e29f8"
+        },
+        {
+            "name": "dolphin-llama3:8b",
+            "size": "4.7GB",
+            "hash": "613f068e29f8"
+        },
+        {
+            "name": "dolphin-llama3:70b",
+            "size": "40GB",
+            "hash": "39cf3e48a702"
+        },
+        {
+            "name": "gemma3n",
+            "size": "7.5GB",
+            "hash": "15cb39fd9394"
+        },
+        {
+            "name": "gemma3n:e2b",
+            "size": "5.6GB",
+            "hash": "719372f8c7de"
+        },
+        {
+            "name": "gemma3n:e4b",
+            "size": "7.5GB",
+            "hash": "15cb39fd9394"
+        },
+        {
+            "name": "dolphin-mistral",
+            "size": "4.1GB",
+            "hash": "5dc8c5a2be65"
+        },
+        {
+            "name": "dolphin-mistral:7b",
+            "size": "4.1GB",
+            "hash": "5dc8c5a2be65"
+        },
+        {
+            "name": "granite3.3",
+            "size": "4.9GB",
+            "hash": "fd429f23b909"
+        },
+        {
+            "name": "granite3.3:2b",
+            "size": "1.5GB",
+            "hash": "07bd1f170855"
+        },
+        {
+            "name": "granite3.3:8b",
+            "size": "4.9GB",
+            "hash": "fd429f23b909"
+        },
+        {
+            "name": "falcon3",
+            "size": "4.6GB",
+            "hash": "472ea1c89f64"
+        },
+        {
+            "name": "falcon3:1b",
+            "size": "1.8GB",
+            "hash": "5449d006a9c7"
+        },
+        {
+            "name": "falcon3:3b",
+            "size": "2.0GB",
+            "hash": "784a7eab5b89"
+        },
+        {
+            "name": "falcon3:7b",
+            "size": "4.6GB",
+            "hash": "472ea1c89f64"
+        },
+        {
+            "name": "falcon3:10b",
+            "size": "6.3GB",
+            "hash": "1653ff122acd"
+        },
+        {
+            "name": "phi4-reasoning",
+            "size": "11GB",
+            "hash": "47e2630ccbcd"
+        },
+        {
+            "name": "phi4-reasoning:14b",
+            "size": "11GB",
+            "hash": "47e2630ccbcd"
+        },
+        {
+            "name": "granite3.1-moe",
+            "size": "2.0GB",
+            "hash": "b43d80d7fca7"
+        },
+        {
+            "name": "granite3.1-moe:1b",
+            "size": "1.4GB",
+            "hash": "3269ce3e31ea"
+        },
+        {
+            "name": "granite3.1-moe:3b",
+            "size": "2.0GB",
+            "hash": "b43d80d7fca7"
+        },
+        {
+            "name": "command-r",
+            "size": "19GB",
+            "hash": "7d96360d357f"
+        },
+        {
+            "name": "command-r:35b",
+            "size": "19GB",
+            "hash": "7d96360d357f"
+        },
+        {
+            "name": "hermes3",
+            "size": "4.7GB",
+            "hash": "4f6b83f30b62"
+        },
+        {
+            "name": "hermes3:3b",
+            "size": "2.0GB",
+            "hash": "a8851c5041d4"
+        },
+        {
+            "name": "hermes3:8b",
+            "size": "4.7GB",
+            "hash": "4f6b83f30b62"
+        },
+        {
+            "name": "hermes3:70b",
+            "size": "40GB",
+            "hash": "60ef54cd913f"
+        },
+        {
+            "name": "hermes3:405b",
+            "size": "229GB",
+            "hash": "7e675bc10887"
+        },
+        {
+            "name": "cogito",
+            "size": "4.9GB",
+            "hash": "75b508ddece1"
+        },
+        {
+            "name": "cogito:3b",
+            "size": "2.2GB",
+            "hash": "bd144357d717"
+        },
+        {
+            "name": "cogito:8b",
+            "size": "4.9GB",
+            "hash": "75b508ddece1"
+        },
+        {
+            "name": "cogito:14b",
+            "size": "9.0GB",
+            "hash": "d0cac86a2347"
+        },
+        {
+            "name": "cogito:32b",
+            "size": "20GB",
+            "hash": "0b4aab772f57"
+        },
+        {
+            "name": "cogito:70b",
+            "size": "43GB",
+            "hash": "8f2632d0faa4"
+        },
+        {
+            "name": "phi3.5",
+            "size": "2.2GB",
+            "hash": "61819fb370a3"
+        },
+        {
+            "name": "phi3.5:3.8b",
+            "size": "2.2GB",
+            "hash": "61819fb370a3"
+        },
+        {
+            "name": "magistral",
+            "size": "14GB",
+            "hash": "27bcbbf6d324"
+        },
+        {
+            "name": "magistral:24b",
+            "size": "14GB",
+            "hash": "27bcbbf6d324"
+        },
+        {
+            "name": "qwen3-coder",
+            "size": "19GB",
+            "hash": "06c1097efce0"
+        },
+        {
+            "name": "qwen3-coder:30b",
+            "size": "19GB",
+            "hash": "06c1097efce0"
+        },
+        {
+            "name": "qwen3-coder:480b",
+            "size": "290GB",
+            "hash": "72b144baf727"
+        },
+        {
+            "name": "phi4-mini",
+            "size": "2.5GB",
+            "hash": "78fad5d182a7"
+        },
+        {
+            "name": "phi4-mini:3.8b",
+            "size": "2.5GB",
+            "hash": "78fad5d182a7"
+        },
+        {
+            "name": "devstral",
+            "size": "14GB",
+            "hash": "9bd74193e939"
+        },
+        {
+            "name": "devstral:24b",
+            "size": "14GB",
+            "hash": "9bd74193e939"
+        },
+        {
+            "name": "yi",
+            "size": "3.5GB",
+            "hash": "a7f031bb846f"
+        },
+        {
+            "name": "yi:6b",
+            "size": "3.5GB",
+            "hash": "a7f031bb846f"
+        },
+        {
+            "name": "yi:9b",
+            "size": "5.0GB",
+            "hash": "3af70141e8eb"
+        },
+        {
+            "name": "yi:34b",
+            "size": "19GB",
+            "hash": "ff94bc7c1b7a"
+        },
+        {
+            "name": "zephyr",
+            "size": "4.1GB",
+            "hash": "bbe38b81adec"
+        },
+        {
+            "name": "zephyr:7b",
+            "size": "4.1GB",
+            "hash": "bbe38b81adec"
+        },
+        {
+            "name": "zephyr:141b",
+            "size": "80GB",
+            "hash": "31b0b6c9d69f"
+        },
+        {
+            "name": "deepcoder",
+            "size": "9.0GB",
+            "hash": "12bdda054d23"
+        },
+        {
+            "name": "deepcoder:1.5b",
+            "size": "1.1GB",
+            "hash": "3bc49891ec47"
+        },
+        {
+            "name": "deepcoder:14b",
+            "size": "9.0GB",
+            "hash": "12bdda054d23"
+        },
+        {
+            "name": "granite3.2-vision",
+            "size": "2.4GB",
+            "hash": "3be41a661804"
+        },
+        {
+            "name": "granite3.2-vision:2b",
+            "size": "2.4GB",
+            "hash": "3be41a661804"
+        },
+        {
+            "name": "mistral-large",
+            "size": "73GB",
+            "hash": "bbcf36dc47ad"
+        },
+        {
+            "name": "mistral-large:123b",
+            "size": "73GB",
+            "hash": "bbcf36dc47ad"
+        },
+        {
+            "name": "moondream",
+            "size": "1.7GB",
+            "hash": "55fc3abd3867"
+        },
+        {
+            "name": "moondream:1.8b",
+            "size": "1.7GB",
+            "hash": "55fc3abd3867"
+        },
+        {
+            "name": "mistral-small3.1",
+            "size": "15GB",
+            "hash": "b9aaf0c2586a"
+        },
+        {
+            "name": "mistral-small3.1:24b",
+            "size": "15GB",
+            "hash": "b9aaf0c2586a"
+        },
+        {
+            "name": "deepscaler",
+            "size": "3.6GB",
+            "hash": "0031bcf7459f"
+        },
+        {
+            "name": "deepscaler:1.5b",
+            "size": "3.6GB",
+            "hash": "0031bcf7459f"
+        },
+        {
+            "name": "mistral-small3.2",
+            "size": "15GB",
+            "hash": "5a408ab55df5"
+        },
+        {
+            "name": "mistral-small3.2:24b",
+            "size": "15GB",
+            "hash": "5a408ab55df5"
+        },
+        {
+            "name": "wizard-vicuna-uncensored",
+            "size": "3.8GB",
+            "hash": "72fc3c2b99dc"
+        },
+        {
+            "name": "wizard-vicuna-uncensored:7b",
+            "size": "3.8GB",
+            "hash": "72fc3c2b99dc"
+        },
+        {
+            "name": "wizard-vicuna-uncensored:13b",
+            "size": "7.4GB",
+            "hash": "6887722b6618"
+        },
+        {
+            "name": "wizard-vicuna-uncensored:30b",
+            "size": "18GB",
+            "hash": "5a7102e25304"
+        },
+        {
+            "name": "granite-code",
+            "size": "2.0GB",
+            "hash": "becc94fe1876"
+        },
+        {
+            "name": "granite-code:3b",
+            "size": "2.0GB",
+            "hash": "becc94fe1876"
+        },
+        {
+            "name": "granite-code:8b",
+            "size": "4.6GB",
+            "hash": "36c3c3b9683b"
+        },
+        {
+            "name": "granite-code:20b",
+            "size": "12GB",
+            "hash": "59db7b531bb4"
+        },
+        {
+            "name": "granite-code:34b",
+            "size": "19GB",
+            "hash": "4ce00960ca84"
+        },
+        {
+            "name": "dolphin-phi",
+            "size": "1.6GB",
+            "hash": "c5761fc77240"
+        },
+        {
+            "name": "dolphin-phi:2.7b",
+            "size": "1.6GB",
+            "hash": "c5761fc77240"
+        },
+        {
+            "name": "starcoder",
+            "size": "1.8GB",
+            "hash": "847e5a7aa26f"
+        },
+        {
+            "name": "starcoder:1b",
+            "size": "726MB",
+            "hash": "77e6c46054d9"
+        },
+        {
+            "name": "starcoder:3b",
+            "size": "1.8GB",
+            "hash": "847e5a7aa26f"
+        },
+        {
+            "name": "starcoder:7b",
+            "size": "4.3GB",
+            "hash": "53fdbc3a2006"
+        },
+        {
+            "name": "starcoder:15b",
+            "size": "9.0GB",
+            "hash": "fc59c84e00c5"
+        },
+        {
+            "name": "deepseek-llm",
+            "size": "4.0GB",
+            "hash": "9aab369a853b"
+        },
+        {
+            "name": "deepseek-llm:7b",
+            "size": "4.0GB",
+            "hash": "9aab369a853b"
+        },
+        {
+            "name": "deepseek-llm:67b",
+            "size": "38GB",
+            "hash": "52e3a994907e"
+        },
+        {
+            "name": "vicuna",
+            "size": "3.8GB",
+            "hash": "370739dc897b"
+        },
+        {
+            "name": "vicuna:7b",
+            "size": "3.8GB",
+            "hash": "370739dc897b"
+        },
+        {
+            "name": "vicuna:13b",
+            "size": "7.4GB",
+            "hash": "e311d03837d9"
+        },
+        {
+            "name": "vicuna:33b",
+            "size": "18GB",
+            "hash": "86f0704901a4"
+        },
+        {
+            "name": "openchat",
+            "size": "4.1GB",
+            "hash": "537a4e03b649"
+        },
+        {
+            "name": "openchat:7b",
+            "size": "4.1GB",
+            "hash": "537a4e03b649"
+        },
+        {
+            "name": "mistral-openorca",
+            "size": "4.1GB",
+            "hash": "12dc6acc14d0"
+        },
+        {
+            "name": "mistral-openorca:7b",
+            "size": "4.1GB",
+            "hash": "12dc6acc14d0"
+        },
+        {
+            "name": "deepseek-v2",
+            "size": "8.9GB",
+            "hash": "7c8c332f2df7"
+        },
+        {
+            "name": "deepseek-v2:16b",
+            "size": "8.9GB",
+            "hash": "7c8c332f2df7"
+        },
+        {
+            "name": "deepseek-v2:236b",
+            "size": "133GB",
+            "hash": "459de16b5a9e"
+        },
+        {
+            "name": "codegeex4",
+            "size": "5.5GB",
+            "hash": "867b8e81d038"
+        },
+        {
+            "name": "codegeex4:9b",
+            "size": "5.5GB",
+            "hash": "867b8e81d038"
+        },
+        {
+            "name": "openhermes",
+            "size": "4.1GB",
+            "hash": "95477a2659b7"
+        },
+        {
+            "name": "openhermes:v2",
+            "size": "4.1GB",
+            "hash": "f04d5fa80594"
+        },
+        {
+            "name": "openhermes:v2.5",
+            "size": "4.1GB",
+            "hash": "95477a2659b7"
+        },
+        {
+            "name": "codeqwen",
+            "size": "4.2GB",
+            "hash": "df352abf55b1"
+        },
+        {
+            "name": "codeqwen:7b",
+            "size": "4.2GB",
+            "hash": "df352abf55b1"
+        },
+        {
+            "name": "qwen2-math",
+            "size": "4.4GB",
+            "hash": "28cc3a337734"
+        },
+        {
+            "name": "qwen2-math:1.5b",
+            "size": "935MB",
+            "hash": "a4fdda0c6cc5"
+        },
+        {
+            "name": "qwen2-math:7b",
+            "size": "4.4GB",
+            "hash": "28cc3a337734"
+        },
+        {
+            "name": "qwen2-math:72b",
+            "size": "41GB",
+            "hash": "9cf426342464"
+        },
+        {
+            "name": "llama2-chinese",
+            "size": "3.8GB",
+            "hash": "cee11d703eee"
+        },
+        {
+            "name": "llama2-chinese:7b",
+            "size": "3.8GB",
+            "hash": "cee11d703eee"
+        },
+        {
+            "name": "llama2-chinese:13b",
+            "size": "7.4GB",
+            "hash": "990f930d55c5"
+        },
+        {
+            "name": "aya",
+            "size": "4.8GB",
+            "hash": "7ef8c4942023"
+        },
+        {
+            "name": "aya:8b",
+            "size": "4.8GB",
+            "hash": "7ef8c4942023"
+        },
+        {
+            "name": "aya:35b",
+            "size": "20GB",
+            "hash": "bab44e009440"
+        },
+        {
+            "name": "tinydolphin",
+            "size": "637MB",
+            "hash": "0f9dd11f824c"
+        },
+        {
+            "name": "tinydolphin:1.1b",
+            "size": "637MB",
+            "hash": "0f9dd11f824c"
+        },
+        {
+            "name": "nous-hermes",
+            "size": "3.8GB",
+            "hash": "4bfb8ab0bd02"
+        },
+        {
+            "name": "nous-hermes:7b",
+            "size": "3.8GB",
+            "hash": "4bfb8ab0bd02"
+        },
+        {
+            "name": "nous-hermes:13b",
+            "size": "7.4GB",
+            "hash": "e6251854aa4c"
+        },
+        {
+            "name": "glm4",
+            "size": "5.5GB",
+            "hash": "5b699761eca5"
+        },
+        {
+            "name": "glm4:9b",
+            "size": "5.5GB",
+            "hash": "5b699761eca5"
+        },
+        {
+            "name": "stable-code",
+            "size": "1.6GB",
+            "hash": "37681d29a55a"
+        },
+        {
+            "name": "stable-code:3b",
+            "size": "1.6GB",
+            "hash": "37681d29a55a"
+        },
+        {
+            "name": "granite3.2",
+            "size": "4.9GB",
+            "hash": "9bcb3335083f"
+        },
+        {
+            "name": "granite3.2:2b",
+            "size": "1.5GB",
+            "hash": "9d79a41f2f75"
+        },
+        {
+            "name": "granite3.2:8b",
+            "size": "4.9GB",
+            "hash": "9bcb3335083f"
+        },
+        {
+            "name": "exaone-deep",
+            "size": "4.8GB",
+            "hash": "106afe416a9e"
+        },
+        {
+            "name": "exaone-deep:2.4b",
+            "size": "1.6GB",
+            "hash": "37d6b495c16c"
+        },
+        {
+            "name": "exaone-deep:7.8b",
+            "size": "4.8GB",
+            "hash": "106afe416a9e"
+        },
+        {
+            "name": "exaone-deep:32b",
+            "size": "19GB",
+            "hash": "a9422f9a5071"
+        },
+        {
+            "name": "nous-hermes2",
+            "size": "6.1GB",
+            "hash": "d50977d0b36a"
+        },
+        {
+            "name": "nous-hermes2:10.7b",
+            "size": "6.1GB",
+            "hash": "d50977d0b36a"
+        },
+        {
+            "name": "nous-hermes2:34b",
+            "size": "19GB",
+            "hash": "1fbb49caabbd"
+        },
+        {
+            "name": "falcon",
+            "size": "4.2GB",
+            "hash": "4280f7257e73"
+        },
+        {
+            "name": "falcon:7b",
+            "size": "4.2GB",
+            "hash": "4280f7257e73"
+        },
+        {
+            "name": "falcon:40b",
+            "size": "24GB",
+            "hash": "bc9368437a24"
+        },
+        {
+            "name": "falcon:180b",
+            "size": "101GB",
+            "hash": "e2bc879d7cee"
+        },
+        {
+            "name": "wizardcoder",
+            "size": "3.8GB",
+            "hash": "de9d848c1323"
+        },
+        {
+            "name": "wizardcoder:33b",
+            "size": "19GB",
+            "hash": "5b944d3546ee"
+        },
+        {
+            "name": "command-r-plus",
+            "size": "59GB",
+            "hash": "e61b6b184f38"
+        },
+        {
+            "name": "command-r-plus:104b",
+            "size": "59GB",
+            "hash": "e61b6b184f38"
+        },
+        {
+            "name": "neural-chat",
+            "size": "4.1GB",
+            "hash": "89fa737d3b85"
+        },
+        {
+            "name": "neural-chat:7b",
+            "size": "4.1GB",
+            "hash": "89fa737d3b85"
+        },
+        {
+            "name": "bakllava",
+            "size": "4.7GB",
+            "hash": "3dd68bd4447c"
+        },
+        {
+            "name": "bakllava:7b",
+            "size": "4.7GB",
+            "hash": "3dd68bd4447c"
+        },
+        {
+            "name": "stablelm2",
+            "size": "983MB",
+            "hash": "714a6116cffa"
+        },
+        {
+            "name": "stablelm2:1.6b",
+            "size": "983MB",
+            "hash": "714a6116cffa"
+        },
+        {
+            "name": "stablelm2:12b",
+            "size": "7.0GB",
+            "hash": "34b434945650"
+        },
+        {
+            "name": "sqlcoder",
+            "size": "4.1GB",
+            "hash": "77ac14348387"
+        },
+        {
+            "name": "sqlcoder:7b",
+            "size": "4.1GB",
+            "hash": "77ac14348387"
+        },
+        {
+            "name": "sqlcoder:15b",
+            "size": "9.0GB",
+            "hash": "93bb0e8a904f"
+        },
+        {
+            "name": "llama3-chatqa",
+            "size": "4.7GB",
+            "hash": "b37a98d204b2"
+        },
+        {
+            "name": "llama3-chatqa:8b",
+            "size": "4.7GB",
+            "hash": "b37a98d204b2"
+        },
+        {
+            "name": "llama3-chatqa:70b",
+            "size": "40GB",
+            "hash": "ab8941f03aa3"
+        },
+        {
+            "name": "opencoder",
+            "size": "4.7GB",
+            "hash": "cd882db52297"
+        },
+        {
+            "name": "opencoder:1.5b",
+            "size": "1.4GB",
+            "hash": "8573dfc23c16"
+        },
+        {
+            "name": "opencoder:8b",
+            "size": "4.7GB",
+            "hash": "cd882db52297"
+        },
+        {
+            "name": "llava-phi3",
+            "size": "2.9GB",
+            "hash": "c7edd7b87593"
+        },
+        {
+            "name": "llava-phi3:3.8b",
+            "size": "2.9GB",
+            "hash": "c7edd7b87593"
+        },
+        {
+            "name": "yi-coder",
+            "size": "5.0GB",
+            "hash": "39c63e7675d7"
+        },
+        {
+            "name": "yi-coder:1.5b",
+            "size": "866MB",
+            "hash": "186c460ee707"
+        },
+        {
+            "name": "yi-coder:9b",
+            "size": "5.0GB",
+            "hash": "39c63e7675d7"
+        },
+        {
+            "name": "wizard-math",
+            "size": "4.1GB",
+            "hash": "5ab8dc2115d3"
+        },
+        {
+            "name": "wizard-math:7b",
+            "size": "4.1GB",
+            "hash": "5ab8dc2115d3"
+        },
+        {
+            "name": "wizard-math:13b",
+            "size": "7.4GB",
+            "hash": "8b44f21282d8"
+        },
+        {
+            "name": "wizard-math:70b",
+            "size": "39GB",
+            "hash": "78a12f5c753b"
+        },
+        {
+            "name": "reflection",
+            "size": "40GB",
+            "hash": "5084e77c1e10"
+        },
+        {
+            "name": "reflection:70b",
+            "size": "40GB",
+            "hash": "5084e77c1e10"
+        },
+        {
+            "name": "granite3.1-dense",
+            "size": "5.0GB",
+            "hash": "34d3be74ec54"
+        },
+        {
+            "name": "granite3.1-dense:2b",
+            "size": "1.6GB",
+            "hash": "fba1ad01113e"
+        },
+        {
+            "name": "granite3.1-dense:8b",
+            "size": "5.0GB",
+            "hash": "34d3be74ec54"
+        },
+        {
+            "name": "granite3-dense",
+            "size": "1.6GB",
+            "hash": "5c2e6f3112f4"
+        },
+        {
+            "name": "granite3-dense:2b",
+            "size": "1.6GB",
+            "hash": "5c2e6f3112f4"
+        },
+        {
+            "name": "granite3-dense:8b",
+            "size": "4.9GB",
+            "hash": "199456d876ee"
+        },
+        {
+            "name": "llama3-gradient",
+            "size": "4.7GB",
+            "hash": "5d1398df5b8b"
+        },
+        {
+            "name": "llama3-gradient:8b",
+            "size": "4.7GB",
+            "hash": "5d1398df5b8b"
+        },
+        {
+            "name": "llama3-gradient:70b",
+            "size": "40GB",
+            "hash": "b5d6e9d0ae61"
+        },
+        {
+            "name": "exaone3.5",
+            "size": "4.8GB",
+            "hash": "c7c4e3d1ca22"
+        },
+        {
+            "name": "exaone3.5:2.4b",
+            "size": "1.6GB",
+            "hash": "13644fc3d28e"
+        },
+        {
+            "name": "exaone3.5:7.8b",
+            "size": "4.8GB",
+            "hash": "c7c4e3d1ca22"
+        },
+        {
+            "name": "exaone3.5:32b",
+            "size": "19GB",
+            "hash": "f2f69abac3da"
+        },
+        {
+            "name": "dbrx",
+            "size": "74GB",
+            "hash": "36800d8d3a28"
+        },
+        {
+            "name": "dbrx:132b",
+            "size": "74GB",
+            "hash": "36800d8d3a28"
+        },
+        {
+            "name": "samantha-mistral",
+            "size": "4.1GB",
+            "hash": "f7c8c9be1da0"
+        },
+        {
+            "name": "samantha-mistral:7b",
+            "size": "4.1GB",
+            "hash": "f7c8c9be1da0"
+        },
+        {
+            "name": "dolphincoder",
+            "size": "4.2GB",
+            "hash": "677555f1f316"
+        },
+        {
+            "name": "dolphincoder:7b",
+            "size": "4.2GB",
+            "hash": "677555f1f316"
+        },
+        {
+            "name": "dolphincoder:15b",
+            "size": "9.1GB",
+            "hash": "1102380927c2"
+        },
+        {
+            "name": "tulu3",
+            "size": "4.9GB",
+            "hash": "7119be59a531"
+        },
+        {
+            "name": "tulu3:8b",
+            "size": "4.9GB",
+            "hash": "7119be59a531"
+        },
+        {
+            "name": "tulu3:70b",
+            "size": "43GB",
+            "hash": "fa6de45f539f"
+        },
+        {
+            "name": "nemotron-mini",
+            "size": "2.7GB",
+            "hash": "ed76ab18784f"
+        },
+        {
+            "name": "nemotron-mini:4b",
+            "size": "2.7GB",
+            "hash": "ed76ab18784f"
+        },
+        {
+            "name": "r1-1776",
+            "size": "43GB",
+            "hash": "140ea940f21d"
+        },
+        {
+            "name": "r1-1776:70b",
+            "size": "43GB",
+            "hash": "140ea940f21d"
+        },
+        {
+            "name": "r1-1776:671b",
+            "size": "404GB",
+            "hash": "dfa713736c7b"
+        },
+        {
+            "name": "starling-lm",
+            "size": "4.1GB",
+            "hash": "39153f619be6"
+        },
+        {
+            "name": "starling-lm:7b",
+            "size": "4.1GB",
+            "hash": "39153f619be6"
+        },
+        {
+            "name": "phind-codellama",
+            "size": "19GB",
+            "hash": "566e1b629c44"
+        },
+        {
+            "name": "phind-codellama:34b",
+            "size": "19GB",
+            "hash": "566e1b629c44"
+        },
+        {
+            "name": "solar",
+            "size": "6.1GB",
+            "hash": "059fdabbe6e6"
+        },
+        {
+            "name": "solar:10.7b",
+            "size": "6.1GB",
+            "hash": "059fdabbe6e6"
+        },
+        {
+            "name": "internlm2",
+            "size": "4.5GB",
+            "hash": "5050e36678ab"
+        },
+        {
+            "name": "internlm2:1m",
+            "size": "4.5GB",
+            "hash": "f51a58d004a3"
+        },
+        {
+            "name": "internlm2:1.8b",
+            "size": "1.1GB",
+            "hash": "653be3eb69a0"
+        },
+        {
+            "name": "internlm2:7b",
+            "size": "4.5GB",
+            "hash": "5050e36678ab"
+        },
+        {
+            "name": "internlm2:20b",
+            "size": "11GB",
+            "hash": "a864ac8dade2"
+        },
+        {
+            "name": "xwinlm",
+            "size": "3.8GB",
+            "hash": "0fa68068d970"
+        },
+        {
+            "name": "xwinlm:7b",
+            "size": "3.8GB",
+            "hash": "0fa68068d970"
+        },
+        {
+            "name": "xwinlm:13b",
+            "size": "7.4GB",
+            "hash": "630afb311638"
+        },
+        {
+            "name": "athene-v2",
+            "size": "47GB",
+            "hash": "d14346ed7d55"
+        },
+        {
+            "name": "athene-v2:72b",
+            "size": "47GB",
+            "hash": "d14346ed7d55"
+        },
+        {
+            "name": "nemotron",
+            "size": "43GB",
+            "hash": "2262f047a28a"
+        },
+        {
+            "name": "nemotron:70b",
+            "size": "43GB",
+            "hash": "2262f047a28a"
+        },
+        {
+            "name": "yarn-llama2",
+            "size": "3.8GB",
+            "hash": "75df67be3cee"
+        },
+        {
+            "name": "yarn-llama2:7b",
+            "size": "3.8GB",
+            "hash": "75df67be3cee"
+        },
+        {
+            "name": "yarn-llama2:13b",
+            "size": "7.4GB",
+            "hash": "8a0a518f30c5"
+        },
+        {
+            "name": "llama3-groq-tool-use",
+            "size": "4.7GB",
+            "hash": "36211dad2b15"
+        },
+        {
+            "name": "llama3-groq-tool-use:8b",
+            "size": "4.7GB",
+            "hash": "36211dad2b15"
+        },
+        {
+            "name": "llama3-groq-tool-use:70b",
+            "size": "40GB",
+            "hash": "696d50e6fc55"
+        },
+        {
+            "name": "meditron",
+            "size": "3.8GB",
+            "hash": "ad11a6250f54"
+        },
+        {
+            "name": "meditron:7b",
+            "size": "3.8GB",
+            "hash": "ad11a6250f54"
+        },
+        {
+            "name": "meditron:70b",
+            "size": "39GB",
+            "hash": "315d466c452f"
+        },
+        {
+            "name": "granite3-moe",
+            "size": "822MB",
+            "hash": "d84e1e38ee39"
+        },
+        {
+            "name": "granite3-moe:1b",
+            "size": "822MB",
+            "hash": "d84e1e38ee39"
+        },
+        {
+            "name": "granite3-moe:3b",
+            "size": "2.1GB",
+            "hash": "157f538ae66e"
+        },
+        {
+            "name": "wizardlm-uncensored",
+            "size": "7.4GB",
+            "hash": "886a369d74fc"
+        },
+        {
+            "name": "wizardlm-uncensored:13b",
+            "size": "7.4GB",
+            "hash": "886a369d74fc"
+        },
+        {
+            "name": "aya-expanse",
+            "size": "5.1GB",
+            "hash": "65f986688a01"
+        },
+        {
+            "name": "aya-expanse:8b",
+            "size": "5.1GB",
+            "hash": "65f986688a01"
+        },
+        {
+            "name": "aya-expanse:32b",
+            "size": "20GB",
+            "hash": "1603440383bd"
+        },
+        {
+            "name": "wizardlm:7b-q2_K",
+            "size": "2.8GB",
+            "hash": "3bd62c66bf07"
+        },
+        {
+            "name": "wizardlm:7b-q3_K_S",
+            "size": "2.9GB",
+            "hash": "2f4e28f337fb"
+        },
+        {
+            "name": "wizardlm:7b-q3_K_M",
+            "size": "3.3GB",
+            "hash": "77ee25ef2d73"
+        },
+        {
+            "name": "smallthinker",
+            "size": "3.6GB",
+            "hash": "945eb1864589"
+        },
+        {
+            "name": "smallthinker:3b",
+            "size": "3.6GB",
+            "hash": "945eb1864589"
+        },
+        {
+            "name": "llama-guard3",
+            "size": "4.9GB",
+            "hash": "46f211c3d866"
+        },
+        {
+            "name": "llama-guard3:1b",
+            "size": "1.6GB",
+            "hash": "494147e06bf9"
+        },
+        {
+            "name": "llama-guard3:8b",
+            "size": "4.9GB",
+            "hash": "46f211c3d866"
+        },
+        {
+            "name": "orca2",
+            "size": "3.8GB",
+            "hash": "ea98cc422de3"
+        },
+        {
+            "name": "orca2:7b",
+            "size": "3.8GB",
+            "hash": "ea98cc422de3"
+        },
+        {
+            "name": "orca2:13b",
+            "size": "7.4GB",
+            "hash": "a8dcfac3ac32"
+        },
+        {
+            "name": "medllama2",
+            "size": "3.8GB",
+            "hash": "a53737ec0c72"
+        },
+        {
+            "name": "medllama2:7b",
+            "size": "3.8GB",
+            "hash": "a53737ec0c72"
+        },
+        {
+            "name": "nous-hermes2-mixtral",
+            "size": "26GB",
+            "hash": "da8c35896cff"
+        },
+        {
+            "name": "nous-hermes2-mixtral:8x7b",
+            "size": "26GB",
+            "hash": "da8c35896cff"
+        },
+        {
+            "name": "stable-beluga",
+            "size": "3.8GB",
+            "hash": "e5d7b4def1b8"
+        },
+        {
+            "name": "stable-beluga:7b",
+            "size": "3.8GB",
+            "hash": "e5d7b4def1b8"
+        },
+        {
+            "name": "stable-beluga:13b",
+            "size": "7.4GB",
+            "hash": "ac691f885162"
+        },
+        {
+            "name": "stable-beluga:70b",
+            "size": "39GB",
+            "hash": "31f4bfb3a050"
+        },
+        {
+            "name": "deepseek-v2.5",
+            "size": "133GB",
+            "hash": "409b2dd8a3c4"
+        },
+        {
+            "name": "deepseek-v2.5:236b",
+            "size": "133GB",
+            "hash": "409b2dd8a3c4"
+        },
+        {
+            "name": "reader-lm",
+            "size": "935MB",
+            "hash": "33da2b9e0afe"
+        },
+        {
+            "name": "reader-lm:0.5b",
+            "size": "352MB",
+            "hash": "5142df586645"
+        },
+        {
+            "name": "reader-lm:1.5b",
+            "size": "935MB",
+            "hash": "33da2b9e0afe"
+        },
+        {
+            "name": "llama-pro",
+            "size": "4.7GB",
+            "hash": "fc5c0d744444"
+        },
+        {
+            "name": "llama-pro:instruct",
+            "size": "4.7GB",
+            "hash": "fc5c0d744444"
+        },
+        {
+            "name": "llama-pro:text",
+            "size": "4.7GB",
+            "hash": "37a8c2df2159"
+        },
+        {
+            "name": "yarn-mistral",
+            "size": "4.1GB",
+            "hash": "8e9c368a0ae4"
+        },
+        {
+            "name": "yarn-mistral:7b",
+            "size": "4.1GB",
+            "hash": "8e9c368a0ae4"
+        },
+        {
+            "name": "command-r7b",
+            "size": "5.1GB",
+            "hash": "ff4e9696ef9f"
+        },
+        {
+            "name": "command-r7b:7b",
+            "size": "5.1GB",
+            "hash": "ff4e9696ef9f"
+        },
+        {
+            "name": "shieldgemma",
+            "size": "5.8GB",
+            "hash": "c82cacd5af5e"
+        },
+        {
+            "name": "shieldgemma:2b",
+            "size": "1.7GB",
+            "hash": "5aad5044d142"
+        },
+        {
+            "name": "shieldgemma:9b",
+            "size": "5.8GB",
+            "hash": "c82cacd5af5e"
+        },
+        {
+            "name": "shieldgemma:27b",
+            "size": "17GB",
+            "hash": "a5d7e17031b4"
+        },
+        {
+            "name": "nexusraven",
+            "size": "7.4GB",
+            "hash": "483a8282af74"
+        },
+        {
+            "name": "nexusraven:13b",
+            "size": "7.4GB",
+            "hash": "483a8282af74"
+        },
+        {
+            "name": "mathstral",
+            "size": "4.1GB",
+            "hash": "4ee7052be55a"
+        },
+        {
+            "name": "mathstral:7b",
+            "size": "4.1GB",
+            "hash": "4ee7052be55a"
+        },
+        {
+            "name": "command-a",
+            "size": "67GB",
+            "hash": "cd22bd484599"
+        },
+        {
+            "name": "command-a:111b",
+            "size": "67GB",
+            "hash": "cd22bd484599"
+        },
+        {
+            "name": "everythinglm",
+            "size": "7.4GB",
+            "hash": "b005372bc34b"
+        },
+        {
+            "name": "everythinglm:13b",
+            "size": "7.4GB",
+            "hash": "b005372bc34b"
+        },
+        {
+            "name": "phi4-mini-reasoning",
+            "size": "3.2GB",
+            "hash": "3ca8c2865ce9"
+        },
+        {
+            "name": "phi4-mini-reasoning:3.8b",
+            "size": "3.2GB",
+            "hash": "3ca8c2865ce9"
+        },
+        {
+            "name": "codeup",
+            "size": "7.4GB",
+            "hash": "54289661f7a9"
+        },
+        {
+            "name": "codeup:13b",
+            "size": "7.4GB",
+            "hash": "54289661f7a9"
+        },
+        {
+            "name": "marco-o1",
+            "size": "4.7GB",
+            "hash": "4752e62baa0a"
+        },
+        {
+            "name": "marco-o1:7b",
+            "size": "4.7GB",
+            "hash": "4752e62baa0a"
+        },
+        {
+            "name": "stablelm-zephyr",
+            "size": "1.6GB",
+            "hash": "0a108dbd846e"
+        },
+        {
+            "name": "stablelm-zephyr:3b",
+            "size": "1.6GB",
+            "hash": "0a108dbd846e"
+        },
+        {
+            "name": "solar-pro",
+            "size": "13GB",
+            "hash": "9a8c71c441ca"
+        },
+        {
+            "name": "solar-pro:22b",
+            "size": "13GB",
+            "hash": "9a8c71c441ca"
+        },
+        {
+            "name": "duckdb-nsql",
+            "size": "3.8GB",
+            "hash": "3ed734989690"
+        },
+        {
+            "name": "duckdb-nsql:7b",
+            "size": "3.8GB",
+            "hash": "3ed734989690"
+        },
+        {
+            "name": "falcon2",
+            "size": "6.4GB",
+            "hash": "d8c09dbc67c3"
+        },
+        {
+            "name": "falcon2:11b",
+            "size": "6.4GB",
+            "hash": "d8c09dbc67c3"
+        },
+        {
+            "name": "magicoder",
+            "size": "3.8GB",
+            "hash": "8007de06f5d9"
+        },
+        {
+            "name": "magicoder:7b",
+            "size": "3.8GB",
+            "hash": "8007de06f5d9"
+        },
+        {
+            "name": "mistrallite",
+            "size": "4.1GB",
+            "hash": "5393d4f5f262"
+        },
+        {
+            "name": "mistrallite:7b",
+            "size": "4.1GB",
+            "hash": "5393d4f5f262"
+        },
+        {
+            "name": "codebooga",
+            "size": "19GB",
+            "hash": "05b83c5673dc"
+        },
+        {
+            "name": "codebooga:34b",
+            "size": "19GB",
+            "hash": "05b83c5673dc"
+        },
+        {
+            "name": "bespoke-minicheck",
+            "size": "4.7GB",
+            "hash": "66607904c165"
+        },
+        {
+            "name": "bespoke-minicheck:7b",
+            "size": "4.7GB",
+            "hash": "66607904c165"
+        },
+        {
+            "name": "wizard-vicuna",
+            "size": "7.4GB",
+            "hash": "a8fb469ef6bd"
+        },
+        {
+            "name": "wizard-vicuna:13b",
+            "size": "7.4GB",
+            "hash": "a8fb469ef6bd"
+        },
+        {
+            "name": "nuextract",
+            "size": "2.2GB",
+            "hash": "233ce1dee972"
+        },
+        {
+            "name": "nuextract:3.8b",
+            "size": "2.2GB",
+            "hash": "233ce1dee972"
+        },
+        {
+            "name": "granite3-guardian",
+            "size": "2.7GB",
+            "hash": "ba81a177bd23"
+        },
+        {
+            "name": "granite3-guardian:2b",
+            "size": "2.7GB",
+            "hash": "ba81a177bd23"
+        },
+        {
+            "name": "granite3-guardian:8b",
+            "size": "5.8GB",
+            "hash": "c8d7d5c76685"
+        },
+        {
+            "name": "megadolphin",
+            "size": "68GB",
+            "hash": "8fa55398527b"
+        },
+        {
+            "name": "megadolphin:120b",
+            "size": "68GB",
+            "hash": "8fa55398527b"
+        },
+        {
+            "name": "notux",
+            "size": "26GB",
+            "hash": "fe14e7d66184"
+        },
+        {
+            "name": "notux:8x7b",
+            "size": "26GB",
+            "hash": "fe14e7d66184"
+        },
+        {
+            "name": "open-orca-platypus2",
+            "size": "7.4GB",
+            "hash": "6f0b7ebe895b"
+        },
+        {
+            "name": "open-orca-platypus2:13b",
+            "size": "7.4GB",
+            "hash": "6f0b7ebe895b"
+        },
+        {
+            "name": "notus",
+            "size": "4.1GB",
+            "hash": "43c512e16786"
+        },
+        {
+            "name": "notus:7b",
+            "size": "4.1GB",
+            "hash": "43c512e16786"
+        },
+        {
+            "name": "goliath",
+            "size": "66GB",
+            "hash": "61088afdc9fd"
+        },
+        {
+            "name": "sailor2",
+            "size": "5.2GB",
+            "hash": "f08f378f040a"
+        },
+        {
+            "name": "sailor2:1b",
+            "size": "1.1GB",
+            "hash": "7b8c8f58ae99"
+        },
+        {
+            "name": "sailor2:8b",
+            "size": "5.2GB",
+            "hash": "f08f378f040a"
+        },
+        {
+            "name": "sailor2:20b",
+            "size": "12GB",
+            "hash": "b74611e7fe0d"
+        },
+        {
+            "name": "firefunction-v2",
+            "size": "40GB",
+            "hash": "b1ed6b22fb67"
+        },
+        {
+            "name": "firefunction-v2:70b",
+            "size": "40GB",
+            "hash": "b1ed6b22fb67"
+        },
+        {
+            "name": "alfred",
+            "size": "24GB",
+            "hash": "e46325710c52"
+        },
+        {
+            "name": "alfred:40b",
+            "size": "24GB",
+            "hash": "e46325710c52"
+        },
+        {
+            "name": "command-r7b-arabic",
+            "size": "5.1GB",
+            "hash": "4bbe3353e56a"
+        },
+        {
+            "name": "command-r7b-arabic:7b",
+            "size": "5.1GB",
+            "hash": "4bbe3353e56a"
+        },
+        {
+            "name": "deepseek-v3.1:671b",
+            "size": "404GB",
+            "hash": "044d50a3d79c"
+        },
+        {
+            "name": "antoniprzybylik/pllum:12b",
+            "size": "25G",
+            "hash": "e35667af71cf"
+        },
+        {
+            "name": "antoniprzybylik/pllum:8x7b",
+            "size": "93GB",
+            "hash": "8e3962e2f742"
+        },
+        {
+            "name": "antoniprzybylik/llama-pllum:8b",
+            "size": "16GB",
+            "hash": "3714486b7f3f"
+        },
+        {
+            "name": "antoniprzybylik/llama-pllum:70b",
+            "size": "141GB",
+            "hash": "44af87255635"
+        },
+        {
+            "name": "SpeakLeash/bielik-7b-instruct-v0.1-gguf",
+            "size": "4.1GB",
+            "hash": "879e1d63bcee"
+        },
+        {
+            "name": "SpeakLeash/bielik-11b-v2.0-instruct:Q4_K_M",
+            "size": "6.7GB",
+            "hash": "2a56ceccc1ba"
+        },
+        {
+            "name": "SpeakLeash/bielik-11b-v2.1-instruct:Q4_K_M",
+            "size": "6.7GB",
+            "hash": "9a6ad2bb76dd"
+        },
+        {
+            "name": "SpeakLeash/bielik-11b-v2.2-instruct:Q4_K_M",
+            "size": "6.7GB",
+            "hash": "7a6943897501"
+        },
+        {
+            "name": "SpeakLeash/bielik-11b-v2.3-instruct:Q4_K_M",
+            "size": "6.7GB",
+            "hash": "b0dc93a20fdb"
+        },
+        {
+            "name": "SpeakLeash/bielik-1.5b-v3.0-instruct:Q8_0",
+            "size": "1.7GB",
+            "hash": "c65bebd5c7a6"
+        },
+        {
+            "name": "SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0",
+            "size": "5.1GB",
+            "hash": "88067a36fa44"
+        },
+        {
+            "name": "SpeakLeash/bielik-11b-v3.0-instruct:Q4_K_M",
+            "size": "6.7GB",
+            "hash": "2a22034adb28"
+        },
+        {
+            "name": "mannix/jan-nano",
+            "size": "2.3GB",
+            "hash": "b48a8b54cc40"
+        },
+        {
+            "name": "Llama-PLLuM-8B-chat",
+            "size": "16.1GB",
+            "modelfile": "FROM https://huggingface.co/CYFRAGOVPL/Llama-PLLuM-8B-chat",
+            "hash": ""
+        },
+        {
+            "name": "Llama-PLLuM-8B-chat-Q4_K_M",
+            "size": "4.6GB",
+            "modelfile": "FROM https://huggingface.co/tensorblock/Llama-PLLuM-8B-chat-GGUF/resolve/main/Llama-PLLuM-8B-chat-Q4_K_M.gguf",
+            "hash": ""
+        },
+        {
+            "name": "Llama-PLLuM-8B-chat-Q8_0",
+            "size": "8GB",
+            "modelfile": "FROM https://huggingface.co/tsej/Llama-PLLuM-8B-chat-GGUF/resolve/main/Llama-PLLuM-8B-chat-Q8_0.gguf",
+            "hash": ""
+        },
+        {
+            "name": "Llama-PLLuM-8B-instruct-Q4_K_M",
+            "size": "4.6GB",
+            "modelfile": "FROM https://huggingface.co/mradermacher/Llama-PLLuM-8B-instruct-GGUF/resolve/main/Llama-PLLuM-8B-instruct.Q4_K_M.gguf",
+            "hash": ""
+        },
+        {
+            "name": "PLLuM-12B-instruct-Q4_K_M",
+            "size": "7GB",
+            "modelfile": "FROM https://huggingface.co/mradermacher/PLLuM-12B-instruct-GGUF/resolve/main/PLLuM-12B-instruct.Q4_K_M.gguf",
+            "hash": ""
+        },
+        {
+            "name": "PLLuM-12B-instruct-Q8_0",
+            "size": "12.1GB",
+            "modelfile": "FROM https://huggingface.co/mradermacher/PLLuM-12B-instruct-GGUF/resolve/main/PLLuM-12B-instruct.Q8_0.gguf",
+            "hash": ""
+        },
+        {
+            "name": "HammerAI/mythomax-l2",
+            "size": "7.9GB",
+            "hash": "bb07fb50cf6b"
+        },
+        {
+            "name": "qwen3-coder-next",
+            "size": "52GB",
+            "hash": "ca06e9e4087c"
+        },
+        {
+            "name": "qwen3-coder-next:q4_K_M",
+            "size": "52GB",
+            "hash": "ca06e9e4087c"
+        },
+        {
+            "name": "qwen3-coder-next:q8_0",
+            "size": "85GB",
+            "hash": "3f68e12b44ee"
+        },
+        {
+            "name": "glm-ocr",
+            "size": "2.2GB",
+            "hash": "6effedd0dc8a"
+        },
+        {
+            "name": "glm-ocr:q8_0",
+            "size": "1.6GB",
+            "hash": "2a5a0f1a9301"
+        },
+        {
+            "name": "glm-ocr:bf16",
+            "size": "2.2GB",
+            "hash": "6effedd0dc8a"
+        },
+        {
+            "name": "glm-4.7-flash",
+            "size": "19GB",
+            "hash": "d1a8a26252f1"
+        },
+        {
+            "name": "glm-4.7-flash:q4_K_M",
+            "size": "19GB",
+            "hash": "d1a8a26252f1"
+        },
+        {
+            "name": "glm-4.7-flash:q8_0",
+            "size": "32GB",
+            "hash": "a035bf4bc812"
+        },
+        {
+            "name": "glm-4.7-flash:bf16",
+            "size": "60GB",
+            "hash": "69c2c86b80aa"
+        },
+        {
+            "name": "lfm2.5-thinking",
+            "size": "731MB",
+            "hash": "95bd9d45385f"
+        },
+        {
+            "name": "lfm2.5-thinking:1.2b",
+            "size": "731MB",
+            "hash": "95bd9d45385f"
+        },
+        {
+            "name": "translategemma",
+            "size": "3.3GB",
+            "hash": "c49d986b0764"
+        },
+        {
+            "name": "translategemma:4b",
+            "size": "3.3GB",
+            "hash": "c49d986b0764"
+        },
+        {
+            "name": "translategemma:12b",
+            "size": "8.1GB",
+            "hash": "c2f9a9ca1ec7"
+        },
+        {
+            "name": "translategemma:27b",
+            "size": "17GB",
+            "hash": "21b597a243ec"
+        },
+        {
+            "name": "functiongemma",
+            "size": "301MB",
+            "hash": "7c19b650567a"
+        },
+        {
+            "name": "functiongemma:270m",
+            "size": "301MB",
+            "hash": "7c19b650567a"
+        },
+        {
+            "name": "nemotron-3-nano",
+            "size": "24GB",
+            "hash": "b725f1117407"
+        },
+        {
+            "name": "nemotron-3-nano:30b",
+            "size": "24GB",
+            "hash": "b725f1117407"
+        },
+        {
+            "name": "olmo-3",
+            "size": "4.5GB",
+            "hash": "b8d4c92ac9c1"
+        },
+        {
+            "name": "olmo-3:7b",
+            "size": "4.5GB",
+            "hash": "b8d4c92ac9c1"
+        },
+        {
+            "name": "olmo-3:32b",
+            "size": "19GB",
+            "hash": "e9f1ab1d201f"
+        },
+        {
+            "name": "olmo-3.1",
+            "size": "19GB",
+            "hash": "223d4ec84d91"
+        },
+        {
+            "name": "olmo-3.1:32b",
+            "size": "19GB",
+            "hash": "223d4ec84d91"
+        },
+        {
+            "name": "devstral-small-2",
+            "size": "15GB",
+            "hash": "24277f07f62d"
+        },
+        {
+            "name": "devstral-small-2:24b",
+            "size": "15GB",
+            "hash": "24277f07f62d"
+        },
+        {
+            "name": "rnj-1",
+            "size": "5.1GB",
+            "hash": "d20e29ab8d0f"
+        },
+        {
+            "name": "rnj-1:8b",
+            "size": "5.1GB",
+            "hash": "d20e29ab8d0f"
+        },
+        {
+            "name": "qwen3-next",
+            "size": "50GB",
+            "hash": "b2ebb986e4e9"
+        },
+        {
+            "name": "qwen3-next:80b",
+            "size": "50GB",
+            "hash": "b2ebb986e4e9"
+        },
+        {
+            "name": "ministral-3",
+            "size": "6GB",
+            "hash": "1922accd5827"
+        },
+        {
+            "name": "ministral-3:3b",
+            "size": "3GB",
+            "hash": "f04aa1c738f6"
+        },
+        {
+            "name": "ministral-3:8b",
+            "size": "6GB",
+            "hash": "1922accd5827"
+        },
+        {
+            "name": "ministral-3:14b",
+            "size": "9.1GB",
+            "hash": "4760c35aeb9d"
+        },
+        {
+            "name": "deepseek-ocr",
+            "size": "6.7GB",
+            "hash": "0e7b018b8a22"
+        },
+        {
+            "name": "deepseek-ocr:3b",
+            "size": "6.7GB",
+            "hash": "0e7b018b8a22"
+        },
+        {
+            "name": "cogito-2.1",
+            "size": "1.3TB",
+            "hash": "743a587e4577"
+        },
+        {
+            "name": "cogito-2.1:671b",
+            "size": "1.3TB",
+            "hash": "743a587e4577"
+        },
+        {
+            "name": "qwen3-vl",
+            "size": "6.1GB",
+            "hash": "901cae732162"
+        },
+        {
+            "name": "qwen3-vl:2b",
+            "size": "1.9GB",
+            "hash": "0635d9d857d4"
+        },
+        {
+            "name": "qwen3-vl:4b",
+            "size": "3.3GB",
+            "hash": "1343d82ebee3"
+        },
+        {
+            "name": "qwen3-vl:8b",
+            "size": "6.1GB",
+            "hash": "901cae732162"
+        },
+        {
+            "name": "qwen3-vl:30b",
+            "size": "20GB",
+            "hash": "eda0be100877"
+        },
+        {
+            "name": "qwen3-vl:32b",
+            "size": "21GB",
+            "hash": "ff2e46876908"
+        },
+        {
+            "name": "qwen3-vl:235b",
+            "size": "143GB",
+            "hash": "dc44c5b88b17"
+        }
+    ],
+    "txt2img": [
+        {
+            "name": "x/flux2-klein",
+            "size": "5.7GB",
+            "hash": "50a0c0ab15ac"
+        },
+        {
+            "name": "x/flux2-klein:4b",
+            "size": "5.7GB",
+            "hash": "50a0c0ab15ac"
+        },
+        {
+            "name": "x/flux2-klein:9b",
+            "size": "12GB",
+            "hash": "91f22bc541d8"
+        },
+        {
+            "name": "x/z-image-turbo",
+            "size": "13GB",
+            "hash": "77b78ce4e883"
+        },
+        {
+            "name": "x/z-image-turbo:fp8",
+            "size": "13GB",
+            "hash": "77b78ce4e883"
+        },
+        {
+            "name": "x/z-image-turbo:bf16",
+            "size": "33GB",
+            "hash": "a9a017f804f2"
+        }
+    ]
 }

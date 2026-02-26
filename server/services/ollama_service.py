@@ -9,6 +9,7 @@
 
 """Ollama service."""
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -88,6 +89,7 @@ class OllamaModel(BaseModel):
     id: str
     size: str
     type: str
+    hash: str
     custom: CustomModelId | None = None
     modelfile: str | None = None
     quantization: Quantization | Literal[""] | None = None
@@ -104,6 +106,7 @@ class OllamaCustomModel(BaseModel):
 class OllamaRegistryEntry(TypedDict):
     name: str
     size: str
+    hash: str
 
 
 class OllamaRegistry(TypedDict):
@@ -117,6 +120,7 @@ def _read_models() -> dict[str, OllamaModel]:
     with ollama_path.open(encoding="utf-8") as f:
         registry: OllamaRegistry = json.loads(f.read())
         map: dict[str, OllamaModel] = {}
+
         for tag in registry["llms"]:
             map[tag["name"]] = OllamaModel(
                 id=tag["name"],
@@ -124,6 +128,7 @@ def _read_models() -> dict[str, OllamaModel]:
                 type="llm",
                 modelfile=tag.get("modelfile", ""),
                 quantization=tag.get("quantization", ""),
+                hash=tag["hash"],
             )
         for tag in registry["embeddings"]:
             map[tag["name"]] = OllamaModel(
@@ -132,6 +137,7 @@ def _read_models() -> dict[str, OllamaModel]:
                 type="embedding",
                 modelfile=tag.get("modelfile", ""),
                 quantization=tag.get("quantization", ""),
+                hash=tag["hash"],
             )
         for tag in registry["txt2img"]:
             map[tag["name"]] = OllamaModel(
@@ -140,6 +146,7 @@ def _read_models() -> dict[str, OllamaModel]:
                 type="txt2img",
                 modelfile=tag.get("modelfile", ""),
                 quantization=tag.get("quantization", ""),
+                hash=tag["hash"],
             )
         return map
 
@@ -460,6 +467,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             custom=model.id,
             modelfile=parsed.modelfile,
             quantization=parsed.quantization,
+            hash=parsed.id,
         )
 
     def _remove_custom_model(self, instance: str, model: CustomModel) -> None:
@@ -790,6 +798,12 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                 )
             input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             self.models_downloaded[model_id] = DownloadedInfo()
+
+            if model.hash:
+                for alias_model_id, alias_model in self.models[instance].items():
+                    if alias_model.hash == model.hash:
+                        self.models_downloaded[alias_model_id] = DownloadedInfo()
+
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -807,5 +821,20 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                 self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
 
         if options.purge and model_id in self.models_downloaded:
-            await fetch_from(f"{info.base_url}/api/delete", "DELETE", {"name": model_id})
+            model = self.models[instance][model_id]
+            tasks: list[asyncio.Task[Any]] = []
+
+            tasks.append(asyncio.create_task(fetch_from(f"{info.base_url}/api/delete", "DELETE", {"name": model_id})))
+
             del self.models_downloaded[model_id]
+
+            if not model.hash:
+                return
+
+            for alias_model_id, alias_model in self.models[instance].items():
+                if alias_model.hash == model.hash and model_id != alias_model_id:
+                    await self._uninstall_model(instance, alias_model_id, UninstallModelIn(purge=False))
+                    tasks.append(asyncio.create_task(fetch_from(f"{info.base_url}/api/delete", "DELETE", {"name": alias_model_id})))
+                    del self.models_downloaded[alias_model_id]
+
+            await asyncio.gather(*tasks)
