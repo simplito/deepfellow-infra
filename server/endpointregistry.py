@@ -960,7 +960,7 @@ class EndpointRegistry:
 
         endpoint = self.chat_completion_endpoints.get_model(
             body.model,
-            filter=lambda x: x.on_responses is not None,
+            filter=lambda x: x.on_messages is not None,
             registration_id=registration_id,
         )
         on_messages = endpoint.endpoint.on_messages if endpoint else None
