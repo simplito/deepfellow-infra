@@ -90,6 +90,7 @@ class OllamaModel(BaseModel):
     size: str
     type: str
     hash: str
+    context: int | None
     custom: CustomModelId | None = None
     modelfile: str | None = None
     quantization: Quantization | Literal[""] | None = None
@@ -107,6 +108,7 @@ class OllamaRegistryEntry(TypedDict):
     name: str
     size: str
     hash: str
+    context: int | None
 
 
 class OllamaRegistry(TypedDict):
@@ -129,6 +131,7 @@ def _read_models() -> dict[str, OllamaModel]:
                 modelfile=tag.get("modelfile", ""),
                 quantization=tag.get("quantization", ""),
                 hash=tag["hash"],
+                context=tag["context"],
             )
         for tag in registry["embeddings"]:
             map[tag["name"]] = OllamaModel(
@@ -138,6 +141,7 @@ def _read_models() -> dict[str, OllamaModel]:
                 modelfile=tag.get("modelfile", ""),
                 quantization=tag.get("quantization", ""),
                 hash=tag["hash"],
+                context=tag["context"],
             )
         for tag in registry["txt2img"]:
             map[tag["name"]] = OllamaModel(
@@ -147,6 +151,7 @@ def _read_models() -> dict[str, OllamaModel]:
                 modelfile=tag.get("modelfile", ""),
                 quantization=tag.get("quantization", ""),
                 hash=tag["hash"],
+                context=tag["context"],
             )
         return map
 
@@ -468,6 +473,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             modelfile=parsed.modelfile,
             quantization=parsed.quantization,
             hash=parsed.id,
+            context=None,
         )
 
     def _remove_custom_model(self, instance: str, model: CustomModel) -> None:
