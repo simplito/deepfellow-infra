@@ -9,7 +9,6 @@
 
 """Docker backend."""
 
-import grp
 import json
 import logging
 import os
@@ -650,12 +649,13 @@ class DockerService:
             intel_gpus = [gpu for gpu in options.hardware if isinstance(gpu, IntelGpuInfo)]
             if intel_gpus:
                 service["devices"] = ["/dev/dri:/dev/dri"]
-                gids: list[str] = []
-                for name in ("render", "video"):
-                    with suppress(KeyError):
-                        gids.append(str(grp.getgrnam(name).gr_gid))
+                gids: set[str] = set()
+                for dev in Path("/dev/dri").iterdir():
+                    with suppress(OSError):
+                        gids.add(str(Path.stat(dev).st_gid))
+                gids.discard("0")
                 if gids:
-                    service["group_add"] = gids
+                    service["group_add"] = sorted(gids)
         if options.subnet:
             service["networks"] = [options.subnet]
         docker_compose_content: DockerComposeContent = {"services": {options.service_name: service}}

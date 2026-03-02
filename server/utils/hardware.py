@@ -19,7 +19,6 @@ from server.utils.core import Utils
 
 INTEL_VENDOR_ID = "0x8086"
 DRM_PATH = Path("/sys/class/drm")
-DRM_DEBUG_PATH = Path("/sys/kernel/debug/dri")
 
 
 @dataclass
@@ -152,25 +151,12 @@ def _read_text_file(path: Path) -> str | None:
         return None
 
 
-def _get_intel_gpu_vram_mib(card_num: str) -> str | None:
-    """Read VRAM total from debugfs vram0_mm (requires root)."""
-    content = _read_text_file(DRM_DEBUG_PATH / card_num / "vram0_mm")
-    if content is None:
-        return None
-    match = re.search(r"total:\s*(\d+)MiB", content)
-    return f"{match.group(1)} MiB" if match else None
-
-
-async def _get_intel_gpu_name(card_path: Path) -> str | None:
-    """Get GPU name via lspci using the PCI BDF address."""
-    bdf = (card_path / "device").resolve().name
-    try:
-        result = await Utils.run_command_for_success(f"lspci -s {bdf}")
-    except RuntimeError:
-        return None
-    # lspci output: "01:00.0 VGA compatible controller: Intel Corporation"
-    parts = result.stdout.split(": ", 1)
-    return parts[1] if len(parts) > 1 else None
+def _get_intel_gpu_name(card_path: Path) -> str:
+    """Get GPU name from sysfs PCI device ID."""
+    device_id = _read_text_file(card_path / "device" / "device")
+    if device_id:
+        return f"Intel GPU ({device_id})"
+    return "Intel GPU"
 
 
 async def get_intel_gpus_info() -> list[IntelGpuInfo]:
@@ -192,13 +178,8 @@ async def get_intel_gpus_info() -> list[IntelGpuInfo]:
             continue
 
         card_num = card.name.removeprefix("card")
-        name = await _get_intel_gpu_name(card)
-        if name is None:
-            continue
-
-        raw_vram = _get_intel_gpu_vram_mib(card_num)
-        vram = convert_mib_to_gb(raw_vram) if raw_vram else None
-        gpus_info.append(IntelGpuInfo(name, vram, int(card_num)))
+        name = _get_intel_gpu_name(card)
+        gpus_info.append(IntelGpuInfo(name, None, int(card_num)))
 
     return gpus_info
 
