@@ -56,7 +56,7 @@ from server.utils.core import (
     normalize_name,
     try_parse_pydantic,
 )
-from server.utils.hardware import HardwarePartInfo, IntelGpuInfo, NvidiaGpuInfo
+from server.utils.hardware import GpuInfo, HardwarePartInfo, IntelGpuInfo, NvidiaGpuInfo
 from server.utils.loading import Progress
 
 
@@ -186,6 +186,11 @@ class DownloadedInfo:
 
 class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
     models: dict[str, dict[str, LlamacppModel]]
+
+    @property
+    def _supported_gpus(self) -> list[GpuInfo]:
+        """Return GPUs supported by LlamaCpp (including Intel via Vulkan)."""
+        return self.hardware.gpus
 
     def _after_init(self) -> None:
         self.models = {}

@@ -12,6 +12,7 @@
 import asyncio
 import json
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, Literal, TypedDict
@@ -60,6 +61,7 @@ from server.utils.core import (
     stream_fetch_from,
     try_parse_pydantic,
 )
+from server.utils.hardware import GpuInfo, HardwarePartInfo, IntelGpuInfo
 from server.utils.loading import Progress
 
 logger = logging.getLogger("uvicorn.error")
@@ -217,6 +219,11 @@ class DownloadedInfo:
 class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
     models: dict[str, dict[str, OllamaModel]]
 
+    @property
+    def _supported_gpus(self) -> list[GpuInfo]:
+        """Return GPUs supported by Ollama (including Intel via Vulkan)."""
+        return self.hardware.gpus
+
     def _after_init(self) -> None:
         self.models = {}
         self.load_default_models("default")
@@ -341,6 +348,25 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
     def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
         return DownloadedInfo(**data)
 
+    def _build_env_vars(self, parsed_options: OllamaOptions, hardware: Sequence[HardwarePartInfo]) -> dict[str, str]:
+        """Build environment variables for the Ollama Docker container."""
+        envs = dict[str, str]()
+        if parsed_options.num_parallel is not None:
+            envs["OLLAMA_NUM_PARALLEL"] = str(parsed_options.num_parallel)
+        if parsed_options.keep_alive:
+            envs["OLLAMA_KEEP_ALIVE"] = str(parsed_options.keep_alive)
+        if parsed_options.is_flash_attention is not None:
+            envs["OLLAMA_FLASH_ATTENTION"] = "1" if parsed_options.is_flash_attention else "0"
+        if parsed_options.max_loaded_models is not None:
+            envs["OLLAMA_MAX_LOADED_MODELS"] = str(parsed_options.max_loaded_models)
+        if parsed_options.kv_cache_type:
+            envs["OLLAMA_KV_CACHE_TYPE"] = str(parsed_options.kv_cache_type)
+        if parsed_options.context_length:
+            envs["OLLAMA_CONTEXT_LENGTH"] = str(parsed_options.context_length)
+        if any(isinstance(h, IntelGpuInfo) for h in hardware):
+            envs["OLLAMA_VULKAN"] = "1"
+        return envs
+
     async def _install_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
         if not self.models.get(instance):
             self.load_default_models(instance)
@@ -358,26 +384,15 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
             volumes = [f"{self._get_working_dir()}/main:/root/.ollama"]
             subnet = self.docker_service.get_docker_subnet()
-            envs = dict[str, str]()
-            if parsed_options.num_parallel is not None:
-                envs["OLLAMA_NUM_PARALLEL"] = str(parsed_options.num_parallel)
-            if parsed_options.keep_alive:
-                envs["OLLAMA_KEEP_ALIVE"] = str(parsed_options.keep_alive)
-            if parsed_options.is_flash_attention is not None:
-                envs["OLLAMA_FLASH_ATTENTION"] = "1" if parsed_options.is_flash_attention else "0"
-            if parsed_options.max_loaded_models is not None:
-                envs["OLLAMA_MAX_LOADED_MODELS"] = str(parsed_options.max_loaded_models)
-            if parsed_options.kv_cache_type:
-                envs["OLLAMA_KV_CACHE_TYPE"] = str(parsed_options.kv_cache_type)
-            if parsed_options.context_length:
-                envs["OLLAMA_CONTEXT_LENGTH"] = str(parsed_options.context_length)
+            hardware = self.get_specified_hardware_parts(parsed_options.hardware)
+            envs = self._build_env_vars(parsed_options, hardware)
             service_name = f"{self.get_service_id(instance)}"
             docker_options = DockerOptions(
                 name=service_name,
                 container_name=self.docker_service.get_docker_container_name(service_name),
                 image=image.name,
                 image_port=11434,
-                hardware=self.get_specified_hardware_parts(parsed_options.hardware),
+                hardware=hardware,
                 volumes=volumes,
                 env_vars=envs,
                 restart="unless-stopped",

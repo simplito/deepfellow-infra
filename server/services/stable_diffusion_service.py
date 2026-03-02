@@ -293,7 +293,7 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
     def get_size(self) -> ServiceSize:
         """Return the service size."""
         sizes = {"cpu": _const.images["cpu"].size}
-        if self.hardware.gpus:
+        if self._supported_gpus:
             sizes["gpu"] = _const.images["gpu"].size
         return sizes
 

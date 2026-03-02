@@ -195,7 +195,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
         sizes: dict[str, str] = {}
         if self.hardware.cpu.avx512:
             sizes["cpu"] = _const.images["cpu"].size
-        if self.hardware.gpus:
+        if self._supported_gpus:
             sizes["gpu"] = _const.images["gpu"].size
         return sizes
 
@@ -259,7 +259,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def is_given_hardware_support_gpu(self, hardware_specification: str | bool | None) -> bool:
         """Return is gpu will be used."""
-        if not self.hardware.cpu.avx512 and not self.hardware.gpus:
+        if not self.hardware.cpu.avx512 and not self._supported_gpus:
             raise HTTPException(
                 400,
                 (
@@ -272,7 +272,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_specified_hardware_parts(self, hardware_specification: str | bool | None) -> Sequence[HardwarePartInfo]:
         """Get hardware based on user input."""
-        if not self.hardware.cpu.avx512 and not self.hardware.gpus:
+        if not self.hardware.cpu.avx512 and not self._supported_gpus:
             raise HTTPException(
                 400,
                 (

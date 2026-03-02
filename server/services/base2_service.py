@@ -50,7 +50,7 @@ from server.models.services import (
 from server.serviceprovider import ServiceProvider, ServiceRawConfig
 from server.services.base_service import BaseService
 from server.utils.core import PromiseWithProgress, Stream, StreamChunk, StreamChunkProgress, Utils, convert_size_to_bytes
-from server.utils.hardware import GpuInfo, Hardware, HardwarePartInfo
+from server.utils.hardware import GpuInfo, Hardware, HardwarePartInfo, NvidiaGpuInfo
 from server.utils.model_downloader import ModelDownloader
 
 
@@ -492,13 +492,18 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         if len(warnings) > 0 and not ignore_warning:
             raise HTTPException(400, {"warnings": warnings})
 
+    @property
+    def _supported_gpus(self) -> list[GpuInfo]:
+        """Return GPUs supported by this service. Override to include non-NVIDIA GPUs."""
+        return [gpu for gpu in self.hardware.gpus if isinstance(gpu, NvidiaGpuInfo)]
+
     def is_given_hardware_support_gpu(self, hardware_specification: str | bool | None) -> bool:
         """Return is gpu will be used."""
         if hardware_specification is None:
-            return self.hardware.has_gpu_support
+            return bool(self._supported_gpus)
         if isinstance(hardware_specification, str):
             has_gpu_support = hardware_specification.startswith("GPU")
-            if has_gpu_support and not self.hardware.has_gpu_support:
+            if has_gpu_support and not self._supported_gpus:
                 raise HTTPException(400, "Given hardware specification is not supported")
             return has_gpu_support
         return hardware_specification
@@ -506,17 +511,17 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     def get_specified_hardware_parts(self, hardware_specification: str | bool | None) -> Sequence[HardwarePartInfo]:
         """Get specified hardware parts."""
         if hardware_specification is None:
-            return self.hardware.gpus if self.hardware.gpus else [self.hardware.cpu]
+            return self._supported_gpus if self._supported_gpus else [self.hardware.cpu]
         if (hardware_specification is False) or (isinstance(hardware_specification, str) and hardware_specification == "CPU"):
             return [self.hardware.cpu]
 
         if (hardware_specification is True) or (hardware_specification == "GPUs") or (hardware_specification == "GPU"):
-            return self.hardware.gpus
+            return self._supported_gpus
 
         gpus: list[GpuInfo] = []
 
         for gpu_name in hardware_specification.removeprefix("GPU | ").split(","):
-            for gpu in self.hardware.gpus:
+            for gpu in self._supported_gpus:
                 if gpu_name == gpu.long_name:
                     gpus.append(gpu)
 
@@ -534,14 +539,14 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         if not add_cpu_option_only_on_avx512_support or self.hardware.cpu.avx512:
             options.append("CPU")
             default = "CPU"
-        gpus_quantity = len(self.hardware.gpus)
-        if gpus_quantity == 1:
+        gpus = self._supported_gpus
+        if len(gpus) == 1:
             options.append(OneOfOption(value="GPU", label="Default GPU"))
             default = "GPU"
-        elif gpus_quantity:
+        elif gpus:
             options.append(OneOfOption(value="GPUs", label="All GPUs"))
             default = "GPUs"
-        options.extend([f"GPU | {gpu.long_name}" for gpu in self.hardware.gpus])
+        options.extend([f"GPU | {gpu.long_name}" for gpu in gpus])
 
         gpus_select_field = ServiceField(type="oneof", name="hardware", description="Choose hardware:", values=options, default=default)
         fields.append(gpus_select_field)
