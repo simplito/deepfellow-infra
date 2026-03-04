@@ -351,7 +351,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
         required_envs = list(parsed.required_envs.keys() if parsed.required_envs else [])
         required_headers = list(parsed.required_headers.keys() if parsed.required_headers else [])
         self.models[instance][parsed.id] = SrvMcpModel(
-            model_props=ModelProps(private=parsed.private),
+            model_props=ModelProps(private=parsed.private, type="mcp", endpoints=[f"/mcp/{parsed.default_prefix}/"]),
             model_spec=self.get_default_model_spec(parsed.default_prefix, parsed.required_envs, parsed.required_headers),
             model_type="mcp",
             default_prefix=parsed.default_prefix,
@@ -564,7 +564,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
 _const = McpConst(
     models={
         "open-websearch": lambda mcp_service, subnet: SrvMcpModel(
-            model_props=ModelProps(private=True),
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/open-websearch/mcp"]),
             model_spec=mcp_service.get_default_model_spec("open-websearch"),
             model_type="mcp",
             default_prefix="open-websearch",
@@ -579,7 +579,7 @@ _const = McpConst(
             ),
         ),
         "brave-search": lambda mcp_service, subnet: SrvMcpModel(
-            model_props=ModelProps(private=True),
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/brave-search/mcp"]),
             model_spec=mcp_service.get_default_model_spec(default_prefix="brave-search", required_envs=["BRAVE_API_KEY"]),
             model_type="mcp",
             default_prefix="brave-search",
@@ -595,7 +595,7 @@ _const = McpConst(
             required_envs=["BRAVE_API_KEY"],
         ),
         "web-search": lambda mcp_service, subnet: SrvMcpModel(
-            model_props=ModelProps(private=True),
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/web-search/mcp"]),
             model_spec=mcp_service.get_default_model_spec("web-search"),
             model_type="mcp",
             default_prefix="web-search",
@@ -610,7 +610,7 @@ _const = McpConst(
             ),
         ),
         "serpapi": lambda mcp_service, subnet: SrvMcpModel(
-            model_props=ModelProps(private=True),
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/serpapi/mcp"]),
             model_spec=mcp_service.get_default_model_spec(default_prefix="serpapi", required_headers={"Authorization": "Bearer "}),
             model_type="mcp",
             default_prefix="serpapi",

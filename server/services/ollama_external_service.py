@@ -19,7 +19,7 @@ from pydantic import BaseModel, StringConstraints
 
 from server.config import get_main_dir
 from server.endpointregistry import ProxyOptions, RegistrationId
-from server.models.api import ModelProps
+from server.models.api import EMBEDDINGS_ENDPOINTS, ModelProps
 from server.models.models import (
     CustomModelField,
     CustomModelId,
@@ -442,12 +442,12 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model.type == "llm":
                 model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                     model=registered_name,
-                    props=ModelProps(private=True),
+                    props=ModelProps(private=True, type="llm", endpoints=self.get_supported_endpoints()),
                     chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
                     completions=ProxyOptions(url=f"{info.base_url}/v1/completions", rewrite_model_to=model_id),
-                    responses=ProxyOptions(url=f"{info.base_url}/v1/responses", rewrite_model_to=model_id)
-                    if self.support_responses
-                    else None,
+                    responses=(
+                        ProxyOptions(url=f"{info.base_url}/v1/responses", rewrite_model_to=model_id) if self.support_responses else None
+                    ),
                     messages=(
                         ProxyOptions(url=f"{info.base_url}/v1/messages", rewrite_model_to=model_id) if self.support_messages else None
                     ),
@@ -456,7 +456,7 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model.type == "embedding":
                 model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
                     model=registered_name,
-                    props=ModelProps(private=True),
+                    props=ModelProps(private=True, type="embedding", endpoints=EMBEDDINGS_ENDPOINTS),
                     options=ProxyOptions(url=f"{info.base_url}/v1/embeddings", rewrite_model_to=model_id),
                     registration_options=None,
                 )
@@ -479,3 +479,12 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
         if options.purge and model_id in self.models_downloaded:
             await fetch_from(f"{info.base_url}/api/delete", "DELETE", {"name": model_id})
             del self.models_downloaded[model_id]
+
+    def get_supported_endpoints(self) -> list[str]:
+        """Get supported endpoints."""
+        endpoints = ["/v1/completions", "/v1/chat/completions"]
+        if self.support_responses:
+            endpoints.append("/v1/responses")
+        if self.support_messages:
+            endpoints.append("/v1/messages")
+        return endpoints

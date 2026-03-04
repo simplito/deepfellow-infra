@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from server.applicationcontext import get_base_url
 from server.docker import DockerImage, DockerOptions
 from server.endpointregistry import ProxyOptions, RegistrationId
-from server.models.api import ModelProps
+from server.models.api import LLM_ENDPOINTS, ModelProps
 from server.models.models import (
     CustomModelField,
     CustomModelId,
@@ -56,6 +56,7 @@ from server.utils.core import (
     normalize_name,
     try_parse_pydantic,
 )
+from server.utils.files import get_gguf_context_window
 from server.utils.hardware import GpuInfo, HardwarePartInfo, IntelGpuInfo, NvidiaGpuInfo
 from server.utils.loading import Progress
 
@@ -458,10 +459,13 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
             if not model_filename:
                 raise HTTPException(400, "Model filename was not set up or and return by downloader.")
 
+            max_context_window = await get_gguf_context_window(local_model_path)
+            context_window = max_context_window
             additional_options = []
 
-            if max_model_length := parsed_model_options.max_model_length:
-                additional_options.extend([" --ctx-size", str(max_model_length)])
+            if max_model_context_window := parsed_model_options.max_model_length:
+                context_window = max_model_context_window
+                additional_options.extend([" --ctx-size", str(max_model_context_window)])
 
             model_in_container = f"/models/{model_filename}"
             volumes = [f"{local_model_path.absolute()}:{model_in_container}:ro"]
@@ -502,7 +506,9 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
             )
             model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                 model=registered_name,
-                props=ModelProps(private=True),
+                props=ModelProps(
+                    private=True, type="llm", endpoints=LLM_ENDPOINTS, context_window=context_window, max_context_window=max_context_window
+                ),
                 chat_completions=ProxyOptions(url=f"{model_info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
                 completions=ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id),
                 responses=ProxyOptions(url=f"{model_info.base_url}/v1/responses", rewrite_model_to=model_id),

@@ -53,6 +53,8 @@ from server.utils.core import (
 
 class SindriAiModel(BaseModel):
     type: str
+    context_length: int
+    max_context_length: int
     real_model_name: str
 
 
@@ -64,7 +66,7 @@ class SindriAiConst(BaseModel):
 _const = SindriAiConst(
     image=DockerImage(name="sindrilabs/evllm-proxy:v0.0.8", size="0.1 GB"),
     models={
-        "gemma3:27b": SindriAiModel(type="llm", real_model_name="gemma3"),
+        "gemma3:27b": SindriAiModel(type="llm", context_length=131_072, max_context_length=131_072, real_model_name="gemma3"),
     },
 )
 
@@ -373,7 +375,13 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model.type == "llm":
                 model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                     model=registered_name,
-                    props=ModelProps(private=True),
+                    props=ModelProps(
+                        private=True,
+                        type=model.type,
+                        context_window=model.context_length,
+                        max_context_window=model.max_context_length,
+                        endpoints=["/v1/chat/completions"],
+                    ),
                     messages=None,
                     responses=None,
                     chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model.real_model_name),

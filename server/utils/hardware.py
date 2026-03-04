@@ -104,6 +104,27 @@ def convert_mib_to_gb(mib: str) -> str:
     return f"{gb_int} GB"
 
 
+def get_vram_gb(vram_str: str | None) -> float:
+    """Parse VRAM string."""
+    if not vram_str:
+        return 0.0
+
+    vram_str = vram_str.strip().upper()
+    # Matches numbers (including decimals) and the unit
+    match = re.match(r"([\d.]+)\s*([MGT]B)", vram_str)
+
+    if not match:
+        return 0.0
+
+    value = float(match.group(1))
+    unit = match.group(2)
+
+    # Multipliers to normalize everything to GB
+    multipliers = {"MB": 1 / 1024, "GB": 1, "TB": 1024}
+
+    return value * multipliers.get(unit, 0)
+
+
 async def get_nvidia_gpu_info_raw() -> str:
     """Get Nvidia GPU info."""
     cmd = "docker run --gpus all --rm gcr.io/distroless/base nvidia-smi --query-gpu=index,name,memory.total --format=csv"
@@ -193,6 +214,7 @@ async def get_hardware_info() -> list[HardwarePartInfo]:
 
 class Hardware:
     is_info_collected: bool
+    _total_vram_gb: float
     _parts: list[HardwarePartInfo]
     _cpu: CpuInfo
     _gpus: list[GpuInfo]
@@ -207,6 +229,7 @@ class Hardware:
         self._nvidia_gpus = []
         self._amd_gpus = []
         self._intel_gpus = []
+        self._total_vram_gb = 0
 
     async def init_async(self) -> None:
         """Init async."""
@@ -216,9 +239,11 @@ class Hardware:
         # Ensure these are assigned (even if empty) before calling set_gpus
         self._amd_gpus = []
 
-        self._gpus = self.set_gpus()
-        self._parts = self.set_info()
+        self._gpus = self._set_gpus()
+        self._parts = self._set_info()
         self.is_info_collected = True
+
+        self._total_vram_gb = self._get_total_vram()
 
     @property
     def parts(self) -> list[HardwarePartInfo]:
@@ -259,7 +284,14 @@ class Hardware:
     @property
     def has_gpu_support(self) -> bool:
         """Return whether current machine supports GPU."""
+        self._ensure_collected()
         return bool(self.gpus)
+
+    @property
+    def total_vram_gb(self) -> float:
+        """Return total vram value in GB."""
+        self._ensure_collected()
+        return self._total_vram_gb
 
     # --- Helpers ---
 
@@ -268,10 +300,14 @@ class Hardware:
         if not self.is_info_collected:
             raise RuntimeError("Hardware info has not been collected. Call await init_async() first.")
 
-    def set_gpus(self) -> list[GpuInfo]:
+    def _set_gpus(self) -> list[GpuInfo]:
         """Combine all manufacturer-specific GPU lists into a single list."""
         return [*self._nvidia_gpus, *self._amd_gpus, *self._intel_gpus]
 
-    def set_info(self) -> list[HardwarePartInfo]:
+    def _set_info(self) -> list[HardwarePartInfo]:
         """Combine CPU and GPU data into the master parts list."""
         return [self._cpu, *self._gpus]
+
+    def _get_total_vram(self) -> float:
+        """Get total vram value in GB."""
+        return sum(get_vram_gb(gpu.vram) for gpu in self.gpus)

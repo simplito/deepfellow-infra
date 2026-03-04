@@ -33,7 +33,7 @@ from server.docker import (
     DockerOptions,
 )
 from server.endpointregistry import EndpointCallback, ProxyOptions, RegistrationId, SimpleEndpoint
-from server.models.api import ImagesRequest, ModelProps
+from server.models.api import IMG_ENDPOINTS, ImagesRequest, ModelProps
 from server.models.models import (
     CustomModelField,
     CustomModelId,
@@ -424,7 +424,7 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
             proxy_registration_id = (
                 self.endpoint_registry.register_custom_endpoint_as_proxy(
                     parsed_options.expose_api_at_prefix,
-                    ModelProps(private=False),
+                    ModelProps(private=False, type="txt2img", endpoints=[f"/custom/{parsed_options.expose_api_at_prefix}/"]),
                     ProxyOptions(get_base_url(host, port)),
                     registration_options=None,
                 )
@@ -688,7 +688,7 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model.type == "txt2img":
                 model_info.registration_id = self.endpoint_registry.register_image_generations(
                     model=registered_name,
-                    props=ModelProps(private=True),
+                    props=ModelProps(private=True, type=model.type, endpoints=IMG_ENDPOINTS),
                     endpoint=SimpleEndpoint(on_request=_stable_diffusion_handler(info.base_url, model_filename)),
                     registration_options=None,
                 )

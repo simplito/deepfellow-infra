@@ -173,15 +173,45 @@ class Endpoint[T]:
             logger.debug(f"Choosen model origin={lowest.origin} id={lowest.id} name={lowest.name} usage={lowest.usage}")  # noqa: G004
         return lowest
 
+    def is_model_private(self, model: dict[RegistrationId, RegisteredModel[T]]) -> bool:
+        """Return is model private."""
+        return any(item.props.private for item in model.values())
+
+    def get_model_type(self, model: dict[RegistrationId, RegisteredModel[T]]) -> str:
+        """Return unique model types."""
+        return next(iter({item.type for item in model.values()}))
+
+    def get_model_available_endpoints(self, model: dict[RegistrationId, RegisteredModel[T]]) -> list[str]:
+        """Get model available endpoints."""
+        return list({endpoint for item in model.values() for endpoint in item.props.endpoints})
+
+    def get_model_context_window(self, model: dict[RegistrationId, RegisteredModel[T]]) -> int:
+        """Get model context window."""
+        return max([0, *list({item.props.context_window for item in model.values() if item.props.context_window})])
+
+    def get_max_context_window(self, model: dict[RegistrationId, RegisteredModel[T]]) -> int:
+        """Get model max context window."""
+        return max([0, *list({item.props.max_context_window for item in model.values() if item.props.max_context_window})])
+
     def get_models(self) -> list[ApiModel]:
         """List models from registry."""
         res = list[ApiModel]()
-        for model_id, map in self.models.items():
-            private = False
-            for item in map.values():
-                if item.props.private:
-                    private = True
-            res.append(ApiModel(id=model_id, object="model", created=0, owned_by="unknown", props=ModelProps(private=private)))
+        for model_id, model in self.models.items():
+            res.append(
+                ApiModel(
+                    id=model_id,
+                    object="model",
+                    created=0,
+                    owned_by="unknown",
+                    props=ModelProps(
+                        private=self.is_model_private(model),
+                        type=self.get_model_type(model),
+                        endpoints=self.get_model_available_endpoints(model),
+                        context_window=self.get_model_context_window(model),
+                        max_context_window=self.get_max_context_window(model),
+                    ),
+                )
+            )
         return res
 
     def list_models(self) -> list[Model]:

@@ -26,7 +26,7 @@ from server.docker import (
 )
 from server.endpointregistry import EndpointCallback, RegistrationId, SimpleEndpoint
 from server.ffmpeg import ffmpeg_audio_convert_async_gen
-from server.models.api import CreateSpeechRequest, ModelProps
+from server.models.api import TTS_ENDPOINTS, CreateSpeechRequest, ModelProps
 from server.models.models import (
     CustomModelSpecification,
     InstallModelIn,
@@ -395,7 +395,7 @@ class CoquiService(Base2Service[InstalledInfo, DownloadedInfo]):
             )
             model_info.registration_id = self.endpoint_registry.register_audio_speech(
                 model=registered_name,
-                props=ModelProps(private=True),
+                props=ModelProps(private=True, type="tts", endpoints=TTS_ENDPOINTS),
                 endpoint=SimpleEndpoint(on_request=_create_handler(model_info.base_url, model.default_speaker, model.response_format)),
                 registration_options=None,
             )

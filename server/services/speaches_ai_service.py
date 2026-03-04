@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from server.applicationcontext import get_base_url
 from server.docker import DockerImage, DockerOptions
 from server.endpointregistry import ProxyOptions, RegistrationId, SimpleEndpoint, post_json
-from server.models.api import CreateSpeechRequest, ModelId, ModelProps
+from server.models.api import STT_ENDPOINTS, TTS_ENDPOINTS, CreateSpeechRequest, ModelId, ModelProps
 from server.models.models import (
     CustomModelField,
     CustomModelSpecification,
@@ -886,14 +886,14 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
 
                 model_info.registration_id = self.endpoint_registry.register_audio_speech(
                     model=registered_name,
-                    props=ModelProps(private=True),
+                    props=ModelProps(private=True, type=model.type, endpoints=TTS_ENDPOINTS),
                     endpoint=SimpleEndpoint(on_request=on_request),
                     registration_options=None,
                 )
             if model.type == "stt":
                 model_info.registration_id = self.endpoint_registry.register_audio_transcriptions_as_proxy(
                     model=registered_name,
-                    props=ModelProps(private=True),
+                    props=ModelProps(private=True, type=model.type, endpoints=STT_ENDPOINTS),
                     options=ProxyOptions(url=f"{info.base_url}/v1/audio/transcriptions", rewrite_model_to=model_id),
                     registration_options=None,
                 )
