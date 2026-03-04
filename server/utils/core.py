@@ -549,6 +549,7 @@ async def make_http_request(
     # logger.info(f"Making HTTP request to: {url}")
     headers = headers or {}
     session = ClientSession()
+    response = None
     try:
         response = await session.request(method=method, url=url, data=data, headers=headers)
 
@@ -564,6 +565,8 @@ async def make_http_request(
         return HttpResponse(response=response, content=generator())
 
     except Exception:
+        if response is not None:
+            await response.release()
         await session.close()
         raise
 
