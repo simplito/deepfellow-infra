@@ -307,12 +307,12 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     async def add_custom_model(self, instance: str, options: AddCustomModelIn) -> CustomModelId:
         """Add custom model."""
         model = CustomModel(id=str(uuid.uuid4()), data=options.spec)
-        custom = self.get_instance_info(instance).config.custom
+        config = self.get_instance_info(instance).config
         self._add_custom_model(instance, model)
-        if custom is None:
-            custom = []
+        if config.custom is None:
+            config.custom = []
 
-        custom.append(model)
+        config.custom.append(model)
         await self._save()
         return model.id
 
@@ -322,12 +322,12 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
 
     async def remove_custom_model(self, instance: str, custom_model_id: CustomModelId) -> None:
         """Remove custom model."""
-        custom = self.get_instance_info(instance).config.custom
-        model = next(x for x in custom or {} if x.id == custom_model_id)
+        config = self.get_instance_info(instance).config
+        model = next(x for x in config.custom or {} if x.id == custom_model_id)
         if not model:
             return
         self._remove_custom_model(instance, model)
-        custom = [x for x in custom or {} if x.id != custom_model_id]
+        config.custom = [x for x in config.custom or {} if x.id != custom_model_id]
         await self._save()
 
     def _remove_custom_model(self, instance: str, model: CustomModel) -> None:  # noqa: ARG002

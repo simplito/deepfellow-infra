@@ -13,44 +13,101 @@ from server.services.remote_service import DefaultRemoteServiceOptions, RemoteCo
 
 _const = RemoteConst(
     models={
-        "gemini-1.5-pro-latest": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-1.5-pro-002": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-1.5-pro": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-1.5-flash-latest": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-1.5-flash": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-1.5-flash-002": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-1.5-flash-8b": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-1.5-flash-8b-001": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-1.5-flash-8b-latest": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.5-pro-preview-03-25": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.5-flash-preview-05-20": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.5-flash": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.5-flash-lite-preview-06-17": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.5-pro-preview-05-06": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.5-pro-preview-06-05": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.5-pro": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.0-flash-exp": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.0-flash": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.0-flash-001": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.0-flash-lite-001": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.0-flash-lite": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.0-flash-lite-preview-02-05": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.0-flash-lite-preview": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.0-pro-exp": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.0-pro-exp-02-05": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-exp-1206": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.0-flash-thinking-exp-01-21": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.0-flash-thinking-exp": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.0-flash-thinking-exp-1219": RemoteModel(type="llm", responses=False, messages=False),
-        "learnlm-2.0-flash-experimental": RemoteModel(type="llm", responses=False, messages=False),
-        "gemma-3-1b-it": RemoteModel(type="llm", responses=False, messages=False),
-        "gemma-3-4b-it": RemoteModel(type="llm", responses=False, messages=False),
-        "gemma-3-12b-it": RemoteModel(type="llm", responses=False, messages=False),
-        "gemma-3-27b-it": RemoteModel(type="llm", responses=False, messages=False),
-        "gemma-3n-e4b-it": RemoteModel(type="llm", responses=False, messages=False),
-        "gemma-3n-e2b-it": RemoteModel(type="llm", responses=False, messages=False),
-        "gemini-2.5-flash-lite": RemoteModel(type="llm", responses=False, messages=False),
+        "gemini-1.5-flash-latest": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-1.5-flash": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-1.5-flash-002": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-1.5-flash-8b": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-1.5-flash-8b-001": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-1.5-flash-8b-latest": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-1.5-pro-latest": RemoteModel(
+            type="llm", context_length=2_097_152, max_context_length=2_097_152, responses=False, messages=False
+        ),
+        "gemini-1.5-pro-002": RemoteModel(
+            type="llm", context_length=2_097_152, max_context_length=2_097_152, responses=False, messages=False
+        ),
+        "gemini-1.5-pro": RemoteModel(type="llm", context_length=2_097_152, max_context_length=2_097_152, responses=False, messages=False),
+        "gemini-2.0-flash-exp": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.0-flash": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.0-flash-001": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.0-flash-lite-001": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.0-flash-lite": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.0-flash-lite-preview-02-05": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.0-flash-lite-preview": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.0-flash-thinking-exp-01-21": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.0-flash-thinking-exp": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.0-flash-thinking-exp-1219": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.0-pro-exp": RemoteModel(
+            type="llm", context_length=2_097_152, max_context_length=2_097_152, responses=False, messages=False
+        ),
+        "gemini-2.0-pro-exp-02-05": RemoteModel(
+            type="llm", context_length=2_097_152, max_context_length=2_097_152, responses=False, messages=False
+        ),
+        "gemini-2.5-pro-preview-03-25": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.5-flash-preview-05-20": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.5-flash": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.5-flash-lite": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.5-flash-lite-preview-06-17": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
         "gemini-2.5-flash-image-preview": RemoteModel(type="txt2img"),  # NOTE: aka Nano Banana
+        "gemini-2.5-pro-preview-05-06": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.5-pro-preview-06-05": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False
+        ),
+        "gemini-2.5-pro": RemoteModel(type="llm", context_length=1_048_576, max_context_length=1_048_576, responses=False, messages=False),
+        "gemini-3.1-pro-preview": RemoteModel(type="llm", context_length=1_048_576, max_context_length=1_048_576, messages=False),
+        "gemini-3.1-pro-preview-customtools": RemoteModel(
+            type="llm", context_length=1_048_576, max_context_length=1_048_576, messages=False
+        ),
+        "gemini-exp-1206": RemoteModel(type="llm", context_length=2_097_152, max_context_length=2_097_152, responses=False, messages=False),
+        "gemma-3-1b-it": RemoteModel(type="llm", context_length=32_768, max_context_length=32_768, responses=False, messages=False),
+        "gemma-3-4b-it": RemoteModel(type="llm", context_length=131_072, max_context_length=131_072, responses=False, messages=False),
+        "gemma-3-12b-it": RemoteModel(type="llm", context_length=131_072, max_context_length=131_072, responses=False, messages=False),
+        "gemma-3-27b-it": RemoteModel(type="llm", context_length=131_072, max_context_length=131_072, responses=False, messages=False),
+        "gemma-3n-e4b-it": RemoteModel(type="llm", context_length=32_768, max_context_length=32_768, responses=False, messages=False),
+        "gemma-3n-e2b-it": RemoteModel(type="llm", context_length=32_768, max_context_length=32_768, responses=False, messages=False),
         "embedding-001": RemoteModel(type="embedding"),
         "text-embedding-004": RemoteModel(type="embedding"),
         "gemini-embedding-exp-03-07": RemoteModel(type="embedding"),
@@ -59,6 +116,7 @@ _const = RemoteConst(
         "imagen-3.0-generate-002": RemoteModel(type="txt2img"),
         "imagen-4.0-generate-preview-06-06": RemoteModel(type="txt2img"),
         "imagen-4.0-ultra-generate-preview-06-06": RemoteModel(type="txt2img"),
+        "learnlm-2.0-flash-experimental": RemoteModel(type="llm", context_length=1_048_576, responses=False, messages=False),
         # TTS Models are not open https://cloud.google.com/text-to-speech/docs/gemini-tts#curl ; speech is not listed here: https://ai.google.dev/gemini-api/docs/openai
         # "gemini-2.5-flash-preview-tts": RemoteModel(type="tts"),
         # "gemini-2.5-pro-preview-tts": RemoteModel(type="tts"),

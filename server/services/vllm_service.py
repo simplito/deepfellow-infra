@@ -26,7 +26,7 @@ from server.docker import (
     DockerOptions,
 )
 from server.endpointregistry import ProxyOptions, RegistrationId
-from server.models.api import ModelProps
+from server.models.api import LLM_ENDPOINTS, ModelProps
 from server.models.models import (
     CustomModelField,
     CustomModelId,
@@ -62,6 +62,7 @@ from server.utils.core import (
     normalize_name,
     try_parse_pydantic,
 )
+from server.utils.files import get_model_dir_context_window
 from server.utils.hardware import HardwarePartInfo
 from server.utils.loading import Progress
 
@@ -431,15 +432,15 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
                 local_model_path = packet.local_path
 
         stream.emit(StreamChunkProgress(type="progress", stage="download", value=1, data={"local_model_path": str(local_model_path)}))
+        if local_model_path is None:
+            raise HTTPException(500, f"Downloader doesn't return filepath in {model_dir} of {model_id} model")
         return local_model_path
 
-    async def _download_model_or_set_progress(
-        self, stream: Stream[StreamChunk], model_id: str, model: VllmModel, model_dir: Path
-    ) -> Path | None:
-        local_model_path = None
+    async def _download_model_or_set_progress(self, stream: Stream[StreamChunk], model_id: str, model: VllmModel, model_dir: Path) -> Path:
+        local_model_path: Path | None = None
         if model_id not in self.models_download_progress:
             self.models_download_progress[model_id] = stream
-            local_model_path: Path | None = await self._download_model(stream, model_id, model, model_dir)
+            local_model_path = await self._download_model(stream, model_id, model, model_dir)
             del self.models_download_progress[model_id]
         else:
             chunk: StreamChunk
@@ -450,6 +451,8 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
                     stream.emit(chunk)
                 else:
                     break
+        if local_model_path is None:
+            raise HTTPException(500, f"Downloader doesn't return filepath in {model_dir} of {model_id} model")
         return local_model_path
 
     async def _get_gpu_utilization(self, parsed_model_options: VllmModelOptions, model: VllmModel) -> float:
@@ -482,7 +485,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
     async def _get_max_model_length(self, parsed_model_options: VllmModelOptions, model: VllmModel) -> None | int:
         max_model_length = parsed_model_options.max_model_length or model.max_model_len or None
         if max_model_length and not max_model_length.is_integer():
-            raise HTTPException(422, "Max model length need to be intiger.")
+            raise HTTPException(422, "Max model length need to be integer.")
         return max_model_length
 
     async def _install_model(  # noqa: C901
@@ -502,7 +505,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         use_gpu = self.is_given_hardware_support_gpu(info.parsed_options.hardware)
         gpu_utilization = await self._get_gpu_utilization(parsed_model_options, model) if use_gpu else None
-        max_model_length = await self._get_max_model_length(parsed_model_options, model)
+        user_model_length = await self._get_max_model_length(parsed_model_options, model)
         quantization = await self._get_quantization(parsed_model_options, model)
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
@@ -535,14 +538,14 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             if gpu_utilization is not None:
                 vllm_command.extend(["--gpu-memory-utilization", str(gpu_utilization)])
 
-            if max_model_length and use_gpu:
-                vllm_command.extend(["--max-model-len", str(max_model_length)])
+            if user_model_length and use_gpu:
+                vllm_command.extend(["--max-model-len", str(user_model_length)])
 
             if not use_gpu:
-                if max_model_length is None:
+                if user_model_length is None:
                     vllm_command.extend(["--disable-sliding-window"])
                 else:
-                    vllm_command.extend(["--max-model-len", str(max_model_length)])
+                    vllm_command.extend(["--max-model-len", str(user_model_length)])
 
             if not model.env_vars:
                 model.env_vars = {}
@@ -581,6 +584,8 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             container_host = self.docker_service.get_container_host(subnet, docker_options.name)
             container_port = self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port)
+            max_context_window = await get_model_dir_context_window(local_model_path)
+            context_window = user_model_length or max_context_window
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
                 registered_name=registered_name,
@@ -596,7 +601,9 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             )
             model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                 model=registered_name,
-                props=ModelProps(private=True),
+                props=ModelProps(
+                    private=True, type="llm", endpoints=LLM_ENDPOINTS, context_window=context_window, max_context_window=max_context_window
+                ),
                 chat_completions=ProxyOptions(url=f"{model_info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
                 completions=ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id),
                 responses=ProxyOptions(url=f"{model_info.base_url}/v1/responses", rewrite_model_to=model_id),

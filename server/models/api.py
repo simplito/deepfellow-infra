@@ -19,6 +19,12 @@ from fastapi import File as FastApiFile
 from fastapi import UploadFile
 from pydantic import BaseModel, Field
 
+LLM_ENDPOINTS = ["v1/completions, v1/chat/completions", "v1/responses", "v1/messages"]
+EMBEDDINGS_ENDPOINTS = ["/v1/embeddings"]
+STT_ENDPOINTS = ["/v1/audio/transcriptions"]
+TTS_ENDPOINTS = ["/v1/audio/speech"]
+IMG_ENDPOINTS = ["/v1/images/generations"]
+
 
 class ImageUrl(BaseModel):
     url: str
@@ -352,6 +358,10 @@ class CreateSpeechRequest(BaseModel):
 
 class ModelProps(BaseModel):
     private: bool
+    type: str
+    endpoints: list[str]
+    context_window: int | None = None
+    max_context_window: int | None = None
 
 
 ModelType = Literal[

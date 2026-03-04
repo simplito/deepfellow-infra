@@ -274,7 +274,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
         name = normalize_name(f"{parsed.id}-{instance}")
         subnet = self.docker_service.get_docker_subnet()
         self.models[instance][parsed.id] = SrvCustomModel(
-            model_props=ModelProps(private=parsed.private),
+            model_props=ModelProps(private=parsed.private, type="custom", endpoints=[f"/custom/{parsed.default_prefix}"]),
             model_spec=self.get_default_model_spec(parsed.default_prefix),
             model_type="custom",
             default_prefix=parsed.default_prefix,
@@ -441,7 +441,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
 _const = CustomConst(
     models={
         "bentoml/example-summarization": lambda custom_service, subnet: SrvCustomModel(
-            model_props=ModelProps(private=True),
+            model_props=ModelProps(private=True, type="custom", endpoints=["/custom/bentoml-summarize"]),
             model_spec=custom_service.get_default_model_spec("bentoml-summarize"),
             model_type="custom",
             default_prefix="bentoml-summarize",
@@ -457,7 +457,7 @@ _const = CustomConst(
             ),
         ),
         "easyOCR": lambda custom_service, subnet: SrvCustomModel(
-            model_props=ModelProps(private=True),
+            model_props=ModelProps(private=True, type="custom", endpoints=["/custom/ocr"]),
             model_spec=custom_service.get_default_model_spec("ocr"),
             model_type="custom",
             default_prefix="ocr",

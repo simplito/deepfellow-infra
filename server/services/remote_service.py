@@ -59,8 +59,10 @@ class RemoteModel(BaseModel):
     responses: bool = True
     completions: bool = True
     legacy_completions: bool = True
-    props: ModelProps = ModelProps(private=False)
     custom: CustomModelId | None = None
+    private: bool = False
+    context_length: int | None = None
+    max_context_length: int | None = None
 
 
 class RemoteCustomModel(BaseModel):
@@ -68,6 +70,30 @@ class RemoteCustomModel(BaseModel):
     type: Literal["llm", "embedding", "stt", "tts", "txt2img"]
     completions: bool = True
     legacy_completions: bool = True
+    messages: bool = True
+    responses: bool = True
+    context_length: int | None = None
+    max_context_length: int | None = None
+
+
+def get_model_props(model: RemoteModel | RemoteCustomModel) -> ModelProps:
+    """Get model props."""
+    endpoints = []
+    if model.legacy_completions:
+        endpoints.append("/v1/completions")
+    if model.completions:
+        endpoints.append("/v1/chat/completions")
+    if model.responses:
+        endpoints.append("/v1/responses")
+    if model.messages:
+        endpoints.append("/v1/messages")
+    return ModelProps(
+        private=False,
+        type=model.type,
+        endpoints=endpoints,
+        context_window=model.context_length,
+        max_context_window=model.max_context_length,
+    )
 
 
 class RemoteConst(BaseModel):
@@ -215,6 +241,26 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                     default="true",
                     display="type=llm",
                 ),
+                CustomModelField(
+                    type="bool",
+                    name="responses",
+                    description="Support /v1/responses",
+                    default="true",
+                    display="type=llm",
+                ),
+                CustomModelField(
+                    type="bool",
+                    name="messages",
+                    description="Support /v1/messages",
+                    default="true",
+                    display="type=llm",
+                ),
+                CustomModelField(
+                    type="number", name="context_length", description="Context window size", display="type=llm", required=False
+                ),
+                CustomModelField(
+                    type="number", name="max_context_length", description="Maximum context window size", display="type=llm", required=False
+                ),
             ]
         )
 
@@ -293,10 +339,11 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
 
         self.models[instance][parsed.id] = RemoteModel(
             type=parsed.type,
+            real_model_name=None,
+            messages=parsed.messages,
+            responses=parsed.responses,
             completions=parsed.completions,
             legacy_completions=parsed.legacy_completions,
-            real_model_name=None,
-            props=ModelProps(private=False),
             custom=model.id,
         )
 
@@ -400,10 +447,11 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
             )
 
             url_base = urljoin(info.parsed_options.api_url, self.api_version)
+            props = get_model_props(model)
             if model.type == "llm":
                 model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                     model=registered_name,
-                    props=model.props,
+                    props=props,
                     messages=ProxyOptions(
                         url=urljoin(url_base, "messages"),
                         rewrite_model_to=model.real_model_name,
@@ -438,7 +486,7 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                 url = urljoin(url_base, "audio/speech")
                 model_info.registration_id = self.endpoint_registry.register_audio_speech_as_proxy(
                     model=registered_name,
-                    props=model.props,
+                    props=props,
                     options=ProxyOptions(
                         url=url,
                         rewrite_model_to=model.real_model_name,
@@ -450,7 +498,7 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                 url = urljoin(url_base, "audio/transcriptions")
                 model_info.registration_id = self.endpoint_registry.register_audio_transcriptions_as_proxy(
                     model=registered_name,
-                    props=model.props,
+                    props=props,
                     options=ProxyOptions(
                         url=url,
                         rewrite_model_to=model.real_model_name,
@@ -462,7 +510,7 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                 url = urljoin(url_base, "images/generations")
                 model_info.registration_id = self.endpoint_registry.register_image_generations_as_proxy(
                     model=registered_name,
-                    props=model.props,
+                    props=props,
                     options=ProxyOptions(
                         url=url,
                         rewrite_model_to=model.real_model_name,
@@ -474,7 +522,7 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                 url = urljoin(url_base, "embeddings")
                 model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
                     model=registered_name,
-                    props=model.props,
+                    props=props,
                     options=ProxyOptions(
                         url=url,
                         rewrite_model_to=model.real_model_name,

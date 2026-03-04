@@ -15,7 +15,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Any, Literal, NamedTuple, TypedDict
 
 import aiofiles
 from fastapi import HTTPException
@@ -25,7 +25,7 @@ from server.applicationcontext import get_base_url
 from server.config import get_main_dir
 from server.docker import DockerImage, DockerOptions
 from server.endpointregistry import ProxyOptions, RegistrationId
-from server.models.api import ModelProps
+from server.models.api import EMBEDDINGS_ENDPOINTS, IMG_ENDPOINTS, LLM_ENDPOINTS, ModelProps
 from server.models.models import (
     CustomModelField,
     CustomModelId,
@@ -61,6 +61,7 @@ from server.utils.core import (
     stream_fetch_from,
     try_parse_pydantic,
 )
+from server.utils.files import get_gguf_context_window, get_model_dir_context_window
 from server.utils.hardware import GpuInfo, HardwarePartInfo, IntelGpuInfo
 from server.utils.loading import Progress
 
@@ -117,6 +118,13 @@ class OllamaRegistry(TypedDict):
     llms: list[OllamaRegistryEntry]
     embeddings: list[OllamaRegistryEntry]
     txt2img: list[OllamaRegistryEntry]
+
+
+class ModelfileData(NamedTuple):
+    content: str
+    urls: list[str]
+    docker_paths: list[str]
+    local_paths: list[str]
 
 
 def _read_models() -> dict[str, OllamaModel]:
@@ -218,6 +226,7 @@ class DownloadedInfo:
 
 class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
     models: dict[str, dict[str, OllamaModel]]
+    default_context_length: int
 
     @property
     def _supported_gpus(self) -> list[GpuInfo]:
@@ -227,6 +236,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
     def _after_init(self) -> None:
         self.models = {}
         self.load_default_models("default")
+        self.default_context_length = self.get_default_context_value()
 
     def load_default_models(self, instance: str) -> None:
         """Load default models to instance."""
@@ -478,7 +488,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             self.models[instance] = {}
 
         if parsed.id in self.models[instance]:
-            raise HTTPException(400, "Model with given id already exists.")
+            raise HTTPException(400, f"Model with {parsed.id} id already exists.")
 
         self.models[instance][parsed.id] = OllamaModel(
             id=parsed.id,
@@ -610,8 +620,8 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         input_stream: Stream[StreamChunk],
         base_url: str,
         model_url: str,
-        model_size: str,
         model_id: str,
+        model_size: str,
         model_number: int,
         model_quantity: int,
     ) -> None:
@@ -641,19 +651,21 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
 
             # Return path to file or path to directory (with model)
             input_stream.emit(StreamChunkProgress(type="progress", stage="download", value=1, data={}))
-
-        await self._download_with_ollama(input_stream, base_url, model_url, model_size)
+        else:
+            await self._download_with_ollama(input_stream, base_url, model_url, model_size)
         return
 
-    async def create_docker_modelfile_content(self, model_name: str, modelfile: str) -> tuple[str, list[str]]:
+    async def create_docker_modelfile_content(self, model_name: str, modelfile: str, instance: str) -> ModelfileData:
         """Create docker modelfile content.
 
         Can edit local models path to docker model paths.
         """
         base_docker_dir: Path = Path("/root/.ollama/custom")
         local_models_dir = Path(self._get_working_dir()) / "main" / "custom"
-        docker_modelfile_parts: list[str] = []
-        models_to_download_with_duplicates: list[str] = []
+        new_lines: list[str] = []
+        models: list[str] = []
+        docker_paths: list[str] = []
+        local_paths: list[str] = []
 
         for line in modelfile.split("\n"):
             new_line = line
@@ -666,34 +678,42 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                     if model.startswith(("http://", "https://")):
                         file_or_dir = path_model.name if path_model.suffix == ".gguf" else "model"
                         path = str(base_docker_dir / model_name / file_or_dir)
-                        models_to_download_with_duplicates.append(model)
+                        docker_paths.append(path)
+                        local_paths.append(str(local_models_dir / model_name / file_or_dir))
+                        models.append(model)
                     else:
                         docker_parent_path = base_docker_dir / path_model
                         local_parent_path = local_models_dir / path_model
-                        if local_parent_path.exists():
-                            # If exist then we don't want download. Replace to docker path
+                        if model_name not in self.models[instance]:
                             path = str(docker_parent_path)
+                            docker_paths.append(path)
+                            local_paths.append(str(local_parent_path))
                         else:
-                            # If doesn't exist the we download with ollama
                             path = model
-                            models_to_download_with_duplicates.append(model)
+                            models.append(model)
 
                     new_line_parts[1] = path
 
                 new_line = " ".join(new_line_parts)
 
-            docker_modelfile_parts.append(new_line)
+            new_lines.append(new_line)
 
-        models = list(set(models_to_download_with_duplicates))
+        models_to_download = list(set(models))
 
-        return "\n".join(docker_modelfile_parts), models
+        return ModelfileData("\n".join(new_lines), models_to_download, docker_paths, local_paths)
+
+    def _get_modelfile_path(self, model: str) -> Path:
+        """Return local (host) modelfile path."""
+        return Path(self._get_working_dir()) / "main" / "custom" / model / "Modelfile"
+
+    def _get_docker_modelfile_path(self, model: str) -> Path:
+        """Return docker modelfile path."""
+        return Path("root/.ollama/custom") / model / "Modelfile"
 
     async def save_modelfile(self, model: str, modelfile: str) -> str:
         """Save modelfile."""
-        base_docker_dir: Path = Path("root/.ollama/custom")
-        base_local_dir: Path = Path(self._get_working_dir())
-        docker_modelfile_path = base_docker_dir / model / "Modelfile"
-        local_modelfile_path = base_local_dir / "main" / "custom" / model / "Modelfile"
+        docker_modelfile_path = self._get_docker_modelfile_path(model)
+        local_modelfile_path = self._get_modelfile_path(model)
 
         if local_modelfile_path.exists():
             async with aiofiles.open(local_modelfile_path) as f:
@@ -709,33 +729,19 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         return str(docker_modelfile_path)
 
-    async def _download_model(
-        self, input_stream: Stream[StreamChunk], model: OllamaModel, base_url: str, model_id: str, compose_filepath: Path, service_name: str
-    ) -> None:
-        """Download model."""
-        if not model.modelfile:
-            await self._download_with_ollama(input_stream, base_url, model_id, model.size)
-            input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
-        else:
-            content, models_to_download = await self.create_docker_modelfile_content(model_id, model.modelfile)
-            models_quantity = len(set(models_to_download))
-            for i, model_to_download in enumerate(models_to_download):
-                await self._download_with_downloader(input_stream, base_url, model_to_download, model.size, model_id, i, models_quantity)
-            path = await self.save_modelfile(model_id, content)
-            quantization = model.quantization
-
-            msg = f"Create model {model_id} from {path}{f'with quantization {quantization}' if quantization else ''}"
-            logger.debug(msg)
-
-            await self.create_model_from_modelfile(compose_filepath, service_name, model_id, path, quantization)
-            input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
-
     async def _download_model_or_set_progress(
-        self, input_stream: Stream[StreamChunk], model: OllamaModel, base_url: str, model_id: str, compose_filepath: Path, service_name: str
+        self,
+        input_stream: Stream[StreamChunk],
+        base_url: str,
+        model_url: str,
+        model_id: str,
+        size: str,
+        i: int = 1,
+        models_quantity: int = 1,
     ) -> None:
         if model_id not in self.models_download_progress:
             self.models_download_progress[model_id] = input_stream
-            await self._download_model(input_stream, model, base_url, model_id, compose_filepath, service_name)
+            await self._download_with_downloader(input_stream, base_url, model_url, model_id, size, i, models_quantity)
             del self.models_download_progress[model_id]
         else:
             chunk: StreamChunk
@@ -744,6 +750,10 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                     input_stream.emit(chunk)
                 else:
                     break
+
+    def get_default_context_window(self, model_context: int | None, service_context: int) -> int:
+        """Return minimum default context length from model or service context length."""
+        return min(model_context, service_context) if model_context else service_context
 
     async def _install_model(  # noqa: C901
         self, instance: str, model_id: str, options: InstallModelIn
@@ -762,11 +772,46 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         model = self.models[instance][model_id]
 
-        async def func(input_stream: Stream[StreamChunk]) -> InstallModelOut:
-            service_name = info.docker.name
-            compose_filepath = self.docker_service.get_docker_compose_file_path(service_name)
-            if not await self.is_model_installed(info.base_url, model_id):
-                await self._download_model_or_set_progress(input_stream, model, info.base_url, model_id, compose_filepath, service_name)
+        async def func(input_stream: Stream[StreamChunk]) -> InstallModelOut:  # noqa: C901
+            rewrite_model_to = model_id
+            internal_name = model_id
+
+            service_form_context_window = info.parsed_options.context_length
+            model_form_context_window = parsed_model_options.context_length
+
+            # Default model with custom context
+            if not model.modelfile and model.type == "llm" and parsed_model_options.context_length is not None:
+                internal_name = model_id + "-customcontextlength"
+                rewrite_model_to = internal_name
+                model.modelfile = f"FROM {model_id}\nPARAMETER num_ctx {parsed_model_options.context_length}"
+
+            if model.modelfile:
+                modelfile_data = await self.create_docker_modelfile_content(model_id, model.modelfile, instance)
+                models_to_download = modelfile_data.urls
+                paths = modelfile_data.local_paths
+                path = await self.save_modelfile(model_id, modelfile_data.content)
+                quantization = model.quantization
+                service_name = info.docker.name
+                for i, model_to_download in enumerate(models_to_download):
+                    if not await self.is_model_installed(info.base_url, model_id):
+                        await self._download_model_or_set_progress(
+                            input_stream, info.base_url, model_to_download, model_id, model.size, i, len(models_to_download)
+                        )
+                compose_filepath = self.docker_service.get_docker_compose_file_path(service_name)
+                await self.create_model_from_modelfile(compose_filepath, service_name, internal_name, path, quantization)
+                if len(paths) != 0:
+                    path = paths[0]
+                    if path.endswith(".gguf"):
+                        model.context = await get_gguf_context_window(path)
+                    else:
+                        temp_max_context_window = await get_model_dir_context_window(path)
+                        if temp_max_context_window:
+                            model.context = temp_max_context_window
+
+            else:
+                if not await self.is_model_installed(info.base_url, model_id):
+                    await self._download_model_or_set_progress(input_stream, info.base_url, model.id, model.id, model.size)
+
             input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
 
             if parsed_model_options.alive_time != "":
@@ -775,14 +820,6 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                     "POST",
                     {"model": model_id, "keep_alive": parsed_model_options.alive_time},
                 )
-            rewrite_model_to = model_id
-            internal_name: str | None = None
-            if not model.modelfile and model.type == "llm" and parsed_model_options.context_length is not None:
-                internal_name = model_id + "-customcontextlength"
-                rewrite_model_to = internal_name
-                content = f"FROM {model_id}\nPARAMETER num_ctx {parsed_model_options.context_length}"
-                path = await self.save_modelfile(internal_name, content)
-                await self.create_model_from_modelfile(compose_filepath, service_name, internal_name, path, "")
 
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             info.models[model_id] = model_info = ModelInstalledInfo(
@@ -793,10 +830,22 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                 registration_id="",
                 internal_name=internal_name,
             )
+            model_max_context_window = model.context
+            service_max_context_window = self.default_context_length
+            default_context_window = self.get_default_context_window(model_max_context_window, service_max_context_window)
+            max_context_window = model_max_context_window or service_max_context_window
+
+            context_window = model_form_context_window or service_form_context_window or default_context_window
             if model.type == "llm":
                 model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                     model=registered_name,
-                    props=ModelProps(private=True),
+                    props=ModelProps(
+                        private=True,
+                        type=model.type,
+                        endpoints=LLM_ENDPOINTS,
+                        context_window=context_window,
+                        max_context_window=max_context_window,
+                    ),
                     chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=rewrite_model_to),
                     completions=ProxyOptions(url=f"{info.base_url}/v1/completions", rewrite_model_to=rewrite_model_to),
                     responses=ProxyOptions(url=f"{info.base_url}/v1/responses", rewrite_model_to=rewrite_model_to),
@@ -806,14 +855,26 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model.type == "embedding":
                 model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
                     model=registered_name,
-                    props=ModelProps(private=True),
+                    props=ModelProps(
+                        private=True,
+                        type=model.type,
+                        endpoints=EMBEDDINGS_ENDPOINTS,
+                        context_window=context_window,
+                        max_context_window=max_context_window,
+                    ),
                     options=ProxyOptions(url=f"{info.base_url}/v1/embeddings", rewrite_model_to=rewrite_model_to),
                     registration_options=None,
                 )
             if model.type == "txt2img":
                 model_info.registration_id = self.endpoint_registry.register_image_generations_as_proxy(
                     model=registered_name,
-                    props=ModelProps(private=True),
+                    props=ModelProps(
+                        private=True,
+                        type=model.type,
+                        endpoints=IMG_ENDPOINTS,
+                        context_window=context_window,
+                        max_context_window=max_context_window,
+                    ),
                     options=ProxyOptions(url=f"{info.base_url}/v1/images/generations", rewrite_model_to=rewrite_model_to),
                     registration_options=None,
                 )
@@ -859,3 +920,14 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                     del self.models_downloaded[alias_model_id]
 
             await asyncio.gather(*tasks)
+
+    def get_default_context_value(self) -> int:
+        """Ollama default context value.
+
+        Based on: https://docs.ollama.com/context-length
+        """
+        if self.hardware.total_vram_gb < 24:
+            return 4096  # 4 * 1024
+        if self.hardware.total_vram_gb > 256:
+            return 262144  # 256 * 1024
+        return 32768  # 32 * 1024
