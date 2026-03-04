@@ -9,7 +9,7 @@
 
 """GoogleAI service."""
 
-from server.services.remote_service import RemoteConst, RemoteModel, RemoteService
+from server.services.remote_service import DefaultRemoteServiceOptions, RemoteConst, RemoteModel, RemoteService
 
 _const = RemoteConst(
     models={
@@ -68,6 +68,7 @@ _const = RemoteConst(
 
 class GoogleAIService(RemoteService):
     api_version = "v1beta/openai/"
+    options_class = DefaultRemoteServiceOptions
 
     def get_type(self) -> str:
         """Return the service id."""
