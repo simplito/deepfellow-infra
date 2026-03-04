@@ -11,7 +11,7 @@
 
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Generic, Literal, TypeVar
 from urllib.parse import urljoin
 
 from fastapi import HTTPException
@@ -89,9 +89,47 @@ class ModelInstalledInfo:
         return ModelInfo(spec=self.options.spec, registration_id=self.registration_id)
 
 
-class RemoteOptions(BaseModel):
+class BaseServiceOptions(BaseModel):
+    """Base class for provider-specific HTTP headers."""
+
     api_url: str
-    api_key: str
+
+    @property
+    def headers(self) -> dict[str, str]:
+        """Resolve model fields into final HTTP headers."""
+        raise NotImplementedError
+
+    @staticmethod
+    def get_spec(default_api_url: str | None = None) -> ServiceSpecification:
+        """Provide the specification for the install service modal fields."""
+        raise NotImplementedError
+
+
+class DefaultRemoteServiceOptions(BaseServiceOptions):
+    """Default contains an OpenAI compatible authorization header."""
+
+    api_key: str = ""
+
+    @property
+    def headers(self) -> dict[str, str]:
+        """Translate data into header."""
+        return {"Authorization": f"Bearer {self.api_key}"}
+
+    @staticmethod
+    def get_spec(default_api_url: str | None = None) -> ServiceSpecification:
+        """Provide the specification for the install service modal fields compatible with OpenAI."""
+        return ServiceSpecification(
+            fields=[
+                ServiceField(type="text", name="api_url", description="API URL", required=False, default=default_api_url),
+                ServiceField(type="password", name="api_key", description="API Key (required for OpenAI)", required=False),
+            ]
+        )
+
+
+# Configurable options type for remote services.
+# Defaults to DefaultRemoteServiceOptions (Bearer token auth).
+# Override with provider-specific options (e.g. ClaudeServiceOptions).
+T_Options = TypeVar("T_Options", bound=BaseServiceOptions, default=DefaultRemoteServiceOptions)
 
 
 class RemoteModelOptions(BaseModel):
@@ -99,10 +137,12 @@ class RemoteModelOptions(BaseModel):
 
 
 @dataclass
-class InstalledInfo:
+class InstalledInfo(Generic[T_Options]):
+    """State of an installed remote service instance."""
+
     models: dict[str, ModelInstalledInfo]
     options: InstallServiceIn
-    parsed_options: RemoteOptions
+    parsed_options: T_Options
 
 
 @dataclass
@@ -110,9 +150,12 @@ class DownloadedInfo:
     pass
 
 
-class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
+class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
+    """Base class for remote API services (OpenAI, Anthropic, etc.)."""
+
     api_version: str = "v1/"
     models: dict[str, dict[str, RemoteModel]]
+    options_class: type[T_Options]  # set by each subclass to parse frontend input
 
     def _after_init(self) -> None:
         self.models = {}
@@ -142,12 +185,7 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def get_spec(self) -> ServiceSpecification:
         """Return the service specification."""
-        return ServiceSpecification(
-            fields=[
-                ServiceField(type="text", name="api_url", description="API URL", required=False, default=self.get_default_url()),
-                ServiceField(type="password", name="api_key", description="API Key", required=True),
-            ]
-        )
+        return self.options_class.get_spec(default_api_url=self.get_default_url())
 
     def get_model_spec(self) -> ModelSpecification:
         """Return the model specification."""
@@ -185,7 +223,7 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
         installed = self.get_instance_info(instance).installed
         return self._get_service_installed_info(instance) if installed is None else installed.options.spec
 
-    def _generate_instance_config(self, info: InstalledInfo | None, custom: list[CustomModel] | None) -> InstanceConfig:
+    def _generate_instance_config(self, info: InstalledInfo[T_Options] | None, custom: list[CustomModel] | None) -> InstanceConfig:
         return InstanceConfig(
             options=info.options if info else None,
             models=[ModelConfig(model_id=x.id, options=x.options) for x in info.models.values()] if info else [],
@@ -195,15 +233,19 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
     def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
         return DownloadedInfo(**data)
 
-    async def _install_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
+    async def _install_instance(
+        self, instance: str, options: InstallServiceIn
+    ) -> PromiseWithProgress[InstalledInfo[T_Options], StreamChunk]:
+        """Install a remote service instance with validated frontend options."""
         if not self.models.get(instance):
             self.load_default_models(instance)
 
         if "api_url" not in options.spec:
             options.spec["api_url"] = self.get_default_url()
-        parsed_options = try_parse_pydantic(RemoteOptions, options.spec)
 
-        async def func(stream: Stream[StreamChunk]) -> InstalledInfo:  # noqa: ARG001
+        parsed_options = try_parse_pydantic(self.options_class, options.spec)
+
+        async def func(stream: Stream[StreamChunk]) -> InstalledInfo[T_Options]:  # noqa: ARG001
             self.service_downloaded = True
             return InstalledInfo(models={}, options=options, parsed_options=parsed_options)
 
@@ -342,6 +384,7 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
             raise HTTPException(400, "Model not found")
 
         model = self.models[instance][model_id]
+        headers = info.parsed_options.headers
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
@@ -364,28 +407,28 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
                     messages=ProxyOptions(
                         url=urljoin(url_base, "messages"),
                         rewrite_model_to=model.real_model_name,
-                        headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
+                        headers=headers,
                     )
                     if model.messages
                     else None,
                     responses=ProxyOptions(
                         url=urljoin(url_base, "responses"),
                         rewrite_model_to=model.real_model_name,
-                        headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
+                        headers=headers,
                     )
                     if model.responses
                     else None,
                     chat_completions=ProxyOptions(
                         url=urljoin(url_base, "chat/completions"),
                         rewrite_model_to=model.real_model_name or model_id,
-                        headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
+                        headers=headers,
                     )
                     if model.completions
                     else None,
                     completions=ProxyOptions(
                         url=urljoin(url_base, "completions"),
                         rewrite_model_to=model.real_model_name,
-                        headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
+                        headers=headers,
                     )
                     if model.legacy_completions
                     else None,
@@ -399,7 +442,7 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
                     options=ProxyOptions(
                         url=url,
                         rewrite_model_to=model.real_model_name,
-                        headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
+                        headers=headers,
                     ),
                     registration_options=None,
                 )
@@ -411,7 +454,7 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
                     options=ProxyOptions(
                         url=url,
                         rewrite_model_to=model.real_model_name,
-                        headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
+                        headers=headers,
                     ),
                     registration_options=None,
                 )
@@ -423,7 +466,7 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
                     options=ProxyOptions(
                         url=url,
                         rewrite_model_to=model.real_model_name,
-                        headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
+                        headers=headers,
                     ),
                     registration_options=None,
                 )
@@ -435,7 +478,7 @@ class RemoteService(Base2Service[InstalledInfo, DownloadedInfo]):
                     options=ProxyOptions(
                         url=url,
                         rewrite_model_to=model.real_model_name,
-                        headers={"Authorization": f"Bearer {info.parsed_options.api_key}"},
+                        headers=headers,
                     ),
                     registration_options=None,
                 )
