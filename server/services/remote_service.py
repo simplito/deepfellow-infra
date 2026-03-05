@@ -125,11 +125,6 @@ class BaseServiceOptions(BaseModel):
         """Resolve model fields into final HTTP headers."""
         raise NotImplementedError
 
-    @staticmethod
-    def get_spec(default_api_url: str | None = None) -> ServiceSpecification:
-        """Provide the specification for the install service modal fields."""
-        raise NotImplementedError
-
 
 class DefaultRemoteServiceOptions(BaseServiceOptions):
     """Default contains an OpenAI compatible authorization header."""
@@ -140,16 +135,6 @@ class DefaultRemoteServiceOptions(BaseServiceOptions):
     def headers(self) -> dict[str, str]:
         """Translate data into header."""
         return {"Authorization": f"Bearer {self.api_key}"}
-
-    @staticmethod
-    def get_spec(default_api_url: str | None = None) -> ServiceSpecification:
-        """Provide the specification for the install service modal fields compatible with OpenAI."""
-        return ServiceSpecification(
-            fields=[
-                ServiceField(type="text", name="api_url", description="API URL", required=False, default=default_api_url),
-                ServiceField(type="password", name="api_key", description="API Key (required for OpenAI)", required=False),
-            ]
-        )
 
 
 # Configurable options type for remote services.
@@ -210,8 +195,13 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
         """Return the models registry."""
 
     def get_spec(self) -> ServiceSpecification:
-        """Return the service specification."""
-        return self.options_class.get_spec(default_api_url=self.get_default_url())
+        """Provide the specification for the install service modal fields compatible with OpenAI."""
+        return ServiceSpecification(
+            fields=[
+                ServiceField(type="text", name="api_url", description="API URL", required=False, default=self.get_default_url()),
+                ServiceField(type="password", name="api_key", description="API Key (required for OpenAI)", required=False),
+            ]
+        )
 
     def get_model_spec(self) -> ModelSpecification:
         """Return the model specification."""

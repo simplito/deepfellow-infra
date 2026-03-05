@@ -13,7 +13,7 @@ from server.services.remote_service import DefaultRemoteServiceOptions
 
 
 @pytest.fixture
-def default_remote_service_options():
+def default_remote_service_options() -> DefaultRemoteServiceOptions:
     return DefaultRemoteServiceOptions(api_url="https://api.openai.com", api_key="test-api-key")
 
 
