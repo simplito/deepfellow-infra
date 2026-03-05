@@ -27,6 +27,7 @@ from server.metrics_registry import MetricsRegistry
 from server.model_tester import ModelTester
 from server.portservice import PortService
 from server.serviceprovider import ServiceProvider
+from server.services.claude_service import ClaudeService
 from server.services.coqui_service import CoquiService
 from server.services.custom_service import CustomService
 from server.services.googleai_service import GoogleAIService
@@ -92,18 +93,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         model_input = (config, endpoint_registry, service_provider, model_downloader, docker_service, hardware)
 
         # Register services
-        services_manager.register_service(OllamaService(*model_input))
+        services_manager.register_service(ClaudeService(*model_input))
+        services_manager.register_service(CoquiService(*model_input))
+        services_manager.register_service(CustomService(*model_input))
+        services_manager.register_service(GoogleAIService(*model_input))
+        services_manager.register_service(LLamacppService(*model_input))
+        services_manager.register_service(McpService(*model_input))
         services_manager.register_service(OllamaExternalService(*model_input))
+        services_manager.register_service(OllamaService(*model_input))
+        services_manager.register_service(OpenAIService(*model_input))
+        services_manager.register_service(SindriService(*model_input))
         services_manager.register_service(SpeachesAIService(*model_input))
         services_manager.register_service(StableDiffusionService(*model_input))
-        services_manager.register_service(LLamacppService(*model_input))
         services_manager.register_service(VllmService(*model_input))
-        services_manager.register_service(CustomService(*model_input))
-        services_manager.register_service(CoquiService(*model_input))
-        services_manager.register_service(SindriService(*model_input))
-        services_manager.register_service(OpenAIService(*model_input))
-        services_manager.register_service(GoogleAIService(*model_input))
-        services_manager.register_service(McpService(*model_input))
 
         # Load functions
         await context.load_services()
