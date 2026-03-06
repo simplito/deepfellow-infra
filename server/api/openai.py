@@ -33,6 +33,7 @@ from server.models.api import (
     ResponsesResponse,
 )
 from server.models.common import StarletteResponse
+from server.utils.validators import SafePath
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -164,7 +165,7 @@ async def on_custom_endpoint(
     request: Request,
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
-    full_path: str,
+    full_path: SafePath,
 ) -> StarletteResponse:
     """Process custom endpoint request."""
     return await endpoint_registry.execute_custom_endpoints(full_path, request)
@@ -183,7 +184,7 @@ async def on_mcp_endpoint(
     request: Request,
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
-    full_path: str,
+    full_path: SafePath,
 ) -> StarletteResponse:
     """Process mcp endpoint request."""
     return await endpoint_registry.execute_mcp_endpoints(full_path, request)
