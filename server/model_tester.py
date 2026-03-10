@@ -31,6 +31,7 @@ from server.models.api import (
     ImagesRequest,
     MessageParam,
     MessagesRequest,
+    RerankRequest,
     ResponsesRequest,
     ThinkingConfigDisabled,
     UserMessage,
@@ -85,7 +86,7 @@ class ModelTester:
             logger.exception("Error during executing model test")
             return {"error": "Internal Server Error"}
 
-    async def _perform_test(self, entry: RegistryEntry) -> JsonSerializable:
+    async def _perform_test(self, entry: RegistryEntry) -> JsonSerializable:  # noqa: C901
         if entry.registered_model.type in [
             "llm",
             "llm-v1-v2-v3",
@@ -111,6 +112,8 @@ class ModelTester:
             return await self._test_stt(entry.registered_model.name, entry.registered_model.endpoint)
         if entry.registered_model.type == "txt2img":
             return await self._test_txt2img(entry.registered_model.name, entry.registered_model.endpoint)
+        if entry.registered_model.type == "rerank":
+            return await self._test_rerank(entry.registered_model.name, entry.registered_model.endpoint)
         if entry.registered_model.type == "custom":
             raise TestError("Custom model cannot be tested")
         raise RuntimeError(f"Given model cannot be tested, unsupported type {entry.registered_model.type}")  # noqa: EM102
@@ -233,6 +236,31 @@ class ModelTester:
             return {
                 "result": "ok",
                 "output": {"content_type": "image/png", "data": json["data"][0]["b64_json"]},
+                "details": json,
+            }
+        except Exception:
+            raise TestError("Cannot read image data", my_resp)  # noqa: B904
+
+    async def _test_rerank(self, model: str, endpoint: SimpleEndpoint[RerankRequest]) -> JsonSerializable:
+        (my_resp, json) = await self._read_json(
+            await endpoint.on_request(
+                RerankRequest(
+                    model=model,
+                    query="What is a cat?",
+                    return_documents=True,
+                    documents=[
+                        "Water is wet.",
+                        "The Yeti is a legendary creature.",
+                        "A cat is an animal. It is a mammal with a tail.",
+                    ],
+                ),
+                None,
+            )
+        )
+        try:
+            return {
+                "result": "ok",
+                "output": json["results"][0]["document"]["text"],
                 "details": json,
             }
         except Exception:

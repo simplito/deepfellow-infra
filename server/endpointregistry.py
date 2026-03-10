@@ -41,6 +41,7 @@ from server.models.api import (
     ModelId,
     ModelProps,
     ModelType,
+    RerankRequest,
     ResponsesRequest,
 )
 from server.models.common import JsonSerializable, StarletteResponse
@@ -275,6 +276,7 @@ class EndpointRegistry:
         self.audio_transcriptions_endpoints = Endpoint[SimpleEndpoint[CreateTranscriptionRequest]](self.registry, self.parent_infra)
         self.custom_endpoints = Endpoint[CustomEndpoint](self.registry, self.parent_infra)
         self.images_generations_endpoints = Endpoint[SimpleEndpoint[ImagesRequest]](self.registry, self.parent_infra)
+        self.rerank_endpoints = Endpoint[SimpleEndpoint[RerankRequest]](self.registry, self.parent_infra)
         self.mcp_endpoints = Endpoint[McpEndpoint](self.registry, self.parent_infra)
 
     def get_models(self) -> ApiModels:
@@ -289,6 +291,8 @@ class EndpointRegistry:
         for model in self.audio_transcriptions_endpoints.get_models():
             models.append(model)
         for model in self.images_generations_endpoints.get_models():
+            models.append(model)
+        for model in self.rerank_endpoints.get_models():
             models.append(model)
         return ApiModels(data=models)
 
@@ -308,6 +312,7 @@ class EndpointRegistry:
         models.extend(self.audio_speech_endpoints.list_models())
         models.extend(self.audio_transcriptions_endpoints.list_models())
         models.extend(self.images_generations_endpoints.list_models())
+        models.extend(self.rerank_endpoints.list_models())
         models.extend(self.custom_endpoints.list_models())
         models.extend(self.mcp_endpoints.list_models())
         return models
@@ -509,6 +514,34 @@ class EndpointRegistry:
     def unregister_image_generations(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister image generations for given model."""
         self.images_generations_endpoints.remove_model(model, registration_id)
+
+    def register_rerank(
+        self,
+        model: str,
+        props: ModelProps,
+        endpoint: SimpleEndpoint[RerankRequest],
+        registration_options: RegistrationOptions | None,
+    ) -> RegistrationId:
+        """Register rerank endpoint for given model."""
+        return self.rerank_endpoints.add_model(model, props, endpoint, "rerank", registration_options)
+
+    def register_rerank_as_proxy(
+        self,
+        model: str,
+        props: ModelProps,
+        options: ProxyOptions,
+        registration_options: RegistrationOptions | None,
+    ) -> RegistrationId:
+        """Register rerank for given model as a proxy."""
+
+        async def on_request(body: RerankRequest, request: Request | None) -> StreamingResponse:
+            return await post_json(body, options, request)
+
+        return self.register_rerank(model, props, SimpleEndpoint(on_request=on_request), registration_options)
+
+    def unregister_rerank(self, model: str, registration_id: RegistrationId) -> None:
+        """Unregister rerank for given model."""
+        self.rerank_endpoints.remove_model(model, registration_id)
 
     def register_custom_endpoint(
         self,
@@ -921,6 +954,16 @@ class EndpointRegistry:
                 ),
                 registration_options=registration_options,
             )
+        elif type == "rerank":
+            self.register_rerank_as_proxy(
+                model=model_id,
+                props=props,
+                options=ProxyOptions(
+                    url=urljoin(url, "v1/rerank"),
+                    headers={"Authorization": f"Bearer {api_key}"},
+                ),
+                registration_options=registration_options,
+            )
         elif type == "custom":
             self.register_custom_endpoint_as_proxy(
                 url=model_id,
@@ -969,6 +1012,10 @@ class EndpointRegistry:
     def has_image_generations_model(self, model: str) -> bool:
         """Check whether the image generations model is registered."""
         return self.images_generations_endpoints.has_model(model)
+
+    def has_rerank_model(self, model: str) -> bool:
+        """Check whether the rerank model is registered."""
+        return self.rerank_endpoints.has_model(model)
 
     def has_custom_endpoint(self, url: str) -> bool:
         """Check whether the custom endpoint is registered."""
@@ -1179,6 +1226,24 @@ class EndpointRegistry:
     ) -> StarletteResponse:
         """Process audio transcriptions request."""
         endpoint = self.audio_transcriptions_endpoints.get_model(body.model, registration_id=registration_id)
+        if not endpoint:
+            raise HTTPException(400, "Given model is not supported")
+
+        async def func() -> StarletteResponse:
+            return await endpoint.endpoint.on_request(body, request)
+
+        return await self.with_usage(endpoint, func)
+
+    async def execute_rerank(
+        self,
+        body: RerankRequest,
+        request: Request | None = None,
+        registration_id: RegistrationId | None = None,
+    ) -> StarletteResponse:
+        """Process rerank request."""
+        if self.config.is_log_payloads_enabled():
+            logger.info(f"DUMP REQUEST PAYLOAD /v1/rerank {body.model_dump_json(exclude_none=True)}")  # noqa: G004
+        endpoint = self.rerank_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
             raise HTTPException(400, "Given model is not supported")
 

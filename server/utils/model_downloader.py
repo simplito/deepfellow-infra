@@ -156,7 +156,7 @@ class HuggingFaceRepoWithBlobsDownloader(BDownloader):
                 )
         return files
 
-    async def download(self, url: str, model_dir: Path) -> AsyncGenerator[DownloadPacket]:
+    async def download(self, url: str, model_dir: Path, filter_out_other_modelfiles: bool = False) -> AsyncGenerator[DownloadPacket]:
         """Download model."""
         url_parsed = urlparse(url)
         model_id = urlunparse(url_parsed._replace(query=""))
@@ -172,6 +172,9 @@ class HuggingFaceRepoWithBlobsDownloader(BDownloader):
         ref_file = refs_dir / "main"
         if not ref_file.exists():
             ref_file.write_text(commit_id)
+
+        if filter_out_other_modelfiles and any(x for x in files if x["path"] == "model.safetensors"):
+            files = [x for x in files if (x["path"] != "pytorch_model.bin") and (x["path"] != "flax_model.msgpack")]
 
         for file in files:
             whole_url = f"https://huggingface.co/{model_id}/resolve/main/{file['path']}"

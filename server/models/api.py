@@ -369,6 +369,7 @@ ModelType = Literal[
     "stt",
     "txt2img",
     "embedding",
+    "rerank",
     "llm",
     "llm-v1",
     "llm-v2",
@@ -1880,3 +1881,31 @@ class MessagesResponse(BaseModel):
     stop_reason: StopReason
     stop_sequence: str
     usage: MessagesUsage
+
+
+RerankDocumentInput = str | dict[str, Any]
+
+
+class RerankRequest(BaseModel):
+    model: str
+    query: str
+    documents: list[RerankDocumentInput]
+    top_n: int | None = None
+    return_documents: bool | None = None
+    rank_fields: list[str] | None = None
+    max_chunks_per_doc: int | None = None
+
+
+RerankDocumentOutput = dict[str, Any]
+
+
+class RerankResultItem(BaseModel):
+    index: int
+    relevance_score: float
+    document: RerankDocumentOutput | None = None
+
+
+class RerankResponse(BaseModel):
+    id: str | None = None
+    results: list[RerankResultItem]
+    meta: dict[str, Any] | None = None
