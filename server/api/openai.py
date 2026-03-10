@@ -29,6 +29,7 @@ from server.models.api import (
     ImagesRequest,
     MessagesRequest,
     MessagesResponse,
+    RerankRequest,
     ResponsesRequest,
     ResponsesResponse,
 )
@@ -150,6 +151,17 @@ async def on_images_generations(
 ) -> StarletteResponse:
     """Process images genenerations request."""
     return await endpoint_registry.execute_images_generations(body, request)
+
+
+@router.post("/v1/rerank", response_model_exclude_unset=True)
+async def on_rerank(
+    request: Request,
+    body: Annotated[RerankRequest, Body(...)],
+    _: Annotated[str, Depends(auth_server)],
+    endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+) -> StarletteResponse:
+    """Process rerank request."""
+    return await endpoint_registry.execute_rerank(body, request)
 
 
 # Replacement from router.api_route which is kind bugged in swagger.
