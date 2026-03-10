@@ -12,7 +12,9 @@
 import asyncio
 import json
 import logging
+import shutil
 from collections.abc import Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, Literal, NamedTuple, TypedDict
@@ -221,7 +223,7 @@ class InstalledInfo:
 
 @dataclass
 class DownloadedInfo:
-    pass
+    model_paths: list[str] | None = None
 
 
 class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
@@ -702,18 +704,31 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         return ModelfileData("\n".join(new_lines), models_to_download, docker_paths, local_paths)
 
-    def _get_modelfile_path(self, model: str) -> Path:
+    def _get_modelfile_path(self, model: str, instance: str) -> Path:
         """Return local (host) modelfile path."""
-        return Path(self._get_working_dir()) / "main" / "custom" / model / "Modelfile"
+        return Path(self._get_working_dir()) / "main" / "custom" / model / instance / "Modelfile"
 
-    def _get_docker_modelfile_path(self, model: str) -> Path:
+    def _get_docker_modelfile_path(self, model: str, instance: str) -> Path:
         """Return docker modelfile path."""
-        return Path("root/.ollama/custom") / model / "Modelfile"
+        return Path("root/.ollama/custom") / model / instance / "Modelfile"
 
-    async def save_modelfile(self, model: str, modelfile: str) -> str:
+    async def remove_modelfile(self, model: str, instance: str) -> None:
+        """Remove modelfile."""
+        local_modelfile_path = self._get_modelfile_path(model, instance)
+        local_modelfile_path.unlink(missing_ok=True)
+        parent_dir = local_modelfile_path.parent
+        if parent_dir.is_dir() and not any(parent_dir.iterdir()):
+            parent_dir.rmdir()
+
+    async def save_modelfile(self, model: str, instance: str, modelfile: str) -> str:
         """Save modelfile."""
-        docker_modelfile_path = self._get_docker_modelfile_path(model)
-        local_modelfile_path = self._get_modelfile_path(model)
+        docker_modelfile_path = self._get_docker_modelfile_path(model, instance)
+        local_modelfile_path = self._get_modelfile_path(model, instance)
+
+        # Remove old Modelfile
+        old_path = Path(local_modelfile_path.parent.parent / "Modelfile")
+        if old_path.exists():
+            old_path.unlink()
 
         if local_modelfile_path.exists():
             async with aiofiles.open(local_modelfile_path) as f:
@@ -775,21 +790,26 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         async def func(input_stream: Stream[StreamChunk]) -> InstallModelOut:  # noqa: C901
             rewrite_model_to = model_id
             internal_name = model_id
+            new_modelfile: str | None = None
 
             service_form_context_window = info.parsed_options.context_length
             model_form_context_window = parsed_model_options.context_length
 
             # Default model with custom context
-            if not model.modelfile and model.type == "llm" and parsed_model_options.context_length is not None:
-                internal_name = model_id + "-customcontextlength"
-                rewrite_model_to = internal_name
-                model.modelfile = f"FROM {model_id}\nPARAMETER num_ctx {parsed_model_options.context_length}"
+            if model.type == "llm" and parsed_model_options.context_length is not None:
+                if model.modelfile:
+                    new_modelfile = f"{model.modelfile}\nPARAMETER num_ctx {parsed_model_options.context_length}"
+                else:
+                    internal_name = model_id + "-customcontextlength"
+                    rewrite_model_to = internal_name
+                    new_modelfile = f"FROM {model_id}\nPARAMETER num_ctx {parsed_model_options.context_length}"
 
-            if model.modelfile:
-                modelfile_data = await self.create_docker_modelfile_content(model_id, model.modelfile, instance)
+            modelfile_recipe = new_modelfile or model.modelfile
+            if modelfile_recipe:
+                modelfile_data = await self.create_docker_modelfile_content(model_id, modelfile_recipe, instance)
                 models_to_download = modelfile_data.urls
                 paths = modelfile_data.local_paths
-                path = await self.save_modelfile(model_id, modelfile_data.content)
+                path = await self.save_modelfile(model_id, instance, modelfile_data.content)
                 quantization = model.quantization
                 service_name = info.docker.name
                 for i, model_to_download in enumerate(models_to_download):
@@ -798,7 +818,15 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                             input_stream, info.base_url, model_to_download, model_id, model.size, i, len(models_to_download)
                         )
                 compose_filepath = self.docker_service.get_docker_compose_file_path(service_name)
-                await self.create_model_from_modelfile(compose_filepath, service_name, internal_name, path, quantization)
+                try:
+                    await self.create_model_from_modelfile(compose_filepath, service_name, internal_name, path, quantization)
+                except Exception:
+                    for path in modelfile_data.local_paths:
+                        if Path(path).is_dir():
+                            with suppress(Exception):
+                                shutil.rmtree(path)
+                        else:
+                            Path(path).unlink(missing_ok=True)
                 if len(paths) != 0:
                     path = paths[0]
                     if path.endswith(".gguf"):
@@ -879,6 +907,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                     registration_options=None,
                 )
             input_stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
+
             self.models_downloaded[model_id] = DownloadedInfo()
 
             if model.hash:
@@ -908,6 +937,8 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
 
             tasks.append(asyncio.create_task(fetch_from(f"{info.base_url}/api/delete", "DELETE", {"name": model_id})))
 
+            await self.remove_modelfile(model_id, instance)
+
             del self.models_downloaded[model_id]
 
             if not model.hash:
@@ -917,7 +948,8 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                 if alias_model.hash == model.hash and model_id != alias_model_id:
                     await self._uninstall_model(instance, alias_model_id, UninstallModelIn(purge=False))
                     tasks.append(asyncio.create_task(fetch_from(f"{info.base_url}/api/delete", "DELETE", {"name": alias_model_id})))
-                    del self.models_downloaded[alias_model_id]
+                    if alias_model_id in self.models_downloaded:
+                        del self.models_downloaded[alias_model_id]
 
             await asyncio.gather(*tasks)
 
