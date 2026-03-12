@@ -779,7 +779,7 @@ class InputImageMask(BaseModel):
 class FunctionDef(BaseModel):
     type: Literal["function"] = "function"
     name: str
-    parameters: str
+    parameters: dict[str, Any]
     strict: bool = True
     description: str = ""
 
