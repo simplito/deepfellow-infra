@@ -83,12 +83,15 @@ class RerankConst(BaseModel):
 
 _const = RerankConst(
     images={
-        "gpu": DockerImage(name="hub.simplito.com/deepfellow/deepfellow-rerank:1.0.0-cuda12.8", size="8.29 GB"),
-        "cpu": DockerImage(name="hub.simplito.com/deepfellow/deepfellow-rerank:1.0.0-cpu", size="1.14 GB"),
+        "gpu": DockerImage(name="hub.simplito.com/deepfellow/deepfellow-rerank:1.1.0-cuda12.8", size="8.29 GB"),
+        "cpu": DockerImage(name="hub.simplito.com/deepfellow/deepfellow-rerank:1.1.0-cpu", size="1.14 GB"),
     },
     models={
-        "cross-encoder/ms-marco-MiniLM-L-6-v2": RerankModel(type="rerank", size="88MB"),
+        "cross-encoder/ms-marco-MiniLM-L6-v2": RerankModel(type="rerank", size="88MB"),
+        "cross-encoder/ms-marco-MiniLM-L12-v2": RerankModel(type="rerank", size="129MB"),
+        "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1": RerankModel(type="rerank", size="470MB"),
         "BAAI/bge-reranker-base": RerankModel(type="rerank", size="1.1GB"),
+        "BAAI/bge-reranker-v2-m3": RerankModel(type="rerank", size="2.2GB"),
         "jinaai/jina-reranker-v2-base-multilingual": RerankModel(type="rerank", size="548MB"),
     },
 )
