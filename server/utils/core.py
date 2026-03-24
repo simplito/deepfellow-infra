@@ -270,8 +270,8 @@ async def stream_fetch_from(
 ) -> AsyncGenerator[FetchResult]:
     """Make stream HTTP request to host on given port."""
     async with aiohttp.ClientSession() as session, session.request(method, url, json=data, timeout=ClientTimeout(timeout)) as response:
-        async for chunk in response.content.iter_any():
-            yield FetchResult(status_code=response.status, data=chunk.decode())
+        async for chunk in response.content.iter_chunks():
+            yield FetchResult(status_code=response.status, data=chunk[0].decode())
 
 
 def add_token_to_civitai(url: str, token: str) -> str:
@@ -555,9 +555,9 @@ async def make_http_request(
 
         async def generator() -> AsyncGenerator[bytes]:
             try:
-                async for chunk in response.content.iter_any():
+                async for chunk in response.content.iter_chunks():
                     if chunk:
-                        yield chunk
+                        yield chunk[0]
             finally:
                 await response.release()
                 await session.close()
