@@ -1135,6 +1135,33 @@ class TextConfig(BaseModel):
     format: TextFormat | JsonSchemaFormat | JsonObjectFormat
 
 
+class ResponseInputTextContent(BaseModel):
+    type: Literal["input_text"] = "input_text"
+    text: str
+
+
+class ResponseInputImageContent(BaseModel):
+    type: Literal["input_image"] = "input_image"
+    detail: Literal["low", "high", "auto", "original"] = "original"
+    fild_id: str | None = None
+    image_url: str | None = None
+
+
+class ResponseInputFileContent(BaseModel):
+    type: Literal["input_file"] = "input_file"
+    file_data: str | None = None
+    file_id: str | None = None
+    file_url: str | None = None
+    filename: str | None = None
+
+
+class FunctionCallOutput(BaseModel):
+    id: str | None = None
+    type: Literal["function_call_output"] = "function_call_output"
+    call_id: str
+    output: str
+
+
 Input = (
     Message
     | InputMessage
@@ -1148,6 +1175,7 @@ Input = (
     | McpApprovalResponse
     | ItemReference
     | McpToolCall
+    | FunctionCallOutput
 )
 
 
@@ -1380,6 +1408,7 @@ Instruction = (
     | McpApprovalResponse
     | ItemReference
     | McpToolCall
+    | FunctionCallOutput
 )
 
 
@@ -1393,6 +1422,7 @@ Output = (
     | McpApprovalRequest
     | McpToolCall
     | ItemReference
+    | FunctionCallOutput
 )
 
 
