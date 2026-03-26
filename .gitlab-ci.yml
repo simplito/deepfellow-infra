@@ -36,18 +36,24 @@ ruff:
   stage: analysis
   script:
     - uv run ruff check server/ tests/
+  except:
+    - tags
 
 ruff-format:
   <<: *uv
   stage: analysis
   script:
     - uv run ruff format --check server/ tests/
+  except:
+    - tags
 
 pyright:
   <<: *uv
   stage: analysis
   script:
     - PYRIGHT_PYTHON_NODE_VERSION=24.10.0 uv run pyright
+  except:
+    - tags
 
 check-auth:
   <<: *uv
@@ -55,6 +61,8 @@ check-auth:
   script:
     - uv run python ./server/scripts/check_auth.py static ./server/ -v
     - uv run python ./server/scripts/check_auth.py runtime ./server/main.py -v
+  except:
+    - tags
 
 pytest:
   <<: *uv
@@ -68,6 +76,8 @@ pytest:
       coverage_report:
         coverage_format: cobertura
         path: coverage_server.xml
+  except:
+    - tags
 
 build_and_publish_docker_image:
   stage: build
