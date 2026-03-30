@@ -1135,20 +1135,30 @@ class TextConfig(BaseModel):
     format: TextFormat | JsonSchemaFormat | JsonObjectFormat
 
 
-class ResponseInputTextContent(BaseModel):
-    type: Literal["input_text"] = "input_text"
+class CustomToolCall(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    type: Literal["function_call"] = "function_call"
+    status: Literal["in_progress", "completed", "incomplete"] = "completed"
+    call_id: str = Field(default_factory=lambda: str(uuid4()))
+    namespace: str | None
+    name: str
+    input: str
+
+
+class FunctionCallOutputTextInput(BaseModel):
+    type: Literal["input_text"]
     text: str
 
 
-class ResponseInputImageContent(BaseModel):
-    type: Literal["input_image"] = "input_image"
-    detail: Literal["low", "high", "auto", "original"] = "original"
-    fild_id: str | None = None
+class FunctionCallOutputImageInput(BaseModel):
+    type: Literal["input_image"]
+    detail: Literal["low", "high", "auto", "original"] = "auto"
+    file_id: str | None = None
     image_url: str | None = None
 
 
-class ResponseInputFileContent(BaseModel):
-    type: Literal["input_file"] = "input_file"
+class FunctionCallOutputFileInput(BaseModel):
+    type: Literal["input_file"]
     file_data: str | None = None
     file_id: str | None = None
     file_url: str | None = None
@@ -1156,10 +1166,111 @@ class ResponseInputFileContent(BaseModel):
 
 
 class FunctionCallOutput(BaseModel):
-    id: str | None = None
+    id: str = Field(default_factory=lambda: str(uuid4()))
     type: Literal["function_call_output"] = "function_call_output"
+    status: Literal["in_progress", "completed", "incomplete"] = "completed"
     call_id: str
-    output: str
+    output: str | list[FunctionCallOutputTextInput | FunctionCallOutputImageInput | FunctionCallOutputFileInput]
+
+
+class CustomToolCallOutput(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    type: Literal["custom_tool_call_output"] = "custom_tool_call_output"
+    call_id: str = Field(default_factory=lambda: str(uuid4()))
+    status: Literal["in_progress", "completed", "incomplete"] = "completed"
+    created_by: str | None = None
+    output: str | list[FunctionCallOutputTextInput | FunctionCallOutputImageInput | FunctionCallOutputFileInput]
+
+
+class SearchSource(BaseModel):
+    type: Literal["url"] = "url"
+    url: str
+
+
+class Search(BaseModel):
+    type: Literal["search"] = "search"
+    queries: list[str] = []
+    sources: list[SearchSource] = []
+
+
+class OpenPage(BaseModel):
+    type: Literal["open_page"] = "open_page"
+    url: str | None = None
+
+
+class FindInPage(BaseModel):
+    type: Literal["find_in_page"] = "find_in_page"
+    pattern: str
+    url: str
+
+
+class WebSearchCall(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    type: Literal["web_search_call"] = "web_search_call"
+    status: Literal["in_progress", "completed", "searching", "failed"] = "completed"
+    action: Search | OpenPage | FindInPage
+
+
+class Compaction(BaseModel):
+    id: str
+    type: Literal["compaction"] = "compaction"
+    encrypted_content: str
+    created_by: str | None = None
+
+
+class ToolSearchCall(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    arguments: dict[str, str]
+    call_id: str | None = Field(default_factory=lambda: str(uuid4()))
+    execution: Literal["server", "client"]
+    status: Literal["in_progress", "completed", "incomplete"]
+    type: Literal["tool_search_call"]
+    created_by: str | None = None
+
+
+class ToolSearchOutput(BaseModel):
+    type: Literal["tool_search_output"] = "tool_search_output"
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    call_id: str | None = Field(default_factory=lambda: str(uuid4()))
+    execution: Literal["server", "client"]
+    status: Literal["in_progress", "completed", "incomplete"]
+    tools: list[ToolResponses]
+    created_by: str | None = None
+
+
+class OperationCreateFile(BaseModel):
+    type: Literal["create_file"] = "create_file"
+    path: str
+    diff: str
+
+
+class OperationDeleteFile(BaseModel):
+    type: Literal["delete_file"] = "delete_file"
+    path: str
+
+
+class OperationUpdateFile(BaseModel):
+    type: Literal["update_file"] = "update_file"
+    path: str
+    diff: str
+
+
+class ApplyPatchToolCall(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    call_id: str = Field(default_factory=lambda: str(uuid4()))
+    status: Literal["in_progress", "completed"] = "completed"
+    type: Literal["apply_patch_call"] = "apply_patch_call"
+    created_by: str | None = None
+    operation: OperationCreateFile | OperationDeleteFile | OperationUpdateFile
+
+
+class ApplyPatchToolCallOutput(BaseModel):
+    type: Literal["apply_patch_call_output"] = "apply_patch_call_output"
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    call_id: str = Field(default_factory=lambda: str(uuid4()))
+    status: Literal["failed", "completed"] = "completed"
+    created_by: str | None = None
+    output: str | None = None
 
 
 Input = (
@@ -1168,6 +1279,7 @@ Input = (
     | OutputMessage
     | FileSearchToolCall
     | FunctionToolCall
+    | CustomToolCall
     | Reasoning
     | ImageGenerationCall
     | McpListTools
@@ -1176,6 +1288,13 @@ Input = (
     | ItemReference
     | McpToolCall
     | FunctionCallOutput
+    | CustomToolCallOutput
+    | WebSearchCall
+    | Compaction
+    | ToolSearchCall
+    | ToolSearchOutput
+    | ApplyPatchToolCall
+    | ApplyPatchToolCallOutput
 )
 
 
@@ -1408,7 +1527,16 @@ Instruction = (
     | McpApprovalResponse
     | ItemReference
     | McpToolCall
+    | CustomToolCall
     | FunctionCallOutput
+    | CustomToolCallOutput
+    | McpApprovalRequest
+    | WebSearchCall
+    | Compaction
+    | ToolSearchCall
+    | ToolSearchOutput
+    | ApplyPatchToolCall
+    | ApplyPatchToolCallOutput
 )
 
 
@@ -1422,7 +1550,16 @@ Output = (
     | McpApprovalRequest
     | McpToolCall
     | ItemReference
+    | CustomToolCall
     | FunctionCallOutput
+    | CustomToolCallOutput
+    | McpApprovalRequest
+    | WebSearchCall
+    | Compaction
+    | ToolSearchCall
+    | ToolSearchOutput
+    | ApplyPatchToolCall
+    | ApplyPatchToolCallOutput
 )
 
 
