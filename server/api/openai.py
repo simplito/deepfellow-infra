@@ -164,6 +164,16 @@ async def on_rerank(
     return await endpoint_registry.execute_rerank(body, request)
 
 
+@router.get("/custom")
+async def get_custom_prefixes(
+    request: Request,  # noqa: ARG001
+    _: Annotated[str, Depends(auth_server)],
+    endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+) -> list[str]:
+    """Process custom endpoint request."""
+    return [model.props.prefix for model in endpoint_registry.custom_endpoints.list_models() if model.props.prefix]
+
+
 # Replacement from router.api_route which is kind bugged in swagger.
 # Also FastAPI creators doesn't recommend using api_route method.
 @router.get("/custom/{full_path:path}")
@@ -181,6 +191,16 @@ async def on_custom_endpoint(
 ) -> StarletteResponse:
     """Process custom endpoint request."""
     return await endpoint_registry.execute_custom_endpoints(full_path, request)
+
+
+@router.get("/mcp")
+async def get_mcp_prefixes(
+    request: Request,  # noqa: ARG001
+    _: Annotated[str, Depends(auth_server)],
+    endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+) -> list[str]:
+    """Process custom endpoint request."""
+    return [model.props.prefix for model in endpoint_registry.mcp_endpoints.list_models() if model.props.prefix]
 
 
 # Replacement from router.api_route which is kind bugged in swagger.

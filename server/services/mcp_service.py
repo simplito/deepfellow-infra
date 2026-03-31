@@ -494,6 +494,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             options.spec = {}
         if "prefix" not in options.spec:
             options.spec["prefix"] = model.default_prefix
+        model.model_props.prefix = options.spec["prefix"]
         parsed_model_options = try_parse_pydantic(McpModelOptions, options.spec)
 
         self.check_envs(model.required_envs, parsed_model_options.envs)

@@ -362,6 +362,7 @@ class ModelProps(BaseModel):
     endpoints: list[str]
     context_window: int | None = None
     max_context_window: int | None = None
+    prefix: str | None = None
 
 
 ModelType = Literal[
