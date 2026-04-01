@@ -626,5 +626,21 @@ _const = McpConst(
             ),
             required_headers=["Authorization"],
         ),
+        "ollama-websearch": lambda mcp_service, subnet: SrvMcpModel(
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/ollama-websearch/mcp"]),
+            model_spec=mcp_service.get_default_model_spec(default_prefix="ollama-websearch", required_envs=["OLLAMA_API_KEY"]),
+            model_type="mcp",
+            default_prefix="ollama-websearch",
+            size="625MB",
+            options=DockerOptions(
+                image_port=8000,
+                name="ollama-websearch",
+                container_name=mcp_service.docker_service.get_docker_container_name("ollama-websearch"),
+                image="hub.simplito.com/deepfellow/ollama-websearch-mcp-server:v1.0.2",
+                env_vars={},
+                subnet=subnet,
+            ),
+            required_envs=["OLLAMA_API_KEY"],
+        ),
     },
 )
