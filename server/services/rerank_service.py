@@ -256,6 +256,7 @@ class RerankService(Base2Service[InstalledInfo, DownloadedInfo]):
                 container_name=self.docker_service.get_docker_container_name(name),
                 image=image.name,
                 image_port=8089,
+                hardware=hardware_parts,
                 volumes=volumes,
                 restart="unless-stopped",
                 subnet=subnet,
