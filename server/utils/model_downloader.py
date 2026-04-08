@@ -10,6 +10,7 @@
 """Model downloaders."""
 
 import json
+import logging
 import re
 from abc import abstractmethod
 from collections.abc import AsyncGenerator
@@ -17,12 +18,15 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 from urllib.parse import urlparse, urlunparse
+from uuid import uuid4
 
 from aiohttp import ClientSession
 from fastapi import HTTPException
 
 from server.config import AppSettings
-from server.utils.core import DownloadPacket, HttpClientError, PreDownloadPacket, SuccessDownloadPacket, Utils
+from server.utils.core import DownloadPacket, HttpClientError, PreDownloadPacket, SuccessDownloadPacket, Utils, download_file
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class BDownloader:
@@ -351,6 +355,66 @@ class CivitaiModelDownloader(BaseDownloader):
             raise HTTPException(500, self.create_error_msg(e.body)) from e
 
 
+class AdapterRegistryDownloader(BaseDownloader):
+    """Downloader for adapter registry with Bearer token authentication."""
+
+    def __init__(self, url: str, secret: str):
+        self.registry_url = url
+        self.headers = Utils.create_bearer_header(secret)
+        self.error_msg_modifiers = [
+            (
+                "401",
+                "Adapter registry authentication failed. Check DF_ADAPTER_REGISTRY_SECRET env variable. If set, the token may be wrong.",
+            ),
+        ]
+
+    @staticmethod
+    def _normalize_host(url: str) -> str:
+        """Normalize localhost to 127.0.0.1 for comparison."""
+        return url.replace("://localhost", "://127.0.0.1")
+
+    def check_url(self, url: str) -> bool:
+        """Check is url handled by this downloader."""
+        normalized_url = self._normalize_host(url)
+        normalized_registry = self._normalize_host(self.registry_url)
+        match = bool(normalized_registry and normalized_url.startswith(normalized_registry))
+        logger.debug("AdapterRegistryDownloader.check_url: url=%s, registry_url=%s, match=%s", url, self.registry_url, match)
+        return match
+
+    async def download(self, url: str, model_dir: Path, temp_dir: Path, filename: str | None = None) -> AsyncGenerator[DownloadPacket]:
+        """Download adapter directly from the given URL using Bearer token authentication."""
+        filename_out = filename if filename is not None else url.split("/")[-1].split("?")[0]
+        local_path = model_dir / filename_out
+
+        if local_path.exists():
+            yield SuccessDownloadPacket(local_path, filename_out)
+            return
+
+        temp_path = temp_dir / str(uuid4())
+        temp_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            async for packet in download_file(url, temp_path, self.headers):
+                yield packet
+        except HttpClientError as e:
+            if temp_path.exists():
+                temp_path.unlink()
+            raise HTTPException(500, self.create_error_msg(e.body)) from e
+        except Exception:
+            if temp_path.exists():
+                temp_path.unlink()
+            raise
+
+        if not temp_path.exists() or temp_path.stat().st_size == 0:
+            if temp_path.exists():
+                temp_path.unlink()
+            msg = f"Downloaded adapter file is missing or empty: {url}"
+            raise RuntimeError(msg)
+
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path.rename(local_path)
+        yield SuccessDownloadPacket(local_path, filename_out)
+
+
 class ModelDownloader:
     temp_dir: Path
     standard_downloader: StandardModelDownloader
@@ -363,7 +427,8 @@ class ModelDownloader:
         """Create downloaders."""
         self.temp_dir: Path = config.get_storage_dir() / "temp"
         self.standard_downloader = StandardModelDownloader()
-        self.custom_downloaders = [
+        self.custom_downloaders: list[BaseDownloader] = [
+            AdapterRegistryDownloader(config.adapter_registry_url, config.adapter_registry_secret),
             HuggingFaceRepoDownloader(self.get_hugging_face_token(config)),
             HuggingFaceModelDownloader(self.get_hugging_face_token(config)),
             CivitaiModelDownloader(self.get_civitai_token(config)),
@@ -380,6 +445,7 @@ class ModelDownloader:
             if downloader.check_url(url):
                 specified_downloader = downloader
 
+        logger.debug("ModelDownloader.download: url=%s, selected=%s", url, type(specified_downloader).__name__)
         async for packet in specified_downloader.download(url, model_dir, self.temp_dir, filename):
             yield packet
 
