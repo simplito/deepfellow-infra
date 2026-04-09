@@ -34,6 +34,8 @@ class AppSettings(BaseSettings):
     storage_services_dir: str = ""
     hugging_face_token: str = ""
     civitai_token: str = ""
+    adapter_registry_url: str = ""
+    adapter_registry_secret: str = ""
     log_payloads: str = ""
     container_name_prefix: str = ""
     compose_prefix: str = "df_"

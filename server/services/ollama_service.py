@@ -657,6 +657,23 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             await self._download_with_ollama(input_stream, base_url, model_url, model_size)
         return
 
+    def _process_from_line(
+        self, line: str, model_name: str, instance: str, base_docker_dir: Path, local_models_dir: Path
+    ) -> tuple[str, str | None, str | None, str | None]:
+        """Return (new_line, url, docker_path, local_path) for a FROM line."""
+        _, model = line.split(" ")
+        path_model = Path(model)
+        if model.startswith(("http://", "https://")):
+            file_or_dir = path_model.name if path_model.suffix == ".gguf" else "model"
+            docker_path = str(base_docker_dir / model_name / file_or_dir)
+            local_path = str(local_models_dir / model_name / file_or_dir)
+            return f"FROM {docker_path}", model, docker_path, local_path
+        docker_path = str(base_docker_dir / path_model)
+        local_path = str(local_models_dir / path_model)
+        if model_name not in self.models[instance]:
+            return f"FROM {docker_path}", None, docker_path, local_path
+        return f"FROM {model}", model, None, None
+
     async def create_docker_modelfile_content(self, model_name: str, modelfile: str, instance: str) -> ModelfileData:
         """Create docker modelfile content.
 
@@ -670,39 +687,25 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         local_paths: list[str] = []
 
         for line in modelfile.split("\n"):
-            new_line = line
-            if line.startswith(("FROM", "ADAPTER")):
-                line_parts = line.split(" ")
-                new_line_parts: list[str] = line_parts.copy()
-                if len(line_parts) == 2:
-                    model = line_parts[1]
-                    path_model = Path(model)
-                    if model.startswith(("http://", "https://")):
-                        file_or_dir = path_model.name if path_model.suffix == ".gguf" else "model"
-                        path = str(base_docker_dir / model_name / file_or_dir)
-                        docker_paths.append(path)
-                        local_paths.append(str(local_models_dir / model_name / file_or_dir))
-                        models.append(model)
-                    else:
-                        docker_parent_path = base_docker_dir / path_model
-                        local_parent_path = local_models_dir / path_model
-                        if model_name not in self.models[instance]:
-                            path = str(docker_parent_path)
-                            docker_paths.append(path)
-                            local_paths.append(str(local_parent_path))
-                        else:
-                            path = model
-                            models.append(model)
-
-                    new_line_parts[1] = path
-
-                new_line = " ".join(new_line_parts)
-
+            if line.startswith("FROM"):
+                new_line, url, docker_path, local_path = self._process_from_line(
+                    line, model_name, instance, base_docker_dir, local_models_dir
+                )
+            elif line.startswith("ADAPTER"):
+                _, url = line.split(" ")
+                docker_path = str(base_docker_dir / model_name / "adapter.gguf")
+                local_path = str(local_models_dir / model_name / "adapter.gguf")
+                new_line = f"ADAPTER {docker_path}"
+            else:
+                new_line, url, docker_path, local_path = line, None, None, None
             new_lines.append(new_line)
+            if url is not None and url not in models:
+                models.append(url)
+            if docker_path is not None and local_path is not None:
+                docker_paths.append(docker_path)
+                local_paths.append(local_path)
 
-        models_to_download = list(set(models))
-
-        return ModelfileData("\n".join(new_lines), models_to_download, docker_paths, local_paths)
+        return ModelfileData("\n".join(new_lines), models, docker_paths, local_paths)
 
     def _get_modelfile_path(self, model: str, instance: str) -> Path:
         """Return local (host) modelfile path."""
