@@ -174,7 +174,7 @@ class OllamaAiConst(BaseModel):
 
 
 _const = OllamaAiConst(
-    image=DockerImage(name="ollama/ollama:0.16.1", size="5.6 GB"),
+    image=DockerImage(name="ollama/ollama:0.20.4", size="6.2 GB"),
     models=_read_models(),
 )
 
@@ -377,6 +377,8 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             envs["OLLAMA_CONTEXT_LENGTH"] = str(parsed_options.context_length)
         if any(isinstance(h, IntelGpuInfo) for h in hardware):
             envs["OLLAMA_VULKAN"] = "1"
+        # Default envs
+        envs["OLLAMA_NO_CLOUD"] = "1"
         return envs
 
     async def _install_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
