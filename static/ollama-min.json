@@ -122,7 +122,7 @@
         },
         {
             "name": "nomic-embed-text-v2-moe",
-            "size": "956MB",
+            "size": "958MB",
             "hash": "ff9c2f10ef5e",
             "context": 512
         },
@@ -244,7 +244,7 @@
         },
         {
             "name": "antoniprzybylik/pllum:12b",
-            "size": "25G",
+            "size": "25GB",
             "hash": "e35667af71cf",
             "context": 131072
         },
@@ -741,6 +741,12 @@
             "context": 163840
         },
         {
+            "name": "deepseek-v3.1",
+            "size": "404GB",
+            "hash": "044d50a3d79c",
+            "context": 163840
+        },
+        {
             "name": "deepseek-v3.1:671b",
             "size": "404GB",
             "hash": "044d50a3d79c",
@@ -757,6 +763,18 @@
             "size": "14GB",
             "hash": "9bd74193e939",
             "context": 131072
+        },
+        {
+            "name": "devstral-2",
+            "size": "75GB",
+            "hash": "524a6607f0f5",
+            "context": 262144
+        },
+        {
+            "name": "devstral-2:123b",
+            "size": "75GB",
+            "hash": "524a6607f0f5",
+            "context": 262144
         },
         {
             "name": "devstral-small-2",
@@ -1029,6 +1047,12 @@
             "context": 32768
         },
         {
+            "name": "gemini-3-flash-preview",
+            "size": "-",
+            "hash": "ebade0d31690",
+            "context": 1048576
+        },
+        {
             "name": "gemma",
             "size": "5.0GB",
             "hash": "a72c7f4d0a15",
@@ -1113,6 +1137,36 @@
             "context": 32768
         },
         {
+            "name": "gemma4",
+            "size": "9.6GB",
+            "hash": "c6eb396dbd59",
+            "context": 131072
+        },
+        {
+            "name": "gemma4:26b",
+            "size": "18GB",
+            "hash": "5571076f3d70",
+            "context": 262144
+        },
+        {
+            "name": "gemma4:31b",
+            "size": "20GB",
+            "hash": "6316f0629137",
+            "context": 262144
+        },
+        {
+            "name": "gemma4:e2b",
+            "size": "7.2GB",
+            "hash": "7fbdbf8f5e45",
+            "context": 131072
+        },
+        {
+            "name": "gemma4:e4b",
+            "size": "9.6GB",
+            "hash": "c6eb396dbd59",
+            "context": 131072
+        },
+        {
             "name": "gemma:2b",
             "size": "1.7GB",
             "hash": "b50d6c999e59",
@@ -1188,6 +1242,24 @@
             "name": "gpt-oss",
             "size": "14GB",
             "hash": "17052f91a42e",
+            "context": 131072
+        },
+        {
+            "name": "gpt-oss-safeguard",
+            "size": "14GB",
+            "hash": "f2e795d0099c",
+            "context": 131072
+        },
+        {
+            "name": "gpt-oss-safeguard:120b",
+            "size": "65GB",
+            "hash": "45be44f7918a",
+            "context": 131072
+        },
+        {
+            "name": "gpt-oss-safeguard:20b",
+            "size": "14GB",
+            "hash": "f2e795d0099c",
             "context": 131072
         },
         {
@@ -1371,7 +1443,37 @@
             "context": 131072
         },
         {
+            "name": "granite4",
+            "size": "2.1GB",
+            "hash": "4235724a127c",
+            "context": 131072
+        },
+        {
+            "name": "granite4:1b",
+            "size": "3.3GB",
+            "hash": "26e4cb132798",
+            "context": 131072
+        },
+        {
+            "name": "granite4:350m",
+            "size": "708MB",
+            "hash": "5eee845b49c4",
+            "context": 32768
+        },
+        {
+            "name": "granite4:3b",
+            "size": "2.1GB",
+            "hash": "89962fcc7523",
+            "context": 131072
+        },
+        {
             "name": "HammerAI/mythomax-l2",
+            "size": "7.9GB",
+            "hash": "bb07fb50cf6b",
+            "context": 4096
+        },
+        {
+            "name": "HammerAI/mythomax-l2:13b-q4_K_M",
             "size": "7.9GB",
             "hash": "bb07fb50cf6b",
             "context": 4096
@@ -1437,6 +1539,12 @@
             "context": 32768
         },
         {
+            "name": "lfm2",
+            "size": "14GB",
+            "hash": "d6c816d74887",
+            "context": 32768
+        },
+        {
             "name": "lfm2.5-thinking",
             "size": "731MB",
             "hash": "95bd9d45385f",
@@ -1447,6 +1555,12 @@
             "size": "731MB",
             "hash": "95bd9d45385f",
             "context": 128000
+        },
+        {
+            "name": "lfm2:24b",
+            "size": "14GB",
+            "hash": "d6c816d74887",
+            "context": 32768
         },
         {
             "name": "llama-guard3",
@@ -1892,7 +2006,7 @@
         },
         {
             "name": "ministral-3",
-            "size": "6GB",
+            "size": "6.0GB",
             "hash": "1922accd5827",
             "context": 262144
         },
@@ -1904,13 +2018,13 @@
         },
         {
             "name": "ministral-3:3b",
-            "size": "3GB",
+            "size": "3.0GB",
             "hash": "f04aa1c738f6",
             "context": 262144
         },
         {
             "name": "ministral-3:8b",
-            "size": "6GB",
+            "size": "6.0GB",
             "hash": "1922accd5827",
             "context": 262144
         },
@@ -2065,6 +2179,36 @@
             "context": 1048576
         },
         {
+            "name": "nemotron-3-nano:4b",
+            "size": "2.8GB",
+            "hash": "6cc467f05439",
+            "context": 262144
+        },
+        {
+            "name": "nemotron-3-super",
+            "size": "87GB",
+            "hash": "95acc78b3ffd",
+            "context": 262144
+        },
+        {
+            "name": "nemotron-3-super:120b",
+            "size": "87GB",
+            "hash": "95acc78b3ffd",
+            "context": 262144
+        },
+        {
+            "name": "nemotron-cascade-2",
+            "size": "24GB",
+            "hash": "e0705e3fe8f7",
+            "context": 262144
+        },
+        {
+            "name": "nemotron-cascade-2:30b",
+            "size": "24GB",
+            "hash": "e0705e3fe8f7",
+            "context": 262144
+        },
+        {
             "name": "nemotron-mini",
             "size": "2.7GB",
             "hash": "ed76ab18784f",
@@ -2137,6 +2281,12 @@
             "context": 4096
         },
         {
+            "name": "nous-hermes",
+            "size": "3.8GB",
+            "hash": "4bfb8ab0bd02",
+            "context": 4096
+        },
+        {
             "name": "nous-hermes2",
             "size": "6.1GB",
             "hash": "d50977d0b36a",
@@ -2170,6 +2320,18 @@
             "name": "nous-hermes:13b",
             "size": "7.4GB",
             "hash": "e6251854aa4c",
+            "context": 4096
+        },
+        {
+            "name": "nous-hermes:13b",
+            "size": "7.4GB",
+            "hash": "e6251854aa4c",
+            "context": 4096
+        },
+        {
+            "name": "nous-hermes:7b",
+            "size": "3.8GB",
+            "hash": "4bfb8ab0bd02",
             "context": 4096
         },
         {
@@ -2380,13 +2542,13 @@
             "name": "phi3.5",
             "size": "2.2GB",
             "hash": "61819fb370a3",
-            "context": 4096
+            "context": 131072
         },
         {
             "name": "phi3.5:3.8b",
             "size": "2.2GB",
             "hash": "61819fb370a3",
-            "context": 4096
+            "context": 131072
         },
         {
             "name": "phi3:14b",
@@ -2479,6 +2641,12 @@
             "modelfile": "FROM https://huggingface.co/mradermacher/PLLuM-12B-instruct-GGUF/resolve/main/PLLuM-12B-instruct.Q8_0.gguf",
             "hash": "",
             "context": null
+        },
+        {
+            "name": "qwen",
+            "size": "2.3GB",
+            "hash": "d53d04290064",
+            "context": 32768
         },
         {
             "name": "qwen",
@@ -2757,6 +2925,54 @@
             "context": 262144
         },
         {
+            "name": "qwen3.5",
+            "size": "6.6GB",
+            "hash": "6488c96fa5fa",
+            "context": 262144
+        },
+        {
+            "name": "qwen3.5:0.8b",
+            "size": "1.0GB",
+            "hash": "f3817196d142",
+            "context": 262144
+        },
+        {
+            "name": "qwen3.5:122b",
+            "size": "81GB",
+            "hash": "8b9d11d807c5",
+            "context": 262144
+        },
+        {
+            "name": "qwen3.5:27b",
+            "size": "17GB",
+            "hash": "7653528ba5cb",
+            "context": 262144
+        },
+        {
+            "name": "qwen3.5:2b",
+            "size": "2.7GB",
+            "hash": "324d162be6ca",
+            "context": 262144
+        },
+        {
+            "name": "qwen3.5:35b",
+            "size": "24GB",
+            "hash": "3460ffeede54",
+            "context": 262144
+        },
+        {
+            "name": "qwen3.5:4b",
+            "size": "3.4GB",
+            "hash": "2a654d98e6fb",
+            "context": 262144
+        },
+        {
+            "name": "qwen3.5:9b",
+            "size": "6.6GB",
+            "hash": "6488c96fa5fa",
+            "context": 262144
+        },
+        {
             "name": "qwen3:0.6b",
             "size": "523MB",
             "hash": "7df6b6e09427",
@@ -2811,9 +3027,27 @@
             "context": 32768
         },
         {
+            "name": "qwen:0.5b",
+            "size": "395MB",
+            "hash": "b5dc5e784f2a",
+            "context": 32768
+        },
+        {
             "name": "qwen:1.8b",
             "size": "1.1GB",
             "hash": "b6e8ec2e7126",
+            "context": 32768
+        },
+        {
+            "name": "qwen:1.8b",
+            "size": "1.1GB",
+            "hash": "b6e8ec2e7126",
+            "context": 32768
+        },
+        {
+            "name": "qwen:110b",
+            "size": "63GB",
+            "hash": "7fed4b7787da",
             "context": 32768
         },
         {
@@ -2829,6 +3063,18 @@
             "context": 32768
         },
         {
+            "name": "qwen:14b",
+            "size": "8.2GB",
+            "hash": "80362ced6553",
+            "context": 32768
+        },
+        {
+            "name": "qwen:32b",
+            "size": "18GB",
+            "hash": "26e7e8447f5d",
+            "context": 32768
+        },
+        {
             "name": "qwen:32b",
             "size": "18GB",
             "hash": "26e7e8447f5d",
@@ -2841,9 +3087,27 @@
             "context": 32768
         },
         {
+            "name": "qwen:4b",
+            "size": "2.3GB",
+            "hash": "d53d04290064",
+            "context": 32768
+        },
+        {
             "name": "qwen:72b",
             "size": "41GB",
             "hash": "e1c64582de5c",
+            "context": 32768
+        },
+        {
+            "name": "qwen:72b",
+            "size": "41GB",
+            "hash": "e1c64582de5c",
+            "context": 32768
+        },
+        {
+            "name": "qwen:7b",
+            "size": "4.5GB",
+            "hash": "2091ee8c8d8f",
             "context": 32768
         },
         {
@@ -3114,6 +3378,54 @@
             "name": "SpeakLeash/bielik-7b-instruct-v0.1-gguf",
             "size": "4.1GB",
             "hash": "879e1d63bcee",
+            "context": 4096
+        },
+        {
+            "name": "SpeakLeash/bielik-7b-instruct-v0.1-gguf:Q3_K_L",
+            "size": "3.8GB",
+            "hash": "5e8e01232213",
+            "context": 4096
+        },
+        {
+            "name": "SpeakLeash/bielik-7b-instruct-v0.1-gguf:Q3_K_M",
+            "size": "3.5GB",
+            "hash": "ecd15e3c651a",
+            "context": 4096
+        },
+        {
+            "name": "SpeakLeash/bielik-7b-instruct-v0.1-gguf:Q3_K_S",
+            "size": "3.2GB",
+            "hash": "c62f4ea7f0ab",
+            "context": 4096
+        },
+        {
+            "name": "SpeakLeash/bielik-7b-instruct-v0.1-gguf:Q4_K_S",
+            "size": "4.1GB",
+            "hash": "879e1d63bcee",
+            "context": 4096
+        },
+        {
+            "name": "SpeakLeash/bielik-7b-instruct-v0.1-gguf:Q5_K_M",
+            "size": "5.1GB",
+            "hash": "6836c8a02d48",
+            "context": 4096
+        },
+        {
+            "name": "SpeakLeash/bielik-7b-instruct-v0.1-gguf:Q5_K_S",
+            "size": "5.0GB",
+            "hash": "0447b6b50d04",
+            "context": 4096
+        },
+        {
+            "name": "SpeakLeash/bielik-7b-instruct-v0.1-gguf:Q6_K",
+            "size": "5.9GB",
+            "hash": "2abe6573f5d8",
+            "context": 4096
+        },
+        {
+            "name": "SpeakLeash/bielik-7b-instruct-v0.1-gguf:Q8_0",
+            "size": "7.7GB",
+            "hash": "0a643509f9fb",
             "context": 4096
         },
         {
@@ -3459,21 +3771,33 @@
             "context": 65536
         },
         {
-            "name": "wizardlm:7b-q2_K",
-            "size": "2.8GB",
-            "hash": "3bd62c66bf07",
+            "name": "wizardlm:13b-llama2-q4_K_M",
+            "size": "7.9GB",
+            "hash": "68d0ec94288a",
+            "context": 4096
+        },
+        {
+            "name": "wizardlm:13b-q4_K_M",
+            "size": "7.9GB",
+            "hash": "e6d40c1b0e0d",
             "context": 2048
         },
         {
-            "name": "wizardlm:7b-q3_K_M",
-            "size": "3.3GB",
-            "hash": "77ee25ef2d73",
+            "name": "wizardlm:30b-q4_K_M",
+            "size": "20GB",
+            "hash": "69839e566826",
             "context": 2048
         },
         {
-            "name": "wizardlm:7b-q3_K_S",
-            "size": "2.9GB",
-            "hash": "2f4e28f337fb",
+            "name": "wizardlm:70b-llama2-q4_K_M",
+            "size": "41GB",
+            "hash": "6741c38608f1",
+            "context": 4096
+        },
+        {
+            "name": "wizardlm:7b-q4_K_M",
+            "size": "4.1GB",
+            "hash": "cfe7771084ed",
             "context": 2048
         },
         {

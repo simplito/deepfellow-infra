@@ -1,0 +1,47 @@
+{
+    "llms": [
+        {
+            "name": "Llama-PLLuM-8B-chat",
+            "size": "16.1GB",
+            "modelfile": "FROM https://huggingface.co/CYFRAGOVPL/Llama-PLLuM-8B-chat",
+            "hash": "",
+            "context": null
+        },
+        {
+            "name": "Llama-PLLuM-8B-chat-Q4_K_M",
+            "size": "4.6GB",
+            "modelfile": "FROM https://huggingface.co/tensorblock/Llama-PLLuM-8B-chat-GGUF/resolve/main/Llama-PLLuM-8B-chat-Q4_K_M.gguf",
+            "hash": "",
+            "context": null
+        },
+        {
+            "name": "Llama-PLLuM-8B-chat-Q8_0",
+            "size": "8GB",
+            "modelfile": "FROM https://huggingface.co/tsej/Llama-PLLuM-8B-chat-GGUF/resolve/main/Llama-PLLuM-8B-chat-Q8_0.gguf",
+            "hash": "",
+            "context": null
+        },
+        {
+            "name": "Llama-PLLuM-8B-instruct-Q4_K_M",
+            "size": "4.6GB",
+            "modelfile": "FROM https://huggingface.co/mradermacher/Llama-PLLuM-8B-instruct-GGUF/resolve/main/Llama-PLLuM-8B-instruct.Q4_K_M.gguf",
+            "hash": "",
+            "context": null
+        },
+
+        {
+            "name": "PLLuM-12B-instruct-Q4_K_M",
+            "size": "7GB",
+            "modelfile": "FROM https://huggingface.co/mradermacher/PLLuM-12B-instruct-GGUF/resolve/main/PLLuM-12B-instruct.Q4_K_M.gguf",
+            "hash": "",
+            "context": null
+        },
+        {
+            "name": "PLLuM-12B-instruct-Q8_0",
+            "size": "12.1GB",
+            "modelfile": "FROM https://huggingface.co/mradermacher/PLLuM-12B-instruct-GGUF/resolve/main/PLLuM-12B-instruct.Q8_0.gguf",
+            "hash": "",
+            "context": null
+        }
+    ]
+}

@@ -22,3 +22,5 @@ CLAUDE.md
 /webui/node_modules
 /webui/dist
 
+/ollama
+

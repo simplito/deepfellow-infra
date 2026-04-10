@@ -1,0 +1,38 @@
+{
+    "extra": {
+        "embeddings": [
+            "all-minilm:l12",
+            "all-minilm:l12-v2",
+            "all-minilm:l6",
+            "all-minilm:l6-v2",
+            "all-minilm:v2"
+        ],
+        "llms": [
+            "antoniprzybylik/llama-pllum",
+            "antoniprzybylik/pllum",
+            "HammerAI/mythomax-l2",
+            "mannix/jan-nano",
+            "nous-hermes",
+            "qwen",
+            "SpeakLeash/bielik-1.5b-v3.0-instruct:Q8_0",
+            "SpeakLeash/bielik-11b-v2.0-instruct:Q4_K_M",
+            "SpeakLeash/bielik-11b-v2.1-instruct:Q4_K_M",
+            "SpeakLeash/bielik-11b-v2.2-instruct:Q4_K_M",
+            "SpeakLeash/bielik-11b-v2.3-instruct:Q4_K_M",
+            "SpeakLeash/bielik-11b-v3.0-instruct:Q4_K_M",
+            "SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0",
+            "SpeakLeash/bielik-7b-instruct-v0.1-gguf"
+        ],
+        "txt2img": [
+            "x/flux2-klein",
+            "x/z-image-turbo"
+        ]
+    },
+    "pickTags": {
+        "goliath": ["goliath"],
+        "llama-pro": ["llama-pro", "llama-pro:instruct", "llama-pro:text"],
+        "mannix/jan-nano": ["mannix/jan-nano"],
+        "openhermes": ["openhermes", "openhermes:v2", "openhermes:v2.5", "openhermes:7b-v2", "openhermes:7b-v2.5"],
+        "wizardlm": ["wizardlm:7b-q4_K_M", "wizardlm:13b-llama2-q4_K_M", "wizardlm:13b-q4_K_M", "wizardlm:30b-q4_K_M", "wizardlm:70b-llama2-q4_K_M"]
+    }
+}

@@ -53,3 +53,9 @@ replace-docker *FLAGS:
 inspector:
     npx @modelcontextprotocol/inspector node build/index.js
 
+get-ollama-models *FLAGS:
+    uv run python ./scripts/get_ollama_models.py {{FLAGS}}
+
+clear-ollama-cache:
+    uv run python ./scripts/get_ollama_models.py --clear-cache
+
