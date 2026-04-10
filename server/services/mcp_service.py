@@ -642,5 +642,20 @@ _const = McpConst(
             ),
             required_envs=["OLLAMA_API_KEY"],
         ),
+        "scrapling": lambda mcp_service, subnet: SrvMcpModel(
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/scrapling/mcp"]),
+            model_spec=mcp_service.get_default_model_spec(default_prefix="scrapling"),
+            model_type="mcp",
+            default_prefix="scrapling",
+            size="2GB",
+            options=DockerOptions(
+                image_port=8000,
+                name="scrapling",
+                container_name=mcp_service.docker_service.get_docker_container_name("scrapling"),
+                image="ghcr.io/d4vinci/scrapling@sha256:77af4d59a6d00e40b918358943503ee6cafc44ad21fb60d5a545e17d0d40cd7a",
+                subnet=subnet,
+                command="mcp --http",
+            ),
+        ),
     },
 )
