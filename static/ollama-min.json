@@ -175,6 +175,18 @@
             "context": 512
         },
         {
+            "name": "snowflake-arctic-embed2",
+            "size": "1.2GB",
+            "hash": "5de93a84837d",
+            "context": 8192
+        },
+        {
+            "name": "snowflake-arctic-embed2:568m",
+            "size": "1.2GB",
+            "hash": "5de93a84837d",
+            "context": 8192
+        },
+        {
             "name": "snowflake-arctic-embed:110m",
             "size": "219MB",
             "hash": "8a0d86a3ca1d",
@@ -203,18 +215,6 @@
             "size": "67MB",
             "hash": "e8db018629b4",
             "context": 512
-        },
-        {
-            "name": "snowflake-arctic-embed2",
-            "size": "1.2GB",
-            "hash": "5de93a84837d",
-            "context": 8192
-        },
-        {
-            "name": "snowflake-arctic-embed2:568m",
-            "size": "1.2GB",
-            "hash": "5de93a84837d",
-            "context": 8192
         }
     ],
     "llms": [
@@ -513,12 +513,6 @@
             "context": 131072
         },
         {
-            "name": "command-r:35b",
-            "size": "19GB",
-            "hash": "7d96360d357f",
-            "context": 131072
-        },
-        {
             "name": "command-r7b",
             "size": "5.1GB",
             "hash": "ff4e9696ef9f",
@@ -541,6 +535,12 @@
             "size": "5.1GB",
             "hash": "ff4e9696ef9f",
             "context": 8192
+        },
+        {
+            "name": "command-r:35b",
+            "size": "19GB",
+            "hash": "7d96360d357f",
+            "context": 131072
         },
         {
             "name": "dbrx",
@@ -711,18 +711,6 @@
             "context": 163840
         },
         {
-            "name": "deepseek-v2:16b",
-            "size": "8.9GB",
-            "hash": "7c8c332f2df7",
-            "context": 163840
-        },
-        {
-            "name": "deepseek-v2:236b",
-            "size": "133GB",
-            "hash": "459de16b5a9e",
-            "context": 4096
-        },
-        {
             "name": "deepseek-v2.5",
             "size": "133GB",
             "hash": "409b2dd8a3c4",
@@ -735,13 +723,19 @@
             "context": 4096
         },
         {
-            "name": "deepseek-v3",
-            "size": "404GB",
-            "hash": "5da0e2d4a9e0",
+            "name": "deepseek-v2:16b",
+            "size": "8.9GB",
+            "hash": "7c8c332f2df7",
             "context": 163840
         },
         {
-            "name": "deepseek-v3:671b",
+            "name": "deepseek-v2:236b",
+            "size": "133GB",
+            "hash": "459de16b5a9e",
+            "context": 4096
+        },
+        {
+            "name": "deepseek-v3",
             "size": "404GB",
             "hash": "5da0e2d4a9e0",
             "context": 163840
@@ -750,6 +744,12 @@
             "name": "deepseek-v3.1:671b",
             "size": "404GB",
             "hash": "044d50a3d79c",
+            "context": 163840
+        },
+        {
+            "name": "deepseek-v3:671b",
+            "size": "404GB",
+            "hash": "5da0e2d4a9e0",
             "context": 163840
         },
         {
@@ -945,24 +945,6 @@
             "context": 2048
         },
         {
-            "name": "falcon:180b",
-            "size": "101GB",
-            "hash": "e2bc879d7cee",
-            "context": 2048
-        },
-        {
-            "name": "falcon:40b",
-            "size": "24GB",
-            "hash": "bc9368437a24",
-            "context": 2048
-        },
-        {
-            "name": "falcon:7b",
-            "size": "4.2GB",
-            "hash": "4280f7257e73",
-            "context": 2048
-        },
-        {
             "name": "falcon2",
             "size": "6.4GB",
             "hash": "d8c09dbc67c3",
@@ -1005,6 +987,24 @@
             "context": 32768
         },
         {
+            "name": "falcon:180b",
+            "size": "101GB",
+            "hash": "e2bc879d7cee",
+            "context": 2048
+        },
+        {
+            "name": "falcon:40b",
+            "size": "24GB",
+            "hash": "bc9368437a24",
+            "context": 2048
+        },
+        {
+            "name": "falcon:7b",
+            "size": "4.2GB",
+            "hash": "4280f7257e73",
+            "context": 2048
+        },
+        {
             "name": "firefunction-v2",
             "size": "40GB",
             "hash": "b1ed6b22fb67",
@@ -1030,18 +1030,6 @@
         },
         {
             "name": "gemma",
-            "size": "5.0GB",
-            "hash": "a72c7f4d0a15",
-            "context": 8192
-        },
-        {
-            "name": "gemma:2b",
-            "size": "1.7GB",
-            "hash": "b50d6c999e59",
-            "context": 8192
-        },
-        {
-            "name": "gemma:7b",
             "size": "5.0GB",
             "hash": "a72c7f4d0a15",
             "context": 8192
@@ -1123,6 +1111,18 @@
             "size": "7.5GB",
             "hash": "15cb39fd9394",
             "context": 32768
+        },
+        {
+            "name": "gemma:2b",
+            "size": "1.7GB",
+            "hash": "b50d6c999e59",
+            "context": 8192
+        },
+        {
+            "name": "gemma:7b",
+            "size": "5.0GB",
+            "hash": "a72c7f4d0a15",
+            "context": 8192
         },
         {
             "name": "glm-4.7-flash",
@@ -1633,18 +1633,6 @@
             "context": 8192
         },
         {
-            "name": "llama3:70b",
-            "size": "40GB",
-            "hash": "786f3184aec0",
-            "context": 8192
-        },
-        {
-            "name": "llama3:8b",
-            "size": "4.7GB",
-            "hash": "365c0bd3c000",
-            "context": 8192
-        },
-        {
             "name": "llama3.1",
             "size": "4.9GB",
             "hash": "46e0c10c039e",
@@ -1715,6 +1703,18 @@
             "size": "43GB",
             "hash": "a6eb4748fd29",
             "context": 131072
+        },
+        {
+            "name": "llama3:70b",
+            "size": "40GB",
+            "hash": "786f3184aec0",
+            "context": 8192
+        },
+        {
+            "name": "llama3:8b",
+            "size": "4.7GB",
+            "hash": "365c0bd3c000",
+            "context": 8192
         },
         {
             "name": "llama4",
@@ -1963,18 +1963,6 @@
             "context": 32768
         },
         {
-            "name": "mistral-small:22b",
-            "size": "13GB",
-            "hash": "d095cd553b04",
-            "context": 131072
-        },
-        {
-            "name": "mistral-small:24b",
-            "size": "14GB",
-            "hash": "8039dd90c113",
-            "context": 32768
-        },
-        {
             "name": "mistral-small3.1",
             "size": "15GB",
             "hash": "b9aaf0c2586a",
@@ -1997,6 +1985,18 @@
             "size": "15GB",
             "hash": "5a408ab55df5",
             "context": 131072
+        },
+        {
+            "name": "mistral-small:22b",
+            "size": "13GB",
+            "hash": "d095cd553b04",
+            "context": 131072
+        },
+        {
+            "name": "mistral-small:24b",
+            "size": "14GB",
+            "hash": "8039dd90c113",
+            "context": 32768
         },
         {
             "name": "mistral:7b",
@@ -2137,18 +2137,6 @@
             "context": 4096
         },
         {
-            "name": "nous-hermes:13b",
-            "size": "7.4GB",
-            "hash": "e6251854aa4c",
-            "context": 4096
-        },
-        {
-            "name": "nous-hermes:7b",
-            "size": "3.8GB",
-            "hash": "4bfb8ab0bd02",
-            "context": 4096
-        },
-        {
             "name": "nous-hermes2",
             "size": "6.1GB",
             "hash": "d50977d0b36a",
@@ -2179,6 +2167,18 @@
             "context": 4096
         },
         {
+            "name": "nous-hermes:13b",
+            "size": "7.4GB",
+            "hash": "e6251854aa4c",
+            "context": 4096
+        },
+        {
+            "name": "nous-hermes:7b",
+            "size": "3.8GB",
+            "hash": "4bfb8ab0bd02",
+            "context": 4096
+        },
+        {
             "name": "nuextract",
             "size": "2.2GB",
             "hash": "233ce1dee972",
@@ -2197,18 +2197,6 @@
             "context": 65536
         },
         {
-            "name": "olmo-3:32b",
-            "size": "19GB",
-            "hash": "e9f1ab1d201f",
-            "context": 65536
-        },
-        {
-            "name": "olmo-3:7b",
-            "size": "4.5GB",
-            "hash": "b8d4c92ac9c1",
-            "context": 65536
-        },
-        {
             "name": "olmo-3.1",
             "size": "19GB",
             "hash": "223d4ec84d91",
@@ -2218,6 +2206,18 @@
             "name": "olmo-3.1:32b",
             "size": "19GB",
             "hash": "223d4ec84d91",
+            "context": 65536
+        },
+        {
+            "name": "olmo-3:32b",
+            "size": "19GB",
+            "hash": "e9f1ab1d201f",
+            "context": 65536
+        },
+        {
+            "name": "olmo-3:7b",
+            "size": "4.5GB",
+            "hash": "b8d4c92ac9c1",
             "context": 65536
         },
         {
@@ -2371,25 +2371,7 @@
             "context": 2048
         },
         {
-            "name": "phi:2.7b",
-            "size": "1.6GB",
-            "hash": "e2fd6321a5fe",
-            "context": 2048
-        },
-        {
             "name": "phi3",
-            "size": "2.2GB",
-            "hash": "4f2222927938",
-            "context": 131072
-        },
-        {
-            "name": "phi3:14b",
-            "size": "7.9GB",
-            "hash": "cf611a26b048",
-            "context": 131072
-        },
-        {
-            "name": "phi3:3.8b",
             "size": "2.2GB",
             "hash": "4f2222927938",
             "context": 131072
@@ -2405,6 +2387,18 @@
             "size": "2.2GB",
             "hash": "61819fb370a3",
             "context": 4096
+        },
+        {
+            "name": "phi3:14b",
+            "size": "7.9GB",
+            "hash": "cf611a26b048",
+            "context": 131072
+        },
+        {
+            "name": "phi3:3.8b",
+            "size": "2.2GB",
+            "hash": "4f2222927938",
+            "context": 131072
         },
         {
             "name": "phi4",
@@ -2455,6 +2449,12 @@
             "context": 16384
         },
         {
+            "name": "phi:2.7b",
+            "size": "1.6GB",
+            "hash": "e2fd6321a5fe",
+            "context": 2048
+        },
+        {
             "name": "phind-codellama",
             "size": "19GB",
             "hash": "566e1b629c44",
@@ -2487,54 +2487,6 @@
             "context": 32768
         },
         {
-            "name": "qwen:0.5b",
-            "size": "395MB",
-            "hash": "b5dc5e784f2a",
-            "context": 32768
-        },
-        {
-            "name": "qwen:1.8b",
-            "size": "1.1GB",
-            "hash": "b6e8ec2e7126",
-            "context": 32768
-        },
-        {
-            "name": "qwen:110b",
-            "size": "63GB",
-            "hash": "7fed4b7787da",
-            "context": 32768
-        },
-        {
-            "name": "qwen:14b",
-            "size": "8.2GB",
-            "hash": "80362ced6553",
-            "context": 32768
-        },
-        {
-            "name": "qwen:32b",
-            "size": "18GB",
-            "hash": "26e7e8447f5d",
-            "context": 32768
-        },
-        {
-            "name": "qwen:4b",
-            "size": "2.3GB",
-            "hash": "d53d04290064",
-            "context": 32768
-        },
-        {
-            "name": "qwen:72b",
-            "size": "41GB",
-            "hash": "e1c64582de5c",
-            "context": 32768
-        },
-        {
-            "name": "qwen:7b",
-            "size": "4.5GB",
-            "hash": "2091ee8c8d8f",
-            "context": 32768
-        },
-        {
             "name": "qwen2",
             "size": "4.4GB",
             "hash": "dd314f039b9d",
@@ -2563,30 +2515,6 @@
             "size": "4.4GB",
             "hash": "28cc3a337734",
             "context": 4096
-        },
-        {
-            "name": "qwen2:0.5b",
-            "size": "352MB",
-            "hash": "6f48b936a09f",
-            "context": 32768
-        },
-        {
-            "name": "qwen2:1.5b",
-            "size": "935MB",
-            "hash": "f6daf2b25194",
-            "context": 32768
-        },
-        {
-            "name": "qwen2:72b",
-            "size": "41GB",
-            "hash": "93563ef658b2",
-            "context": 32768
-        },
-        {
-            "name": "qwen2:7b",
-            "size": "4.4GB",
-            "hash": "dd314f039b9d",
-            "context": 32768
         },
         {
             "name": "qwen2.5",
@@ -2707,6 +2635,30 @@
             "size": "6.0GB",
             "hash": "5ced39dfa4ba",
             "context": 128000
+        },
+        {
+            "name": "qwen2:0.5b",
+            "size": "352MB",
+            "hash": "6f48b936a09f",
+            "context": 32768
+        },
+        {
+            "name": "qwen2:1.5b",
+            "size": "935MB",
+            "hash": "f6daf2b25194",
+            "context": 32768
+        },
+        {
+            "name": "qwen2:72b",
+            "size": "41GB",
+            "hash": "93563ef658b2",
+            "context": 32768
+        },
+        {
+            "name": "qwen2:7b",
+            "size": "4.4GB",
+            "hash": "dd314f039b9d",
+            "context": 32768
         },
         {
             "name": "qwen3",
@@ -2851,6 +2803,54 @@
             "size": "5.2GB",
             "hash": "500a1f067a9f",
             "context": 40960
+        },
+        {
+            "name": "qwen:0.5b",
+            "size": "395MB",
+            "hash": "b5dc5e784f2a",
+            "context": 32768
+        },
+        {
+            "name": "qwen:1.8b",
+            "size": "1.1GB",
+            "hash": "b6e8ec2e7126",
+            "context": 32768
+        },
+        {
+            "name": "qwen:110b",
+            "size": "63GB",
+            "hash": "7fed4b7787da",
+            "context": 32768
+        },
+        {
+            "name": "qwen:14b",
+            "size": "8.2GB",
+            "hash": "80362ced6553",
+            "context": 32768
+        },
+        {
+            "name": "qwen:32b",
+            "size": "18GB",
+            "hash": "26e7e8447f5d",
+            "context": 32768
+        },
+        {
+            "name": "qwen:4b",
+            "size": "2.3GB",
+            "hash": "d53d04290064",
+            "context": 32768
+        },
+        {
+            "name": "qwen:72b",
+            "size": "41GB",
+            "hash": "e1c64582de5c",
+            "context": 32768
+        },
+        {
+            "name": "qwen:7b",
+            "size": "4.5GB",
+            "hash": "2091ee8c8d8f",
+            "context": 32768
         },
         {
             "name": "qwq",
@@ -3003,24 +3003,6 @@
             "context": 2048
         },
         {
-            "name": "smollm:1.7b",
-            "size": "991MB",
-            "hash": "95f6557a0f0f",
-            "context": 2048
-        },
-        {
-            "name": "smollm:135m",
-            "size": "92MB",
-            "hash": "b0b2a4617438",
-            "context": 2048
-        },
-        {
-            "name": "smollm:360m",
-            "size": "229MB",
-            "hash": "b3ba1ccba2b8",
-            "context": 2048
-        },
-        {
             "name": "smollm2",
             "size": "1.8GB",
             "hash": "cef4a1e09247",
@@ -3043,6 +3025,24 @@
             "size": "726MB",
             "hash": "297281b699fc",
             "context": 8192
+        },
+        {
+            "name": "smollm:1.7b",
+            "size": "991MB",
+            "hash": "95f6557a0f0f",
+            "context": 2048
+        },
+        {
+            "name": "smollm:135m",
+            "size": "92MB",
+            "hash": "b0b2a4617438",
+            "context": 2048
+        },
+        {
+            "name": "smollm:360m",
+            "size": "229MB",
+            "hash": "b3ba1ccba2b8",
+            "context": 2048
         },
         {
             "name": "solar",
@@ -3207,30 +3207,6 @@
             "context": 8192
         },
         {
-            "name": "starcoder:15b",
-            "size": "9.0GB",
-            "hash": "fc59c84e00c5",
-            "context": 8192
-        },
-        {
-            "name": "starcoder:1b",
-            "size": "726MB",
-            "hash": "77e6c46054d9",
-            "context": 8192
-        },
-        {
-            "name": "starcoder:3b",
-            "size": "1.8GB",
-            "hash": "847e5a7aa26f",
-            "context": 8192
-        },
-        {
-            "name": "starcoder:7b",
-            "size": "4.3GB",
-            "hash": "53fdbc3a2006",
-            "context": 8192
-        },
-        {
             "name": "starcoder2",
             "size": "1.7GB",
             "hash": "9f4ae0aff61e",
@@ -3253,6 +3229,30 @@
             "size": "4.0GB",
             "hash": "1550ab21b10d",
             "context": 16384
+        },
+        {
+            "name": "starcoder:15b",
+            "size": "9.0GB",
+            "hash": "fc59c84e00c5",
+            "context": 8192
+        },
+        {
+            "name": "starcoder:1b",
+            "size": "726MB",
+            "hash": "77e6c46054d9",
+            "context": 8192
+        },
+        {
+            "name": "starcoder:3b",
+            "size": "1.8GB",
+            "hash": "847e5a7aa26f",
+            "context": 8192
+        },
+        {
+            "name": "starcoder:7b",
+            "size": "4.3GB",
+            "hash": "53fdbc3a2006",
+            "context": 8192
         },
         {
             "name": "starling-lm",
@@ -3441,24 +3441,6 @@
             "context": 4096
         },
         {
-            "name": "wizardlm:7b-q2_K",
-            "size": "2.8GB",
-            "hash": "3bd62c66bf07",
-            "context": 2048
-        },
-        {
-            "name": "wizardlm:7b-q3_K_M",
-            "size": "3.3GB",
-            "hash": "77ee25ef2d73",
-            "context": 2048
-        },
-        {
-            "name": "wizardlm:7b-q3_K_S",
-            "size": "2.9GB",
-            "hash": "2f4e28f337fb",
-            "context": 2048
-        },
-        {
             "name": "wizardlm2",
             "size": "4.1GB",
             "hash": "c9b1aff820f2",
@@ -3475,6 +3457,24 @@
             "size": "80GB",
             "hash": "abda6e58fd1d",
             "context": 65536
+        },
+        {
+            "name": "wizardlm:7b-q2_K",
+            "size": "2.8GB",
+            "hash": "3bd62c66bf07",
+            "context": 2048
+        },
+        {
+            "name": "wizardlm:7b-q3_K_M",
+            "size": "3.3GB",
+            "hash": "77ee25ef2d73",
+            "context": 2048
+        },
+        {
+            "name": "wizardlm:7b-q3_K_S",
+            "size": "2.9GB",
+            "hash": "2f4e28f337fb",
+            "context": 2048
         },
         {
             "name": "xwinlm",
