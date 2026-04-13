@@ -629,7 +629,7 @@ export function ServicesList() {
                         <div className="space-y-1">
                           {Object.entries(service.installed).map(([key, value]) => {
                             const field = service.spec.fields.find((f) => f.name === key);
-                            const displayValue = field?.type === "password" ? "•••••" : String(value ?? "");
+                            const displayValue = field?.type === "password" ? "•••••" : ((value && typeof(value) === "object") ? JSON.stringify(value) : String(value ?? ""));
                             return (
                               <div key={key} className="text-xs truncate max-w-xs">
                                 <span className="font-medium">{key}:</span> {displayValue}

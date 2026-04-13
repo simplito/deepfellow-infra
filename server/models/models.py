@@ -31,6 +31,7 @@ class ModelField(BaseModel):
     default: str | None = None
     placeholder: str | None = None
     required: bool = True
+    values: list[str] | None = None
 
 
 class ModelSpecification(BaseModel):
