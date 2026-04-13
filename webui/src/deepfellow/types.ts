@@ -15,6 +15,7 @@ export const MODEL_TYPES = {
   llm: "Large Language Model (LLM)",
   embedding: "Embedding Model (Embeddings)",
   lora: "LORA (lora)",
+  reranker: "Reranker (reranker)",
   txt2img: "Text to image (txt2img)",
 } as const;
 

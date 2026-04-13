@@ -919,7 +919,7 @@ const ModelRow = memo(function ModelRow({
       const type = fieldTypeByName.get(key);
       return {
         key,
-        displayValue: type === "password" ? "•••••" : String(value ?? ""),
+        displayValue: type === "password" ? "•••••" : ((value && typeof(value) === "object") ? JSON.stringify(value) : String(value ?? "")),
       };
     });
   }, [installedSpec, isInstalled, hasProgressStage, model.spec.fields]);

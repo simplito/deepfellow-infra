@@ -96,11 +96,11 @@ export function DynamicFormModal({
 				}
 			} else if (field.type === "map") {
 				if (typeof field.default === 'string' && field.default.startsWith('{')) {
-				try {
-					initial[field.name] = JSON.parse(field.default) ?? {};
-				} catch (e) {
-					initial[field.name] = {};
-				}
+					try {
+						initial[field.name] = JSON.parse(field.default) ?? {};
+					} catch (e) {
+						initial[field.name] = {};
+					}
 				} else {
 					initial[field.name] = field.default ?? {};
 				}
@@ -285,16 +285,17 @@ export function DynamicFormModal({
 									</div>
 								) : field.type === "oneof" ? (
 									<Select
-										value={(formData[field.name] as string | undefined) ?? ""}
+										value={(formData[field.name] as string | undefined) || "__none__"}
 										onValueChange={(value) =>
-											handleInputChange(field.name, value)
+											handleInputChange(field.name, value === "__none__" ? "" : value)
 										}
 									>
 										<SelectTrigger id={field.name} className="w-full">
 											<SelectValue placeholder="Select an option" />
 										</SelectTrigger>
 										<SelectContent>
-											{field.values?.map((val) => (
+											<SelectItem value="__none__"><span className="text-muted-foreground">None</span></SelectItem>
+											{field.values?.filter((val) => (typeof val === "string" ? val : val.value) !== "").map((val) => (
 												<SelectItem key={typeof(val) === "string" ? val : val.value} value={typeof(val) === "string" ? val : val.value}>
 													{typeof(val) === "string" ? val : val.label}
 												</SelectItem>
