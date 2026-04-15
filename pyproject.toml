@@ -85,6 +85,7 @@ select = [
     "E",   # pycodestyle
     "EM",  # flake8-errmsg
     "F",   # flake8
+    "FIX001",# 
     "G",   # flake8-logging-format
     "I",   # isort
     "ISC", # flake8-implicit-str-concat

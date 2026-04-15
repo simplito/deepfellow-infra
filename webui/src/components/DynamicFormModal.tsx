@@ -83,7 +83,7 @@ export function DynamicFormModal({
 		const initial: Record<string, unknown> = {};
 		for (const field of renderFields) {
 			if (field.type === "bool") {
-				initial[field.name] = field.default === true;
+				initial[field.name] = field.default === true || field.default === "true";
 			} else if (field.type === "list") {
 				if (typeof field.default === 'string' && field.default.startsWith('[')) {
 					try {

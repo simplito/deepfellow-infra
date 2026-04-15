@@ -24,6 +24,11 @@ class ModelIdQuery(BaseModel):
     model_id: str
 
 
+class OneOfOption(BaseModel):
+    value: str
+    label: str
+
+
 class ModelField(BaseModel):
     type: str
     name: str
@@ -31,7 +36,7 @@ class ModelField(BaseModel):
     default: str | None = None
     placeholder: str | None = None
     required: bool = True
-    values: list[str] | None = None
+    values: list[OneOfOption | str] | None = None
 
 
 class ModelSpecification(BaseModel):
