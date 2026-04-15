@@ -147,8 +147,8 @@ def _read_models() -> dict[str, VllmModel]:
 
 _const = VllmConst(
     images={
-        "gpu": DockerImage(name="vllm/vllm-openai:v0.14.1-cu130", size="18.4 GB"),
-        "cpu": DockerImage(name="public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.14.1", size="3.4 GB"),
+        "gpu": DockerImage(name="vllm/vllm-openai:v0.19.0-cu130-ubuntu2404", size="20 GB"),
+        "cpu": DockerImage(name="public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:v0.19.0", size="3.7 GB"),
     },
     models=_read_models(),
 )
@@ -635,7 +635,15 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
 
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
             docker_model_path = Path(self.hugging_face_cache_path) / "hub" / model_id_fixed
-            volumes = [f"{local_model_path}:{docker_model_path}"]
+            compile_cache_dir = model_dir / "compile_cache"
+            compile_cache_dir.mkdir(parents=True, exist_ok=True)
+            model_cache_dir = model_dir / ".cache"
+            model_cache_dir.mkdir(parents=True, exist_ok=True)
+            volumes = [
+                f"{local_model_path}:{docker_model_path}",
+                f"{compile_cache_dir}:/root/.cache/vllm",
+                f"{model_cache_dir}:{docker_model_path}/.cache",
+            ]
 
             vllm_command = self._build_vllm_command(
                 docker_model_path=docker_model_path,
