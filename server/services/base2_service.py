@@ -37,6 +37,7 @@ from server.models.models import (
     InstallModelIn,
     InstallModelOut,
     InstallModelProgress,
+    ModelField,
     UninstallModelIn,
 )
 from server.models.services import (
@@ -549,6 +550,32 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         options.extend([f"GPU | {gpu.long_name}" for gpu in gpus])
 
         gpus_select_field = ServiceField(type="oneof", name="hardware", description="Choose hardware:", values=options, default=default)
+        fields.append(gpus_select_field)
+
+        return fields
+
+    def add_hardware_field_to_model_spec(
+        self,
+        fields: list[ModelField] | None = None,
+        add_cpu_option_only_on_avx512_support: bool = False,
+    ) -> list[ModelField]:
+        """Add hardware (CPU/GPU/GPUs) field to specification."""
+        fields = fields or []
+        options: list[str | OneOfOption] = []
+        default: str | None = None
+        if not add_cpu_option_only_on_avx512_support or self.hardware.cpu.avx512:
+            options.append("CPU")
+            default = "CPU"
+        gpus = self._supported_gpus
+        if len(gpus) == 1:
+            options.append(OneOfOption(value="GPU", label="Default GPU"))
+            default = "GPU"
+        elif gpus:
+            options.append(OneOfOption(value="GPUs", label="All GPUs"))
+            default = "GPUs"
+        options.extend([f"GPU | {gpu.long_name}" for gpu in gpus])
+
+        gpus_select_field = ModelField(type="oneof", name="hardware", description="Choose hardware:", values=options, default=default)
         fields.append(gpus_select_field)
 
         return fields

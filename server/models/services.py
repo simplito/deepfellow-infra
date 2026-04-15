@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from server.models.models import CustomModelSpecification, RetrieveModelOut
+from server.models.models import CustomModelSpecification, OneOfOption, RetrieveModelOut
 
 type ServiceOptions = dict[str, Any]
 type ServiceSize = dict[str, str] | str
@@ -35,11 +35,6 @@ class UninstallServiceIn(BaseModel):
 
 class UninstallServiceOut(BaseModel):
     status: Literal["OK"]
-
-
-class OneOfOption(BaseModel):
-    value: str
-    label: str
 
 
 class ServiceField(BaseModel):

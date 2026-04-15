@@ -26,6 +26,7 @@ from server.models.models import (
     CustomModelId,
     CustomModelSpecification,
     InstallModelIn,
+    InstallModelOptions,
     InstallModelOut,
     ListModelsFilters,
     ListModelsOut,
@@ -52,8 +53,10 @@ from server.utils.core import (
     normalize_name,
     try_parse_pydantic,
 )
+from server.utils.hardware import NvidiaGpuInfo
 
 type SrvCustomModelX = Callable[["CustomService", str | None], SrvCustomModel]
+type DockerOptionsOrCallable = DockerOptions | Callable[[InstallModelOptions], DockerOptions]
 
 
 @dataclass
@@ -63,7 +66,7 @@ class SrvCustomModel:
     model_type: str
     default_prefix: str
     size: str
-    options: DockerOptions
+    options: DockerOptionsOrCallable
     custom: CustomModelId | None = None
 
 
@@ -386,13 +389,13 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
             options.spec["prefix"] = model.default_prefix
         model.model_props.prefix = options.spec["prefix"]
         parsed_model_options = try_parse_pydantic(CustomModelOptions, options.spec)
-        await self._verify_docker_image(model.options.image, options.ignore_warnings)
+        docker_options = model.options(options.spec) if isinstance(model.options, Callable) else model.options
+        await self._verify_docker_image(docker_options.image, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
             model_dir = self._get_working_dir() / "models"
             model_dir.mkdir(parents=True, exist_ok=True)
             subnet = self.docker_service.get_docker_subnet()
-            docker_options = model.options
             image = DockerImage(name=docker_options.image, size=model.size)
             await self._download_image_or_set_progress(stream, image)
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
@@ -439,6 +442,86 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
         return self._get_working_dir()
 
 
+def create_lemmatizer_model(custom_service: CustomService, subnet: str | None) -> SrvCustomModel:
+    """Create lemmatizer model."""
+    fields: list[ModelField] = custom_service.add_hardware_field_to_model_spec()
+    fields.extend(
+        [
+            ModelField(
+                type="text",
+                name="prefix",
+                description="Endpoint prefix",
+                required=True,
+                placeholder="lemmatizer",
+                default="lemmatizer",
+            ),
+            ModelField(
+                type="number",
+                name="num_workers",
+                description="Number of worker threads",
+                required=False,
+                placeholder="4",
+                default="4",
+            ),
+            ModelField(
+                type="number",
+                name="queue_max",
+                description="Maximum size of the job queue",
+                required=False,
+                placeholder="100000",
+                default="100000",
+            ),
+            ModelField(
+                type="number",
+                name="shutdown_timeout",
+                description="Grace period for finishing lemmatizer tasks on shutdown.",
+                required=False,
+                placeholder="30",
+                default="30",
+            ),
+        ]
+    )
+
+    def generate_docker_options(model_fields: InstallModelOptions) -> DockerOptions:
+        hardware_parts = custom_service.get_specified_hardware_parts(model_fields.get("hardware"))
+        image = (
+            "hub.simplito.com/deepfellow/deepfellow-lemmatizer:1.0.0-cuda-12.8"
+            if any(isinstance(h, NvidiaGpuInfo) for h in hardware_parts)
+            else "hub.simplito.com/deepfellow/deepfellow-lemmatizer:1.0.0-cpu"
+        )
+        return DockerOptions(
+            image_port=8090,
+            name="df-lemmatizer",
+            container_name="df-lemmatizer",
+            image=image,
+            restart="unless-stopped",
+            volumes=[f"{custom_service.get_working_dir()}/lemmatizer/cache/stanza:/root/.cache/stanza"],
+            hardware=hardware_parts,
+            subnet=subnet,
+            env_vars={
+                "DF_LEMMATIZER_NUM_WORKERS": model_fields.get("num_workers", 4),
+                "DF_LEMMATIZER_QUEUE_MAX": model_fields.get("queue_max", 100000),
+                "DF_LEMMATIZER_SHUTDOWN_TIMEOUT": model_fields.get("shutdown_timeout", 30),
+            },
+            healthcheck={
+                "test": "wget -q --spider http://localhost:8090/health",
+                "interval": "30s",
+                "timeout": "10s",
+                "retries": "3",
+                "start_period": "30s",
+            },
+        )
+
+    return SrvCustomModel(
+        model_props=ModelProps(private=True, type="custom", endpoints=["/custom/v1/lemmatize"]),
+        model_spec=ModelSpecification(fields=fields),
+        model_type="custom",
+        default_prefix="lemmatizer",
+        size="1.89GB",
+        options=generate_docker_options,
+    )
+
+
 _const = CustomConst(
     models={
         "bentoml/example-summarization": lambda custom_service, subnet: SrvCustomModel(
@@ -474,5 +557,6 @@ _const = CustomConst(
                 subnet=subnet,
             ),
         ),
-    },
+        "lemmatizer": create_lemmatizer_model,
+    }
 )
