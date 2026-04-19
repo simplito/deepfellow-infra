@@ -10,6 +10,7 @@
 """Ollama service."""
 
 import asyncio
+import hashlib
 import json
 import logging
 import shutil
@@ -17,15 +18,16 @@ from collections.abc import Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Literal, NamedTuple, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 import aiofiles
+import aiohttp
 from fastapi import HTTPException
 from pydantic import BaseModel, StringConstraints
 
 from server.applicationcontext import get_base_url
 from server.config import get_main_dir
-from server.docker import DockerImage, DockerOptions
+from server.docker import DockerImage, DockerOptions, DockerPath
 from server.endpointregistry import ProxyOptions, RegistrationId
 from server.models.api import EMBEDDINGS_ENDPOINTS, IMG_ENDPOINTS, LLM_ENDPOINTS, ModelProps
 from server.models.models import (
@@ -63,7 +65,7 @@ from server.utils.core import (
     stream_fetch_from,
     try_parse_pydantic,
 )
-from server.utils.files import get_gguf_context_window, get_model_dir_context_window
+from server.utils.files import detect_context_window_from_path
 from server.utils.hardware import GpuInfo, HardwarePartInfo, IntelGpuInfo
 from server.utils.loading import Progress
 
@@ -120,13 +122,6 @@ class OllamaRegistry(TypedDict):
     llms: list[OllamaRegistryEntry]
     embeddings: list[OllamaRegistryEntry]
     txt2img: list[OllamaRegistryEntry]
-
-
-class ModelfileData(NamedTuple):
-    content: str
-    urls: list[str]
-    docker_paths: list[str]
-    local_paths: list[str]
 
 
 def _read_models() -> dict[str, OllamaModel]:
@@ -211,6 +206,7 @@ class OllamaModelOptions(BaseModel):
 
 @dataclass
 class InstalledInfo:
+    instance_name: str
     docker: DockerOptions
     models: dict[str, ModelInstalledInfo]
     options: InstallServiceIn
@@ -224,6 +220,40 @@ class InstalledInfo:
 @dataclass
 class DownloadedInfo:
     model_paths: list[str] | None = None
+
+
+@dataclass
+class OllamaModelFileLine:
+    instruction: Literal["FROM", "ADAPTER"]
+    value: str
+
+    def render(self) -> str:
+        """Render line."""
+        return f"{self.instruction} {self.value}"
+
+
+class OllamaModelFile:
+    def __init__(self, lines: list[str | OllamaModelFileLine]):
+        self.lines = lines
+
+    def render(self) -> str:
+        """Render modelfile."""
+        return "\n".join([(line.render() if isinstance(line, OllamaModelFileLine) else line) for line in self.lines])
+
+    @staticmethod
+    def parse(modelfile: str) -> "OllamaModelFile":
+        """Parse ollama modelfile."""
+        lines: list[str | OllamaModelFileLine] = []
+        for line in modelfile.split("\n"):
+            if line.startswith("FROM "):
+                value = line[5:].strip()
+                lines.append(OllamaModelFileLine(instruction="FROM", value=value))
+            elif line.startswith("ADAPTER "):
+                value = line[8:].strip()
+                lines.append(OllamaModelFileLine(instruction="ADAPTER", value=value))
+            else:
+                lines.append(line)
+        return OllamaModelFile(lines)
 
 
 class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
@@ -423,6 +453,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             container_host = self.docker_service.get_container_host(subnet, docker_options.name)
             container_port = self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port)
             info = InstalledInfo(
+                instance_name=instance,
                 docker=docker_options,
                 models={},
                 options=options,
@@ -584,7 +615,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                 raise HTTPException(400, "Model not available")
 
             data_cleared: list[str] = ollama_stream.data.rstrip().split("\n")
-            records = [json.loads(s) for s in data_cleared]
+            records = [json.loads(s) for s in data_cleared if s]
             if progress.max != 0:
                 for record in records:
                     if value := record.get("completed"):
@@ -611,10 +642,10 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         )
         return result.status_code == 200
 
-    async def create_model_from_modelfile(
-        self, compose_filepath: Path, service_name: str, model: str, model_path: str, quantization: str | None
-    ) -> str:
+    async def create_model_from_modelfile(self, info: InstalledInfo, model: str, model_path: str, quantization: str | None) -> str:
         """Send message to ollama to create model from Modelfile.."""
+        compose_filepath = self.docker_service.get_docker_compose_file_path(info.docker.name)
+        service_name = info.docker.name
         quantization_param = f"-q {quantization} " if quantization else ""
         cmd = f"ollama create {quantization_param}{model} -f {model_path}"
         return await self.docker_service.run_command_docker_compose(compose_filepath, service_name, cmd)
@@ -628,19 +659,24 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         model_size: str,
         model_number: int,
         model_quantity: int,
+        dest_path: Path | None = None,
     ) -> None:
         local_models_dir = Path(self._get_working_dir()) / "main" / "custom"
         model_path = Path(model_url)
 
         if model_url.startswith(("http://", "https://")):
-            dir = Path(Path(local_models_dir) / model_id)
-            additional_params = ()
-            if model_path.suffix == ".gguf":
-                # If file then add filename to download.
-                additional_params = (model_path.name,)
+            if dest_path is not None:
+                dir = dest_path.parent
+                additional_params: tuple[str, ...] = (dest_path.name,)
             else:
-                # Download all files to subdirectory model
-                dir = dir / "model"
+                dir = Path(Path(local_models_dir) / model_id)
+                additional_params = ()
+                if model_path.suffix == ".gguf":
+                    # If file then add filename to download.
+                    additional_params = (model_path.name,)
+                else:
+                    # Download all files to subdirectory model
+                    dir = dir / "model"
 
             progress = Progress(convert_size_to_bytes(model_size) or 0)
             input_stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
@@ -659,57 +695,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             await self._download_with_ollama(input_stream, base_url, model_url, model_size)
         return
 
-    def _process_from_line(
-        self, line: str, model_name: str, instance: str, base_docker_dir: Path, local_models_dir: Path
-    ) -> tuple[str, str | None, str | None, str | None]:
-        """Return (new_line, url, docker_path, local_path) for a FROM line."""
-        _, model = line.split(" ")
-        path_model = Path(model)
-        if model.startswith(("http://", "https://")):
-            file_or_dir = path_model.name if path_model.suffix == ".gguf" else "model"
-            docker_path = str(base_docker_dir / model_name / file_or_dir)
-            local_path = str(local_models_dir / model_name / file_or_dir)
-            return f"FROM {docker_path}", model, docker_path, local_path
-        docker_path = str(base_docker_dir / path_model)
-        local_path = str(local_models_dir / path_model)
-        if model_name not in self.models[instance]:
-            return f"FROM {docker_path}", None, docker_path, local_path
-        return f"FROM {model}", model, None, None
-
-    async def create_docker_modelfile_content(self, model_name: str, modelfile: str, instance: str) -> ModelfileData:
-        """Create docker modelfile content.
-
-        Can edit local models path to docker model paths.
-        """
-        base_docker_dir: Path = Path("/root/.ollama/custom")
-        local_models_dir = Path(self._get_working_dir()) / "main" / "custom"
-        new_lines: list[str] = []
-        models: list[str] = []
-        docker_paths: list[str] = []
-        local_paths: list[str] = []
-
-        for line in modelfile.split("\n"):
-            if line.startswith("FROM"):
-                new_line, url, docker_path, local_path = self._process_from_line(
-                    line, model_name, instance, base_docker_dir, local_models_dir
-                )
-            elif line.startswith("ADAPTER"):
-                _, url = line.split(" ")
-                docker_path = str(base_docker_dir / model_name / "adapter.gguf")
-                local_path = str(local_models_dir / model_name / "adapter.gguf")
-                new_line = f"ADAPTER {docker_path}"
-            else:
-                new_line, url, docker_path, local_path = line, None, None, None
-            new_lines.append(new_line)
-            if url is not None and url not in models:
-                models.append(url)
-            if docker_path is not None and local_path is not None:
-                docker_paths.append(docker_path)
-                local_paths.append(local_path)
-
-        return ModelfileData("\n".join(new_lines), models, docker_paths, local_paths)
-
-    def _get_modelfile_path(self, model: str, instance: str) -> Path:
+    def _get_local_modelfile_path(self, model: str, instance: str) -> Path:
         """Return local (host) modelfile path."""
         return Path(self._get_working_dir()) / "main" / "custom" / model / instance / "Modelfile"
 
@@ -719,7 +705,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     async def remove_modelfile(self, model: str, instance: str) -> None:
         """Remove modelfile."""
-        local_modelfile_path = self._get_modelfile_path(model, instance)
+        local_modelfile_path = self._get_local_modelfile_path(model, instance)
         local_modelfile_path.unlink(missing_ok=True)
         parent_dir = local_modelfile_path.parent
         if parent_dir.is_dir() and not any(parent_dir.iterdir()):
@@ -728,10 +714,10 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
     async def save_modelfile(self, model: str, instance: str, modelfile: str) -> str:
         """Save modelfile."""
         docker_modelfile_path = self._get_docker_modelfile_path(model, instance)
-        local_modelfile_path = self._get_modelfile_path(model, instance)
+        local_modelfile_path = self._get_local_modelfile_path(model, instance)
 
-        # Remove old Modelfile
-        old_path = Path(local_modelfile_path.parent.parent / "Modelfile")
+        # Remove old Modelfile, code below can be deleted after migration in all instances
+        old_path = Path(self._get_working_dir()) / "main" / "custom" / model / "Modelfile"
         if old_path.exists():
             old_path.unlink()
 
@@ -758,10 +744,11 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         size: str,
         i: int = 1,
         models_quantity: int = 1,
+        dest_path: Path | None = None,
     ) -> None:
         if model_id not in self.models_download_progress:
             self.models_download_progress[model_id] = input_stream
-            await self._download_with_downloader(input_stream, base_url, model_url, model_id, size, i, models_quantity)
+            await self._download_with_downloader(input_stream, base_url, model_url, model_id, size, i, models_quantity, dest_path)
             del self.models_download_progress[model_id]
         else:
             chunk: StreamChunk
@@ -770,6 +757,87 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                     input_stream.emit(chunk)
                 else:
                     break
+
+    def _get_modelfile_file_name_from_url(self, url: str) -> str:
+        new_name = hashlib.sha1(url.encode()).hexdigest()
+        path_model = Path(url)
+        return new_name + ".gguf" if path_model.suffix == ".gguf" else new_name
+
+    def _remove_paths(self, paths: Sequence[Path | str]) -> None:
+        """Remove all given files and directories."""
+        for local_path in paths:
+            if Path(local_path).is_dir():
+                with suppress(Exception):
+                    shutil.rmtree(local_path)
+            else:
+                Path(local_path).unlink(missing_ok=True)
+
+    async def _install_from_modelfile(  # noqa: C901
+        self,
+        input_stream: Stream[StreamChunk],
+        model_id: str,
+        modelfile_recipe: str,
+        internal_model_name: str,
+        instance_info: InstalledInfo,
+        model: OllamaModel,
+    ) -> int | None:
+        """Download assets, create model in docker from modelfile, and detect and return context window."""
+        paths_to_remove_on_error: list[Path] = []
+        try:
+            base_path = DockerPath(
+                docker_path=Path("/root/.ollama"),
+                local_path=Path(self._get_working_dir()) / "main",
+            )
+            model_context: int | None = None
+            modelfile = OllamaModelFile.parse(modelfile_recipe)
+            for line in modelfile.lines:
+                if isinstance(line, OllamaModelFileLine):
+                    if line.value.startswith(("http://", "https://")):
+                        url = line.value
+                        model_path = base_path.add(Path("custom") / model_id / self._get_modelfile_file_name_from_url(url))
+                        if not model_path.local_path.exists():
+                            paths_to_remove_on_error.append(model_path.local_path)
+                            await self._download_model_or_set_progress(
+                                input_stream,
+                                instance_info.base_url,
+                                url,
+                                model_id,
+                                model.size,
+                                0,
+                                1,
+                                dest_path=model_path.local_path,
+                            )
+                        line.value = str(model_path.docker_path)
+                        if line.instruction == "FROM":
+                            model_context = await detect_context_window_from_path(model_path.local_path)
+                    elif line.value.startswith("./"):
+                        model_path = base_path.add(Path(line.value))
+                        line.value = str(model_path.docker_path)
+                        if not model_path.local_path.exists():
+                            raise HTTPException(  # noqa: TRY301
+                                status_code=400,
+                                detail=f"Path {model_path.local_path} from {line.instruction} line does not exist",
+                            )
+                        if line.instruction == "FROM":
+                            model_context = await detect_context_window_from_path(model_path.local_path)
+                    else:
+                        model_to_download = line.value
+                        if not await self.is_model_installed(instance_info.base_url, model_to_download):
+                            await self._download_model_or_set_progress(
+                                input_stream, instance_info.base_url, model_to_download, model_id, model.size, 0, 1
+                            )
+            modelfile_path = await self.save_modelfile(model_id, instance_info.instance_name, modelfile.render())
+            await self.create_model_from_modelfile(instance_info, internal_model_name, modelfile_path, model.quantization)
+            return model_context  # noqa: TRY300
+        except aiohttp.ClientConnectorError as e:
+            self._remove_paths(paths_to_remove_on_error)
+            raise HTTPException(status_code=400, detail=f"Cannot connect to model source: {e}") from e
+        except HTTPException:
+            self._remove_paths(paths_to_remove_on_error)
+            raise
+        except Exception as e:
+            self._remove_paths(paths_to_remove_on_error)
+            raise HTTPException(status_code=400, detail="Cannot install modelfile") from e
 
     def get_default_context_window(self, model_context: int | None, service_context: int) -> int:
         """Return minimum default context length from model or service context length."""
@@ -810,36 +878,11 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                     new_modelfile = f"FROM {model_id}\nPARAMETER num_ctx {parsed_model_options.context_length}"
 
             modelfile_recipe = new_modelfile or model.modelfile
+            model_context = model.context
             if modelfile_recipe:
-                modelfile_data = await self.create_docker_modelfile_content(model_id, modelfile_recipe, instance)
-                models_to_download = modelfile_data.urls
-                paths = modelfile_data.local_paths
-                path = await self.save_modelfile(model_id, instance, modelfile_data.content)
-                quantization = model.quantization
-                service_name = info.docker.name
-                for i, model_to_download in enumerate(models_to_download):
-                    if not await self.is_model_installed(info.base_url, model_id):
-                        await self._download_model_or_set_progress(
-                            input_stream, info.base_url, model_to_download, model_id, model.size, i, len(models_to_download)
-                        )
-                compose_filepath = self.docker_service.get_docker_compose_file_path(service_name)
-                try:
-                    await self.create_model_from_modelfile(compose_filepath, service_name, internal_name, path, quantization)
-                except Exception:
-                    for path in modelfile_data.local_paths:
-                        if Path(path).is_dir():
-                            with suppress(Exception):
-                                shutil.rmtree(path)
-                        else:
-                            Path(path).unlink(missing_ok=True)
-                if len(paths) != 0:
-                    path = paths[0]
-                    if path.endswith(".gguf"):
-                        model.context = await get_gguf_context_window(path)
-                    else:
-                        temp_max_context_window = await get_model_dir_context_window(path)
-                        if temp_max_context_window:
-                            model.context = temp_max_context_window
+                new_model_context = await self._install_from_modelfile(input_stream, model_id, modelfile_recipe, internal_name, info, model)
+                if new_model_context is not None:
+                    model_context = new_model_context
 
             else:
                 if not await self.is_model_installed(info.base_url, model_id):
@@ -863,7 +906,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                 registration_id="",
                 internal_name=internal_name,
             )
-            model_max_context_window = model.context
+            model_max_context_window = model_context
             service_max_context_window = self.default_context_length
             default_context_window = self.get_default_context_window(model_max_context_window, service_max_context_window)
             max_context_window = model_max_context_window or service_max_context_window

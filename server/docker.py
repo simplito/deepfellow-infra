@@ -226,6 +226,15 @@ class DockerImage(BaseModel):
     size: str
 
 
+class DockerPath(BaseModel):
+    local_path: Path
+    docker_path: Path
+
+    def add(self, path: Path) -> "DockerPath":
+        """Add path part."""
+        return DockerPath(local_path=self.local_path / path, docker_path=self.docker_path / path)
+
+
 class DockerService:
     auths: dict[str, str]
 

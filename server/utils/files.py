@@ -82,3 +82,10 @@ async def get_model_dir_context_window(model_dir: Path | str) -> int | None:
     except (FileNotFoundError, json.JSONDecodeError, ValueError, KeyError):
         # Gracefully handle missing files, malformed JSON, or non-int values
         return None
+
+
+async def detect_context_window_from_path(model_path: Path | str) -> int | None:
+    """Detect context window under given path."""
+    if str(model_path).endswith(".gguf"):
+        return await get_gguf_context_window(model_path)
+    return await get_model_dir_context_window(model_path)
