@@ -513,6 +513,7 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
                 completions=ProxyOptions(url=f"{model_info.base_url}/v1/completions", rewrite_model_to=model_id),
                 responses=ProxyOptions(url=f"{model_info.base_url}/v1/responses", rewrite_model_to=model_id),
                 messages=ProxyOptions(url=f"{model_info.base_url}/v1/messages", rewrite_model_to=model_id),
+                ollama_chat=None,
                 registration_options=None,
             )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))

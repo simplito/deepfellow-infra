@@ -451,6 +451,7 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
                     messages=(
                         ProxyOptions(url=f"{info.base_url}/v1/messages", rewrite_model_to=model_id) if self.support_messages else None
                     ),
+                    ollama_chat=ProxyOptions(url=f"{info.base_url}/api/chat", rewrite_model_to=model_id),
                     registration_options=None,
                 )
             if model.type == "embedding":

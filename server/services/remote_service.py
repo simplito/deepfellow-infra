@@ -470,6 +470,7 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                     )
                     if model.legacy_completions
                     else None,
+                    ollama_chat=None,
                     registration_options=None,
                 )
             if model.type == "tts":

@@ -386,6 +386,7 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
                     responses=None,
                     chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model.real_model_name),
                     completions=None,
+                    ollama_chat=None,
                     registration_options=None,
                 )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))

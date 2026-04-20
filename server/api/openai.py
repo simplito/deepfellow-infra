@@ -29,6 +29,7 @@ from server.models.api import (
     ImagesRequest,
     MessagesRequest,
     MessagesResponse,
+    OllamaChatRequest,
     RerankRequest,
     ResponsesRequest,
     ResponsesResponse,
@@ -107,6 +108,17 @@ async def on_completions(
 ) -> StarletteResponse:
     """Process completions request."""
     return await endpoint_registry.execute_completion(body, request)
+
+
+@router.post("/api/chat")
+async def on_ollama_chat(
+    request: Request,
+    body: Annotated[OllamaChatRequest, Body(...)],
+    _: Annotated[str, Depends(auth_server)],
+    endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+) -> StarletteResponse:
+    """Process completions request."""
+    return await endpoint_registry.execute_ollama_chat(body, request)
 
 
 @router.post("/v1/embeddings")

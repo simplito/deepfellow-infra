@@ -41,6 +41,7 @@ from server.models.api import (
     ModelId,
     ModelProps,
     ModelType,
+    OllamaChatRequest,
     RerankRequest,
     ResponsesRequest,
 )
@@ -77,6 +78,7 @@ class ChatCompletionEndpoint:
     on_completion: EndpointCallback[CompletionLegacyRequest] | None = None
     on_responses: EndpointCallback[ResponsesRequest] | None = None
     on_messages: EndpointCallback[MessagesRequest] | None = None
+    on_ollama_chat: EndpointCallback[OllamaChatRequest] | None = None
 
 
 class RegisteredModel[T](BaseModel):
@@ -256,6 +258,16 @@ class ModelInfo(NamedTuple):
     type: str
 
 
+_LLM_SUFFIX_MAP: tuple[tuple[str, str], ...] = (
+    ("on_completion", "v1"),
+    ("on_chat_completion", "v2"),
+    ("on_responses", "v3"),
+    ("on_messages", "ant"),
+    ("on_ollama_chat", "ollama"),
+)
+_ALL_LLM_SUFFIXES = tuple(suffix for _, suffix in _LLM_SUFFIX_MAP)
+
+
 class EndpointRegistry:
     def __init__(
         self,
@@ -317,7 +329,7 @@ class EndpointRegistry:
         models.extend(self.mcp_endpoints.list_models())
         return models
 
-    def register_chat_completion(  # noqa: C901
+    def register_chat_completion(
         self,
         model: str,
         props: ModelProps,
@@ -325,39 +337,12 @@ class EndpointRegistry:
         registration_options: RegistrationOptions | None,
     ) -> RegistrationId:
         """Register chat completion endpoint for given model."""
-        if not endpoint.on_messages and not endpoint.on_responses and endpoint.on_chat_completion and endpoint.on_completion:
-            model_type = "llm-v1-v2"
-        elif not endpoint.on_messages and endpoint.on_responses and endpoint.on_chat_completion and endpoint.on_completion:
-            model_type = "llm-v1-v2-v3"
-        elif endpoint.on_messages and not endpoint.on_responses and endpoint.on_chat_completion and endpoint.on_completion:
-            model_type = "llm-v1-v2-ant"
-        elif not endpoint.on_messages and endpoint.on_responses and not endpoint.on_chat_completion and endpoint.on_completion:
-            model_type = "llm-v1-v3"
-        elif endpoint.on_messages and endpoint.on_responses and not endpoint.on_chat_completion and endpoint.on_completion:
-            model_type = "llm-v1-v3-ant"
-        elif not endpoint.on_messages and endpoint.on_responses and endpoint.on_chat_completion and not endpoint.on_completion:
-            model_type = "llm-v2-v3"
-        elif endpoint.on_messages and endpoint.on_responses and endpoint.on_chat_completion and not endpoint.on_completion:
-            model_type = "llm-v2-v3-ant"
-        elif not endpoint.on_messages and endpoint.on_responses and not endpoint.on_chat_completion and not endpoint.on_completion:
-            model_type = "llm-v3"
-        elif endpoint.on_messages and endpoint.on_responses and not endpoint.on_chat_completion and not endpoint.on_completion:
-            model_type = "llm-v3-ant"
-        elif not endpoint.on_messages and not endpoint.on_responses and endpoint.on_chat_completion and not endpoint.on_completion:
-            model_type = "llm-v2"
-        elif endpoint.on_messages and not endpoint.on_responses and endpoint.on_chat_completion and not endpoint.on_completion:
-            model_type = "llm-v2-ant"
-        elif not endpoint.on_messages and not endpoint.on_responses and not endpoint.on_chat_completion and endpoint.on_completion:
-            model_type = "llm-v1"
-        elif endpoint.on_messages and not endpoint.on_responses and not endpoint.on_chat_completion and endpoint.on_completion:
-            model_type = "llm-v1-ant"
-        elif endpoint.on_messages and not endpoint.on_responses and not endpoint.on_chat_completion and not endpoint.on_completion:
-            model_type = "llm-ant"
-        else:
-            model_type: ModelType = "llm"
+        suffixes = [suffix for field, suffix in _LLM_SUFFIX_MAP if getattr(endpoint, field)]
+
+        model_type = "llm" if len(suffixes) == len(_ALL_LLM_SUFFIXES) else "llm-" + "-".join(suffixes)
         return self.chat_completion_endpoints.add_model(model, props, endpoint, model_type, registration_options)
 
-    def register_chat_completion_as_proxy(
+    def register_chat_completion_as_proxy(  # noqa: C901
         self,
         model: str,
         props: ModelProps,
@@ -365,6 +350,7 @@ class EndpointRegistry:
         completions: ProxyOptions | None,
         responses: ProxyOptions | None,
         messages: ProxyOptions | None,
+        ollama_chat: ProxyOptions | None,
         registration_options: RegistrationOptions | None,
     ) -> RegistrationId:
         """Register chat completion for given model as a proxy."""
@@ -396,6 +382,13 @@ class EndpointRegistry:
                 return await post_json(body, messages, request)
 
             endpoint.on_messages = on_messages_request
+
+        if ollama_chat:
+
+            async def on_ollama_chat_request(body: OllamaChatRequest, request: Request | None) -> StreamingResponse:
+                return await post_json(body, ollama_chat, request)
+
+            endpoint.on_ollama_chat = on_ollama_chat_request
 
         return self.register_chat_completion(model, props, endpoint, registration_options)
 
@@ -658,7 +651,7 @@ class EndpointRegistry:
         if changed:
             self.parent_infra.send_models_list()
 
-    def _register_proxy(  # noqa: C901
+    def _register_proxy(
         self,
         model_id: ModelId,
         type: ModelType,
@@ -668,250 +661,21 @@ class EndpointRegistry:
         registration_options: RegistrationOptions | None,
     ) -> None:
         """Register proxy."""
-        if type == "llm":
+        if type == "llm" or type.startswith("llm-"):
+            headers = {"Authorization": f"Bearer {api_key}"}
+            parts = set(_ALL_LLM_SUFFIXES) if type == "llm" else set(type.split("-")[1:])
+
+            def _proxy(path: str) -> ProxyOptions:
+                return ProxyOptions(url=urljoin(url, path), headers=headers)
+
             self.register_chat_completion_as_proxy(
                 model=model_id,
                 props=props,
-                chat_completions=ProxyOptions(
-                    url=urljoin(url, "v1/chat/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                completions=ProxyOptions(
-                    url=urljoin(url, "v1/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                responses=ProxyOptions(
-                    url=urljoin(url, "v1/responses"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                messages=ProxyOptions(
-                    url=urljoin(url, "v1/messages"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                registration_options=registration_options,
-            )
-        elif type == "llm-v1-v2-v3":
-            self.register_chat_completion_as_proxy(
-                model=model_id,
-                props=props,
-                chat_completions=ProxyOptions(
-                    url=urljoin(url, "v1/chat/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                completions=ProxyOptions(
-                    url=urljoin(url, "v1/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                responses=ProxyOptions(
-                    url=urljoin(url, "v1/responses"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                messages=None,
-                registration_options=registration_options,
-            )
-        elif type == "llm-v1-v2":
-            self.register_chat_completion_as_proxy(
-                model=model_id,
-                props=props,
-                chat_completions=ProxyOptions(
-                    url=urljoin(url, "v1/chat/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                completions=ProxyOptions(
-                    url=urljoin(url, "v1/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                responses=None,
-                messages=None,
-                registration_options=registration_options,
-            )
-        elif type == "llm-v1-v2-ant":
-            self.register_chat_completion_as_proxy(
-                model=model_id,
-                props=props,
-                chat_completions=ProxyOptions(
-                    url=urljoin(url, "v1/chat/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                completions=ProxyOptions(
-                    url=urljoin(url, "v1/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                responses=None,
-                messages=ProxyOptions(
-                    url=urljoin(url, "v1/messages"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                registration_options=registration_options,
-            )
-        elif type == "llm-v1-v3":
-            self.register_chat_completion_as_proxy(
-                model=model_id,
-                props=props,
-                chat_completions=None,
-                completions=ProxyOptions(
-                    url=urljoin(url, "v1/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                responses=ProxyOptions(
-                    url=urljoin(url, "v1/responses"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                messages=None,
-                registration_options=registration_options,
-            )
-        elif type == "llm-v1-v3-ant":
-            self.register_chat_completion_as_proxy(
-                model=model_id,
-                props=props,
-                chat_completions=None,
-                completions=ProxyOptions(
-                    url=urljoin(url, "v1/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                responses=ProxyOptions(
-                    url=urljoin(url, "v1/responses"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                messages=ProxyOptions(
-                    url=urljoin(url, "v1/messages"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                registration_options=registration_options,
-            )
-        elif type == "llm-v2-v3":
-            self.register_chat_completion_as_proxy(
-                model=model_id,
-                props=props,
-                chat_completions=ProxyOptions(
-                    url=urljoin(url, "v1/chat/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                completions=None,
-                responses=ProxyOptions(
-                    url=urljoin(url, "v1/responses"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                messages=None,
-                registration_options=registration_options,
-            )
-        elif type == "llm-v2-v3-ant":
-            self.register_chat_completion_as_proxy(
-                model=model_id,
-                props=props,
-                chat_completions=ProxyOptions(
-                    url=urljoin(url, "v1/chat/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                completions=None,
-                responses=ProxyOptions(
-                    url=urljoin(url, "v1/responses"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                messages=ProxyOptions(
-                    url=urljoin(url, "v1/messages"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                registration_options=registration_options,
-            )
-        elif type == "llm-v1":
-            self.register_chat_completion_as_proxy(
-                model=model_id,
-                props=props,
-                chat_completions=None,
-                completions=ProxyOptions(
-                    url=urljoin(url, "v1/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                responses=None,
-                messages=None,
-                registration_options=registration_options,
-            )
-        elif type == "llm-v1-ant":
-            self.register_chat_completion_as_proxy(
-                model=model_id,
-                props=props,
-                chat_completions=None,
-                completions=ProxyOptions(
-                    url=urljoin(url, "v1/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                responses=None,
-                messages=ProxyOptions(
-                    url=urljoin(url, "v1/messages"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                registration_options=registration_options,
-            )
-        elif type == "llm-v2":
-            self.register_chat_completion_as_proxy(
-                model=model_id,
-                props=props,
-                chat_completions=ProxyOptions(
-                    url=urljoin(url, "v1/chat/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                completions=None,
-                responses=None,
-                messages=None,
-                registration_options=registration_options,
-            )
-        elif type == "llm-v2-ant":
-            self.register_chat_completion_as_proxy(
-                model=model_id,
-                props=props,
-                chat_completions=ProxyOptions(
-                    url=urljoin(url, "v1/chat/completions"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                completions=None,
-                responses=None,
-                messages=ProxyOptions(
-                    url=urljoin(url, "v1/messages"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                registration_options=registration_options,
-            )
-        elif type == "llm-v3":
-            self.register_chat_completion_as_proxy(
-                model=model_id,
-                props=props,
-                chat_completions=None,
-                completions=None,
-                responses=ProxyOptions(
-                    url=urljoin(url, "v1/responses"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                messages=None,
-                registration_options=registration_options,
-            )
-        elif type == "llm-v3-ant":
-            self.register_chat_completion_as_proxy(
-                model=model_id,
-                props=props,
-                chat_completions=None,
-                completions=None,
-                responses=ProxyOptions(
-                    url=urljoin(url, "v1/responses"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                messages=ProxyOptions(
-                    url=urljoin(url, "v1/messages"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
-                registration_options=registration_options,
-            )
-        elif type == "llm-ant":
-            self.register_chat_completion_as_proxy(
-                model=model_id,
-                props=props,
-                chat_completions=None,
-                completions=None,
-                responses=None,
-                messages=ProxyOptions(
-                    url=urljoin(url, "v1/messages"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
+                completions=_proxy("v1/completions") if "v1" in parts else None,
+                chat_completions=_proxy("v1/chat/completions") if "v2" in parts else None,
+                responses=_proxy("v1/responses") if "v3" in parts else None,
+                messages=_proxy("v1/messages") if "ant" in parts else None,
+                ollama_chat=_proxy("api/chat") if "ollama" in parts else None,
                 registration_options=registration_options,
             )
         elif type == "tts":
@@ -1163,6 +927,41 @@ class EndpointRegistry:
 
         async def func() -> StarletteResponse:
             return await on_completion(body, request)
+
+        return await self.with_usage(endpoint, func)
+
+    async def execute_ollama_chat(
+        self,
+        body: OllamaChatRequest,
+        request: Request | None = None,
+        registration_id: RegistrationId | None = None,
+    ) -> StarletteResponse:
+        """Process ollama chat."""
+        endpoint = self.chat_completion_endpoints.get_model(
+            body.model,
+            filter=lambda x: x.on_ollama_chat is not None,
+            registration_id=registration_id,
+        )
+        on_ollama_chat = endpoint.endpoint.on_ollama_chat if endpoint else None
+        if not endpoint or not on_ollama_chat:
+            msg = "Given model not support this endpoint.\n"
+            if endpoint:
+                supported_endpoints = []
+                if endpoint.endpoint.on_messages:
+                    supported_endpoints.append("/v1/messages")
+                if endpoint.endpoint.on_responses:
+                    supported_endpoints.append("/v1/responses")
+                if endpoint.endpoint.on_chat_completion:
+                    supported_endpoints.append("/v1/chat/completions")
+                if endpoint.endpoint.on_completion:
+                    supported_endpoints.append("/v1/completions")
+
+                msg = msg + "Supported endpoints:\n" + ", ".join(supported_endpoints)
+
+            raise HTTPException(400, msg)
+
+        async def func() -> StarletteResponse:
+            return await on_ollama_chat(body, request)
 
         return await self.with_usage(endpoint, func)
 
