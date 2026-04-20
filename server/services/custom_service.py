@@ -522,6 +522,60 @@ def create_lemmatizer_model(custom_service: CustomService, subnet: str | None) -
     )
 
 
+def create_finetune_model(custom_service: CustomService, subnet: str | None) -> SrvCustomModel:
+    """Create finetune model."""
+    fields: list[ModelField] = custom_service.add_hardware_field_to_model_spec()
+    fields.extend(
+        [
+            ModelField(
+                type="text",
+                name="prefix",
+                description="Endpoint prefix",
+                required=True,
+                placeholder="deepfellow-finetune",
+                default="deepfellow-finetune",
+            ),
+        ]
+    )
+
+    def generate_docker_options(model_fields: InstallModelOptions) -> DockerOptions:
+        hardware_parts = custom_service.get_specified_hardware_parts(model_fields.get("hardware"))
+        return DockerOptions(
+            image_port=8333,
+            name="deepfellow-finetune",
+            container_name=custom_service.docker_service.get_docker_container_name("deepfellow-finetune"),
+            image="hub.simplito.com/deepfellow/deepfellow-finetune:0.0.1",
+            restart="unless-stopped",
+            volumes=[
+                f"{custom_service.get_working_dir()}/deepfellow-finetune/models:/workspace/models",
+                f"{custom_service.get_working_dir()}/deepfellow-finetune/configs:/workspace/configs",
+                f"{custom_service.get_working_dir()}/deepfellow-finetune/data:/workspace/data",
+                f"{custom_service.get_working_dir()}/deepfellow-finetune/adapters:/workspace/adapters",
+            ],
+            hardware=hardware_parts,
+            subnet=subnet,
+            env_vars={
+                "HF_TOKEN": custom_service.config.hugging_face_token,
+            },
+            healthcheck={
+                "test": "wget -q --spider http://localhost:8333/health",
+                "interval": "30s",
+                "timeout": "10s",
+                "retries": "3",
+                "start_period": "30s",
+            },
+        )
+
+    return SrvCustomModel(
+        model_props=ModelProps(private=True, type="custom", endpoints=["/custom/deepfellow-finetune"]),
+        model_spec=ModelSpecification(fields=fields),
+        model_type="custom",
+        default_prefix="deepfellow-finetune",
+        size="8.56GB",
+        options=generate_docker_options,
+    )
+
+
 _const = CustomConst(
     models={
         "bentoml/example-summarization": lambda custom_service, subnet: SrvCustomModel(
@@ -558,5 +612,6 @@ _const = CustomConst(
             ),
         ),
         "lemmatizer": create_lemmatizer_model,
+        "deepfellow-finetune": create_finetune_model,
     }
 )
