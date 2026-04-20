@@ -17,9 +17,9 @@ from uuid import uuid4
 from aiohttp import FormData
 from fastapi import File as FastApiFile
 from fastapi import UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-LLM_ENDPOINTS = ["v1/completions, v1/chat/completions", "v1/responses", "v1/messages"]
+LLM_ENDPOINTS = ["v1/completions, v1/chat/completions", "v1/responses", "v1/messages", "api/chat"]
 EMBEDDINGS_ENDPOINTS = ["/v1/embeddings"]
 STT_ENDPOINTS = ["/v1/audio/transcriptions"]
 TTS_ENDPOINTS = ["/v1/audio/speech"]
@@ -365,30 +365,7 @@ class ModelProps(BaseModel):
     prefix: str | None = None
 
 
-ModelType = Literal[
-    "tts",
-    "stt",
-    "txt2img",
-    "embedding",
-    "rerank",
-    "llm",
-    "llm-v1",
-    "llm-v2",
-    "llm-v3",
-    "llm-ant",
-    "llm-v1-v2",
-    "llm-v2-v3",
-    "llm-v1-v3",
-    "llm-v1-ant",
-    "llm-v2-ant",
-    "llm-v3-ant",
-    "llm-v1-v2-v3",
-    "llm-v1-v2-ant",
-    "llm-v2-v3-ant",
-    "llm-v1-v3-ant",
-    "custom",
-    "mcp",
-]
+type ModelType = str
 
 type ModelId = str
 type RegistrationId = str
@@ -1473,7 +1450,121 @@ class ResponsesRequest(BaseModel):
     model_config = {"json_schema_extra": {"examples": [{"model": "llama3.1:8b", "input": "Say Hello World o/."}]}}
 
 
-# Response
+class OllamaToolFunction(BaseModel):
+    name: str
+    description: str | None = None
+    parameters: dict[str, Any]
+
+
+class OllamaToolDefinition(BaseModel):
+    type: Literal["function"] = "function"
+    function: OllamaToolFunction
+
+
+class OllamaChatToolCallFunction(BaseModel):
+    name: str
+    description: str | None = None
+    arguments: dict[str, Any] | None = None
+
+
+class OllamaChatToolCall(BaseModel):
+    function: OllamaChatToolCallFunction
+
+
+class OllamaChatMessage(BaseModel):
+    role: Literal["system", "user", "assistant", "tool"]
+    content: str
+    images: list[str] | None = None
+    tool_calls: list[OllamaChatToolCall] | None = None
+
+
+class OllamaOptions(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    num_ctx: int | None = None
+    repeat_last_n: int | None = None
+    repeat_penalty: float | None = None
+    temperature: float | None = None
+    seed: int | None = None
+    stop: str | None = None
+    num_predict: int | None = None
+    top_k: int | None = None
+    top_p: float | None = None
+    min_p: float | None = None
+
+
+class OllamaChatRequest(BaseModel):
+    model: Annotated[
+        str,
+        Field(
+            description=(
+                "Model ID used to generate the response, like gemma3 or llama3.2. "
+                "Deepfellow supports a wide range of models with different capabilities, and performance "
+                "characteristics."
+            )
+        ),
+    ]
+    messages: Annotated[
+        list[OllamaChatMessage],
+        Field(
+            description=(
+                "A list of messages comprising the conversation so far. Depending on the model you use, "
+                "different message types (modalities) are supported, like text and images."
+            )
+        ),
+    ]
+    tools: Annotated[
+        list[OllamaToolDefinition] | None,
+        Field(
+            description=(
+                "A list of tools the model may call. Currently, only functions are supported as a tool. Use this to "
+                "provide a list of functions the model may generate JSON inputs for."
+            )
+        ),
+    ] = None
+    think: Annotated[
+        bool | Literal["high", "medium", "low"] | None,
+        Field(description="For thinking models: whether the model should think before responding. Can be a boolean or effort level."),
+    ] = None
+    format: Annotated[
+        Literal["json"] | dict[str, Any] | None,
+        Field(description="The format to return a response in. Can be `json` or a JSON schema object."),
+    ] = None
+    options: Annotated[
+        OllamaOptions | None,
+        Field(description="Additional model parameters such as temperature, top_k, top_p and others."),
+    ] = None
+    stream: Annotated[
+        bool,
+        Field(description="If false the response will be returned as a single response object, rather than a stream of objects."),
+    ] = True
+    keep_alive: Annotated[
+        str | int | None,
+        Field(description="Controls how long the model will stay loaded into memory following the request (default: 5m)."),
+    ] = None
+    logprobs: Annotated[
+        bool | None,
+        Field(description="Return log probabilities of the output tokens."),
+    ] = None
+    top_logprobs: Annotated[
+        int | None,
+        Field(description="Number of most likely tokens to return at each token position."),
+    ] = None
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "model": "llama3",
+                    "messages": [
+                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "user", "content": "Hello!"},
+                    ],
+                    "stream": False,
+                }
+            ]
+        }
+    }
 
 
 class ErrorDetail(BaseModel):
