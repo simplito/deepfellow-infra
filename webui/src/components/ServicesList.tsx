@@ -45,6 +45,8 @@ import {
   setServiceInstallProgress,
   useInstallProgressSnapshot,
 } from "@/state/install-progress-store";
+import { startProgressSimulation, getStepPerTick, COMPLETION_SMOOTH_MS, COMPLETION_SMOOTH_MIN_MS } from "@/utils/progress-simulation";
+import type { SimulationHandle } from "@/utils/progress-simulation";
 import { toast } from "sonner";
 
 export function ServicesList() {
@@ -52,8 +54,10 @@ export function ServicesList() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [installingServiceId, setInstallingServiceId] = useState<string | null>(null);
-  const pendingInstallationRef = useRef<{ serviceId: string; spec: Record<string, unknown> } | null>(null);
+  const pendingInstallationRef = useRef<{ serviceId: string; spec: Record<string, unknown>; size?: string | Record<string, string> } | null>(null);
   const hasWarningsRef = useRef(false);
+  const simulationStopFnsRef = useRef<Record<string, SimulationHandle>>({});
+  const hasRealProgressRef = useRef<Record<string, boolean>>({});
   const restartDockerToastIdRef = useRef<string | number | null>(null);
   const uninstallToastIdRef = useRef<string | number | null>(null);
   const queryClient = useQueryClient();
@@ -94,6 +98,13 @@ export function ServicesList() {
     return newList;
   }, [servicesData, anotherInstances, cloudEnabled])
 
+  // Clean up any running simulations on unmount
+  useEffect(() => {
+    return () => {
+      for (const sim of Object.values(simulationStopFnsRef.current)) sim.stop();
+    };
+  }, []);
+
   // Progress polling for existing installations
   useEffect(() => {
     if (!servicesList.length) return;
@@ -104,18 +115,29 @@ export function ServicesList() {
       const installed = service.installed;
       if (!installed || typeof installed !== "object") continue;
 
-      const stage = (installed as { stage?: unknown }).stage;
-      const value = (installed as { value?: unknown }).value;
+      const installedStage = (installed as { stage?: unknown }).stage;
+      const installedValue = (installed as { value?: unknown }).value;
       const installedIsProgress =
-        (stage === "install" || stage === "download") &&
-        typeof value === "number" &&
-        Number.isFinite(value);
+        (installedStage === "install" || installedStage === "download") &&
+        typeof installedValue === "number" &&
+        Number.isFinite(installedValue);
 
       if (!installedIsProgress) continue;
 
       const serviceId = service.id;
+      let currentStage: "install" | "download" = installedStage as "install" | "download";
       const abortController = new AbortController();
       let isCancelled = false;
+
+      const installStartTime = Date.now();
+      const sim = startProgressSimulation({
+        stepPerTick: getStepPerTick(service.size),
+        onTick: (value) => {
+          if (isCancelled) return;
+          setServiceInstallProgress(serviceId, { stage: currentStage, value });
+        },
+      });
+      simulationStopFnsRef.current[serviceId] = sim;
 
       apiClient
         .getServiceProgress(
@@ -127,15 +149,27 @@ export function ServicesList() {
             const value = event.value;
 
             if (event.type === "progress" && stage && value !== undefined) {
+              currentStage = stage;
+              if (value > 0 && value < 1) {
+                hasRealProgressRef.current[serviceId] = true;
+              }
               setServiceInstallProgress(serviceId, { stage, value });
               return;
             }
 
             if (event.type === "finish") {
               if (event.status === "ok") {
-                queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
-                clearServiceInstallProgress(serviceId);
+                sim.smoothComplete(Math.max(COMPLETION_SMOOTH_MIN_MS, Math.min(Date.now() - installStartTime, COMPLETION_SMOOTH_MS)), () => {
+                  delete simulationStopFnsRef.current[serviceId];
+                  // Deliberately NOT clearing progress here — the store stays at 1.0
+                  // until the query refetch completes and the effect cleanup fires.
+                  // Clearing early would cause the bar to flash back to the stale
+                  // backend value still in the React Query cache.
+                  queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
+                });
               } else {
+                sim.stop();
+                delete simulationStopFnsRef.current[serviceId];
                 clearServiceInstallProgress(serviceId);
                 toast.error(`Installation failed for ${serviceId}: ${event.details || "Unknown error"}`);
               }
@@ -154,6 +188,10 @@ export function ServicesList() {
       cleanups.push(() => {
         isCancelled = true;
         abortController.abort();
+        sim.stop();
+        delete simulationStopFnsRef.current[serviceId];
+        delete hasRealProgressRef.current[serviceId];
+        clearServiceInstallProgress(serviceId);
       });
     }
 
@@ -163,8 +201,18 @@ export function ServicesList() {
   }, [servicesList, queryClient]);
 
   const installMutation = useMutation({
-    mutationFn: ({ serviceId, spec, ignoreWarnings = false }: { serviceId: string; spec: Record<string, unknown>; ignoreWarnings?: boolean }) => {
+    mutationFn: ({ serviceId, spec, size, ignoreWarnings = false }: { serviceId: string; spec: Record<string, unknown>; size?: string | Record<string, string>; ignoreWarnings?: boolean }) => {
       return new Promise<void>((resolve, reject) => {
+        let currentStage: "install" | "download" = "download";
+        const installStartTime = Date.now();
+        const sim = startProgressSimulation({
+          stepPerTick: getStepPerTick(size ?? "", 10),
+          onTick: (value) => {
+            setServiceInstallProgress(serviceId, { stage: currentStage, value });
+          },
+        });
+        simulationStopFnsRef.current[serviceId] = sim;
+
         apiClient.installAdminServiceStreaming(
           serviceId,
           spec,
@@ -173,12 +221,21 @@ export function ServicesList() {
             const value = event.value;
 
             if (event.type === "progress" && stage && value !== undefined) {
+              currentStage = stage;
+              if (value > 0 && value < 1) {
+                hasRealProgressRef.current[serviceId] = true;
+              }
               setServiceInstallProgress(serviceId, { stage, value });
             } else if (event.type === "finish") {
               if (event.status === "ok") {
-                clearServiceInstallProgress(serviceId);
-                resolve();
+                sim.smoothComplete(Math.max(COMPLETION_SMOOTH_MIN_MS, Math.min(Date.now() - installStartTime, COMPLETION_SMOOTH_MS)), () => {
+                  delete simulationStopFnsRef.current[serviceId];
+                  clearServiceInstallProgress(serviceId);
+                  resolve();
+                });
               } else {
+                sim.stop();
+                delete simulationStopFnsRef.current[serviceId];
                 clearServiceInstallProgress(serviceId);
                 reject(new Error(event.details || "Installation failed"));
               }
@@ -193,12 +250,21 @@ export function ServicesList() {
       setInstallingServiceId(serviceId);
     },
     onSuccess: (_data, variables) => {
+      delete simulationStopFnsRef.current[variables.serviceId];
+      delete hasRealProgressRef.current[variables.serviceId];
       queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
       pendingInstallationRef.current = null;
       clearServiceInstallProgress(variables.serviceId);
       toast.success("Service installed successfully");
     },
     onError: (error, variables) => {
+      const simStop = simulationStopFnsRef.current[variables.serviceId];
+      if (simStop) {
+        simStop.stop();
+        delete simulationStopFnsRef.current[variables.serviceId];
+      }
+      delete hasRealProgressRef.current[variables.serviceId];
+
       if (error instanceof InstallationWarningsError) {
         // Show warnings modal instead of error toast
         hasWarningsRef.current = true;
@@ -209,7 +275,7 @@ export function ServicesList() {
         });
         return;
       }
-      
+
       hasWarningsRef.current = false;
       clearServiceInstallProgress(variables.serviceId);
       toast.error(`Failed to install service: ${error.message}`);
@@ -413,11 +479,11 @@ export function ServicesList() {
             toast.error("Given Instance ID already in use");
             return;
           }
-          pendingInstallationRef.current = { serviceId: serviceId, spec };
+          pendingInstallationRef.current = { serviceId: serviceId, spec, size: serviceDetail.size };
           if (installAnotherInstance) {
             setAnotherInstances([...anotherInstances, {...serviceDetail, id: serviceId, instance: instance, installed: false}]);
           }
-          installMutation.mutate({ serviceId: serviceId, spec });
+          installMutation.mutate({ serviceId: serviceId, spec, size: serviceDetail.size });
         },
         // Keep modal interactive; don't disable because another install is running.
         isSubmitting: false,
@@ -431,10 +497,11 @@ export function ServicesList() {
   const handleWarningsContinue = () => {
     if (pendingInstallationRef.current) {
       hasWarningsRef.current = false;
-      installMutation.mutate({ 
-        serviceId: pendingInstallationRef.current.serviceId, 
+      installMutation.mutate({
+        serviceId: pendingInstallationRef.current.serviceId,
         spec: pendingInstallationRef.current.spec,
-        ignoreWarnings: true 
+        size: pendingInstallationRef.current.size,
+        ignoreWarnings: true
       });
     }
   };
@@ -648,6 +715,7 @@ export function ServicesList() {
                           stage={currentProgress?.stage || (service.installed as InstallProgress).stage}
                           value={currentProgress?.value ?? (service.installed as InstallProgress).value}
                           variant="default"
+                          simulated={!hasRealProgressRef.current[service.id]}
                         />
                       ) : (
                         <div className="flex flex-wrap items-center gap-2">
