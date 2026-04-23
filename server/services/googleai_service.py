@@ -125,6 +125,7 @@ _const = RemoteConst(
 
 
 class GoogleAIService(RemoteService):
+    is_cloud = True
     api_version = "v1beta/openai/"
     options_class = DefaultRemoteServiceOptions
 

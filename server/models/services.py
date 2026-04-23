@@ -67,6 +67,7 @@ class RetrieveServiceOut(BaseModel):
     size: ServiceSize
     custom_model_spec: CustomModelSpecification | None
     has_docker: bool
+    is_cloud: bool = False
 
 
 class ListServicesFilters(BaseModel):
@@ -100,3 +101,11 @@ class RetrieveDockerComposeFileOut(BaseModel):
 
 class RestartDockerContainerOut(BaseModel):
     status: Literal["OK"]
+
+
+class InfraSettingsOut(BaseModel):
+    cloud_enabled: bool
+
+
+class UpdateInfraSettingsIn(BaseModel):
+    cloud_enabled: bool

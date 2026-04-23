@@ -53,6 +53,11 @@ export interface Service {
   description?: string;
   custom_model_spec?: ServiceSpec;
   has_docker?: boolean;
+  is_cloud?: boolean;
+}
+
+export interface InfraSettings {
+  cloud_enabled: boolean;
 }
 
 export interface ServiceListResponse {

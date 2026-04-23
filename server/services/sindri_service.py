@@ -111,6 +111,7 @@ class DownloadedInfo:
 
 
 class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
+    is_cloud = True
     models: dict[str, dict[str, SindriAiModel]]
 
     def _after_init(self) -> None:

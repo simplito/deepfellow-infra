@@ -25,10 +25,10 @@ logger = logging.getLogger("uvicorn.error")
 
 
 FIRST_CONFIG_VERSION = "v1"
-ACTUAL_CONFIG_VERSION = "v2"
+ACTUAL_CONFIG_VERSION = "v3"
 
 
-type ConfigVersions = Literal["v1", "v2"]
+type ConfigVersions = Literal["v1", "v2", "v3"]
 
 
 ServiceRawConfig = JsonSerializable
@@ -37,6 +37,7 @@ ServiceRawConfig = JsonSerializable
 class FileContent(TypedDict):
     version: ConfigVersions
     services: dict[str, ServiceRawConfig]
+    cloud_enabled: bool
 
 
 class ServiceProvider:
@@ -46,6 +47,15 @@ class ServiceProvider:
 
     def _get_file_path(self) -> Path:
         return (self.config.get_storage_dir() / "./services.json").resolve()
+
+    def convert_v2_to_v3_config(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Convert v2 to v3 config - adds cloud_enabled flag."""
+        cloud_service_ids = {"claude", "googleai", "openai", "sindri"}
+        new_data = data.copy()
+        services = new_data.get("services", {})
+        has_cloud_installed = any(service_id in cloud_service_ids and bool(service_data) for service_id, service_data in services.items())
+        new_data["cloud_enabled"] = has_cloud_installed
+        return new_data
 
     def convert_v1_to_v2_config(self, data: dict[str, Any]) -> dict[str, Any]:
         """Convert v1 to v2 config."""
@@ -94,10 +104,14 @@ class ServiceProvider:
                         logger.debug("Migrate service.json from v1 to v2 version")
                         data = self.convert_v1_to_v2_config(data)
                         update_config = True
+                    if version in ("v1", "v2"):
+                        logger.debug("Migrate service.json from v2 to v3 version")
+                        data = self.convert_v2_to_v3_config(data)
+                        update_config = True
 
                     data_out = cast("FileContent", data)
             except FileNotFoundError:
-                return {"version": ACTUAL_CONFIG_VERSION, "services": {}}
+                return {"version": ACTUAL_CONFIG_VERSION, "services": {}, "cloud_enabled": False}
 
             if "version" not in data or data["version"] != ACTUAL_CONFIG_VERSION:
                 update_config = True
@@ -141,6 +155,20 @@ class ServiceProvider:
 
         async def handler(content: FileContent) -> Literal[False] | FileContent:
             content["services"][service_id] = data
+            return content
+
+        await self._modify(handler)
+
+    async def get_cloud_enabled(self) -> bool:
+        """Get cloud_enabled flag from config."""
+        content = await self.load()
+        return content["cloud_enabled"]
+
+    async def set_cloud_enabled(self, value: bool) -> None:
+        """Set cloud_enabled flag in config."""
+
+        async def handler(content: FileContent) -> FileContent:
+            content["cloud_enabled"] = value
             return content
 
         await self._modify(handler)

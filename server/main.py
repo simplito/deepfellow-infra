@@ -11,13 +11,14 @@
 
 from fastapi import FastAPI
 
-from server.api import mesh, metrics, models, openai, services, utils
+from server.api import mesh, metrics, models, openai, services, settings, utils
 from server.api.fallback import StaticFilesHandler
 from server.lifecycle import lifespan
 from server.websockets import api as websocket
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(services.router)
+app.include_router(settings.router)
 app.include_router(models.router)
 app.include_router(websocket.router)
 app.include_router(openai.router)
