@@ -8,7 +8,7 @@ This software is Licensed under the DeepFellow Free License.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-import { useState, useMemo, useEffect, useRef, useDeferredValue, startTransition, memo, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef, useDeferredValue, startTransition, memo, useCallback, type RefObject } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/deepfellow/client";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,8 @@ import {
   setModelInstallProgress,
   useModelInstallProgress,
 } from "@/state/install-progress-store";
+import { startProgressSimulation, getStepPerTick, COMPLETION_SMOOTH_MS, COMPLETION_SMOOTH_MIN_MS } from "@/utils/progress-simulation";
+import type { SimulationHandle } from "@/utils/progress-simulation";
 
 interface ServiceModelsProps {
   serviceId: string;
@@ -60,9 +62,11 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
   const [filterCustom, setFilterCustom] = useState<string>("__all");
   const [showEntrySkeleton, setShowEntrySkeleton] = useState(true);
   const [installingModelId, setInstallingModelId] = useState<string | null>(null);
-  const pendingInstallationRef = useRef<{ modelId: string; spec: Record<string, unknown> } | null>(null);
+  const pendingInstallationRef = useRef<{ modelId: string; spec: Record<string, unknown>; size?: string } | null>(null);
   const lastAddedCustomModelIdRef = useRef<string | null>(null);
   const hasWarningsRef = useRef(false);
+  const simulationStopFnsRef = useRef<Record<string, SimulationHandle>>({});
+  const hasRealProgressByModelRef = useRef<Record<string, boolean>>({});
   const toastIdsRef = useRef<Record<string, string | number>>({});
   const restartDockerToastIdRef = useRef<string | number | null>(null);
   const testAbortControllerRef = useRef<AbortController | null>(null);
@@ -102,6 +106,13 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
     return () => window.clearTimeout(t);
   }, [showEntrySkeleton, isEntryBusy]);
 
+  // Clean up any running simulations on unmount
+  useEffect(() => {
+    return () => {
+      for (const sim of Object.values(simulationStopFnsRef.current)) sim.stop();
+    };
+  }, []);
+
   // Progress polling for existing installations
   useEffect(() => {
     if (!modelsData?.list) return;
@@ -112,18 +123,30 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       const installed = model.installed;
       if (!installed || typeof installed !== "object") continue;
 
-      const stage = (installed as { stage?: unknown }).stage;
-      const value = (installed as { value?: unknown }).value;
+      const installedStage = (installed as { stage?: unknown }).stage;
+      const installedValue = (installed as { value?: unknown }).value;
       const installedIsProgress =
-        (stage === "install" || stage === "download") &&
-        typeof value === "number" &&
-        Number.isFinite(value);
+        (installedStage === "install" || installedStage === "download") &&
+        typeof installedValue === "number" &&
+        Number.isFinite(installedValue);
 
       if (!installedIsProgress) continue;
 
       const modelId = model.id;
+      let currentStage: "install" | "download" = installedStage as "install" | "download";
+      const simKey = `${serviceId}::${modelId}`;
       const abortController = new AbortController();
       let isCancelled = false;
+
+      const installStartTime = Date.now();
+      const sim = startProgressSimulation({
+        stepPerTick: getStepPerTick(model.size, serviceId === "vllm" ? 0.2 : 1.6),
+        onTick: (value) => {
+          if (isCancelled) return;
+          setModelInstallProgress(serviceId, modelId, { stage: currentStage, value });
+        },
+      });
+      simulationStopFnsRef.current[simKey] = sim;
 
       apiClient
         .getModelProgress(
@@ -136,15 +159,25 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
             const value = event.value;
 
             if (event.type === "progress" && stage && value !== undefined) {
+              currentStage = stage;
+              if (value > 0 && value < 1) {
+                hasRealProgressByModelRef.current[modelId] = true;
+              }
               setModelInstallProgress(serviceId, modelId, { stage, value });
               return;
             }
 
             if (event.type === "finish") {
               if (event.status === "ok") {
-                queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
-                clearModelInstallProgress(serviceId, modelId);
+                sim.smoothComplete(Math.max(COMPLETION_SMOOTH_MIN_MS, Math.min(Date.now() - installStartTime, COMPLETION_SMOOTH_MS)), () => {
+                  delete simulationStopFnsRef.current[simKey];
+                  // Deliberately NOT clearing progress here — same reasoning as ServicesList:
+                  // keep store at 1.0 until the effect cleanup fires after the refetch.
+                  queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
+                });
               } else {
+                sim.stop();
+                delete simulationStopFnsRef.current[simKey];
                 clearModelInstallProgress(serviceId, modelId);
                 toast.error(`Installation failed for ${modelId}: ${event.details || "Unknown error"}`);
               }
@@ -163,6 +196,10 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       cleanups.push(() => {
         isCancelled = true;
         abortController.abort();
+        sim.stop();
+        delete simulationStopFnsRef.current[simKey];
+        delete hasRealProgressByModelRef.current[modelId];
+        clearModelInstallProgress(serviceId, modelId);
       });
     }
 
@@ -172,9 +209,24 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
   }, [modelsData, serviceId, queryClient]);
 
   const installMutation = useMutation({
-    mutationFn: async ({ modelId, spec, ignoreWarnings = false }: { modelId: string; spec: Record<string, unknown>; ignoreWarnings?: boolean }) => {
+    mutationFn: async ({ modelId, spec, size, ignoreWarnings = false }: { modelId: string; spec: Record<string, unknown>; size?: string; ignoreWarnings?: boolean }) => {
       try {
         return await new Promise<void>((resolve, reject) => {
+          let currentStage: "install" | "download" = "download";
+          const simKey = `${serviceId}::${modelId}`;
+          const installStartTime = Date.now();
+          const sim = startProgressSimulation({
+            stepPerTick: getStepPerTick(size ?? ""),
+            onTick: (value) => {
+              setModelInstallProgress(serviceId, modelId, { stage: currentStage, value });
+              const toastId = toastIdsRef.current[modelId];
+              if (toastId) {
+                toast.loading(`${getStageLabel(currentStage)} ${modelId}: ${(value * 100).toFixed(1)}%`, { id: toastId });
+              }
+            },
+          });
+          simulationStopFnsRef.current[simKey] = sim;
+
           apiClient.installAdminServiceModelStreaming(
             serviceId,
             modelId,
@@ -184,6 +236,10 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
               const value = event.value;
 
               if (event.type === "progress" && stage && value !== undefined) {
+                currentStage = stage;
+                if (value > 0 && value < 1) {
+                  hasRealProgressByModelRef.current[modelId] = true;
+                }
                 setModelInstallProgress(serviceId, modelId, { stage, value });
                 const toastId = toastIdsRef.current[modelId];
                 if (toastId) {
@@ -193,15 +249,19 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
                 }
               } else if (event.type === "finish") {
                 if (event.status === "ok") {
-                  clearModelInstallProgress(serviceId, modelId);
-                  const toastId = toastIdsRef.current[modelId];
-                  if (toastId) {
-                    toast.success(`Model ${modelId} installed successfully`, { id: toastId });
-                    delete toastIdsRef.current[modelId];
-                  }
-                  resolve();
+                  sim.smoothComplete(Math.max(COMPLETION_SMOOTH_MIN_MS, Math.min(Date.now() - installStartTime, COMPLETION_SMOOTH_MS)), () => {
+                    delete simulationStopFnsRef.current[simKey];
+                    clearModelInstallProgress(serviceId, modelId);
+                    const toastId = toastIdsRef.current[modelId];
+                    if (toastId) {
+                      toast.success(`Model ${modelId} installed successfully`, { id: toastId });
+                      delete toastIdsRef.current[modelId];
+                    }
+                    resolve();
+                  });
                 } else {
-                  
+                  sim.stop();
+                  delete simulationStopFnsRef.current[simKey];
                   reject(new Error(event.details || "Installation failed"));
                 }
               }
@@ -223,12 +283,23 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       setInstallingModelId(modelId);
     },
     onSuccess: (_data, variables) => {
+      const simKey = `${serviceId}::${variables.modelId}`;
+      delete simulationStopFnsRef.current[simKey];
+      delete hasRealProgressByModelRef.current[variables.modelId];
       queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
       pendingInstallationRef.current = null;
       const modelId = variables.modelId;
       clearModelInstallProgress(serviceId, modelId);
     },
     onError: (error, variables) => {
+      const simKey = `${serviceId}::${variables.modelId}`;
+      const simStop = simulationStopFnsRef.current[simKey];
+      if (simStop) {
+        simStop.stop();
+        delete simulationStopFnsRef.current[simKey];
+      }
+      delete hasRealProgressByModelRef.current[variables.modelId];
+
       if (error instanceof InstallationWarningsError) {
         // Show warnings modal instead of error toast
         hasWarningsRef.current = true;
@@ -245,7 +316,7 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
         });
         return;
       }
-      
+
       hasWarningsRef.current = false;
       const modelId = variables.modelId;
       // Finish toast is handled in the SSE callback. If we failed before streaming starts,
@@ -503,11 +574,11 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
           const cleanedSpec = Object.fromEntries(
             Object.entries(spec).filter(([_, value]) => value !== null && value !== undefined)
           ) as Record<string, unknown>;
-          pendingInstallationRef.current = { modelId: modelDetail.id, spec: cleanedSpec };
+          pendingInstallationRef.current = { modelId: modelDetail.id, spec: cleanedSpec, size: modelDetail.size };
           modal.close();
           const toastId: string | number = toast.loading(`Starting installation for ${modelDetail.id}...`);
           toastIdsRef.current[modelDetail.id] = toastId;
-          installMutation.mutate({ modelId: modelDetail.id, spec: cleanedSpec });
+          installMutation.mutate({ modelId: modelDetail.id, spec: cleanedSpec, size: modelDetail.size });
         },
         // Keep modal interactive; don't disable because another install is running.
         isSubmitting: false,
@@ -521,10 +592,11 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
   const handleWarningsContinue = useCallback(() => {
     if (pendingInstallationRef.current) {
       hasWarningsRef.current = false;
-      installMutation.mutate({ 
-        modelId: pendingInstallationRef.current.modelId, 
+      installMutation.mutate({
+        modelId: pendingInstallationRef.current.modelId,
         spec: pendingInstallationRef.current.spec,
-        ignoreWarnings: true 
+        size: pendingInstallationRef.current.size,
+        ignoreWarnings: true
       });
     }
   }, [installMutation.mutate]);
@@ -764,6 +836,7 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
         isPurgePending={purgeMutation.isPending}
         isRemoveCustomPending={removeCustomModelMutation.isPending}
         isTestPending={testMutation.isPending}
+        hasRealProgressByModelRef={hasRealProgressByModelRef}
         onInstallClick={handleInstallClick}
         onRemoveCustomModelClick={handleRemoveCustomModelClick}
         onPurgeClick={handlePurgeClick}
@@ -787,6 +860,7 @@ type ModelsTableProps = {
   isRemoveCustomPending: boolean;
   isPurgePending: boolean;
   isTestPending: boolean;
+  hasRealProgressByModelRef: RefObject<Record<string, boolean>>;
   onInstallClick: (model: ServiceModel) => void | Promise<void>;
   onRemoveCustomModelClick: (model: ServiceModel) => void;
   onPurgeClick: (modelId: string) => void;
@@ -805,6 +879,7 @@ const ModelsTable = memo(function ModelsTable({
   isRemoveCustomPending,
   isPurgePending,
   isTestPending,
+  hasRealProgressByModelRef,
   onInstallClick,
   onRemoveCustomModelClick,
   onPurgeClick,
@@ -845,6 +920,7 @@ const ModelsTable = memo(function ModelsTable({
                 isRemoveCustomPending={isRemoveCustomPending}
                 isPurgePending={isPurgePending}
                 isTestPending={isTestPending}
+                hasRealProgressByModelRef={hasRealProgressByModelRef}
                 onInstallClick={onInstallClick}
                 onRemoveCustomModelClick={onRemoveCustomModelClick}
                 onPurgeClick={onPurgeClick}
@@ -870,6 +946,7 @@ type ModelRowProps = {
   isRemoveCustomPending: boolean;
   isPurgePending: boolean;
   isTestPending: boolean;
+  hasRealProgressByModelRef: RefObject<Record<string, boolean>>;
   onInstallClick: (model: ServiceModel) => void | Promise<void>;
   onRemoveCustomModelClick: (model: ServiceModel) => void;
   onPurgeClick: (modelId: string) => void;
@@ -888,6 +965,7 @@ const ModelRow = memo(function ModelRow({
   isRemoveCustomPending,
   isPurgePending,
   isTestPending,
+  hasRealProgressByModelRef,
   onInstallClick,
   onRemoveCustomModelClick,
   onPurgeClick,
@@ -941,6 +1019,7 @@ const ModelRow = memo(function ModelRow({
             stage={currentProgress?.stage || (installedInfo?.stage as "install" | "download")}
             value={currentProgress?.value ?? installedInfo?.value ?? 0}
             variant="default"
+            simulated={!hasRealProgressByModelRef.current?.[model.id]}
           />
         ) : (
           <div className="flex flex-wrap items-center gap-2">

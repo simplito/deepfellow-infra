@@ -15,6 +15,7 @@ interface ProgressBadgeProps {
   stage: "install" | "download";
   value: number; // 0.0 to 1.0
   variant?: "default" | "secondary";
+  simulated?: boolean;
 }
 
 export function ProgressBadge({ stage, value, variant = "default" }: ProgressBadgeProps) {
@@ -23,7 +24,7 @@ export function ProgressBadge({ stage, value, variant = "default" }: ProgressBad
 
   return (
     <Badge variant={variant}>
-      {label} {percentage}%
+        {label} {percentage}%
     </Badge>
   );
 }

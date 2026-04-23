@@ -64,9 +64,6 @@ function shouldIgnoreProgressUpdate(prev: InstallProgress | undefined, next: Ins
 	const nextStageOrder = STAGE_ORDER[next.stage] ?? 0;
 	if (nextStageOrder < prevStageOrder) return true;
 
-	// If the stage is unchanged, keep progress monotonic to avoid brief regressions
-	// when reconnecting to streaming endpoints.
-	if (prev.stage === next.stage && next.value < prev.value) return true;
 	return false;
 }
 
