@@ -16,6 +16,9 @@ import { apiClient } from "@/deepfellow/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -60,12 +63,36 @@ export function ServicesList() {
     queryKey: ["admin", "services"],
     queryFn: () => apiClient.listAdminServices(),
   });
+
+  const { data: settingsData } = useQuery({
+    queryKey: ["admin", "settings"],
+    queryFn: () => apiClient.getSettings(),
+  });
+
+  const cloudEnabled = settingsData?.cloud_enabled ?? true;
+
+  const cloudToggleMutation = useMutation({
+    mutationFn: (enabled: boolean) => apiClient.updateSettings({ cloud_enabled: enabled }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "settings"] });
+    },
+    onError: (error) => {
+      toast.error(`Failed to update cloud setting: ${error.message}`);
+    },
+  });
   const [anotherInstances, setAnotherInstances] = useState([] as Service[]);
   const servicesList = useMemo(() => {
     const newList = [...(servicesData ? servicesData.list : []), ...anotherInstances];
-    newList.sort((a, b) => a.type.localeCompare(b.type) || a.id.localeCompare(b.id));
+    newList.sort((a, b) => {
+      if (!cloudEnabled) {
+        const aCloud = a.is_cloud ? 1 : 0;
+        const bCloud = b.is_cloud ? 1 : 0;
+        if (aCloud !== bCloud) return aCloud - bCloud;
+      }
+      return a.type.localeCompare(b.type) || a.id.localeCompare(b.id);
+    });
     return newList;
-  }, [servicesData, anotherInstances])
+  }, [servicesData, anotherInstances, cloudEnabled])
 
   // Progress polling for existing installations
   useEffect(() => {
@@ -524,12 +551,23 @@ export function ServicesList() {
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-3xl font-bold">Services</h1>
-          <Button
-            onClick={handleShowMeshInfo}
-            variant="outline"
-          >
-            Show mesh info
-          </Button>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="cloud-enabled"
+                checked={cloudEnabled}
+                onCheckedChange={(checked) => cloudToggleMutation.mutate(checked)}
+                disabled={cloudToggleMutation.isPending}
+              />
+              <Label htmlFor="cloud-enabled">Cloud services</Label>
+            </div>
+            <Button
+              onClick={handleShowMeshInfo}
+              variant="outline"
+            >
+              Show mesh info
+            </Button>
+          </div>
         </div>
         <Input
           placeholder="Search services..."
@@ -570,19 +608,21 @@ export function ServicesList() {
                 const isInProgress = !!currentProgress;
                 // Check if installed is InstallProgress type (has stage and value)
                 const installedIsProgress = service.installed && typeof service.installed === "object" && "stage" in service.installed && "value" in service.installed;
+                const isCloudDisabled = service.is_cloud && !cloudEnabled;
 
                 return (
                   <TableRow
                     key={service.id}
                     onClick={(e) => {
-                      if (!isInstalled || installedIsProgress || isInProgress) return;
+                      if (!isInstalled || installedIsProgress || isInProgress || isCloudDisabled) return;
                       handleRowNavigate(e, service.id);
                     }}
-                    className={
-                      isInstalled && !installedIsProgress && !isInProgress
+                    className={[
+                      isInstalled && !installedIsProgress && !isInProgress && !isCloudDisabled
                         ? "cursor-pointer hover:bg-muted/50"
-                        : undefined
-                    }
+                        : undefined,
+                      isCloudDisabled ? "opacity-50" : undefined,
+                    ].filter(Boolean).join(" ") || undefined}
                   >
                     <TableCell className="font-semibold">
                       <div>
@@ -645,13 +685,26 @@ export function ServicesList() {
                       <div className="flex justify-end gap-2" data-prevent-row-click>
                         {isInProgress || installedIsProgress ? null : !isInstalled ? (
                           <>
-                            <Button
-                              onClick={() => handleInstallClick(service, false)}
-                              size="sm"
-                              disabled={isInstallingCurrent}
-                            >
-                              {isInstallingCurrent ? "Installing..." : "Install"}
-                            </Button>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span>
+                                    <Button
+                                      onClick={() => handleInstallClick(service, false)}
+                                      size="sm"
+                                      disabled={isInstallingCurrent || isCloudDisabled}
+                                    >
+                                      {isInstallingCurrent ? "Installing..." : "Install"}
+                                    </Button>
+                                  </span>
+                                </TooltipTrigger>
+                                {isCloudDisabled && (
+                                  <TooltipContent>
+                                    Cloud services are disabled. Enable cloud to install this service.
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
+                            </TooltipProvider>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button

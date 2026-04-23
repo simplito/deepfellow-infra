@@ -103,6 +103,7 @@ class ClaudeServiceOptions(BaseServiceOptions):
 
 class ClaudeService(RemoteService[ClaudeServiceOptions]):
     options_class = ClaudeServiceOptions
+    is_cloud = True
 
     def get_type(self) -> str:
         """Return the service id."""

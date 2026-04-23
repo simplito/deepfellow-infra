@@ -15,6 +15,7 @@ import type {
   ServiceModel,
   TestResult,
   ShowMeshInfoOut,
+  InfraSettings,
 } from "./types";
 import { InstallationWarningsError } from "./types";
 import { readSSEStream, type ProgressEvent } from "@/utils/sse-stream";
@@ -364,6 +365,17 @@ export class DeepFellowClient {
 
   async getMeshInfo(): Promise<ShowMeshInfoOut> {
     return this.makeRequest<ShowMeshInfoOut>("/admin/mesh/info");
+  }
+
+  async getSettings(): Promise<InfraSettings> {
+    return this.makeRequest<InfraSettings>("/admin/settings");
+  }
+
+  async updateSettings(settings: Partial<InfraSettings>): Promise<InfraSettings> {
+    return this.makeRequest<InfraSettings>("/admin/settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    });
   }
 }
 

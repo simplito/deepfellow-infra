@@ -39,6 +39,7 @@ from server.utils.core import PromiseWithProgress, StreamChunk
 
 class BaseService(ABC):
     instances_info: dict[str, Any]
+    is_cloud: bool = False
 
     def get_id(self, instance: str) -> str:
         """Return the service id."""
@@ -85,6 +86,7 @@ class BaseService(ABC):
             size=self.get_size(),
             custom_model_spec=self.get_custom_model_spec(),
             has_docker=self.service_has_docker(),
+            is_cloud=self.is_cloud_service(),
         )
 
     @abstractmethod
@@ -110,6 +112,10 @@ class BaseService(ABC):
     def service_has_docker(self) -> bool:
         """Return true when docker is started when service is installed."""
         return False
+
+    def is_cloud_service(self) -> bool:
+        """Return true when this service uses external cloud APIs."""
+        return self.is_cloud
 
     @abstractmethod
     async def load_service(self, config: ServiceRawConfig) -> None:

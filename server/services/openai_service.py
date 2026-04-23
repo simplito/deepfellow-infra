@@ -107,6 +107,7 @@ _const = RemoteConst(
 
 
 class OpenAIService(RemoteService):
+    is_cloud = True
     options_class = DefaultRemoteServiceOptions
 
     def get_type(self) -> str:

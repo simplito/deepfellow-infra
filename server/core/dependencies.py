@@ -17,6 +17,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBasic, HTTPBasicC
 from server.config import AppSettings
 from server.endpointregistry import EndpointRegistry
 from server.metrics import MetricsService
+from server.serviceprovider import ServiceProvider
 from server.services_manager import ServicesManager
 from server.websockets.infra_websocket_server import InfraWebsocketServer
 from server.websockets.parent_infra import ParentInfra
@@ -42,6 +43,11 @@ def get_endpoint_registry(request: Request) -> EndpointRegistry:
 def get_services_manager(request: Request) -> ServicesManager:
     """Get ServicesManager instance from application state."""
     return get_dependency(request, "services_manager")
+
+
+def get_service_provider(request: Request) -> ServiceProvider:
+    """Get ServiceProvider instance from application state."""
+    return get_dependency(request, "service_provider")
 
 
 def get_config(request: Request) -> AppSettings:
