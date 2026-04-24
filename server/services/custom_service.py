@@ -522,6 +522,85 @@ def create_lemmatizer_model(custom_service: CustomService, subnet: str | None) -
     )
 
 
+def create_bge_m3_model(custom_service: CustomService, subnet: str | None) -> SrvCustomModel:
+    """Create lemmatizer model."""
+    fields: list[ModelField] = custom_service.add_hardware_field_to_model_spec()
+    fields.extend(
+        [
+            ModelField(
+                type="text",
+                name="prefix",
+                description="Endpoint prefix",
+                required=True,
+                placeholder="deepfellow-bge-m3",
+                default="deepfellow-bge-m3",
+            ),
+            ModelField(
+                type="number",
+                name="num_workers",
+                description="Number of worker threads",
+                required=False,
+                placeholder="4",
+                default="4",
+            ),
+            ModelField(
+                type="number",
+                name="queue_max",
+                description="Maximum size of the job queue",
+                required=False,
+                placeholder="100000",
+                default="100000",
+            ),
+            ModelField(
+                type="number",
+                name="shutdown_timeout",
+                description="Grace period for finishing model tasks on shutdown.",
+                required=False,
+                placeholder="30",
+                default="30",
+            ),
+        ]
+    )
+
+    def generate_docker_options(model_fields: InstallModelOptions) -> DockerOptions:
+        hardware_parts = custom_service.get_specified_hardware_parts(model_fields.get("hardware"))
+        image = (
+            "hub.simplito.com/deepfellow/deepfellow-bge-m3:1.0.0-cuda-12.8"
+            if any(isinstance(h, NvidiaGpuInfo) for h in hardware_parts)
+            else "hub.simplito.com/deepfellow/deepfellow-bge-m3:1.0.0-cpu"
+        )
+        return DockerOptions(
+            image_port=8070,
+            name="deepfellow-bge-m3",
+            container_name="deepfellow-bge-m3",
+            image=image,
+            restart="unless-stopped",
+            hardware=hardware_parts,
+            subnet=subnet,
+            env_vars={
+                "DF_BGE_M3_NUM_WORKERS": model_fields.get("num_workers", 4),
+                "DF_BGE_M3_QUEUE_MAX": model_fields.get("queue_max", 100000),
+                "DF_BGE_M3_SHUTDOWN_TIMEOUT": model_fields.get("shutdown_timeout", 30),
+            },
+            healthcheck={
+                "test": "wget -q --spider http://localhost:8070/health",
+                "interval": "30s",
+                "timeout": "10s",
+                "retries": "3",
+                "start_period": "30s",
+            },
+        )
+
+    return SrvCustomModel(
+        model_props=ModelProps(private=True, type="custom", endpoints=["/custom/deepfellow-bge-m3/v1/embeddings"]),
+        model_spec=ModelSpecification(fields=fields),
+        model_type="custom",
+        default_prefix="deepfellow-bge-m3",
+        size="5.00GB",
+        options=generate_docker_options,
+    )
+
+
 def create_finetune_model(custom_service: CustomService, subnet: str | None) -> SrvCustomModel:
     """Create finetune model."""
     fields: list[ModelField] = custom_service.add_hardware_field_to_model_spec()
@@ -613,5 +692,6 @@ _const = CustomConst(
         ),
         "lemmatizer": create_lemmatizer_model,
         "deepfellow-finetune": create_finetune_model,
+        "deepfellow-bge-m3": create_bge_m3_model,
     }
 )
