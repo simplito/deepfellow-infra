@@ -382,7 +382,7 @@ class DockerService:
         """Replace docker image sha or add it on the end if it is."""
         if digest:
             if "sha256:" in image:
-                image = re.sub("sha256:.*", "", image)
+                image = re.sub(r"@sha256:[^\s]*", "", image)
             return f"{image}@{digest}"
         return image
 
