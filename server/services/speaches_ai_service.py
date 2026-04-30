@@ -630,7 +630,17 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
                     "start_period": "5s",
                 },
             )
-            docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
+            try:
+                docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
+            except RuntimeError as e:
+                stderr = e.args[1][3] if len(e.args) > 1 and len(e.args[1]) > 3 else ""
+                if "cuda>=" in stderr or "please update your driver" in stderr:
+                    raise HTTPException(
+                        503,
+                        "Insufficient CUDA version. The speeches-ai GPU service requires cuda>=12.9. "
+                        "Please update your NVIDIA GPU drivers to a newer version.",
+                    ) from e
+                raise
             container_host = self.docker_service.get_container_host(subnet, docker_options.name)
             container_port = self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port)
             info = InstalledInfo(
