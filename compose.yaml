@@ -1,0 +1,44 @@
+services:
+  infra:
+    image: df-test
+    build: .
+    ports:
+    - ${DF_INFRA_PORT}:8086
+    expose:
+    - 8086
+    environment:
+    - DF_NAME=${DF_NAME}
+    - DF_INFRA_ADMIN_API_KEY=${DF_INFRA_ADMIN_API_KEY}
+    - DF_INFRA_API_KEY=${DF_INFRA_API_KEY}
+    - DF_INFRA_URL=${DF_INFRA_URL}
+    - DF_MESH_KEY=${DF_MESH_KEY}
+    - DF_CONNECT_TO_MESH_URL=${DF_CONNECT_TO_MESH_URL}
+    - DF_CONNECT_TO_MESH_KEY=${DF_CONNECT_TO_MESH_KEY}
+    - DF_DOCKER_SUBNET=${DF_INFRA_DOCKER_SUBNET}
+    - DF_COMPOSE_PREFIX=${DF_INFRA_COMPOSE_PREFIX}
+    - DF_HUGGING_FACE_TOKEN=${DF_HUGGING_FACE_TOKEN}
+    - DF_CIVITAI_TOKEN=${DF_CIVITAI_TOKEN}
+    - DF_STORAGE_DIR=${DF_INFRA_STORAGE_DIR}
+    - DF_METRICS_USERNAME=${DF_METRICS_USERNAME}
+    - DF_METRICS_PASSWORD=${DF_METRICS_PASSWORD}
+    - DF_INFRA_STORAGE_DIR=${DF_INFRA_STORAGE_DIR}
+    - DOCKER_HOST=unix:///var/run/docker.sock
+    restart: unless-stopped
+    healthcheck:
+      test:
+      - CMD
+      - /app/scripts/healthcheck.py
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    volumes:
+    - ${DF_INFRA_DOCKER_CONFIG}:/root/.docker/config.json:ro
+    - /run/user/1000/docker.sock:/run/docker.sock
+    - /run/user/1000/docker.sock:/var/run/docker.sock
+    - ${DF_INFRA_STORAGE_DIR}:${DF_INFRA_STORAGE_DIR}
+    networks:
+    - deepfellow-infra-net
+networks:
+  deepfellow-infra-net:
+    external: true

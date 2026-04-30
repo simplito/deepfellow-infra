@@ -442,6 +442,85 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
         return self._get_working_dir()
 
 
+def create_bge_m3_model(custom_service: CustomService, subnet: str | None) -> SrvCustomModel:
+    """Create lemmatizer model."""
+    fields: list[ModelField] = custom_service.add_hardware_field_to_model_spec()
+    fields.extend(
+        [
+            ModelField(
+                type="text",
+                name="prefix",
+                description="Endpoint prefix",
+                required=True,
+                placeholder="deepfellow-bge-m3",
+                default="deepfellow-bge-m3",
+            ),
+            ModelField(
+                type="number",
+                name="num_workers",
+                description="Number of worker threads",
+                required=False,
+                placeholder="4",
+                default="4",
+            ),
+            ModelField(
+                type="number",
+                name="queue_max",
+                description="Maximum size of the job queue",
+                required=False,
+                placeholder="100000",
+                default="100000",
+            ),
+            ModelField(
+                type="number",
+                name="shutdown_timeout",
+                description="Grace period for finishing model tasks on shutdown.",
+                required=False,
+                placeholder="30",
+                default="30",
+            ),
+        ]
+    )
+
+    def generate_docker_options(model_fields: InstallModelOptions) -> DockerOptions:
+        hardware_parts = custom_service.get_specified_hardware_parts(model_fields.get("hardware"))
+        image = (
+            "hub.simplito.com/deepfellow/deepfellow-bge-m3:1.0.0-cuda-12.8"
+            if any(isinstance(h, NvidiaGpuInfo) for h in hardware_parts)
+            else "hub.simplito.com/deepfellow/deepfellow-bge-m3:1.0.0-cpu"
+        )
+        return DockerOptions(
+            image_port=8070,
+            name="deepfellow-bge-m3",
+            container_name="deepfellow-bge-m3",
+            image=image,
+            restart="unless-stopped",
+            hardware=hardware_parts,
+            subnet=subnet,
+            env_vars={
+                "DF_BGE_M3_NUM_WORKERS": model_fields.get("num_workers", 4),
+                "DF_BGE_M3_QUEUE_MAX": model_fields.get("queue_max", 100000),
+                "DF_BGE_M3_SHUTDOWN_TIMEOUT": model_fields.get("shutdown_timeout", 30),
+            },
+            healthcheck={
+                "test": "wget -q --spider http://localhost:8070/health",
+                "interval": "30s",
+                "timeout": "10s",
+                "retries": "3",
+                "start_period": "30s",
+            },
+        )
+
+    return SrvCustomModel(
+        model_props=ModelProps(private=True, type="custom", endpoints=["/custom/deepfellow-bge-m3/v1/embeddings"]),
+        model_spec=ModelSpecification(fields=fields),
+        model_type="custom",
+        default_prefix="deepfellow-bge-m3",
+        size="5.00GB",
+        options=generate_docker_options,
+    )
+
+
 def create_lemmatizer_model(custom_service: CustomService, subnet: str | None) -> SrvCustomModel:
     """Create lemmatizer model."""
     fields: list[ModelField] = custom_service.add_hardware_field_to_model_spec()
@@ -522,7 +601,7 @@ def create_lemmatizer_model(custom_service: CustomService, subnet: str | None) -
     )
 
 
-def create_bge_m3_model(custom_service: CustomService, subnet: str | None) -> SrvCustomModel:
+def create_doc_chunker_model(custom_service: CustomService, subnet: str | None) -> SrvCustomModel:
     """Create lemmatizer model."""
     fields: list[ModelField] = custom_service.add_hardware_field_to_model_spec()
     fields.extend(
@@ -532,32 +611,136 @@ def create_bge_m3_model(custom_service: CustomService, subnet: str | None) -> Sr
                 name="prefix",
                 description="Endpoint prefix",
                 required=True,
-                placeholder="deepfellow-bge-m3",
-                default="deepfellow-bge-m3",
+                placeholder="doc_chunker",
+                default="doc_chunker",
             ),
             ModelField(
                 type="number",
-                name="num_workers",
-                description="Number of worker threads",
+                name="max_concurrent",
+                description="Max parallel conversion jobs",
                 required=False,
-                placeholder="4",
-                default="4",
+                placeholder="1",
+                default="1",
             ),
             ModelField(
                 type="number",
-                name="queue_max",
-                description="Maximum size of the job queue",
+                name="document_timeout",
+                description="Timeout in seconds for a single document conversion",
                 required=False,
-                placeholder="100000",
-                default="100000",
+                placeholder="600",
+                default="600",
+            ),
+            ModelField(
+                type="oneof",
+                name="picture_description_mode",
+                description="Picture description mode",
+                required=True,
+                values=["disabled", "api", "preset", "local"],
+                default="disabled",
+            ),
+            ModelField(
+                type="text",
+                name="picture_description_api_url",
+                description="Api img description | api url to describe photos compatible with /v1/chat/completions",
+                required=False,
+                placeholder="http://infra:8086/v1/chat/completion",
+                default="",
+            ),
+            ModelField(
+                type="text",
+                name="picture_description_api_key",
+                description="Api img description | api key",
+                required=False,
+                placeholder="",
+                default="",
+            ),
+            ModelField(
+                type="text",
+                name="picture_description_api_model",
+                description="Api img description | api model",
+                required=False,
+                placeholder="gemma4:e2b",
+                default="",
             ),
             ModelField(
                 type="number",
-                name="shutdown_timeout",
-                description="Grace period for finishing model tasks on shutdown.",
+                name="picture_description_api_max_time",
+                description="Api mode | Maximum wait time for picture description api response.",
                 required=False,
-                placeholder="30",
-                default="30",
+                placeholder="300",
+                default="300",
+            ),
+            ModelField(
+                type="text",
+                name="picture_description_prompt",
+                description="Api / Local img description | prompt to describe photo ",
+                required=False,
+                placeholder="Describe this picture in detail.",
+                default="Describe this picture in detail.",
+            ),
+            ModelField(
+                type="text",
+                name="picture_description_preset",
+                description="Preset img description | Built-in model: smolvlm | granite_vision | qwen | pixtral",
+                required=False,
+                placeholder="qwen",
+                default="",
+            ),
+            ModelField(
+                type="text",
+                name="picture_description_repo",
+                description="Local mode | HuggingFace repo ID",
+                required=False,
+                placeholder="Qwen/Qwen2.5-VL-7B-Instruct",
+                default="",
+            ),
+            ModelField(
+                type="text",
+                name="audio_stt_api_url",
+                description="Api url for speech to text description",
+                required=False,
+                placeholder="http://infra:8080/v1/audio/transcriptions",
+                default="",
+            ),
+            ModelField(
+                type="text",
+                name="audio_stt_api_key",
+                description="Api key for speech to text description",
+                required=False,
+                placeholder="",
+                default="",
+            ),
+            ModelField(
+                type="text",
+                name="audio_stt_api_model",
+                description="Api model for speech to text description",
+                required=False,
+                placeholder="Systran/faster-whisper-base",
+                default="",
+            ),
+            ModelField(
+                type="text",
+                name="audio_stt_max_time",
+                description="Max wait time for speach to text api response",
+                required=False,
+                placeholder="600",
+                default="600",
+            ),
+            ModelField(
+                type="text",
+                name="audio_silence_threshold",
+                description="Minimum duration (seconds) of silence used to split audio into segments",
+                required=False,
+                placeholder="2",
+                default="",
+            ),
+            ModelField(
+                type="text",
+                name="hf_token",
+                description="HuggingFace Token to download models from HuggingFace",
+                required=False,
+                placeholder="",
+                default="",
             ),
         ]
     )
@@ -565,25 +748,40 @@ def create_bge_m3_model(custom_service: CustomService, subnet: str | None) -> Sr
     def generate_docker_options(model_fields: InstallModelOptions) -> DockerOptions:
         hardware_parts = custom_service.get_specified_hardware_parts(model_fields.get("hardware"))
         image = (
-            "hub.simplito.com/deepfellow/deepfellow-bge-m3:1.0.0-cuda-12.8"
+            "gitlab2.simplito.com:5050/df/df-docker-images/doc-chunker-gpu:v1.0.2"
             if any(isinstance(h, NvidiaGpuInfo) for h in hardware_parts)
-            else "hub.simplito.com/deepfellow/deepfellow-bge-m3:1.0.0-cpu"
+            else "gitlab2.simplito.com:5050/df/df-docker-images/doc-chunker-cpu:v1.0.2"
         )
         return DockerOptions(
-            image_port=8070,
-            name="deepfellow-bge-m3",
-            container_name="deepfellow-bge-m3",
+            image_port=8000,
+            name="doc_chunker",
+            container_name="doc_chunker",
             image=image,
             restart="unless-stopped",
+            volumes=[],
             hardware=hardware_parts,
             subnet=subnet,
             env_vars={
-                "DF_BGE_M3_NUM_WORKERS": model_fields.get("num_workers", 4),
-                "DF_BGE_M3_QUEUE_MAX": model_fields.get("queue_max", 100000),
-                "DF_BGE_M3_SHUTDOWN_TIMEOUT": model_fields.get("shutdown_timeout", 30),
+                "MAX_CONCURRENT": model_fields.get("max_concurrent", 2),
+                "DOCUMENT_TIMEOUT": model_fields.get("document_timeout", 600),
+                "PICTURE_DESCRIPTION_MODE": model_fields.get("picture_description_mode", ""),
+                "PICTURE_DESCRIPTION_PRESET": model_fields.get("picture_description_preset", ""),
+                "PICTURE_DESCRIPTION_REPO": model_fields.get("picture_description_repo", ""),
+                "PICTURE_DESCRIPTION_PROMPT": model_fields.get("picture_description_prompt", ""),
+                "PICTURE_DESCRIPTION_API_URL": model_fields.get("picture_description_api_url", ""),
+                "PICTURE_DESCRIPTION_API_KEY": model_fields.get("picture_description_api_key", ""),
+                "PICTURE_DESCRIPTION_API_MODEL": model_fields.get("picture_description_api_model", ""),
+                "PICTURE_DESCRIPTION_API_MAX_TIME": model_fields.get("picture_description_api_max_time", ""),
+                "AUDIO_STT_API_URL": model_fields.get("audio_stt_api_url", ""),
+                "AUDIO_STT_API_KEY": model_fields.get("audio_stt_api_key", ""),
+                "AUDIO_STT_MODEL": model_fields.get("audio_stt_api_model", ""),
+                "AUDIO_STT_MAX_TIME": model_fields.get("audio_stt_max_time", ""),
+                "AUDIO_SILENCE_THRESHOLD": model_fields.get("audio_silence_threshold", ""),
+                "HF_TOKEN": model_fields.get("hf_token", ""),
+                "DOCLING_SERVE_ENABLE_REMOTE_SERVICES": "true",
             },
             healthcheck={
-                "test": "wget -q --spider http://localhost:8070/health",
+                "test": "wget -q --spider http://localhost:8000/health",
                 "interval": "30s",
                 "timeout": "10s",
                 "retries": "3",
@@ -592,11 +790,11 @@ def create_bge_m3_model(custom_service: CustomService, subnet: str | None) -> Sr
         )
 
     return SrvCustomModel(
-        model_props=ModelProps(private=True, type="custom", endpoints=["/custom/deepfellow-bge-m3/v1/embeddings"]),
+        model_props=ModelProps(private=True, type="custom", endpoints=["/custom/doc_chunker/"]),
         model_spec=ModelSpecification(fields=fields),
         model_type="custom",
-        default_prefix="deepfellow-bge-m3",
-        size="5.00GB",
+        default_prefix="doc_chunker",
+        size="15GB",
         options=generate_docker_options,
     )
 
@@ -691,6 +889,7 @@ _const = CustomConst(
             ),
         ),
         "lemmatizer": create_lemmatizer_model,
+        "doc_chunker": create_doc_chunker_model,
         "deepfellow-finetune": create_finetune_model,
         "deepfellow-bge-m3": create_bge_m3_model,
     }
