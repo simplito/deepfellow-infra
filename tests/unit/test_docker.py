@@ -9,7 +9,7 @@
 
 import pytest
 
-from server.docker import DockerImageNameInfo, normalize_docker_platform
+from server.docker import DockerImageNameInfo, DockerService, normalize_docker_platform
 
 
 @pytest.mark.parametrize(
@@ -68,6 +68,31 @@ def test_docker_image_name_info_parse(full_image: str, expected_registry: str, e
     assert info.registry == expected_registry
     assert info.namespace == expected_namespace
     assert info.image_name == expected_image_name
+
+
+@pytest.mark.parametrize(
+    ("image", "digest", "expected"),
+    [
+        # plain name — digest appended with single @
+        ("ubuntu", "sha256:abc", "ubuntu@sha256:abc"),
+        # tagged image — digest appended after tag
+        ("ubuntu:22.04", "sha256:abc", "ubuntu:22.04@sha256:abc"),
+        # already-digested image — old digest replaced, no double @@
+        (
+            "ghcr.io/org/img@sha256:oldhash",
+            "sha256:newhash",
+            "ghcr.io/org/img@sha256:newhash",
+        ),
+        # no digest — image unchanged
+        ("ubuntu", None, "ubuntu"),
+    ],
+)
+def test_replace_image_digest(image: str, digest: str | None, expected: str):
+    svc: DockerService = object.__new__(DockerService)
+    result = svc.replace_image_digest(image, digest)
+    assert result == expected
+    if digest:
+        assert "@@" not in result
 
 
 def test_docker_image_name_info_is_frozen():
