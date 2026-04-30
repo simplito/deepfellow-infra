@@ -25,3 +25,6 @@ CLAUDE.md
 /webui/dist
 
 /ollama
+
+/.claude
+/openspec
