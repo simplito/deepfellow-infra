@@ -68,6 +68,7 @@ from server.utils.core import (
 from server.utils.files import detect_context_window_from_path
 from server.utils.hardware import GpuInfo, HardwarePartInfo, IntelGpuInfo
 from server.utils.loading import Progress
+from server.utils.size_fetcher import fetch_ollama_ref_bytes, fmt_size
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -359,7 +360,6 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         return CustomModelSpecification(
             fields=[
                 CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
-                CustomModelField(type="text", name="size", description="Model size", placeholder="1GB"),
                 CustomModelField(type="oneof", name="type", description="Model type", values=["llm", "embedding", "txt2img"]),
                 CustomModelField(
                     type="textarea",
@@ -371,6 +371,74 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                 CustomModelField(type="text", name="quantization", description="Quantization", placeholder="q4_0", required=False),
             ]
         )
+
+    _OLLAMA_DOCKER_ROOT = "/root/.ollama"
+
+    def _docker_path_to_host(self, path: str) -> Path | None:
+        """Translate a Docker-side path to the corresponding host path via the volume mapping.
+
+        Returns None for paths that are not under the known volume mount.
+        The volume is: {working_dir}/main -> /root/.ollama
+        """
+        working = self._get_working_dir() / "main"
+        if path.startswith("./"):
+            return working / path[2:]
+        if path == self._OLLAMA_DOCKER_ROOT or path.startswith(self._OLLAMA_DOCKER_ROOT + "/"):
+            rel = path[len(self._OLLAMA_DOCKER_ROOT) :].lstrip("/")
+            return working / rel
+        return None
+
+    async def _local_file_size_bytes(self, path: str, instance: str) -> int | None:
+        """Return size in bytes for a local file referenced from an Ollama modelfile."""
+        try:
+            host_path = self._docker_path_to_host(path)
+            if host_path is not None:
+                return host_path.stat().st_size if host_path.exists() else None
+            # Absolute path outside the known volume: fall back to docker exec stat
+            instance_info = self.get_instance_info(instance)
+            if not instance_info.installed:
+                return None
+            compose_filepath = self.docker_service.get_docker_compose_file_path(instance_info.installed.docker.name)
+            service_name = instance_info.installed.docker.name
+            result = await self.docker_service.run_command_docker_compose(compose_filepath, service_name, f"stat -c%s {path}")
+            return int(result.strip())
+        except Exception:
+            return None
+
+    async def _fetch_ref_bytes(self, ref: str, instance: str) -> int | None:
+        if ref.startswith(("/", "./")):
+            return await self._local_file_size_bytes(ref, instance)
+        return await fetch_ollama_ref_bytes(ref)
+
+    async def _resolve_custom_model_size(self, spec: dict[str, Any], instance: str = "") -> str | None:
+        try:
+            modelfile: str = spec.get("modelfile") or ""
+            if modelfile.strip():
+                refs: list[str] = []
+                for line in modelfile.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("FROM "):
+                        refs.append(stripped[5:].strip())
+                    elif stripped.startswith("ADAPTER "):
+                        refs.append(stripped[8:].strip())
+                if not refs:
+                    return None
+                total = 0
+                any_resolved = False
+                for ref in refs:
+                    try:
+                        n = await self._fetch_ref_bytes(ref, instance)
+                        if n is not None:
+                            total += n
+                            any_resolved = True
+                    except Exception:
+                        pass
+                return fmt_size(total) if any_resolved else None
+            model_id: str = spec.get("id", "")
+            n = await self._fetch_ref_bytes(model_id, instance)
+            return fmt_size(n) if n is not None else None
+        except Exception:
+            return None
 
     def get_installed_info(self, instance: str) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""

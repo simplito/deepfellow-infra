@@ -59,6 +59,7 @@ from server.utils.core import (
 from server.utils.files import get_gguf_context_window
 from server.utils.hardware import GpuInfo, HardwarePartInfo, IntelGpuInfo, NvidiaGpuInfo
 from server.utils.loading import Progress
+from server.utils.size_fetcher import fetch_file_size_from_url
 
 
 class LlamacppModel(BaseModel):
@@ -240,9 +241,14 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
                 CustomModelField(
                     type="text", name="url", description="Model URL (gguf)", placeholder="https://model.registry.com/my-model.gguf"
                 ),
-                CustomModelField(type="text", name="size", description="Model size", placeholder="1GB"),
             ]
         )
+
+    async def _resolve_custom_model_size(self, spec: dict[str, Any], instance: str = "") -> str | None:  # noqa: ARG002
+        try:
+            return await fetch_file_size_from_url(spec["url"])
+        except Exception:
+            return None
 
     def get_installed_info(self, instance: str) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""

@@ -54,6 +54,7 @@ from server.utils.core import (
     try_parse_pydantic,
 )
 from server.utils.loading import Progress
+from server.utils.size_fetcher import fetch_ollama_ref_bytes, fmt_size
 
 
 class OllamaModel(BaseModel):
@@ -188,10 +189,17 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
         return CustomModelSpecification(
             fields=[
                 CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
-                CustomModelField(type="text", name="size", description="Model size", placeholder="1GB"),
                 CustomModelField(type="oneof", name="type", description="Model type", values=["llm", "embedding"]),
             ]
         )
+
+    async def _resolve_custom_model_size(self, spec: dict[str, Any], instance: str = "") -> str | None:  # noqa: ARG002
+        try:
+            model_id: str = spec.get("id", "")
+            n = await fetch_ollama_ref_bytes(model_id)
+            return fmt_size(n) if n is not None else None
+        except Exception:
+            return None
 
     def get_installed_info(self, instance: str) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""

@@ -54,6 +54,7 @@ from server.utils.core import (
     try_parse_pydantic,
 )
 from server.utils.hardware import NvidiaGpuInfo
+from server.utils.size_fetcher import fmt_size
 
 type SrvCustomModelX = Callable[["CustomService", str | None], SrvCustomModel]
 type DockerOptionsOrCallable = DockerOptions | Callable[[InstallModelOptions], DockerOptions]
@@ -186,7 +187,6 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
                     description="Default model endpoint prefix [a-zA-Z0-9_-]",
                     placeholder="custom-model",
                 ),
-                CustomModelField(type="text", name="size", description="Model size", placeholder="1GB"),
                 CustomModelField(type="text", name="image", description="Docker image", placeholder="company/image"),
                 CustomModelField(type="text", name="image_port", description="Docker image port", placeholder="8000"),
                 CustomModelField(type="text", name="command", description="Docker command", placeholder="/bin/myapp", required=False),
@@ -208,6 +208,13 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
                 CustomModelField(type="map", name="envs", description="Docker environment variables", required=False),
             ]
         )
+
+    async def _resolve_custom_model_size(self, spec: dict[str, Any], instance: str = "") -> str | None:  # noqa: ARG002
+        try:
+            size_bytes = await self.docker_service.get_docker_image_size(spec["image"])
+            return fmt_size(size_bytes) if size_bytes else None
+        except Exception:
+            return None
 
     def get_installed_info(self, instance: str) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""
