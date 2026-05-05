@@ -70,6 +70,7 @@ from server.utils.core import (
     try_parse_pydantic,
 )
 from server.utils.loading import Progress
+from server.utils.size_fetcher import fetch_file_size_from_url
 
 ModelType = Literal["txt2img", "lora"]
 
@@ -326,9 +327,14 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
                     placeholder="https://civitai.com/api/download/models/123456789?type=Model&format=SafeTensor&size=pruned&fp=fp16",
                 ),
                 CustomModelField(type="text", name="filename", description="Model filename", placeholder="mymodel.safetensors"),
-                CustomModelField(type="text", name="size", description="Model size", placeholder="1GB"),
             ]
         )
+
+    async def _resolve_custom_model_size(self, spec: dict[str, Any], instance: str = "") -> str | None:  # noqa: ARG002
+        try:
+            return await fetch_file_size_from_url(spec["url"])
+        except Exception:
+            return None
 
     def get_installed_info(self, instance: str) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""

@@ -305,9 +305,17 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
         """Uninstall instance."""
 
+    async def _resolve_custom_model_size(self, spec: dict[str, Any], instance: str = "") -> str | None:  # noqa: ARG002
+        """Return auto-fetched size string for the model, or None if not supported."""
+        return None
+
     async def add_custom_model(self, instance: str, options: AddCustomModelIn) -> CustomModelId:
         """Add custom model."""
-        model = CustomModel(id=str(uuid.uuid4()), data=options.spec)
+        spec = dict(options.spec)
+        if not spec.get("size"):
+            resolved = await self._resolve_custom_model_size(spec, instance)
+            spec["size"] = resolved if resolved else "unknown"
+        model = CustomModel(id=str(uuid.uuid4()), data=spec)
         config = self.get_instance_info(instance).config
         self._add_custom_model(instance, model)
         if config.custom is None:

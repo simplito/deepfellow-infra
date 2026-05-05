@@ -67,6 +67,7 @@ from server.utils.core import (
 from server.utils.files import get_model_dir_context_window
 from server.utils.hardware import HardwarePartInfo
 from server.utils.loading import Progress
+from server.utils.size_fetcher import fetch_huggingface_model_size
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -286,9 +287,14 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             fields=[
                 CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
                 CustomModelField(type="text", name="hf_id", description="Hugging face model ID", placeholder="google/gemma-3-270m-it"),
-                CustomModelField(type="text", name="size", description="Model size", placeholder="1GB"),
             ]
         )
+
+    async def _resolve_custom_model_size(self, spec: dict[str, Any], instance: str = "") -> str | None:  # noqa: ARG002
+        try:
+            return await fetch_huggingface_model_size(spec["hf_id"])
+        except Exception:
+            return None
 
     def get_installed_info(self, instance: str) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""
