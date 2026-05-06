@@ -179,30 +179,36 @@ class ChatCompletionRequest(BaseModel):
     temperature: Annotated[
         float | None,
         Field(
+            ge=0.0,
+            le=2.0,
             description=(
                 "What sampling temperature to use, between `0` and `2`. Higher values like `0.8` will make the output more "
                 "random, while lower values like `0.2` will make it more focused and deterministic. We generally recommend "
                 "altering this or `top_p` but not both."
-            )
+            ),
         ),
     ] = None
     top_p: Annotated[
         float | None,
         Field(
+            ge=0.0,
+            le=1.0,
             description=(
                 "An alternative to sampling with temperature, called nucleus sampling, where the model considers the "
                 "results of the tokens with `top_p` probability mass. So `0.1` means only the tokens comprising the top "
                 "10% probability mass are considered. We generally recommend altering this or `temperature` but not both."
-            )
+            ),
         ),
     ] = None
     n: Annotated[
         int | None,
         Field(
+            ge=0,
+            le=128,
             description=(
                 "How many chat completion choices to generate for each input message."
                 "Keep `n` as `1` to receive one choice per input message."
-            )
+            ),
         ),
     ] = None
     stream: Annotated[
@@ -309,7 +315,7 @@ class ChatCompletionRequest(BaseModel):
 class EmbeddingRequest(BaseModel):
     input: Annotated[str | list[str], Field(description="The input text(s) to embed")]
     model: Annotated[str, Field(description="ID of the model to use for embedding", examples=["llama3"])]
-    dimensions: Annotated[int | None, Field(description="The number of dimensions to return for each embedding")] = None
+    dimensions: Annotated[int | None, Field(ge=1, description="The number of dimensions to return for each embedding")] = None
     encoding_format: Annotated[str | None, Field(description="The encoding format of the embeddings", examples=["float"])] = None
     user: Annotated[str | None, Field(description="A unique identifier for the end-user", examples=["user123"])] = None
 
@@ -321,10 +327,10 @@ class ImagesRequest(BaseModel):
     background: Literal["auto", "transparent", "opaque"] | None = None
     model: str
     moderation: str | None = None
-    n: Annotated[int | None, Field(ge=1, le=4)] = None
+    n: Annotated[int | None, Field(ge=1, le=10)] = None
     output_compression: Annotated[int | None, Field(ge=0, le=100)] = 95
     output_format: Literal["png", "webp", "jpeg"] | None = None
-    quality: Literal["low", "medium", "high", "auto"] | None = None
+    quality: Literal["standard", "hd", "low", "medium", "high", "auto"] | None = None
     response_format: Literal["url", "b64_json"] | None = None
     size: str | None = None
     style: str | None = None
@@ -337,7 +343,9 @@ class CreateSpeechRequest(BaseModel):
     input: Annotated[str, Field(max_length=4096, description="The text to generate audio for. The maximum length is 4096 characters.")]
     model: Annotated[str, Field(description="One of the available TTS models.")]
     voice: Annotated[str | None, Field(description="The voice to use when generating the audio.")] = None
-    instructions: Annotated[str | None, Field(description="Control the voice of your generated audio with additional instructions.")] = None
+    instructions: Annotated[
+        str | None, Field(max_length=4096, description="Control the voice of your generated audio with additional instructions.")
+    ] = None
     format: Annotated[
         Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] | None,
         Field(description="The format to audio in. Supported formats are mp3, opus, aac, flac, wav, and pcm."),
@@ -710,7 +718,8 @@ class CompletionLegacyRequest(BaseModel):
         Field(description="The prompt(s) to generate completions for - can be string, array of strings, tokens, or token arrays."),
     ]
     best_of: Annotated[
-        int | None, Field(ge=1, description="Generate best_of completions and return the best one. Must be greater than n if both are set.")
+        int | None,
+        Field(ge=0, le=20, description="Generate best_of completions and return the best one. Must be greater than n if both are set."),
     ] = None
     echo: Annotated[bool | None, Field(description="Echo back the prompt in addition to the completion.")] = None
     frequency_penalty: Annotated[
@@ -720,8 +729,8 @@ class CompletionLegacyRequest(BaseModel):
         dict[str, Bias] | None, Field(description="Modify likelihood of specified tokens appearing (token ID -> bias from -100 to 100).")
     ] = None
     logprobs: Annotated[int | None, Field(ge=0, le=5, description="Include log probabilities on the most likely tokens (max 5).")] = None
-    max_tokens: Annotated[int | None, Field(ge=1, description="Maximum number of tokens to generate in the completion.")] = None
-    n: Annotated[int | None, Field(ge=1, description="How many completions to generate for each prompt.")] = None
+    max_tokens: Annotated[int | None, Field(ge=0, description="Maximum number of tokens to generate in the completion.")] = None
+    n: Annotated[int | None, Field(ge=1, le=128, description="How many completions to generate for each prompt.")] = None
     presence_penalty: Annotated[
         float | None,
         Field(ge=-2.0, le=2.0, description="Penalize new tokens based on whether they appear in the text so far (-2.0 to 2.0)."),
