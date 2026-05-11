@@ -1,0 +1,28 @@
+## Why
+<!-- Why is this needed? Copy from the issue. -->
+
+## Use
+<!-- How to use this feature? -->
+
+**Steps:**
+1. 
+
+**Conditions:**
+<!-- What conditions must be met for this to work? -->
+
+## Result
+<!-- Proof that the feature works: API response, screenshots, logs. -->
+
+## How
+<!-- What solution was applied? -->
+
+## Relates
+<!-- Related issues or MRs -->
+- Closes #
+
+## ToDo
+
+- [ ] I reviewed the code
+- [ ] I updated CHANGELOG.md
+- [ ] I updated the version
+- [ ] I wrote/updated tests
