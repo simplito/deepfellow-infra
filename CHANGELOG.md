@@ -6,22 +6,92 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-# Added
+## [0.26.0] - 2026-05-13
 
-- Option to create many service instances.
-  - Service instance have independent options, models and custom models.
-  - Service instance share download models.
-- New services.json scheme.
-  - Old service.json (v1) will be automatically converted to v2.
-  - Services.json v2 has not backward compatibility.
-- Added Mcp Service.
-  - Added option to host docker streamable HTTP and SSE MCP servers.
-  - Added websearch mcp servers to install.
-  - Added headers support.
-  - Added required envs and headers for specified model.
+### Added
+- VLLM request priority support.
+- Lemmatizer service integration.
+- `df-finetune` support in custom services.
+- Exposed Ollama `/api/chat` endpoint.
+- BGE model support in custom services.
+- Docling document chunker service.
+- Fake progress bar for long-running installation steps.
+- Cloud support flag.
+- Parameter value validation for service configuration.
+- Issue and MR templates for the repository.
 
 ### Fixed
-- volumes and environmental variables in custom services are not required.
+- Fixed slow VLLM startup.
+- Fixed SHA parsing error with `@@` characters in output.
+- CUDA version check for Speeches GPU — user now gets an error when CUDA version is insufficient.
+- User no longer required to provide `size` value in custom models and services.
+
+### Changed
+- Refactored Ollama Modelfile creation.
+
+## [0.25.0] - 2026-04-10
+
+### Added
+- Updated Ollama version.
+- Added Scrapling MCP server.
+- Added adapter registry integration.
+
+### Changed
+- Sorted Ollama model index and model entries.
+
+## [0.24.2] - 2026-04-02
+
+### Added
+- Ollama websearch support.
+- Streaming support for `/v1/responses` endpoint, including missing streaming response features.
+- Endpoint to list custom services and custom MCP servers.
+- GPT-5.3 and GPT-5.4 model support.
+- Open-source infrastructure release.
+
+### Fixed
+- Fixed rerank service not starting on GPU.
+
+## [0.24.1] - 2026-03-20
+
+### Fixed
+- Fixed function tool `parameters` field expected as dict instead of string.
+- Updated rerank model configuration.
+
+## [0.24.0] - 2026-03-10
+
+### Added
+- Added Claude service (Anthropic API proxy).
+- Added reranking model support.
+- Added Intel GPU support for LlamaCpp.
+- Added Ollama custom context length option.
+- Added LlamaCpp context window option exposed to users.
+- Added model context length metadata for Ollama models.
+- Added Ollama model alias info.
+- Added model properties support.
+- Added required headers definition per service.
+- Added MCP websearch Docker fixes.
+
+### Fixed
+- Fixed `/v1/messages` endpoint.
+- Fixed unclosed connection issue.
+- Fixed LlamaCpp error during model installation.
+- Fixed MCP and custom endpoint API bypass checks.
+
+## [0.23.1] - 2026-02-19
+
+### Fixed
+- Fixed `json_schema` handling in `/v1/chat/completions`.
+
+## [0.23.0] - 2026-02-18
+
+### Added
+- Option to create many service instances with independent options, models, and custom models; instances share downloaded models.
+- New services.json scheme v2 with automatic conversion from v1; v2 is not backward compatible with v1.
+- MCP Service support: Docker streamable HTTP and SSE MCP servers, websearch MCP servers, headers support, and required envs/headers per model.
+- Added `all-MiniLM-L6-v2` embedding model.
+
+### Fixed
+- Volumes and environment variables in custom services are no longer required.
 
 ## [0.22.0] - 2026-02-13
 
