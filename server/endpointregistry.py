@@ -559,6 +559,8 @@ class EndpointRegistry:
             headers = options.get_request_headers(request)
             headers["content-type"] = request.headers.get("content-type") or "application/octet-stream"
             full_url = Utils.join_url(options.url, request.path_params["full_path"].split("/", 1)[-1])
+            if request.url.query:
+                full_url = f"{full_url}?{request.url.query}"
             return (
                 await make_http_request(
                     url=full_url,
@@ -597,6 +599,8 @@ class EndpointRegistry:
             headers = options.get_request_headers(request)
             headers["content-type"] = request.headers.get("content-type") or "application/octet-stream"
             full_url = Utils.join_url(options.url, request.path_params["full_path"].split("/", 1)[-1])
+            if request.url.query:
+                full_url = f"{full_url}?{request.url.query}"
             return (
                 await make_http_request(
                     url=full_url,
