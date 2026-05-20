@@ -377,8 +377,6 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
         info = self.get_instance_installed_info(instance)
         if model_id not in self.models[instance]:
             raise HTTPException(status_code=400, detail="Model not found")
-        if not self.models.get(instance):
-            self.models[instance] = {}
 
         model = self.models[instance][model_id]
         installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(instance, model_id)
@@ -450,8 +448,6 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
             return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
         if model_id not in self.models[instance]:
             raise HTTPException(400, "Model not found")
-        if not self.models.get(instance):
-            self.models[instance] = {}
         model = self.models[instance][model_id]
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
@@ -462,8 +458,6 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
             if not local_model_path or not model_filename:
                 raise HTTPException(400, "Local model path was not set up and not return by downloader.")
-            if not model_filename:
-                raise HTTPException(400, "Model filename was not set up or and return by downloader.")
 
             max_context_window = await get_gguf_context_window(local_model_path)
             context_window = max_context_window

@@ -111,21 +111,6 @@ class VllmConst(BaseModel):
     models: dict[str, VllmModel]
 
 
-def _read_models_from_json() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
-    vllm_path = get_main_dir() / "./static/vllm.json"
-    with vllm_path.open(encoding="utf-8") as f:
-        data = json.loads(f.read())
-        # tags = [x["tags"] for x in data["list"]]
-        # flat: list[str] = [x["tag"] for sublist in tags for x in sublist]
-        tags = [x["mainTags"] for x in data["list"]]
-        flat: list[str] = [x.removesuffix(":latest") for sublist in tags for x in sublist]
-
-        map: dict[str, bool] = {}
-        for tag in flat:
-            map[tag] = True
-        return map
-
-
 def _read_models() -> dict[str, VllmModel]:
     vllm_path = get_main_dir() / "./static/vllm-min.json"
     with vllm_path.open(encoding="utf-8") as f:
@@ -287,6 +272,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             fields=[
                 CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
                 CustomModelField(type="text", name="hf_id", description="Hugging face model ID", placeholder="google/gemma-3-270m-it"),
+                CustomModelField(type="text", name="size", description="Model size", placeholder="1 GB", required=False),
             ]
         )
 
@@ -447,9 +433,6 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
         """Get the model."""
         info = self.get_instance_installed_info(instance)
 
-        if not self.models.get(instance):
-            self.models[instance] = {}
-
         if model_id not in self.models[instance]:
             raise HTTPException(status_code=400, detail="Model not found")
 
@@ -507,8 +490,6 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     async def _get_gpu_memory_utilization(self, parsed_model_options: VllmModelOptions, model: VllmModel) -> float:
         gpu_memory_utilization = parsed_model_options.gpu_memory_utilization or model.gpu_memory_utilization or 0.95
-        if gpu_memory_utilization > 1 and gpu_memory_utilization <= 0:
-            raise HTTPException(422, "GPU utilization needs to be in range 0-1.")
         if self.gpu_memory_utilization + gpu_memory_utilization > 1:
             raise HTTPException(
                 422,

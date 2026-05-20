@@ -55,7 +55,7 @@ class UnpackedResponse(NamedTuple):
     json_error: str | None
 
 
-class TestError(Exception):
+class ModelTestError(Exception):
     def __init__(self, error: str, response: Response | None = None):
         super().__init__()
         self.error = error
@@ -67,7 +67,7 @@ class ModelTester:
         """Test model."""
         try:
             return await self._perform_test(entry)
-        except TestError as e:
+        except ModelTestError as e:
             result: dict[str, Any] = {"error": e.error}
             if e.response:
                 details = {
@@ -115,7 +115,7 @@ class ModelTester:
         if entry.registered_model.type == "rerank":
             return await self._test_rerank(entry.registered_model.name, entry.registered_model.endpoint)
         if entry.registered_model.type == "custom":
-            raise TestError("Custom model cannot be tested")
+            raise ModelTestError("Custom model cannot be tested")
         raise RuntimeError(f"Given model cannot be tested, unsupported type {entry.registered_model.type}")  # noqa: EM102
 
     async def _test_messages(self, model: str, endpoint: ChatCompletionEndpoint) -> JsonSerializable:
@@ -135,7 +135,7 @@ class ModelTester:
         try:
             return {"result": "ok", "output": json["content"][0].get("text") or json["content"][0].get("thinking"), "details": json}
         except Exception:
-            raise TestError("Cannot read message content", my_resp)  # noqa: B904
+            raise ModelTestError("Cannot read message content", my_resp)  # noqa: B904
 
     async def _test_responses(self, model: str, endpoint: ChatCompletionEndpoint) -> JsonSerializable:
         if not endpoint.on_responses:
@@ -156,7 +156,7 @@ class ModelTester:
                     return {"result": "ok", "output": part["content"][0]["text"], "details": json}
             raise RuntimeError("No content output")  # noqa: TRY301
         except Exception:
-            raise TestError("Cannot read message content", my_resp)  # noqa: B904
+            raise ModelTestError("Cannot read message content", my_resp)  # noqa: B904
 
     async def _test_chat_completions(self, model: str, endpoint: ChatCompletionEndpoint) -> JsonSerializable:
         if not endpoint.on_chat_completion:
@@ -170,7 +170,7 @@ class ModelTester:
         try:
             return {"result": "ok", "output": json["choices"][0]["message"]["content"], "details": json}
         except Exception:
-            raise TestError("Cannot read message content", my_resp)  # noqa: B904
+            raise ModelTestError("Cannot read message content", my_resp)  # noqa: B904
 
     async def _test_completions(self, model: str, endpoint: ChatCompletionEndpoint) -> JsonSerializable:
         if not endpoint.on_completion:
@@ -184,7 +184,7 @@ class ModelTester:
         try:
             return {"result": "ok", "output": json["choices"][0]["text"], "details": json}
         except Exception:
-            raise TestError("Cannot read message content", my_resp)  # noqa: B904
+            raise ModelTestError("Cannot read message content", my_resp)  # noqa: B904
 
     async def _test_embedding(self, model: str, endpoint: SimpleEndpoint[EmbeddingRequest]) -> JsonSerializable:
         (_, json) = await self._read_json(
@@ -223,7 +223,7 @@ class ModelTester:
         try:
             return {"result": "ok", "output": json["text"], "details": json}
         except Exception:
-            raise TestError("Cannot read response text", my_resp)  # noqa: B904
+            raise ModelTestError("Cannot read response text", my_resp)  # noqa: B904
 
     async def _test_txt2img(self, model: str, endpoint: SimpleEndpoint[ImagesRequest]) -> JsonSerializable:
         (my_resp, json) = await self._read_json(
@@ -239,7 +239,7 @@ class ModelTester:
                 "details": json,
             }
         except Exception:
-            raise TestError("Cannot read image data", my_resp)  # noqa: B904
+            raise ModelTestError("Cannot read image data", my_resp)  # noqa: B904
 
     async def _test_rerank(self, model: str, endpoint: SimpleEndpoint[RerankRequest]) -> JsonSerializable:
         (my_resp, json) = await self._read_json(
@@ -264,32 +264,28 @@ class ModelTester:
                 "details": json,
             }
         except Exception:
-            raise TestError("Cannot read image data", my_resp)  # noqa: B904
-
-    # ====================
-    #       HELPERS
-    # ====================
+            raise ModelTestError("Cannot read image data", my_resp)  # noqa: B904
 
     async def _read_json(self, response: StarletteResponse) -> tuple[Response, Any]:
         my_resp = await self._read_response(response)
         if my_resp.status_code != 200:
-            raise TestError(error="Invalid status code", response=my_resp)
+            raise ModelTestError(error="Invalid status code", response=my_resp)
         if my_resp.media_type != "application/json":
-            raise TestError(error="Invalid content type", response=my_resp)
+            raise ModelTestError(error="Invalid content type", response=my_resp)
         try:
             text = my_resp.content.decode("utf-8")
             try:
                 data = json.loads(text)
                 return (my_resp, data)  # noqa: TRY300
             except Exception:
-                raise TestError(error="JSON parse error", response=my_resp)  # noqa: B904
+                raise ModelTestError(error="JSON parse error", response=my_resp)  # noqa: B904
         except Exception:
-            raise TestError(error="Cannot read content as text", response=my_resp)  # noqa: B904
+            raise ModelTestError(error="Cannot read content as text", response=my_resp)  # noqa: B904
 
     async def _read_successfully(self, response: StarletteResponse) -> Response:
         my_resp = await self._read_response(response)
         if my_resp.status_code != 200:
-            raise TestError(error="Invalid status code", response=my_resp)
+            raise ModelTestError(error="Invalid status code", response=my_resp)
         return my_resp
 
     async def _read_response(self, response: StarletteResponse) -> Response:

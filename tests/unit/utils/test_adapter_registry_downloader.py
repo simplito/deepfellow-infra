@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException
 from multidict import CIMultiDict, CIMultiDictProxy
 
 from server.utils.core import DownloadedPacket, HttpClientError, PreDownloadPacket, SuccessDownloadPacket
@@ -83,8 +84,8 @@ async def test_download_uses_custom_filename(downloader: AdapterRegistryDownload
     model_dir = tmp_path / "models"
     model_dir.mkdir()
     temp_dir = tmp_path / "temp"
-
     url = "http://registry.local:5000/my-model/adapter.gguf"
+
     with patch("server.utils.model_downloader.download_file", side_effect=_fake_download_file):
         packets = [p async for p in downloader.download(url, model_dir, temp_dir, "custom.gguf")]
 
@@ -101,12 +102,12 @@ async def test_download_skips_if_file_exists(downloader: AdapterRegistryDownload
     model_dir.mkdir()
     (model_dir / "adapter.gguf").write_bytes(b"existing")
     temp_dir = tmp_path / "temp"
-
     mock_download = AsyncMock()
+
     with patch("server.utils.model_downloader.download_file", mock_download):
         packets = [p async for p in downloader.download("http://registry.local:5000/my-model/adapter.gguf", model_dir, temp_dir)]
 
-    mock_download.assert_not_called()
+    assert mock_download.call_count == 0
     assert len(packets) == 1
     assert isinstance(packets[0], SuccessDownloadPacket)
 
@@ -117,7 +118,6 @@ async def test_download_passes_bearer_headers(downloader: AdapterRegistryDownloa
     model_dir = tmp_path / "models"
     model_dir.mkdir()
     temp_dir = tmp_path / "temp"
-
     captured_headers = None
 
     async def capture_headers(url: str, file_path: Path, headers: dict[str, str]):
@@ -160,8 +160,6 @@ async def test_download_no_secret_sends_empty_headers(downloader_no_secret: Adap
 @pytest.mark.asyncio
 async def test_download_handles_401_error(downloader: AdapterRegistryDownloader, tmp_path: Path) -> None:
     """Verify HttpClientError with 401 is converted to HTTPException with friendly message."""
-    from fastapi import HTTPException
-
     model_dir = tmp_path / "models"
     model_dir.mkdir()
     temp_dir = tmp_path / "temp"
@@ -189,9 +187,7 @@ async def test_download_cleans_temp_on_error(downloader: AdapterRegistryDownload
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_bytes(b"partial")
         raise HttpClientError(message="500 Server Error", status_code=500, headers=CIMultiDictProxy(CIMultiDict()), body="error")
-        yield
-
-    from fastapi import HTTPException
+        yield  # make it an async generator
 
     with patch("server.utils.model_downloader.download_file", side_effect=fail_after_write), pytest.raises(HTTPException):
         async for _ in downloader.download("http://registry.local:5000/my-model/adapter.gguf", model_dir, temp_dir):
@@ -203,22 +199,31 @@ async def test_download_cleans_temp_on_error(downloader: AdapterRegistryDownload
 
 
 @pytest.mark.asyncio
-async def test_check_url(downloader: AdapterRegistryDownloader) -> None:
-    """Verify check_url matches registry URLs."""
-    assert downloader.check_url("http://registry.local:5000/my-model/adapter.gguf") is True
-    assert downloader.check_url("http://registry.local:5000/") is True
-    assert downloader.check_url("https://huggingface.co/model") is False
-    assert downloader.check_url("http://other-host:5000/model") is False
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("http://registry.local:5000/my-model/adapter.gguf", True),
+        ("http://registry.local:5000/", True),
+        ("https://huggingface.co/model", False),
+        ("http://other-host:5000/model", False),
+    ],
+)
+async def test_check_url(downloader: AdapterRegistryDownloader, url: str, expected: bool) -> None:
+    assert downloader.check_url(url) is expected
 
 
 @pytest.mark.asyncio
-async def test_check_url_localhost_normalization() -> None:
-    """Verify check_url treats localhost and 127.0.0.1 as equivalent."""
-    dl_localhost = AdapterRegistryDownloader(url="http://localhost:8333", secret="s")
-    assert dl_localhost.check_url("http://127.0.0.1:8333/pirate-llama") is True
+@pytest.mark.parametrize(
+    ("registry_url", "check_url"),
+    [
+        ("http://localhost:8333", "http://127.0.0.1:8333/pirate-llama"),
+        ("http://127.0.0.1:8333", "http://localhost:8333/pirate-llama"),
+    ],
+)
+async def test_check_url_localhost_normalization(registry_url: str, check_url: str) -> None:
+    dl = AdapterRegistryDownloader(url=registry_url, secret="s")
 
-    dl_ip = AdapterRegistryDownloader(url="http://127.0.0.1:8333", secret="s")
-    assert dl_ip.check_url("http://localhost:8333/pirate-llama") is True
+    assert dl.check_url(check_url) is True
 
 
 @pytest.mark.asyncio

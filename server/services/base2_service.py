@@ -333,8 +333,6 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         """Remove custom model."""
         config = self.get_instance_info(instance).config
         model = next(x for x in config.custom or {} if x.id == custom_model_id)
-        if not model:
-            return
         self._remove_custom_model(instance, model)
         config.custom = [x for x in config.custom or {} if x.id != custom_model_id]
         await self._save()

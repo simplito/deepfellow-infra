@@ -118,11 +118,6 @@ async def fetch_with_fallback(
     raise last_exc  # type: ignore[misc]
 
 
-# ---------------------------------------------------------------------------
-# Parsing helpers
-# ---------------------------------------------------------------------------
-
-
 def find_all_between(text: str, attr: str, open_tag: str, close_tag: str) -> list[str]:
     """Find every VALUE in <... attr ...>VALUE</close_tag>."""
     results = []
@@ -143,11 +138,6 @@ def find_all_between(text: str, attr: str, open_tag: str, close_tag: str) -> lis
     return results
 
 
-# ---------------------------------------------------------------------------
-# Library page: returns list of {name, capabilities}
-# ---------------------------------------------------------------------------
-
-
 def parse_library(html: str) -> list[ModelInfo]:
     """Parse the Ollama library page and return a list of models with capabilities."""
     models: list[ModelInfo] = []
@@ -159,11 +149,6 @@ def parse_library(html: str) -> list[ModelInfo]:
         capabilities = find_all_between(li, "x-test-capability", ">", "<")
         models.append({"name": name_m.group(1), "capabilities": capabilities})
     return models
-
-
-# ---------------------------------------------------------------------------
-# Tags page: returns list of ModelEntry
-# ---------------------------------------------------------------------------
 
 
 def parse_context(raw: str | None) -> int | None:
@@ -284,11 +269,6 @@ def parse_tags_hashes(html: str) -> dict[str, str]:
     return hash_map
 
 
-# ---------------------------------------------------------------------------
-# Capability -> category mapping
-# ---------------------------------------------------------------------------
-
-
 def capability_to_category(capabilities: list[str]) -> Category:
     """Map a model's capability list to an output category key."""
     caps_lower = [c.lower() for c in capabilities]
@@ -329,11 +309,6 @@ def parse_tags_full(html: str) -> list[ModelEntry]:
             }
         )
     return entries
-
-
-# ---------------------------------------------------------------------------
-# Async fetch helpers
-# ---------------------------------------------------------------------------
 
 
 async def fetch_model_tags(

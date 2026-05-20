@@ -369,6 +369,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                     required=False,
                 ),
                 CustomModelField(type="text", name="quantization", description="Quantization", placeholder="q4_0", required=False),
+                CustomModelField(type="text", name="size", description="Model size", placeholder="1 GB", required=False),
             ]
         )
 
