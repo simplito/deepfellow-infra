@@ -7,9 +7,11 @@ __pycache__
 /storage
 .env
 /.vscode
-/openspec
-/.claude
-CLAUDE.md
+/.claude/settings.json
+/.claude/settings.local.md
+CLAUDE.local.md
+
+/openspec/changes/
 
 
 /static/assets
@@ -26,7 +28,6 @@ CLAUDE.md
 
 /ollama
 
-/.claude
 /openspec
 
 /.coverage.json
