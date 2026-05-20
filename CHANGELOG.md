@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- DuckDuckGo MCP server for web search and web fetch capabilities.
+
 ## [0.26.0] - 2026-05-13
 
 ### Added

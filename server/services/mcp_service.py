@@ -664,5 +664,20 @@ _const = McpConst(
                 command="mcp --http",
             ),
         ),
+        "duckduckgo": lambda mcp_service, subnet: SrvMcpModel(
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/duckduckgo/mcp"]),
+            model_spec=mcp_service.get_default_model_spec(default_prefix="duckduckgo"),
+            model_type="mcp",
+            default_prefix="duckduckgo",
+            size="276MB",
+            options=DockerOptions(
+                image_port=8000,
+                name="duckduckgo",
+                container_name=mcp_service.docker_service.get_docker_container_name("duckduckgo"),
+                image="ghcr.io/nickclyde/duckduckgo-mcp-server:0.4.0",
+                subnet=subnet,
+                command="python -m duckduckgo_mcp_server.server --transport streamable-http --host 0.0.0.0 --port 8000",
+            ),
+        ),
     },
 )
