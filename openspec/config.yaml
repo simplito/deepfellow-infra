@@ -1,0 +1,18 @@
+schema: spec-driven
+
+context: |
+  DeepFellow Infra is a self-hosted AI infrastructure stack.
+
+  Backend: FastAPI (Python), OpenAI-compatible API, Pydantic models, strict pyright typing.
+  Frontend: React + TypeScript, TanStack Router (file-based), Biome linter, tabs indent, double quotes.
+  Services: containerized AI models (LLMs, embeddings, image gen) managed via Docker.
+  Auth: API key-based; validated separately (just auth-static / just auth-runtime).
+  Testing: pytest async strict mode, per-function scope, real DB (no mocks).
+
+  Code conventions:
+  - Python line length: 140 chars; all .py files need DeepFellow Free License header.
+  - Prefer Pydantic models over plain dicts; prefer TS types over plain objects.
+  - Commits: conventional commits format.
+  - Branch naming: <gitlab-issue-id>-<short-description>.
+  - Run `just pre-commit` before pushing.
+  - src/routeTree.gen.ts and src/components/ui/* are auto-generated — do not modify.
