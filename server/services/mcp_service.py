@@ -664,6 +664,23 @@ _const = McpConst(
                 command="mcp --http",
             ),
         ),
+        "firecrawl": lambda mcp_service, subnet: SrvMcpModel(
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/firecrawl/mcp"]),
+            model_spec=mcp_service.get_default_model_spec(default_prefix="firecrawl", required_envs=["FIRECRAWL_API_KEY"]),
+            model_type="mcp",
+            default_prefix="firecrawl",
+            size="506MB",
+            options=DockerOptions(
+                image_port=3000,
+                name="firecrawl",
+                container_name=mcp_service.docker_service.get_docker_container_name("firecrawl"),
+                image="mcp/firecrawl@sha256:a3b74109dced0a16aea59e3c38903fa9a0788498e8652ddfbecf0155172f7af6",
+                subnet=subnet,
+                command="tail -f /dev/null",
+                env_vars={"HTTP_STREAMABLE_SERVER": "true", "HOST": "0.0.0.0", "PORT": "3000"},
+            ),
+            required_envs=["FIRECRAWL_API_KEY"],
+        ),
         "duckduckgo": lambda mcp_service, subnet: SrvMcpModel(
             model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/duckduckgo/mcp"]),
             model_spec=mcp_service.get_default_model_spec(default_prefix="duckduckgo"),
