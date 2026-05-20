@@ -19,7 +19,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, get_args, get_origin, get_type_hints
 
 import typer
 from fastapi.routing import APIRoute
@@ -227,8 +227,6 @@ def _check_func_deps_deep(  # noqa: C901
     indent: int = 0,
 ) -> bool:
     """Recursively check function's dependencies for auth."""
-    from typing import get_args, get_origin, get_type_hints
-
     prefix = "    " * indent
 
     try:

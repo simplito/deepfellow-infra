@@ -190,6 +190,7 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
             fields=[
                 CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
                 CustomModelField(type="oneof", name="type", description="Model type", values=["llm", "embedding"]),
+                CustomModelField(type="text", name="size", description="Model size", placeholder="1 GB", required=False),
             ]
         )
 
@@ -344,9 +345,6 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
         """Get the model."""
         info = self.get_instance_installed_info(instance)
 
-        if not self.models.get(instance):
-            self.models[instance] = {}
-
         if model_id not in self.models[instance]:
             raise HTTPException(status_code=400, detail="Model not found")
 
@@ -416,9 +414,6 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
     ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         parsed_model_options = try_parse_pydantic(OllamaModelOptions, options.spec) if options.spec else OllamaModelOptions()
         info = self.get_instance_installed_info(instance)
-
-        if not self.models.get(instance):
-            self.models[instance] = {}
 
         if model_id in info.models:
             return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))

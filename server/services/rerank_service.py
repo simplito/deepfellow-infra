@@ -208,6 +208,7 @@ class RerankService(Base2Service[InstalledInfo, DownloadedInfo]):
             fields=[
                 CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
                 CustomModelField(type="text", name="hf_id", description="Hugging face model ID", placeholder="google/gemma-3-270m-it"),
+                CustomModelField(type="text", name="size", description="Model size", placeholder="1 GB", required=False),
             ]
         )
 

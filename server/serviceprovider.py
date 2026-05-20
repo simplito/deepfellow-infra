@@ -63,23 +63,22 @@ class ServiceProvider:
         for service_name, service_data in data.get("services", {}).items():
             service = new_data["services"][service_name]
             service["instances"] = {}
-            service["instances"]["default"] = {"options": None, "models": [], "custom": []}
+            service["instances"]["default"] = {"options": {}, "models": [], "custom": []}
             default_instance = service["instances"]["default"]
-            if isinstance(service_data, dict):
-                options = service_data.get("options")
-                if options is not None:
-                    del service["options"]
-                    default_instance["options"] = options
+            options = service_data.get("options")
+            if options is not None:
+                del service["options"]
+                default_instance["options"] = options
 
-                models = service_data.get("models")
-                if models is not None:
-                    del service["models"]
-                    default_instance["models"] = models
+            models = service_data.get("models")
+            if models is not None:
+                del service["models"]
+                default_instance["models"] = models
 
-                custom = service_data.get("custom")
-                if custom is not None:
-                    del service["custom"]
-                    default_instance["custom"] = custom
+            custom = service_data.get("custom")
+            if custom is not None:
+                del service["custom"]
+                default_instance["custom"] = custom
 
         return new_data
 

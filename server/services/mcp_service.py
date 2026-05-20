@@ -278,6 +278,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                     description="Required headers in installation. Key values can be empty.",
                     required=False,
                 ),
+                CustomModelField(type="text", name="size", description="Model size", placeholder="1 GB", required=False),
             ]
         )
 

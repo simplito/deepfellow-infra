@@ -7,6 +7,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Copy .env files from infra created by DeepFellow CLI, replacing docker hosts with localhost."""
+
 # Development script only
 # Used to fast copy paste .env from infra created by DeepFellow CLI, and replace docker hosts with localhost.
 # Allows to connect local deepfellow infra to docker subservices.

@@ -327,6 +327,7 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
                     placeholder="https://civitai.com/api/download/models/123456789?type=Model&format=SafeTensor&size=pruned&fp=fp16",
                 ),
                 CustomModelField(type="text", name="filename", description="Model filename", placeholder="mymodel.safetensors"),
+                CustomModelField(type="text", name="size", description="Model size", placeholder="1 GB", required=False),
             ]
         )
 

@@ -719,15 +719,8 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
             for lang_model_id in parsed.langs_models.values():
                 if lang_model_id not in self.models[instance]:
                     raise HTTPException(400, f"Model {lang_model_id} not found")
-
-                if lang_model_id not in self.models[instance]:
-                    raise HTTPException(400, f"Model {lang_model_id} not installed. Install it first.")
-        if parsed.default_model:
-            if parsed.default_model not in self.models[instance]:
-                raise HTTPException(400, f"Model {parsed.default_model} not found")
-
-            if parsed.default_model not in self.models[instance]:
-                raise HTTPException(400, f"Model {parsed.default_model} not installed. Install it first.")
+        if parsed.default_model and parsed.default_model not in self.models[instance]:
+            raise HTTPException(400, f"Model {parsed.default_model} not found")
 
         self.models[instance][parsed.id] = SpeachesModel(
             id=parsed.id,

@@ -103,6 +103,7 @@ select = [
     "T201", # print in code
     "TCH", # flake8-type-checking
     "TRY", # tryceratops
+    "PLC0415", # pylint: import not at top of file
     "UP",  # pyupgrade
 ]
 
@@ -145,6 +146,12 @@ asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
 env_files = [".test.env"]
 env_override_existing_values = true
+
+[tool.coverage.run]
+source = ["server", "scripts"]
+omit = [
+    "server/main.py",
+]
 
 [tool.coverage.report]
 exclude_also = [

@@ -8,14 +8,26 @@
 # limitations under the License.
 
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from server.utils.hardware import (
+    CpuInfo,
+    GpuInfo,
+    Hardware,
     IntelGpuInfo,
     NvidiaGpuInfo,
     _get_intel_gpu_name,  # pyright: ignore[reportPrivateUsage]
+    convert_mib_to_gb,
     create_nvidia_gpu_info_list,
+    get_cpu_info,
+    get_hardware_info,
+    get_intel_gpus_info,
+    get_nvidia_gpu_info_raw,
+    get_nvidia_gpus_info,
+    get_vram_gb,
+    is_cpu_has_avx512,
 )
 
 
@@ -77,7 +89,10 @@ def test_get_intel_gpu_name(tmp_path: Path, device_id_content: str | None, expec
     device_dir.mkdir()
     if device_id_content is not None:
         (device_dir / "device").write_text(device_id_content)
-    assert _get_intel_gpu_name(card_path) == expected
+
+    result = _get_intel_gpu_name(card_path)
+
+    assert result == expected
 
 
 @pytest.mark.parametrize(
@@ -90,4 +105,295 @@ def test_get_intel_gpu_name(tmp_path: Path, device_id_content: str | None, expec
 )
 def test_intel_gpu_info_long_name(name: str, vram: str | None, id: int, expected_long_name: str):
     gpu = IntelGpuInfo(name=name, vram=vram, id=id)
+
     assert gpu.long_name == expected_long_name
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [({"flags": ["avx512f", "sse4_2"]}, True), ({"flags": ["sse4_2", "avx2"]}, False), ({"flags": []}, False), ({}, False)],
+)
+def test_is_cpu_has_avx512(flags: dict[str, list[str]], expected: bool):
+    with patch("server.utils.hardware.cpuinfo.get_cpu_info", return_value=flags):
+        assert is_cpu_has_avx512() == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("avx512", [True, False])
+async def test_get_cpu_info_avx512(avx512: bool):
+    with patch("server.utils.hardware.is_cpu_has_avx512", return_value=avx512):
+        result = await get_cpu_info()
+    assert result == CpuInfo(avx512=avx512)
+
+
+@pytest.mark.parametrize(
+    ("mib_str", "expected"),
+    [
+        ("400 MiB", "512 MB"),
+        ("300 MiB", "256 MB"),
+        ("16303 MiB", "16 GB"),
+        ("1024 MiB", "1 GB"),
+    ],
+)
+def test_convert_mib_to_gb(mib_str: str, expected: str):
+    assert convert_mib_to_gb(mib_str) == expected
+
+
+@pytest.mark.parametrize(
+    ("vram_str", "expected"),
+    [
+        ("16 GB", 16.0),
+        ("512 MB", 512 / 1024),
+        ("1 TB", 1024.0),
+        (None, 0.0),
+        ("", 0.0),
+        ("unknown", 0.0),
+    ],
+)
+def test_get_vram_gb(vram_str: str | None, expected: float):
+    assert get_vram_gb(vram_str) == pytest.approx(expected)
+
+
+@pytest.mark.asyncio
+async def test_get_nvidia_gpu_info_raw_success():
+    mock_result = MagicMock()
+    mock_result.stdout = "index, name, memory.total [MiB]\n0, NVIDIA RTX 4090, 24564 MiB"
+
+    with patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock, return_value=mock_result):
+        result = await get_nvidia_gpu_info_raw()
+
+    assert result == mock_result.stdout
+
+
+@pytest.mark.asyncio
+async def test_get_nvidia_gpu_info_raw_failure():
+    with patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock, side_effect=RuntimeError("docker not found")):
+        result = await get_nvidia_gpu_info_raw()
+
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_get_nvidia_gpus_info_non_empty():
+    raw = "index, name, memory.total [MiB]\n0, NVIDIA RTX 4090, 24564 MiB"
+
+    with patch("server.utils.hardware.get_nvidia_gpu_info_raw", new_callable=AsyncMock, return_value=raw):
+        result = await get_nvidia_gpus_info()
+
+    assert len(result) == 1
+    assert result[0].name == "NVIDIA RTX 4090"
+
+
+@pytest.mark.asyncio
+async def test_get_nvidia_gpus_info_empty():
+    with patch("server.utils.hardware.get_nvidia_gpu_info_raw", new_callable=AsyncMock, return_value=""):
+        result = await get_nvidia_gpus_info()
+
+    assert result == []
+
+
+def _make_intel_sysfs(
+    tmp_path: Path, card_name: str = "card0", vendor: str = "0x8086", boot_vga: str = "0", device_id: str = "0xe20b"
+) -> Path:
+    device_dir = tmp_path / card_name / "device"
+    device_dir.mkdir(parents=True)
+    (device_dir / "vendor").write_text(vendor)
+    (device_dir / "boot_vga").write_text(boot_vga)
+    (device_dir / "device").write_text(device_id)
+    return tmp_path
+
+
+@pytest.mark.asyncio
+async def test_get_intel_gpus_info_no_drm_path(tmp_path: Path):
+    non_existent = tmp_path / "nonexistent"
+
+    with patch("server.utils.hardware.DRM_PATH", non_existent):
+        result = await get_intel_gpus_info()
+
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_intel_gpus_info_skips_non_intel_vendor(tmp_path: Path):
+    _make_intel_sysfs(tmp_path, vendor="0x1002")
+
+    with patch("server.utils.hardware.DRM_PATH", tmp_path):
+        result = await get_intel_gpus_info()
+
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_intel_gpus_info_skips_integrated_gpu(tmp_path: Path):
+    _make_intel_sysfs(tmp_path, boot_vga="1")
+
+    with patch("server.utils.hardware.DRM_PATH", tmp_path):
+        result = await get_intel_gpus_info()
+
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_intel_gpus_info_finds_discrete_gpu(tmp_path: Path):
+    _make_intel_sysfs(tmp_path, card_name="card0", vendor="0x8086", boot_vga="0", device_id="0xe20b")
+
+    with patch("server.utils.hardware.DRM_PATH", tmp_path):
+        result = await get_intel_gpus_info()
+
+    assert len(result) == 1
+    assert result[0].name == "Intel GPU (0xe20b)"
+    assert result[0].id == 0
+    assert result[0].vram is None
+
+
+@pytest.mark.asyncio
+async def test_get_intel_gpus_info_skips_non_card_entries(tmp_path: Path):
+    (tmp_path / "renderD128").mkdir()
+
+    with patch("server.utils.hardware.DRM_PATH", tmp_path):
+        result = await get_intel_gpus_info()
+
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_hardware_info():
+    cpu = CpuInfo(avx512=False)
+    gpu = NvidiaGpuInfo(name="RTX 4090", vram="24 GB", id=0)
+
+    with (
+        patch("server.utils.hardware.get_cpu_info", new_callable=AsyncMock, return_value=cpu),
+        patch("server.utils.hardware.get_nvidia_gpus_info", new_callable=AsyncMock, return_value=[gpu]),
+    ):
+        result = await get_hardware_info()
+
+    assert result[0] == cpu
+    assert result[1] == gpu
+    assert len(result) == 2
+
+
+def test_hardware_raises_before_init():
+    hw = Hardware()
+    with pytest.raises(RuntimeError):
+        _ = hw.cpu
+
+
+@pytest.mark.asyncio
+async def test_hardware_init_async_no_gpus():
+    cpu = CpuInfo(avx512=False)
+    with (
+        patch("server.utils.hardware.get_cpu_info", new_callable=AsyncMock, return_value=cpu),
+        patch("server.utils.hardware.get_nvidia_gpus_info", new_callable=AsyncMock, return_value=[]),
+        patch("server.utils.hardware.get_intel_gpus_info", new_callable=AsyncMock, return_value=[]),
+    ):
+        hw = Hardware()
+
+        await hw.init_async()
+
+    assert hw.has_gpu_support is False
+    assert hw.total_vram_gb == 0.0
+    assert hw.gpus == []
+
+
+@pytest.mark.asyncio
+async def test_hardware_init_async_with_nvidia_gpu():
+    cpu = CpuInfo(avx512=True)
+    gpu = NvidiaGpuInfo(name="RTX 4090", vram="24 GB", id=0)
+    with (
+        patch("server.utils.hardware.get_cpu_info", new_callable=AsyncMock, return_value=cpu),
+        patch("server.utils.hardware.get_nvidia_gpus_info", new_callable=AsyncMock, return_value=[gpu]),
+        patch("server.utils.hardware.get_intel_gpus_info", new_callable=AsyncMock, return_value=[]),
+    ):
+        hw = Hardware()
+
+        await hw.init_async()
+
+    assert hw.has_gpu_support is True
+    assert hw.nvidia_gpus == [gpu]
+    assert hw.cpu.avx512 is True
+
+
+@pytest.mark.asyncio
+async def test_hardware_init_async_with_intel_gpu():
+    cpu = CpuInfo(avx512=False)
+    gpu = IntelGpuInfo(name="Intel GPU (0xe20b)", vram=None, id=0)
+    with (
+        patch("server.utils.hardware.get_cpu_info", new_callable=AsyncMock, return_value=cpu),
+        patch("server.utils.hardware.get_nvidia_gpus_info", new_callable=AsyncMock, return_value=[]),
+        patch("server.utils.hardware.get_intel_gpus_info", new_callable=AsyncMock, return_value=[gpu]),
+    ):
+        hw = Hardware()
+
+        await hw.init_async()
+
+    assert hw.intel_gpus == [gpu]
+    assert hw.has_gpu_support is True
+
+
+@pytest.mark.asyncio
+async def test_hardware_total_vram_gb():
+    cpu = CpuInfo(avx512=False)
+    gpu0 = NvidiaGpuInfo(name="RTX 4090", vram="24 GB", id=0)
+    gpu1 = NvidiaGpuInfo(name="RTX 4090", vram="24 GB", id=1)
+    with (
+        patch("server.utils.hardware.get_cpu_info", new_callable=AsyncMock, return_value=cpu),
+        patch("server.utils.hardware.get_nvidia_gpus_info", new_callable=AsyncMock, return_value=[gpu0, gpu1]),
+        patch("server.utils.hardware.get_intel_gpus_info", new_callable=AsyncMock, return_value=[]),
+    ):
+        hw = Hardware()
+
+        await hw.init_async()
+
+    assert hw.total_vram_gb == pytest.approx(48.0)
+
+
+@pytest.mark.asyncio
+async def test_hardware_parts():
+    cpu = CpuInfo(avx512=False)
+    gpu = NvidiaGpuInfo(name="RTX 4090", vram="24 GB", id=0)
+    with (
+        patch("server.utils.hardware.get_cpu_info", new_callable=AsyncMock, return_value=cpu),
+        patch("server.utils.hardware.get_nvidia_gpus_info", new_callable=AsyncMock, return_value=[gpu]),
+        patch("server.utils.hardware.get_intel_gpus_info", new_callable=AsyncMock, return_value=[]),
+    ):
+        hw = Hardware()
+
+        await hw.init_async()
+
+    assert hw.parts == [cpu, gpu]
+
+
+@pytest.mark.asyncio
+async def test_hardware_amd_gpus_empty():
+    cpu = CpuInfo(avx512=False)
+    with (
+        patch("server.utils.hardware.get_cpu_info", new_callable=AsyncMock, return_value=cpu),
+        patch("server.utils.hardware.get_nvidia_gpus_info", new_callable=AsyncMock, return_value=[]),
+        patch("server.utils.hardware.get_intel_gpus_info", new_callable=AsyncMock, return_value=[]),
+    ):
+        hw = Hardware()
+
+        await hw.init_async()
+    assert hw.amd_gpus == []
+
+
+def test_gpu_info_long_name_with_vram():
+    gpu = GpuInfo(name="Test GPU", vram="8 GB")
+
+    assert gpu.long_name == "Test GPU | 8 GB"
+
+
+def test_gpu_info_long_name_without_vram():
+    gpu = GpuInfo(name="Test GPU", vram=None)
+
+    assert gpu.long_name == "Test GPU"
+
+
+def test_create_nvidia_gpu_info_list_skips_empty_lines():
+    # Trailing newline produces an empty string that should be skipped (line 148)
+    raw = "index, name, memory.total [MiB]\n0, NVIDIA RTX 4090, 24564 MiB\n"
+
+    result = create_nvidia_gpu_info_list(raw)
+
+    assert len(result) == 1
+    assert result[0].name == "NVIDIA RTX 4090"

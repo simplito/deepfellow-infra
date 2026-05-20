@@ -25,8 +25,6 @@ class StaticFilesHandler(StaticFiles):
         try:
             return await super().get_response(path, scope)
         except HTTPException as e:
-            if e.status_code == 404:
-                # SPA routing: serve index.html for all 404s
-                index_path = Path("static") / "index.html"
-                return FileResponse(index_path)
+            if e.status_code == 404 and self.directory is not None:
+                return FileResponse(Path(self.directory) / "index.html")
             raise

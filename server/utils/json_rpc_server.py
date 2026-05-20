@@ -30,17 +30,17 @@ class JsonRpcServer[T]:
         try:
             obj = json.loads(data)
         except Exception:
-            logger.exception("Error during parsing json-rpc request", data)
+            logger.exception("Error during parsing json-rpc request: %s", data)
             return None
         if not _is_json_rpc_request(obj):
-            logger.info("Invalid json-rpc request", obj)
+            logger.info("Invalid json-rpc request: %s", obj)
             return None
         try:
             result = await self.registry(obj["method"], obj["params"], context)
             success_result = JsonRpcResponseSuccess(jsonrpc="2.0", id=obj["id"], result=result)
             return success_result.model_dump_json(indent=False, exclude_none=True)
         except Exception as e:
-            logger.exception("Error during processing json-rpc request", obj)
+            logger.exception("Error during processing json-rpc request: %s", obj)
             error = (
                 JsonRpcError(code=e.code, message=e.message, data=e.data)
                 if isinstance(e, ApiError)
