@@ -4,18 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.26.0] - 2026-05-22
 
 ### Added
 - Firecrawl MCP server support, providing web scraping and crawling capabilities via `/mcp/firecrawl/mcp`.
 - DuckDuckGo MCP server for web search and web fetch capabilities.
-
-### Fixed
-- Custom endpoint query parameters are now correctly forwarded when proxying requests.
-
-## [0.26.0] - 2026-05-13
-
-### Added
 - VLLM request priority support.
 - Lemmatizer service integration.
 - `df-finetune` support in custom services.
@@ -28,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Issue and MR templates for the repository.
 
 ### Fixed
+- Custom endpoint query parameters are now correctly forwarded when proxying requests.
 - Fixed slow VLLM startup.
 - Fixed SHA parsing error with `@@` characters in output.
 - CUDA version check for Speeches GPU — user now gets an error when CUDA version is insufficient.
