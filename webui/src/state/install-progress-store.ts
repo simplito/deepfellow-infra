@@ -64,6 +64,11 @@ function shouldIgnoreProgressUpdate(prev: InstallProgress | undefined, next: Ins
 	const nextStageOrder = STAGE_ORDER[next.stage] ?? 0;
 	if (nextStageOrder < prevStageOrder) return true;
 
+	// Within the same stage, never allow the value to decrease. This prevents
+	// the visible "jumping" caused by simulation ticks and real SSE events racing
+	// each other — whichever source is ahead wins, and lower values are dropped.
+	if (nextStageOrder === prevStageOrder && next.value < prev.value) return true;
+
 	return false;
 }
 
@@ -98,6 +103,7 @@ export function setModelInstallProgress(serviceId: string, modelId: string, prog
 	const key = modelKey(serviceId, modelId);
 	const next = normalizeProgress(progress);
 	const prev = snapshot.models[key];
+	if (shouldIgnoreProgressUpdate(prev, next)) return;
 	if (prev?.stage === next?.stage && prev?.value === next?.value) return;
 	setSnapshot({
 		...snapshot,

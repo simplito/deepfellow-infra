@@ -31,3 +31,5 @@ CLAUDE.local.md
 /openspec
 
 /.coverage.json
+
+/.claude
