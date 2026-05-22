@@ -6,6 +6,7 @@ stages:
   - test
   - build
   - deploy
+  - release
   - post-merge
 
 variables:
@@ -129,6 +130,18 @@ deploy_to_dev:
   environment:
     name: dev
     url: https://dfinfra.test.simplito.com/
+
+push_to_github:
+  stage: release
+  image:
+    name: alpine/git:latest
+    entrypoint: [""]
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+  script:
+    - git remote add github https://oauth2:${GITHUB_MIRROR_TOKEN}@github.com/simplito/deepfellow-infra.git
+    - git push github HEAD:refs/heads/main
+    - git push github $CI_COMMIT_TAG
 
 create_issue_on_merge:
   image: hub.simplito.com/deepfellow/automatic-issue-creator:0.8.0
