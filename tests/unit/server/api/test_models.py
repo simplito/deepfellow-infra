@@ -57,6 +57,7 @@ def services_manager(retrieve_model_out: RetrieveModelOut) -> MagicMock:
     manager.list_models_from_service = AsyncMock(return_value=ListModelsOut(list=[]))
     manager.add_custom_model = AsyncMock(return_value="custom-123")
     manager.remove_custom_model = AsyncMock(return_value=None)
+    manager.sync_models_in_service = AsyncMock(return_value=None)
     return manager
 
 
@@ -336,5 +337,24 @@ def test_remove_custom_model_passes_ids(
 
 def test_remove_custom_model_returns_ok_status(client: TestClient, auth_header: dict[str, str]) -> None:
     resp = client.request("DELETE", f"/admin/services/{SERVICE_ID}/models/custom/cust-1", headers=auth_header)
+
+    assert resp.json()["status"] == "OK"
+
+
+def test_sync_models_returns_200(client: TestClient, auth_header: dict[str, str]) -> None:
+    resp = client.post(f"/admin/services/{SERVICE_ID}/models/sync", headers=auth_header)
+
+    assert resp.status_code == 200
+
+
+def test_sync_models_calls_manager(services_manager: MagicMock, client: TestClient, auth_header: dict[str, str]) -> None:
+    client.post(f"/admin/services/{SERVICE_ID}/models/sync", headers=auth_header)
+
+    assert services_manager.sync_models_in_service.call_count == 1
+    assert services_manager.sync_models_in_service.call_args.args[0] == SERVICE_ID
+
+
+def test_sync_models_returns_ok_status(client: TestClient, auth_header: dict[str, str]) -> None:
+    resp = client.post(f"/admin/services/{SERVICE_ID}/models/sync", headers=auth_header)
 
     assert resp.json()["status"] == "OK"

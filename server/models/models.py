@@ -117,3 +117,7 @@ class AddCustomModelOut(BaseModel):
 
 class RemoveCustomModelOut(BaseModel):
     status: Literal["OK"]
+
+
+class SyncModelsOut(BaseModel):
+    status: Literal["OK"]

@@ -170,6 +170,11 @@ class ServicesManager:
         service_type, instance = self.split_service_type_and_instance(service_id)
         return await self._get_service(service_type).remove_custom_model(instance, custom_model_id)
 
+    async def sync_models_in_service(self, service_id: str) -> None:
+        """Trigger immediate model sync for the service instance."""
+        service_type, instance = self.split_service_type_and_instance(service_id)
+        await self._get_service(service_type).sync_models(instance)
+
     async def get_docker_logs(self, service_id: str, model_id: str | None) -> str:
         """Get docker logs."""
         service_type, instance = self.split_service_type_and_instance(service_id)

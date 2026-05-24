@@ -155,6 +155,9 @@ class BaseService(ABC):
     async def remove_custom_model(self, instance: str, custom_model_id: CustomModelId) -> None:
         """Remove custom model."""
 
+    async def sync_models(self, instance: str) -> None:  # noqa: B027
+        """Trigger an immediate model sync. No-op for services without sync support."""
+
     @abstractmethod
     async def get_docker_logs(self, instance: str, model_id: str | None) -> str:
         """Get docker logs."""

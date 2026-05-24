@@ -25,6 +25,7 @@ from server.models.models import (
     ModelIdQuery,
     RemoveCustomModelOut,
     RetrieveModelOut,
+    SyncModelsOut,
     UninstallModelIn,
     UninstallModelOut,
 )
@@ -157,3 +158,19 @@ async def remove_custom_model(
     """List models in the service."""
     await services_manager.remove_custom_model(service_id, custom_model_id)
     return RemoveCustomModelOut(status="OK")
+
+
+@router.post(
+    "/sync",
+    summary="Trigger immediate model sync.",
+)
+@tracer.trace_request()
+async def sync_models(
+    request: Request,  # noqa: ARG001 needed for tracer
+    service_id: Annotated[str, Path(description="The ID of the service to sync.")],
+    services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
+    _: Annotated[str, Depends(auth_admin)],
+) -> SyncModelsOut:
+    """Trigger an immediate model sync for the service instance."""
+    await services_manager.sync_models_in_service(service_id)
+    return SyncModelsOut(status="OK")
