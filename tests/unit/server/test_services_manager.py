@@ -369,6 +369,18 @@ async def test_remove_custom_model(services_manager: ServicesManager):
 
 
 @pytest.mark.asyncio
+async def test_sync_models_in_service(services_manager: ServicesManager):
+    svc = FakeService("ollama")
+    svc.sync_models = AsyncMock()
+    services_manager.register_service(svc)
+
+    await services_manager.sync_models_in_service("ollama")
+
+    assert svc.sync_models.await_count == 1
+    assert svc.sync_models.await_args == call("default")
+
+
+@pytest.mark.asyncio
 async def test_get_docker_logs(services_manager: ServicesManager):
     svc = FakeService("ollama")
     svc.get_docker_logs = AsyncMock(return_value="log output")

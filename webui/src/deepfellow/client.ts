@@ -340,6 +340,12 @@ export class DeepFellowClient {
     );
   }
 
+  async syncModels(serviceId: string): Promise<{ status: string }> {
+    return this.makeRequest<{ status: string }>(`/admin/services/${serviceId}/models/sync`, {
+      method: "POST",
+    });
+  }
+
   async getDockerLogs(serviceId: string, modelId?: string): Promise<{ logs: string }> {
     const url = modelId
       ? `/admin/services/${serviceId}/docker/logs?model_id=${encodeURIComponent(modelId)}`

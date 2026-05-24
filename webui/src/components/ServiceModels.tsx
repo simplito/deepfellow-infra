@@ -72,19 +72,23 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
   const testAbortControllerRef = useRef<AbortController | null>(null);
   const queryClient = useQueryClient();
 
-  const modelsQuery = useQuery({
-    queryKey: ["admin", "services", serviceId, "models"],
-    queryFn: () => apiClient.listAdminServiceModels(serviceId),
-  });
-
-  const modelsData = modelsQuery.data;
-
   const serviceInfoQuery = useQuery({
     queryKey: ["admin", "services", serviceId],
     queryFn: () => apiClient.getAdminService(serviceId),
   });
 
   const serviceInfo = serviceInfoQuery.data;
+
+  const isOllamaExternal = serviceInfo?.type === "ollama-external";
+
+  const modelsQuery = useQuery({
+    queryKey: ["admin", "services", serviceId, "models"],
+    queryFn: () => apiClient.listAdminServiceModels(serviceId),
+    refetchInterval: isOllamaExternal ? 60_000 : false,
+    refetchIntervalInBackground: false,
+  });
+
+  const modelsData = modelsQuery.data;
 
   // Always show skeleton on entry to this page, even if React Query has cached data.
   // This avoids a "blank/lag" feel on subsequent navigations.
@@ -459,6 +463,19 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
     },
   });
 
+  const syncModelsMutation = useMutation({
+    mutationFn: async () => {
+      return apiClient.syncModels(serviceId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
+      toast.success("Models synced successfully");
+    },
+    onError: (error) => {
+      toast.error(`Failed to sync models: ${error.message}`);
+    },
+  });
+
   const dockerRestartMutation = useMutation({
     mutationFn: (modelId: string) => apiClient.restartDocker(serviceId, modelId),
     onMutate: () => {
@@ -750,11 +767,22 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
 
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold">Models for {serviceId}</h1>
-          {serviceInfo?.custom_model_spec && (
-            <Button onClick={handleAddCustomModel}>
-              Add custom model
-            </Button>
-          )}
+          <div className="flex gap-2">
+            {isOllamaExternal && (
+              <Button
+                variant="outline"
+                onClick={() => syncModelsMutation.mutate()}
+                disabled={syncModelsMutation.isPending}
+              >
+                {syncModelsMutation.isPending ? "Syncing…" : "↺ Sync"}
+              </Button>
+            )}
+            {serviceInfo?.custom_model_spec && (
+              <Button onClick={handleAddCustomModel}>
+                Add custom model
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-col md:flex-row gap-4">

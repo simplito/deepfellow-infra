@@ -9,13 +9,14 @@
 
 """Ollama external service."""
 
+import asyncio
 import json
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
 from fastapi import HTTPException
 from packaging import version
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 from server.config import get_main_dir
 from server.endpointregistry import ProxyOptions, RegistrationId
@@ -117,6 +118,7 @@ class ModelInstalledInfo:
 
 class OllamaExternalOptions(BaseModel):
     url: str = "http://localhost:11434"
+    sync_interval: int = Field(default=60, ge=10)
 
 
 class OllamaModelOptions(BaseModel):
@@ -144,6 +146,7 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def _after_init(self) -> None:
         self.models = {}
+        self._sync_tasks: dict[str, asyncio.Task[None]] = {}
         self.load_default_models("default")
 
     def load_default_models(self, instance: str) -> None:
@@ -167,6 +170,9 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
         return ServiceSpecification(
             fields=[
                 ServiceField(type="text", name="url", description="URL to external Ollama instance", default="http://localhost:11434"),
+                ServiceField(
+                    type="number", name="sync_interval", description="Background sync interval in seconds", default="60", required=False
+                ),
             ]
         )
 
@@ -214,6 +220,26 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
             custom=custom,
         )
 
+    async def load_instance(self, instance: str, instance_data: InstanceConfig) -> None:
+        """Load instance, skipping models no longer present in external Ollama."""
+        if not instance_data.options:
+            return
+
+        self.load_default_models(instance)
+
+        if instance_data.custom:
+            for custom in instance_data.custom:
+                self._add_custom_model(instance, custom)
+
+        promise = await self.install_instance(instance, instance_data.options, instance_data, save=False)
+        await promise.wait()
+        await self._save()
+
+        instance_info = self.instances_info[instance]
+        installed = instance_info.installed
+        if installed:
+            instance_info.config.models = [ModelConfig(model_id=mid, options=installed.models[mid].options) for mid in installed.models]
+
     def service_has_docker(self) -> bool:
         """Return true when docker is started when service is installed."""
         return False
@@ -244,6 +270,13 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
         return DownloadedInfo(**data)
+
+    def _determine_model_type(self, model_name: str, instance: str) -> str:
+        if instance in self.models and model_name in self.models[instance]:
+            return self.models[instance][model_name].type
+        if model_name in _const.models:
+            return _const.models[model_name].type
+        return "llm"
 
     async def _install_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfo, StreamChunk]:
         if not self.models.get(instance):
@@ -276,11 +309,113 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
                 raise HTTPException(status_code=400, detail=msg) from e
 
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
-            return InstalledInfo(models={}, options=options, parsed_options=parsed_options, base_url=parsed_options.url.rstrip("/"))
+            installed_info = InstalledInfo(
+                models={}, options=options, parsed_options=parsed_options, base_url=parsed_options.url.rstrip("/")
+            )
+            await self._sync_models_from_external_ollama(instance, installed_info, is_initial_sync=True)
+            self._start_sync_task(instance, parsed_options.sync_interval)
+            return installed_info
 
         return PromiseWithProgress(func=func)
 
+    def _start_sync_task(self, instance: str, sync_interval: int) -> None:
+        if instance in self._sync_tasks:
+            self._sync_tasks[instance].cancel()
+
+        async def _sync_loop() -> None:
+            while True:
+                await asyncio.sleep(sync_interval)
+                info = self.instances_info.get(instance)
+                if not info or not info.installed:
+                    break
+                try:
+                    await self._sync_models_from_external_ollama(instance, info.installed)
+                    await self._save()
+                except Exception:
+                    pass
+
+        self._sync_tasks[instance] = asyncio.create_task(_sync_loop())
+
+    def _register_synced_model(self, instance: str, installed_info: InstalledInfo, model_id: str, size_bytes: int) -> None:
+        model_type = self._determine_model_type(model_id, instance)
+        size_str = fmt_size(size_bytes) if size_bytes else ""
+
+        ollama_model = OllamaModel(id=model_id, size=size_str, type=model_type)
+        self.models[instance][model_id] = ollama_model
+        self.models_downloaded[model_id] = DownloadedInfo()
+
+        model_info = ModelInstalledInfo(
+            id=model_id,
+            type=model_type,
+            registered_name=model_id,
+            options=InstallModelIn(),
+            registration_id="",
+        )
+        if model_type == "llm":
+            model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
+                model=model_id,
+                props=ModelProps(private=True, type="llm", endpoints=self.get_supported_endpoints()),
+                chat_completions=ProxyOptions(url=f"{installed_info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
+                completions=ProxyOptions(url=f"{installed_info.base_url}/v1/completions", rewrite_model_to=model_id),
+                responses=(
+                    ProxyOptions(url=f"{installed_info.base_url}/v1/responses", rewrite_model_to=model_id)
+                    if self.support_responses
+                    else None
+                ),
+                messages=(
+                    ProxyOptions(url=f"{installed_info.base_url}/v1/messages", rewrite_model_to=model_id) if self.support_messages else None
+                ),
+                ollama_chat=ProxyOptions(url=f"{installed_info.base_url}/api/chat", rewrite_model_to=model_id),
+                registration_options=None,
+            )
+        if model_type == "embedding":
+            model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
+                model=model_id,
+                props=ModelProps(private=True, type="embedding", endpoints=EMBEDDINGS_ENDPOINTS),
+                options=ProxyOptions(url=f"{installed_info.base_url}/v1/embeddings", rewrite_model_to=model_id),
+                registration_options=None,
+            )
+        installed_info.models[model_id] = model_info
+
+    def _remove_stale_models(self, installed_info: InstalledInfo, stale_ids: set[str]) -> None:
+        for removed_id in stale_ids:
+            model = installed_info.models.pop(removed_id, None)
+            if model is not None:
+                if model.type == "llm":
+                    self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
+                if model.type == "embedding":
+                    self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
+            self.models_downloaded.pop(removed_id, None)
+
+    async def _sync_models_from_external_ollama(
+        self, instance: str, installed_info: InstalledInfo, *, is_initial_sync: bool = False
+    ) -> None:
+        res_tags = await fetch_from(f"{installed_info.base_url}/api/tags", "GET", None)
+        if res_tags.status_code != 200:
+            return
+
+        tag_data = json.loads(res_tags.data)
+        saved_model_ids = {m.model_id for m in (self.get_instance_info(instance).config.models or [])}
+        current_model_ids: set[str] = set()
+
+        for entry in tag_data.get("models", []):
+            model_id: str = entry["name"].removesuffix(":latest")
+            current_model_ids.add(model_id)
+
+            if model_id in installed_info.models:
+                continue
+            if not is_initial_sync and model_id in self.models_downloaded:
+                continue
+
+            self._register_synced_model(instance, installed_info, model_id, entry.get("size", 0))
+
+        self._remove_stale_models(installed_info, (set(installed_info.models) | saved_model_ids) - current_model_ids)
+
     async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
+        if instance in self._sync_tasks:
+            self._sync_tasks[instance].cancel()
+            del self._sync_tasks[instance]
+
         installed = self.get_instance_info(instance).installed
         if installed:
             for model in installed.models.copy().values():
@@ -466,6 +601,8 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
                 )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             self.models_downloaded[model_id] = DownloadedInfo()
+            await self._sync_models_from_external_ollama(instance, info, is_initial_sync=False)
+            await self._save()
             return InstallModelOut(status="OK", details="Installed")
 
         return PromiseWithProgress(func=func)
@@ -483,6 +620,15 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
         if options.purge and model_id in self.models_downloaded:
             await fetch_from(f"{info.base_url}/api/delete", "DELETE", {"name": model_id})
             del self.models_downloaded[model_id]
+
+        await self._sync_models_from_external_ollama(instance, info, is_initial_sync=False)
+        await self._save()
+
+    async def sync_models(self, instance: str) -> None:
+        """Trigger an immediate sync from external Ollama."""
+        info = self.get_instance_installed_info(instance)
+        await self._sync_models_from_external_ollama(instance, info, is_initial_sync=False)
+        await self._save()
 
     def get_supported_endpoints(self) -> list[str]:
         """Get supported endpoints."""

@@ -2089,6 +2089,27 @@ async def test_register_custom_endpoint_as_proxy_callback_invokes_make_http_requ
 
 
 @pytest.mark.asyncio
+async def test_register_custom_endpoint_as_proxy_callback_no_query_string():
+    reg = make_registry()
+    opts = ProxyOptions(url="http://example.com/custom/")
+    reg.register_custom_endpoint_as_proxy("my-svc", make_props(), opts, None)
+    ep = reg.custom_endpoints.get_model("my-svc")
+    mock_http_response = MagicMock()
+    mock_http_response.as_streaming_response.return_value = MagicMock(spec=StreamingResponse)
+    request = MagicMock()
+    request.headers = {"content-type": "application/json"}
+    request.method = "GET"
+    request.path_params = {"full_path": "my-svc/sub/path"}
+    request.stream.return_value = AsyncMock()
+    request.url.query = ""
+
+    with patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, return_value=mock_http_response) as mock_req:
+        await ep.endpoint.on_request(request)  # pyright: ignore[reportOptionalMemberAccess]
+
+    assert "?" not in mock_req.call_args.kwargs["url"]
+
+
+@pytest.mark.asyncio
 async def test_register_mcp_endpoint_as_proxy_callback_invokes_make_http_request():
     reg = make_registry()
     opts = ProxyOptions(url="http://example.com/mcp/")
@@ -2107,6 +2128,27 @@ async def test_register_mcp_endpoint_as_proxy_callback_invokes_make_http_request
         result = await ep.endpoint.on_request(request)  # pyright: ignore[reportOptionalMemberAccess]
 
     assert result is mock_streaming
+
+
+@pytest.mark.asyncio
+async def test_register_mcp_endpoint_as_proxy_callback_no_query_string():
+    reg = make_registry()
+    opts = ProxyOptions(url="http://example.com/mcp/")
+    reg.register_mcp_endpoint_as_proxy("mcp-svc", make_props(), opts, None)
+    ep = reg.mcp_endpoints.get_model("mcp-svc")
+    mock_http_response = MagicMock()
+    mock_http_response.as_streaming_response.return_value = MagicMock(spec=StreamingResponse)
+    request = MagicMock()
+    request.headers = {"content-type": "application/json"}
+    request.method = "GET"
+    request.path_params = {"full_path": "mcp-svc/sub/path"}
+    request.stream.return_value = AsyncMock()
+    request.url.query = ""
+
+    with patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, return_value=mock_http_response) as mock_req:
+        await ep.endpoint.on_request(request)  # pyright: ignore[reportOptionalMemberAccess]
+
+    assert "?" not in mock_req.call_args.kwargs["url"]
 
 
 @pytest.mark.asyncio
