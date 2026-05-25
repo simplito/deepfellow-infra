@@ -27,6 +27,8 @@ from pydantic import BaseModel
 from server.config import AppSettings
 from server.metrics_registry import MetricsRegistry
 from server.models.api import (
+    ALL_LLM_SUFFIXES,
+    LLM_SUFFIX_MAP,
     ApiModel,
     ApiModels,
     ChatCompletionRequest,
@@ -258,16 +260,6 @@ class ModelInfo(NamedTuple):
     type: str
 
 
-_LLM_SUFFIX_MAP: tuple[tuple[str, str], ...] = (
-    ("on_completion", "v1"),
-    ("on_chat_completion", "v2"),
-    ("on_responses", "v3"),
-    ("on_messages", "ant"),
-    ("on_ollama_chat", "ollama"),
-)
-_ALL_LLM_SUFFIXES = tuple(suffix for _, suffix in _LLM_SUFFIX_MAP)
-
-
 class EndpointRegistry:
     def __init__(
         self,
@@ -337,9 +329,9 @@ class EndpointRegistry:
         registration_options: RegistrationOptions | None,
     ) -> RegistrationId:
         """Register chat completion endpoint for given model."""
-        suffixes = [suffix for field, suffix in _LLM_SUFFIX_MAP if getattr(endpoint, field)]
+        suffixes = [suffix for field, suffix in LLM_SUFFIX_MAP if getattr(endpoint, field)]
 
-        model_type = "llm" if len(suffixes) == len(_ALL_LLM_SUFFIXES) else "llm-" + "-".join(suffixes)
+        model_type = "llm" if len(suffixes) == len(ALL_LLM_SUFFIXES) else "llm-" + "-".join(suffixes)
         return self.chat_completion_endpoints.add_model(model, props, endpoint, model_type, registration_options)
 
     def register_chat_completion_as_proxy(  # noqa: C901
@@ -667,7 +659,7 @@ class EndpointRegistry:
         """Register proxy."""
         if type == "llm" or type.startswith("llm-"):
             headers = {"Authorization": f"Bearer {api_key}"}
-            parts = set(_ALL_LLM_SUFFIXES) if type == "llm" else set(type.split("-")[1:])
+            parts = set(ALL_LLM_SUFFIXES) if type == "llm" else set(type.split("-")[1:])
 
             def _proxy(path: str) -> ProxyOptions:
                 return ProxyOptions(url=urljoin(url, path), headers=headers)

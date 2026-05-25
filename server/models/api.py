@@ -20,6 +20,14 @@ from fastapi import UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 LLM_ENDPOINTS = ["v1/completions, v1/chat/completions", "v1/responses", "v1/messages", "api/chat"]
+LLM_SUFFIX_MAP: tuple[tuple[str, str], ...] = (
+    ("on_completion", "v1"),
+    ("on_chat_completion", "v2"),
+    ("on_responses", "v3"),
+    ("on_messages", "ant"),
+    ("on_ollama_chat", "ollama"),
+)
+ALL_LLM_SUFFIXES = tuple(suffix for _, suffix in LLM_SUFFIX_MAP)
 EMBEDDINGS_ENDPOINTS = ["/v1/embeddings"]
 STT_ENDPOINTS = ["/v1/audio/transcriptions"]
 TTS_ENDPOINTS = ["/v1/audio/speech"]

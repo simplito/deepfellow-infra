@@ -613,6 +613,15 @@ async def test_perform_test_raises_runtime_error_for_unknown_type() -> None:
 
 
 @pytest.mark.asyncio
+async def test_perform_test_raises_runtime_error_for_llm_type_without_testable_endpoint() -> None:
+    tester = ModelTester()
+    entry = _make_registered_model("llm-ollama")
+
+    with pytest.raises(RuntimeError, match="unsupported type"):
+        await tester._perform_test(entry)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
 async def test_test_model_returns_error_on_test_error() -> None:
     tester = ModelTester()
     entry = _make_registered_model("custom")
