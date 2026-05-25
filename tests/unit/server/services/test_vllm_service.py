@@ -7,6 +7,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -1335,3 +1336,128 @@ async def test_resolve_custom_model_size_returns_none_on_exception(svc: VllmServ
         result = await svc._resolve_custom_model_size({"hf_id": "google/gemma"})  # pyright: ignore[reportPrivateUsage]
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_docker_logs_cache_hit(svc: VllmService) -> None:
+    svc._log_cache["my-container"] = (time.monotonic(), "cached logs")  # pyright: ignore[reportPrivateUsage]
+
+    result = await svc._get_docker_logs("my-container")  # pyright: ignore[reportPrivateUsage]
+
+    assert result == "cached logs"
+
+
+@pytest.mark.asyncio
+async def test_get_docker_logs_fetches_and_caches(svc: VllmService) -> None:
+    mock_result = MagicMock()
+    mock_result.stdout = "stdout logs"
+    mock_result.stderr = "stderr logs"
+
+    with patch("server.services.base2_service.Utils.run_command", new_callable=AsyncMock, return_value=mock_result):
+        result = await svc._get_docker_logs("my-container")  # pyright: ignore[reportPrivateUsage]
+
+    assert result == "stdout logsstderr logs"
+    assert "my-container" in svc._log_cache  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Total (incl. non-KV cache overhead): 8.50 GiB\n", 8.5),
+        ("Model weights: 6.00 GiB\nKV Cache: 2.00 GiB\n", 8.0),
+        ("model weights take 5.00 GiB\nKV cache memory: 1.50 GiB\n", 6.5),
+        ("Model weights: 4.00 GiB\n", 4.0),
+        ("KV cache: 3.00 GiB\n", 3.0),
+        ("no useful info here", None),
+    ],
+)
+def test_parse_vllm_vram_gb(raw: str, expected: float | None) -> None:
+    result = VllmService._parse_vllm_vram_gb(raw)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_get_vram_from_logs_returns_parsed_value(svc: VllmService) -> None:
+    installed = _make_installed_info()
+    model_info = _make_model_installed_info("test-model")
+    model_info.docker.container_name = "vllm-container"
+    installed.models["test-model"] = model_info
+    svc.instances_info["default"].installed = installed
+
+    with patch.object(svc, "_get_docker_logs", new_callable=AsyncMock, return_value="Total (incl. non-KV cache overhead): 7.00 GiB"):  # pyright: ignore[reportPrivateUsage]
+        result = await svc._get_vram_from_logs("default", "test-model")  # pyright: ignore[reportPrivateUsage]
+
+    assert result == 7.0
+
+
+@pytest.mark.asyncio
+async def test_get_vram_from_logs_returns_none_when_no_container(svc: VllmService) -> None:
+    installed = _make_installed_info()
+    model_info = _make_model_installed_info("test-model")
+    model_info.docker.container_name = ""
+    installed.models["test-model"] = model_info
+    svc.instances_info["default"].installed = installed
+
+    result = await svc._get_vram_from_logs("default", "test-model")  # pyright: ignore[reportPrivateUsage]
+
+    assert result is None
+
+
+def test_get_vram_estimate_returns_value(svc: VllmService) -> None:
+    svc.hardware.total_vram_gb = 24.0  # pyright: ignore[reportAttributeAccessIssue]
+    model_info = _make_model_installed_info("test-model", gpu_memory_utilization=0.5)
+
+    result = svc._get_vram_estimate(model_info)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == 12.0
+
+
+def test_get_vram_estimate_returns_none_when_no_utilization(svc: VllmService) -> None:
+    model_info = _make_model_installed_info("test-model", gpu_memory_utilization=None)
+
+    result = svc._get_vram_estimate(model_info)  # pyright: ignore[reportPrivateUsage]
+
+    assert result is None
+
+
+def test_get_vram_estimate_returns_none_when_total_vram_zero(svc: VllmService) -> None:
+    svc.hardware.total_vram_gb = 0.0  # pyright: ignore[reportAttributeAccessIssue]
+    model_info = _make_model_installed_info("test-model", gpu_memory_utilization=0.5)
+
+    result = svc._get_vram_estimate(model_info)  # pyright: ignore[reportPrivateUsage]
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_cached_vram_estimate_cache_hit(svc: VllmService) -> None:
+    svc._vram_cache[("default", "test-model")] = 4.0  # pyright: ignore[reportPrivateUsage]
+
+    result = await svc._get_cached_vram_estimate("default", "test-model", is_loaded=True)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == 4.0
+
+
+@pytest.mark.asyncio
+async def test_get_cached_vram_estimate_from_logs_non_none(svc: VllmService) -> None:
+    installed = _make_installed_info()
+    svc.instances_info["default"].installed = installed
+
+    with patch.object(svc, "_get_vram_from_logs", new_callable=AsyncMock, return_value=5.5):  # pyright: ignore[reportPrivateUsage]
+        result = await svc._get_cached_vram_estimate("default", "test-model", is_loaded=True)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == 5.5
+    assert svc._vram_cache[("default", "test-model")] == 5.5  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_get_cached_vram_estimate_model_not_in_installed(svc: VllmService) -> None:
+    installed = _make_installed_info()
+    svc.instances_info["default"].installed = installed  # no models in installed
+
+    with patch.object(svc, "_get_vram_from_logs", new_callable=AsyncMock, return_value=None):  # pyright: ignore[reportPrivateUsage]
+        result = await svc._get_cached_vram_estimate("default", "missing-model", is_loaded=True)  # pyright: ignore[reportPrivateUsage]
+
+    assert result is None
+    assert ("default", "missing-model") not in svc._vram_cache  # pyright: ignore[reportPrivateUsage]

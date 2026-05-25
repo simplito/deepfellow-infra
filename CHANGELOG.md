@@ -5,7 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
-## [Unreleased]
+## [0.26.3] - 26.05.2026
+
+### Added
+- Actual VRAM/RAM usage 
+- Estimated VRAM/RAM usage per model in ollama, llamacpp and vllm services
 
 ### Fixed
 - Fixed "Test" action for llama.cpp models in the admin UI — models with type `llm-v1-v2-v3-ant` were incorrectly reported as untestable.

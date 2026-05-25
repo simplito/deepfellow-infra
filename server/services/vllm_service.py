@@ -14,6 +14,7 @@ import logging
 import re
 import shutil
 from collections.abc import Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, TypedDict
@@ -189,10 +190,12 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
     hugging_face_cache_path = "/mnt/hf"
     models: dict[str, dict[str, VllmModel]]
     gpu_memory_utilization = 0
+    _vram_cache: dict[tuple[str, str], float]
 
     def _after_init(self) -> None:
         self.models = {}
         self.load_default_models("default")
+        self._vram_cache = {}
 
     def load_default_models(self, instance: str) -> None:
         """Load default models to instance."""
@@ -413,6 +416,8 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
                     installed = self._get_model_installed_info(instance_name, model_id)
 
                 if filters.installed is None or filters.installed == bool(installed):
+                    is_loaded = model_id in info.models
+                    vram_estimate_gb = await self._get_cached_vram_estimate(instance_name, model_id, is_loaded)
                     out_list.append(
                         RetrieveModelOut(
                             id=model_id,
@@ -424,6 +429,8 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
                             custom=model.custom,
                             spec=self.get_model_spec(instance_name, model.model_type),
                             has_docker=True,
+                            is_loaded=is_loaded,
+                            vram_estimate_gb=vram_estimate_gb,
                         )
                     )
 
@@ -438,6 +445,8 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         model = self.models[instance][model_id]
         installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(instance, model_id)
+        is_loaded = model_id in info.models
+        vram_estimate_gb = await self._get_cached_vram_estimate(instance, model_id, is_loaded)
         return RetrieveModelOut(
             id=model_id,
             service=self.get_id(instance),
@@ -448,6 +457,8 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             custom=model.custom,
             spec=self.get_model_spec(instance, model.model_type),
             has_docker=True,
+            is_loaded=is_loaded,
+            vram_estimate_gb=vram_estimate_gb,
         )
 
     async def _download_model(self, stream: Stream[StreamChunk], model_id: str, model: VllmModel, model_dir: Path) -> Path | None:
@@ -751,6 +762,60 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model_path := model.model_path:
                 shutil.rmtree(Path(model_path))
             del self.models_downloaded[model_id]
+
+    @staticmethod
+    def _parse_vllm_vram_gb(raw: str) -> float | None:
+        """Parse vLLM docker logs and return total estimated VRAM in GiB.
+
+        Tries the profiling summary first, then falls back to summing weights + KV cache.
+        """
+        total_re = re.compile(r"Total \(incl\. non-KV cache overhead\):\s*([\d.]+)\s*GiB", re.IGNORECASE)
+        if m := total_re.search(raw):
+            return float(m.group(1))
+
+        weights_re = re.compile(r"[Mm]odel weights(?: take)?\s*[:\s]*([\d.]+)\s*GiB")
+        kv_re = re.compile(r"KV [Cc]ache(?:\s+memory)?:\s*([\d.]+)\s*GiB")
+        total = 0.0
+        found = False
+        if m := weights_re.search(raw):
+            total += float(m.group(1))
+            found = True
+        if m := kv_re.search(raw):
+            total += float(m.group(1))
+            found = True
+        return round(total, 2) if found else None
+
+    async def _get_vram_from_logs(self, instance: str, model_id: str) -> float | None:
+        """Return actual GPU VRAM usage in GiB for an installed vLLM model by parsing its container logs."""
+        info = self.get_instance_installed_info(instance)
+        if (model_info := info.models.get(model_id)) and (container_name := model_info.docker.container_name or ""):
+            with suppress(Exception):
+                raw = await self._get_docker_logs(container_name)
+                return self._parse_vllm_vram_gb(raw)
+        return None
+
+    def _get_vram_estimate(self, model_info: ModelInstalledInfo) -> float | None:
+        """Return estimated VRAM in GiB based on gpu_memory_utilization fraction of total VRAM."""
+        if (utilization := model_info.gpu_memory_utilization) is None or (total_vram := self.hardware.total_vram_gb) <= 0:
+            return None
+        return round(utilization * total_vram, 2)
+
+    async def _get_cached_vram_estimate(self, instance_name: str, model_id: str, is_loaded: bool) -> float | None:
+        """Return cached VRAM estimate for a loaded model, evicting the cache when the model is unloaded."""
+        cache_key = (instance_name, model_id)
+        if not is_loaded:
+            self._vram_cache.pop(cache_key, None)
+            return None
+        if cache_key in self._vram_cache:
+            return self._vram_cache[cache_key]
+        vram_estimate_gb = await self._get_vram_from_logs(instance_name, model_id)
+        if vram_estimate_gb is None:
+            info = self.get_instance_installed_info(instance_name)
+            if model_info := info.models.get(model_id):
+                vram_estimate_gb = self._get_vram_estimate(model_info)
+        if vram_estimate_gb is not None:
+            self._vram_cache[cache_key] = vram_estimate_gb
+        return vram_estimate_gb
 
     async def stop_instance(self, instance: str) -> None:
         """Stop all the vLLM service Docker containers."""

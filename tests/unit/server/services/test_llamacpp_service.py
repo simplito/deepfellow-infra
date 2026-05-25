@@ -921,3 +921,99 @@ async def test_resolve_custom_model_size_returns_none_on_exception(svc: LLamacpp
         result = await svc._resolve_custom_model_size({"url": "https://example.com/model.gguf"})  # pyright: ignore[reportPrivateUsage]
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_cached_vram_estimate_cache_hit(svc: LLamacppService) -> None:
+    svc._vram_cache[("default", "test-model")] = 3.0  # pyright: ignore[reportPrivateUsage]
+
+    result = await svc._get_cached_vram_estimate("default", "test-model", is_loaded=True)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == 3.0
+
+
+@pytest.mark.asyncio
+async def test_get_cached_vram_estimate_from_logs_non_none(svc: LLamacppService) -> None:
+    with patch.object(svc, "_get_vram_from_logs", new_callable=AsyncMock, return_value=4.5):  # pyright: ignore[reportPrivateUsage]
+        result = await svc._get_cached_vram_estimate("default", "test-model", is_loaded=True)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == 4.5
+    assert svc._vram_cache[("default", "test-model")] == 4.5  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_get_cached_vram_estimate_stores_in_cache_when_estimate_available(svc: LLamacppService) -> None:
+    with (
+        patch.object(svc, "_get_vram_from_logs", new_callable=AsyncMock, return_value=None),  # pyright: ignore[reportPrivateUsage]
+        patch.object(svc, "_get_vram_estimate", new_callable=AsyncMock, return_value=2.0),  # pyright: ignore[reportPrivateUsage]
+    ):
+        result = await svc._get_cached_vram_estimate("default", "test-model", is_loaded=True)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == 2.0
+    assert svc._vram_cache[("default", "test-model")] == 2.0  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_install_model_appends_kv_cache_type_when_not_f16(svc: LLamacppService, deps: dict[str, Any], tmp_path: Path) -> None:
+    installed = _make_installed_info(svc)
+    installed.parsed_options.kv_cache_type = "q8_0"
+    svc.instances_info["default"].installed = installed
+    deps["docker_service"].install_and_run_docker = AsyncMock(return_value=8080)
+    deps["docker_service"].get_docker_subnet.return_value = None
+    deps["docker_service"].get_docker_container_name.return_value = "container"
+    deps["docker_service"].get_container_host.return_value = "localhost"
+    deps["docker_service"].get_container_port.return_value = 8080
+    captured: list[object] = []
+
+    async def capture_docker(opts: object) -> int:
+        captured.append(opts)
+        return 8080
+
+    deps["docker_service"].install_and_run_docker = capture_docker
+    model_id = next(iter(svc.models["default"]))
+
+    with (
+        patch.object(svc, "_download_model_or_set_progress", new_callable=AsyncMock, return_value=(tmp_path / "model.gguf", "model.gguf")),  # pyright: ignore[reportPrivateUsage]
+        patch("server.services.llamacpp_service.get_gguf_context_window", new_callable=AsyncMock, return_value=4096),
+        patch("server.services.llamacpp_service.get_base_url", return_value="http://localhost:8080"),
+        patch.object(svc, "get_specified_hardware_parts", return_value=[]),
+    ):
+        promise = await svc._install_model("default", model_id, InstallModelIn(spec={}))  # pyright: ignore[reportPrivateUsage]
+        await promise.wait()
+
+    assert len(captured) == 1
+    assert "--cache-type-k q8_0" in captured[0].command  # type: ignore[union-attr]
+    assert "--cache-type-v q8_0" in captured[0].command  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_install_model_appends_parallel_flag_when_num_parallel_gt_1(
+    svc: LLamacppService, deps: dict[str, Any], tmp_path: Path
+) -> None:
+    installed = _make_installed_info(svc)
+    installed.parsed_options.num_parallel = 4
+    svc.instances_info["default"].installed = installed
+    captured: list[object] = []
+
+    async def capture_docker(opts: object) -> int:
+        captured.append(opts)
+        return 8080
+
+    deps["docker_service"].install_and_run_docker = capture_docker
+    deps["docker_service"].get_docker_subnet.return_value = None
+    deps["docker_service"].get_docker_container_name.return_value = "container"
+    deps["docker_service"].get_container_host.return_value = "localhost"
+    deps["docker_service"].get_container_port.return_value = 8080
+    model_id = next(iter(svc.models["default"]))
+
+    with (
+        patch.object(svc, "_download_model_or_set_progress", new_callable=AsyncMock, return_value=(tmp_path / "model.gguf", "model.gguf")),  # pyright: ignore[reportPrivateUsage]
+        patch("server.services.llamacpp_service.get_gguf_context_window", new_callable=AsyncMock, return_value=4096),
+        patch("server.services.llamacpp_service.get_base_url", return_value="http://localhost:8080"),
+        patch.object(svc, "get_specified_hardware_parts", return_value=[]),
+    ):
+        promise = await svc._install_model("default", model_id, InstallModelIn(spec={}))  # pyright: ignore[reportPrivateUsage]
+        await promise.wait()
+
+    assert len(captured) == 1
+    assert "--parallel 4" in captured[0].command  # type: ignore[union-attr]

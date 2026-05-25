@@ -1135,3 +1135,10 @@ async def test_clear_working_dir_no_op_when_not_exists(base2_svc: _Base2Impl, tm
         await base2_svc._clear_working_dir()  # pyright: ignore[reportPrivateUsage]
 
     assert not non_existent.exists()
+
+
+@pytest.mark.asyncio
+async def test_base_service_get_loaded_model_info_returns_none(base_svc: _BaseImpl) -> None:
+    result = await base_svc.get_loaded_model_info("default")
+
+    assert result is None

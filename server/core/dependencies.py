@@ -19,6 +19,7 @@ from server.endpointregistry import EndpointRegistry
 from server.metrics import MetricsService
 from server.serviceprovider import ServiceProvider
 from server.services_manager import ServicesManager
+from server.utils.hardware import Hardware
 from server.websockets.infra_websocket_server import InfraWebsocketServer
 from server.websockets.parent_infra import ParentInfra
 
@@ -63,6 +64,11 @@ def get_infra_websocket_server(request: Request) -> InfraWebsocketServer:
 def get_parent_infra(request: Request) -> ParentInfra:
     """Get parent infra from application state."""
     return get_dependency(request, "parent_infra")
+
+
+def get_hardware(request: Request) -> Hardware:
+    """Get Hardware instance from application state."""
+    return get_dependency(request, "hardware")
 
 
 def get_metrics_service(request: Request) -> MetricsService:

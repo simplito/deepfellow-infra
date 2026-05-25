@@ -12,6 +12,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from server.models.services import GpuCardStats, GpuStats
+from server.utils.core import CommandResult2
 from server.utils.hardware import (
     CpuInfo,
     GpuInfo,
@@ -107,6 +109,122 @@ def test_intel_gpu_info_long_name(name: str, vram: str | None, id: int, expected
     gpu = IntelGpuInfo(name=name, vram=vram, id=id)
 
     assert gpu.long_name == expected_long_name
+
+
+def _make_hardware() -> Hardware:
+    hw = Hardware()
+    hw.is_info_collected = True
+    hw._gpus = []  # pyright: ignore[reportPrivateUsage]
+    hw._nvidia_gpus = []  # pyright: ignore[reportPrivateUsage]
+    hw._amd_gpus = []  # pyright: ignore[reportPrivateUsage]
+    hw._intel_gpus = []  # pyright: ignore[reportPrivateUsage]
+    hw._total_vram_gb = 0.0  # pyright: ignore[reportPrivateUsage]
+    return hw
+
+
+@pytest.mark.asyncio
+@patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock)
+async def test_get_realtime_stats_single_gpu(mock_cmd: AsyncMock):
+    mock_cmd.return_value = CommandResult2(stdout="NVIDIA GeForce RTX 4090, 24576, 8192\n", stderr="")
+
+    result = await _make_hardware().get_realtime_stats()
+
+    assert result == GpuStats(total_vram_gb=24.0, used_vram_gb=8.0, gpus=None)
+
+
+@pytest.mark.asyncio
+@patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock)
+async def test_get_realtime_stats_two_gpus_sums_totals(mock_cmd: AsyncMock):
+    mock_cmd.return_value = CommandResult2(stdout="NVIDIA RTX 4090, 24576, 4096\nNVIDIA RTX 4090, 24576, 8192\n", stderr="")
+
+    result = await _make_hardware().get_realtime_stats()
+
+    assert result is not None
+    assert result.total_vram_gb == 48.0
+    assert result.used_vram_gb == 12.0
+    assert result.gpus == [
+        GpuCardStats(name="NVIDIA RTX 4090", total_vram_gb=24.0, used_vram_gb=4.0),
+        GpuCardStats(name="NVIDIA RTX 4090", total_vram_gb=24.0, used_vram_gb=8.0),
+    ]
+
+
+@pytest.mark.asyncio
+@patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock)
+async def test_get_realtime_stats_empty_output_returns_none(mock_cmd: AsyncMock):
+    mock_cmd.return_value = CommandResult2(stdout="", stderr="")
+
+    result = await _make_hardware().get_realtime_stats()
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+@patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock)
+async def test_get_realtime_stats_command_fails_returns_none(mock_cmd: AsyncMock):
+    mock_cmd.side_effect = RuntimeError
+
+    result = await _make_hardware().get_realtime_stats()
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+@patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock)
+async def test_get_realtime_stats_malformed_lines_are_skipped(mock_cmd: AsyncMock):
+    mock_cmd.return_value = CommandResult2(stdout="bad line\nNVIDIA RTX 4090, 24576, 8192\nnot,enough\n", stderr="")
+
+    result = await _make_hardware().get_realtime_stats()
+
+    assert result is not None
+    assert result.total_vram_gb == 24.0
+    assert result.gpus is None
+
+
+@pytest.mark.asyncio
+async def test_get_amd_stats_returns_cards():
+    hw = _make_hardware()
+    total_bytes = 8 * 1024**3
+    used_bytes = 3 * 1024**3
+    rocm_output = f"0, {total_bytes}, {used_bytes}\n"
+
+    with patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock) as mock_cmd:
+        mock_cmd.return_value = CommandResult2(stdout=rocm_output, stderr="")
+        cards = await hw._get_amd_stats()  # pyright: ignore[reportPrivateUsage]
+
+    assert cards is not None
+    assert len(cards) == 1
+    assert cards[0].name == "AMD GPU 0"
+    assert cards[0].total_vram_gb == pytest.approx(8.0, abs=0.1)
+    assert cards[0].used_vram_gb == pytest.approx(3.0, abs=0.1)
+
+
+@pytest.mark.asyncio
+async def test_get_amd_stats_tool_unavailable_returns_none():
+    hw = _make_hardware()
+
+    with patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock) as mock_cmd:
+        mock_cmd.side_effect = RuntimeError("rocm-smi not found")
+        cards = await hw._get_amd_stats()  # pyright: ignore[reportPrivateUsage]
+
+    assert cards is None
+
+
+@pytest.mark.asyncio
+async def test_get_realtime_stats_falls_back_to_amd_when_nvidia_unavailable():
+    hw = _make_hardware()
+    total_bytes = 16 * 1024**3
+    used_bytes = 4 * 1024**3
+    rocm_output = f"0, {total_bytes}, {used_bytes}\n"
+
+    amd_ok = CommandResult2(stdout=rocm_output, stderr="")
+
+    with patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock) as mock_cmd:
+        mock_cmd.side_effect = [RuntimeError("no nvidia"), amd_ok]
+        result = await hw.get_realtime_stats()
+
+    assert result is not None
+    assert result.total_vram_gb == pytest.approx(16.0, abs=0.1)
+    assert result.used_vram_gb == pytest.approx(4.0, abs=0.1)
 
 
 @pytest.mark.parametrize(
@@ -397,3 +515,57 @@ def test_create_nvidia_gpu_info_list_skips_empty_lines():
 
     assert len(result) == 1
     assert result[0].name == "NVIDIA RTX 4090"
+
+
+@pytest.mark.asyncio
+@patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock)
+async def test_get_nvidia_stats_skips_malformed_values(mock_cmd: AsyncMock):
+    mock_cmd.return_value = CommandResult2(stdout="GPU Name, not_a_number, 4096\nNVIDIA RTX 4090, 24576, 8192\n", stderr="")
+
+    result = await _make_hardware()._get_nvidia_stats()  # pyright: ignore[reportPrivateUsage]
+
+    assert result is not None
+    assert len(result) == 1
+    assert result[0].name == "NVIDIA RTX 4090"
+
+
+@pytest.mark.asyncio
+async def test_get_amd_stats_skips_lines_with_fewer_than_three_parts():
+    hw = _make_hardware()
+    total_bytes = 8 * 1024**3
+    used_bytes = 2 * 1024**3
+    # First line has only 2 parts (no comma-separated used), second is valid
+    rocm_output = f"0,{total_bytes}\n1, {total_bytes}, {used_bytes}\n"
+
+    with patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock) as mock_cmd:
+        mock_cmd.return_value = CommandResult2(stdout=rocm_output, stderr="")
+        cards = await hw._get_amd_stats()  # pyright: ignore[reportPrivateUsage]
+
+    assert cards is not None
+    assert len(cards) == 1
+    assert cards[0].name == "AMD GPU 1"
+
+
+@pytest.mark.asyncio
+async def test_get_amd_stats_skips_malformed_numeric_values():
+    hw = _make_hardware()
+    # Valid format but non-integer values trigger ValueError
+    rocm_output = "0, not_a_number, 1073741824\n"
+
+    with patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock) as mock_cmd:
+        mock_cmd.return_value = CommandResult2(stdout=rocm_output, stderr="")
+        cards = await hw._get_amd_stats()  # pyright: ignore[reportPrivateUsage]
+
+    assert cards is None
+
+
+@pytest.mark.asyncio
+async def test_get_realtime_stats_returns_cached_result():
+    hw = _make_hardware()
+    cached_stats = GpuStats(total_vram_gb=16.0, used_vram_gb=4.0, gpus=None)
+    hw._realtime_stats_cache = cached_stats  # pyright: ignore[reportPrivateUsage]
+    hw._realtime_stats_cache_ts = float("inf")  # pyright: ignore[reportPrivateUsage]
+
+    result = await hw.get_realtime_stats()
+
+    assert result is cached_stats

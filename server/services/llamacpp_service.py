@@ -9,6 +9,7 @@
 
 """Llamacpp service."""
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,10 +57,11 @@ from server.utils.core import (
     normalize_name,
     try_parse_pydantic,
 )
-from server.utils.files import get_gguf_context_window
+from server.utils.files import get_gguf_arch_params, get_gguf_context_window
 from server.utils.hardware import GpuInfo, HardwarePartInfo, IntelGpuInfo, NvidiaGpuInfo
 from server.utils.loading import Progress
 from server.utils.size_fetcher import fetch_file_size_from_url
+from server.utils.vram_calculator import estimate_vram_gb, parse_cache_type_bits
 
 
 class LlamacppModel(BaseModel):
@@ -159,6 +161,7 @@ class ModelInstalledInfo:
     docker_exposed_port: int
     registration_id: RegistrationId
     base_url: str
+    context_window: int | None = None
 
     def get_info(self) -> ModelInfo:
         """Get info."""
@@ -167,6 +170,8 @@ class ModelInstalledInfo:
 
 class LLamacppOptions(BaseModel):
     hardware: str | bool | None = None
+    kv_cache_type: str = "f16"
+    num_parallel: int = 1
 
 
 class LLamacppModelOptions(BaseModel):
@@ -188,6 +193,7 @@ class DownloadedInfo:
 
 class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
     models: dict[str, dict[str, LlamacppModel]]
+    _vram_cache: dict[tuple[str, str], float]
 
     @property
     def _supported_gpus(self) -> list[GpuInfo]:
@@ -197,6 +203,12 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
     def _after_init(self) -> None:
         self.models = {}
         self.load_default_models("default")
+        self._vram_cache = {}
+
+    @staticmethod
+    def mib_to_gib(mib: float) -> float | None:
+        """Convert MiB to GiB."""
+        return None if mib == 0.0 else round(mib / 1024, 2)
 
     def load_default_models(self, instance: str) -> None:
         """Load default models to instance."""
@@ -335,6 +347,62 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
             raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
         del self.models[instance][parsed.id]
 
+    @staticmethod
+    def _parse_llamacpp_vram_mib(raw: str) -> float:
+        """Parse llama.cpp docker logs and return total GPU VRAM in MiB (summed across all CUDA devices)."""
+        cuda_buffer_regex = re.compile(r"CUDA\d+\s+(?:model buffer|KV buffer|compute buffer)\s+size\s*=\s*([\d.]+)\s*MiB")
+        return sum((float(m.group(1)) for m in cuda_buffer_regex.finditer(raw)), 0.0)
+
+    async def _get_vram_estimate(self, instance: str, model_id: str) -> float | None:
+        """Return estimated VRAM usage in GB from GGUF metadata as fallback."""
+        info = self.get_instance_installed_info(instance)
+
+        if (
+            (model_info := info.models.get(model_id))
+            and (model_path := model_info.model_path)
+            and (arch := await get_gguf_arch_params(model_path))
+        ):
+            try:
+                weights_bytes = model_path.stat().st_size
+            except FileNotFoundError:
+                return None
+
+            llamacpp_default_context_window = 512
+            num_ctx = model_info.context_window or llamacpp_default_context_window
+            cache_bit = parse_cache_type_bits(info.parsed_options.kv_cache_type)
+            num_parallel = info.parsed_options.num_parallel
+            return estimate_vram_gb(arch, weights_bytes, num_ctx, cache_bit, num_parallel)
+
+        return None
+
+    async def _get_vram_from_logs(self, instance: str, model_id: str) -> float | None:
+        """Return actual GPU VRAM usage in GiB for an installed llama.cpp model by parsing its container logs."""
+        info = self.get_instance_installed_info(instance)
+        if (model_info := info.models.get(model_id)) and (container_name := model_info.docker.container_name or ""):
+            try:
+                raw = await self._get_docker_logs(container_name)
+            except Exception:
+                return None
+
+            total_mib = self._parse_llamacpp_vram_mib(raw)
+            return self.mib_to_gib(total_mib)
+
+        return None
+
+    async def _get_cached_vram_estimate(self, instance_name: str, model_id: str, is_loaded: bool) -> float | None:
+        cache_key = (instance_name, model_id)
+        if not is_loaded:
+            self._vram_cache.pop(cache_key, None)
+            return None
+        if cache_key in self._vram_cache:
+            return self._vram_cache[cache_key]
+        vram_estimate_gb = await self._get_vram_from_logs(instance_name, model_id)
+        if vram_estimate_gb is None:
+            vram_estimate_gb = await self._get_vram_estimate(instance_name, model_id)
+        if vram_estimate_gb is not None:
+            self._vram_cache[cache_key] = vram_estimate_gb
+        return vram_estimate_gb
+
     async def list_models(self, input_instance: str | list[str] | None, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
         instances = [input_instance] if isinstance(input_instance, str) else input_instance if input_instance else self.instances_info
@@ -350,12 +418,13 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
 
             info = self.get_instance_installed_info(instance_name)
             for model_id, model in instance_models.items():
-                if model_id in info.models:
-                    installed = info.models[model_id].get_info()
-                else:
-                    installed = self._get_model_installed_info(instance_name, model_id)
+                installed = (
+                    info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(instance_name, model_id)
+                )
 
                 if filters.installed is None or filters.installed == bool(installed):
+                    is_loaded = model_id in info.models
+                    vram_estimate_gb = await self._get_cached_vram_estimate(instance_name, model_id, is_loaded)
                     out_list.append(
                         RetrieveModelOut(
                             id=model_id,
@@ -367,6 +436,8 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
                             custom=model.custom,
                             spec=self.get_model_spec(),
                             has_docker=True,
+                            is_loaded=is_loaded,
+                            vram_estimate_gb=vram_estimate_gb,
                         )
                     )
 
@@ -380,6 +451,8 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         model = self.models[instance][model_id]
         installed = info.models[model_id].get_info() if model_id in info.models else self._get_model_installed_info(instance, model_id)
+        is_loaded = model_id in info.models
+        vram_estimate_gb = await self._get_cached_vram_estimate(instance, model_id, is_loaded)
         return RetrieveModelOut(
             id=model_id,
             service=self.get_id(instance),
@@ -390,6 +463,8 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
             custom=model.custom,
             spec=self.get_model_spec(),
             has_docker=True,
+            is_loaded=is_loaded,
+            vram_estimate_gb=vram_estimate_gb,
         )
 
     async def _download_model(self, stream: Stream[StreamChunk], model: LlamacppModel) -> tuple[Path | None, str]:
@@ -470,6 +545,11 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
             model_in_container = f"/models/{model_filename}"
             volumes = [f"{local_model_path.absolute()}:{model_in_container}:ro"]
             command_options = ["--host 0.0.0.0", "--port 8080", f"--model {model_in_container}", *additional_options]
+            kv_cache_type = installed.parsed_options.kv_cache_type
+            if kv_cache_type != "f16":
+                command_options.extend([f"--cache-type-k {kv_cache_type}", f"--cache-type-v {kv_cache_type}"])
+            if installed.parsed_options.num_parallel > 1:
+                command_options.append(f"--parallel {installed.parsed_options.num_parallel}")
             if model.jinja:
                 command_options.append("--jinja")
             command = " ".join(command_options)
@@ -489,6 +569,7 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
                 subnet=subnet,
             )
             docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
+            self._log_cache.pop(docker_options.container_name or "", None)
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             container_host = self.docker_service.get_container_host(subnet, docker_options.name)
             container_port = self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port)
@@ -503,6 +584,7 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
                 docker_exposed_port=docker_exposed_port,
                 registration_id="",
                 base_url=get_base_url(container_host, container_port),
+                context_window=context_window,
             )
             model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                 model=registered_name,
@@ -533,6 +615,7 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
         info = self.get_instance_installed_info(instance)
         if model_id in info.models:
             model = info.models[model_id]
+            self._log_cache.pop(model.docker.container_name or "", None)
             del info.models[model_id]
             self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
             await self.docker_service.uninstall_docker(model.docker)

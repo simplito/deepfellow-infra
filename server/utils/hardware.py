@@ -10,11 +10,13 @@
 """Hardware module."""
 
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import cpuinfo  # type: ignore
 
+from server.models.services import GpuCardStats, GpuStats
 from server.utils.core import Utils
 
 INTEL_VENDOR_ID = "0x8086"
@@ -110,8 +112,7 @@ def get_vram_gb(vram_str: str | None) -> float:
         return 0.0
 
     vram_str = vram_str.strip().upper()
-    # Matches numbers (including decimals) and the unit
-    match = re.match(r"([\d.]+)\s*([MGT]B)", vram_str)
+    match = re.match(r"([\d.]+)\s*([MGT]I?B)", vram_str)
 
     if not match:
         return 0.0
@@ -119,8 +120,8 @@ def get_vram_gb(vram_str: str | None) -> float:
     value = float(match.group(1))
     unit = match.group(2)
 
-    # Multipliers to normalize everything to GB
-    multipliers = {"MB": 1 / 1024, "GB": 1, "TB": 1024}
+    # Multipliers to normalize everything to GB (GiB/MiB treated as binary equivalents)
+    multipliers = {"MB": 1 / 1024, "GB": 1, "TB": 1024, "MIB": 1 / 1024, "GIB": 1, "TIB": 1024}
 
     return value * multipliers.get(unit, 0)
 
@@ -212,6 +213,9 @@ async def get_hardware_info() -> list[HardwarePartInfo]:
     return [cpu_info, *nvidia_gpus_info]
 
 
+_REALTIME_STATS_TTL = 5.0
+
+
 class Hardware:
     is_info_collected: bool
     _total_vram_gb: float
@@ -221,6 +225,8 @@ class Hardware:
     _nvidia_gpus: list[NvidiaGpuInfo]
     _amd_gpus: list[AmdGpuInfo]
     _intel_gpus: list[IntelGpuInfo]
+    _realtime_stats_cache: GpuStats | None
+    _realtime_stats_cache_ts: float
 
     def __init__(self) -> None:
         self.is_info_collected = False
@@ -230,6 +236,8 @@ class Hardware:
         self._amd_gpus = []
         self._intel_gpus = []
         self._total_vram_gb = 0
+        self._realtime_stats_cache = None
+        self._realtime_stats_cache_ts = 0.0
 
     async def init_async(self) -> None:
         """Init async."""
@@ -311,3 +319,74 @@ class Hardware:
     def _get_total_vram(self) -> float:
         """Get total vram value in GB."""
         return sum(get_vram_gb(gpu.vram) for gpu in self.gpus)
+
+    async def _get_nvidia_stats(self) -> list[GpuCardStats] | None:
+        """Return per-card stats from nvidia-smi, or None if unavailable."""
+        cmd = "nvidia-smi --query-gpu=name,memory.total,memory.used --format=csv,noheader,nounits"
+        try:
+            result = await Utils.run_command_for_success(cmd)
+        except RuntimeError:
+            return None
+
+        cards: list[GpuCardStats] = []
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+            parts = line.split(",")
+            if len(parts) != 3:
+                continue
+            try:
+                name = parts[0].strip()
+                total_gb = round(float(parts[1].strip()) / 1024, 2)
+                used_gb = round(float(parts[2].strip()) / 1024, 2)
+                cards.append(GpuCardStats(name=name, total_vram_gb=total_gb, used_vram_gb=used_gb))
+            except ValueError:
+                continue
+
+        return cards or None
+
+    async def _get_amd_stats(self) -> list[GpuCardStats] | None:
+        """Return per-card stats from rocm-smi, or None if unavailable."""
+        cmd = "rocm-smi --showmeminfo vram --csv --noheader"
+        try:
+            result = await Utils.run_command_for_success(cmd)
+        except RuntimeError:
+            return None
+
+        cards: list[GpuCardStats] = []
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+            parts = line.split(",")
+            # rocm-smi --showmeminfo vram --csv format: GPU_ID,VRAM Total Memory (B),VRAM Total Used Memory (B)
+            if len(parts) < 3:
+                continue
+            try:
+                name = f"AMD GPU {parts[0].strip()}"
+                total_gb = round(int(parts[1].strip()) / 1024**3, 2)
+                used_gb = round(int(parts[2].strip()) / 1024**3, 2)
+                cards.append(GpuCardStats(name=name, total_vram_gb=total_gb, used_vram_gb=used_gb))
+            except (ValueError, IndexError):
+                continue
+
+        return cards or None
+
+    async def get_realtime_stats(self) -> GpuStats | None:
+        """Return live GPU stats (NVIDIA or AMD), cached for up to _REALTIME_STATS_TTL seconds."""
+        if time.monotonic() - self._realtime_stats_cache_ts < _REALTIME_STATS_TTL:
+            return self._realtime_stats_cache
+
+        cards = await self._get_nvidia_stats() or await self._get_amd_stats()
+
+        stats = (
+            GpuStats(
+                total_vram_gb=round(sum(c.total_vram_gb for c in cards), 2),
+                used_vram_gb=round(sum(c.used_vram_gb for c in cards), 2),
+                gpus=cards if len(cards) > 1 else None,
+            )
+            if cards
+            else None
+        )
+        self._realtime_stats_cache = stats
+        self._realtime_stats_cache_ts = time.monotonic()
+        return stats

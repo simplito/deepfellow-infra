@@ -97,6 +97,8 @@ class RetrieveModelOut(BaseModel):
     size: str
     spec: ModelSpecification
     has_docker: bool
+    vram_estimate_gb: float | None = None
+    is_loaded: bool | None = None
 
 
 class ListModelsFilters(BaseModel):

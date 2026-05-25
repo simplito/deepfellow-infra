@@ -13,6 +13,7 @@ import asyncio
 import contextlib
 import logging
 import shutil
+import time
 import uuid
 from abc import abstractmethod
 from collections.abc import Sequence
@@ -117,6 +118,9 @@ class Instance[InstalledInfoType]:
     config: InstanceConfig
 
 
+_LOG_CACHE_TTL = 8.0
+
+
 class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  # noqa: UP046
     config: AppSettings
     endpoint_registry: EndpointRegistry
@@ -129,6 +133,7 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     instances_info: dict[str, Instance[InstalledInfoType]]
     images_download_progress: dict[str, Stream[StreamChunk]]
     models_download_progress: dict[str, Stream[StreamChunk]]
+    _log_cache: dict[str, tuple[float, str]]
 
     def __init__(
         self,
@@ -151,10 +156,22 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         self.instances_info = {"default": Instance(None, None, {}, InstanceConfig())}
         self.models_download_progress = {}
         self.images_download_progress = {}
+        self._log_cache = {}
         self._after_init()
 
     def _after_init(self) -> None:
         """Do some custom initialization."""
+
+    async def _get_docker_logs(self, container_name: str) -> str:
+        """Return raw docker logs output, with TTL caching per container."""
+        cached = self._log_cache.get(container_name)
+        if cached and (time.monotonic() - cached[0]) < _LOG_CACHE_TTL:
+            return cached[1]
+        cmd = " ".join(Utils.shell_escape(p) for p in ["docker", "logs", container_name]) + " 2>&1"
+        result = await Utils.run_command(cmd)
+        raw = result.stdout + result.stderr
+        self._log_cache[container_name] = (time.monotonic(), raw)
+        return raw
 
     def load_default_models(self, instance: str) -> None:
         """Load default models to instance."""

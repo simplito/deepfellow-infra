@@ -109,3 +109,31 @@ class InfraSettingsOut(BaseModel):
 
 class UpdateInfraSettingsIn(BaseModel):
     cloud_enabled: bool
+
+
+class GpuCardStats(BaseModel):
+    name: str
+    total_vram_gb: float
+    used_vram_gb: float
+
+
+class GpuStats(BaseModel):
+    total_vram_gb: float
+    used_vram_gb: float
+    gpus: list[GpuCardStats] | None = None
+
+
+class MemoryLoadComponent(BaseModel):
+    name: str
+    device: str | None
+    size: str
+
+
+class MemoryLoadSession(BaseModel):
+    model: str | None = None
+    components: list[MemoryLoadComponent]
+    total: str
+
+
+class MemoryLoadOut(BaseModel):
+    sessions: list[MemoryLoadSession]

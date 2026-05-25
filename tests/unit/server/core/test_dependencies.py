@@ -22,6 +22,7 @@ from server.core.dependencies import (
     get_config,
     get_dependency,
     get_endpoint_registry,
+    get_hardware,
     get_infra_websocket_server,
     get_metrics_service,
     get_parent_infra,
@@ -74,6 +75,7 @@ def test_get_dependency_raises_runtime_error_when_missing() -> None:
         ("infra_websocket_server", get_infra_websocket_server),
         ("parent_infra", get_parent_infra),
         ("metrics_service", get_metrics_service),
+        ("hardware", get_hardware),
     ],
 )
 def test_getter_returns_state_value(state_key: str, getter: object) -> None:
