@@ -81,8 +81,12 @@ def test_is_log_payloads_enabled_false(settings: AppSettings) -> None:
     assert settings.is_log_payloads_enabled() is False
 
 
-def test_is_stop_containers_on_shutdown_enabled_default(settings: AppSettings) -> None:
-    assert settings.is_stop_containers_on_shutdown_enabled() is True
+def test_is_stop_containers_on_shutdown_enabled_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    for k, v in _REQUIRED_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("DF_STOP_CONTAINERS_ON_SHUTDOWN", raising=False)
+    s = AppSettings()  # pyright: ignore[reportCallIssue]
+    assert s.is_stop_containers_on_shutdown_enabled() is True
 
 
 def test_is_stop_containers_on_shutdown_disabled(monkeypatch: pytest.MonkeyPatch) -> None:

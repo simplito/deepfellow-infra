@@ -11,6 +11,8 @@ limitations under the License.
 import { useState, useMemo, useEffect, useRef, useDeferredValue, startTransition, memo, useCallback, type RefObject } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/deepfellow/client";
+import type { GpuStats, GpuCardStats } from "@/deepfellow/types";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -25,7 +27,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { MoreVertical } from "lucide-react";
+import { MoreVertical, Info } from "lucide-react";
 import { DynamicFormModal } from "./DynamicFormModal";
 import { ConfirmModal } from "./ConfirmModal";
 import { UninstallWithPurgeModal } from "./UninstallWithPurgeModal";
@@ -75,20 +77,38 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
   const serviceInfoQuery = useQuery({
     queryKey: ["admin", "services", serviceId],
     queryFn: () => apiClient.getAdminService(serviceId),
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
   });
 
   const serviceInfo = serviceInfoQuery.data;
 
   const isOllamaExternal = serviceInfo?.type === "ollama-external";
 
+  const isCpuOnly = (() => {
+    const installed = serviceInfo?.installed;
+    if (!installed || typeof installed !== "object") return false;
+    const spec = installed as Record<string, unknown>;
+    if ("stage" in spec) return false;
+    return spec.hardware === "CPU" || spec.hardware === false;
+  })();
+
   const modelsQuery = useQuery({
     queryKey: ["admin", "services", serviceId, "models"],
     queryFn: () => apiClient.listAdminServiceModels(serviceId),
-    refetchInterval: isOllamaExternal ? 60_000 : false,
+    refetchInterval: isOllamaExternal ? 60_000 : 10_000,
     refetchIntervalInBackground: false,
   });
 
   const modelsData = modelsQuery.data;
+
+  const gpuStatsQuery = useQuery<GpuStats | null>({
+    queryKey: ["admin", "settings", "hardware", "gpu-stats"],
+    queryFn: () => apiClient.getGpuStats(),
+    retry: false,
+    refetchInterval: 10_000,
+  });
+
 
   // Always show skeleton on entry to this page, even if React Query has cached data.
   // This avoids a "blank/lag" feel on subsequent navigations.
@@ -224,7 +244,7 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
             onTick: (value) => {
               setModelInstallProgress(serviceId, modelId, { stage: currentStage, value });
               const toastId = toastIdsRef.current[modelId];
-              if (toastId) {
+              if (toastId && !hasRealProgressByModelRef.current[modelId]) {
                 toast.loading(`${getStageLabel(currentStage)} ${modelId}: ${(value * 100).toFixed(1)}%`, { id: toastId });
               }
             },
@@ -385,8 +405,9 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
     onSuccess: (result) => {
       // Clear the abort controller ref
       testAbortControllerRef.current = null;
+      queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
       // Update modal with actual result
-      modal.open(TestResultModal, { 
+      modal.open(TestResultModal, {
         result,
         isLoading: false,
         onCancel: () => {
@@ -404,6 +425,7 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
         modal.close();
         return;
       }
+      queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
       // Show error state in modal
       modal.open(TestResultModal, { 
         result: {
@@ -856,9 +878,14 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
         </div>
       </div>
 
+      {gpuStatsQuery.data != null && !gpuStatsQuery.isError && (
+        <GpuStatsPanel stats={gpuStatsQuery.data} />
+      )}
+
       <ModelsTable
         models={filteredModels}
         serviceId={serviceId}
+        isCpuOnly={isCpuOnly}
         installingModelId={installingModelId}
         isInstallingAny={installMutation.isPending}
         isPurgePending={purgeMutation.isPending}
@@ -883,6 +910,7 @@ const EMPTY_SPEC: Record<string, unknown> = {};
 type ModelsTableProps = {
   models: ServiceModel[];
   serviceId: string;
+  isCpuOnly: boolean;
   installingModelId: string | null;
   isInstallingAny: boolean;
   isRemoveCustomPending: boolean;
@@ -902,6 +930,7 @@ type ModelsTableProps = {
 const ModelsTable = memo(function ModelsTable({
   models,
   serviceId,
+  isCpuOnly,
   installingModelId,
   isInstallingAny,
   isRemoveCustomPending,
@@ -926,6 +955,22 @@ const ModelsTable = memo(function ModelsTable({
             <TableHead>Type</TableHead>
             <TableHead className="min-w-[150px]">Status</TableHead>
             <TableHead>Size</TableHead>
+            <TableHead>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="flex items-center gap-1 cursor-default">
+                      {isCpuOnly ? "RAM (est.)" : "VRAM (est.)"} <Info className="h-3 w-3 text-muted-foreground" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {isCpuOnly
+                      ? "Estimate based on the model architecture. Values are in GiB (binary gigabytes)."
+                      : "Estimate based on the model architecture. Values are in GiB (binary gigabytes). Does not account for the CUDA context overhead on the GPU."}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </TableHead>
             <TableHead>Configuration</TableHead>
             <TableHead className="text-right min-w-[165px]">Actions</TableHead>
           </TableRow>
@@ -933,7 +978,7 @@ const ModelsTable = memo(function ModelsTable({
         <TableBody>
           {models.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground">
+              <TableCell colSpan={7} className="text-center text-muted-foreground">
                 No models found
               </TableCell>
             </TableRow>
@@ -943,6 +988,7 @@ const ModelsTable = memo(function ModelsTable({
                 key={model.id}
                 model={model}
                 serviceId={serviceId}
+                isCpuOnly={isCpuOnly}
                 installingModelId={installingModelId}
                 isInstallingAny={isInstallingAny}
                 isRemoveCustomPending={isRemoveCustomPending}
@@ -969,6 +1015,7 @@ const ModelsTable = memo(function ModelsTable({
 type ModelRowProps = {
   model: ServiceModel;
   serviceId: string;
+  isCpuOnly: boolean;
   installingModelId: string | null;
   isInstallingAny: boolean;
   isRemoveCustomPending: boolean;
@@ -988,6 +1035,7 @@ type ModelRowProps = {
 const ModelRow = memo(function ModelRow({
   model,
   serviceId,
+  isCpuOnly,
   installingModelId,
   isInstallingAny,
   isRemoveCustomPending,
@@ -1053,10 +1101,16 @@ const ModelRow = memo(function ModelRow({
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={isInstalled ? "default" : "secondary"}>{isInstalled ? "Installed" : "Not installed"}</Badge>
             {!isInstalled && isDownloaded && <Badge variant="outline">Downloaded</Badge>}
+            {isInstalled && model.is_loaded === true && <Badge variant="outline">{isCpuOnly ? "In RAM" : "In VRAM"}</Badge>}
           </div>
         )}
       </TableCell>
       <TableCell className="font-mono text-sm">{model.size || "N/A"}</TableCell>
+      <TableCell className="font-mono text-sm">
+        {isInstalled
+          ? (model.vram_estimate_gb != null ? `${model.vram_estimate_gb.toFixed(1)}GB` : "—")
+          : null}
+      </TableCell>
       <TableCell>
         {isInstalled && installedSpecEntries.length > 0 && !hasProgressStage ? (
           <div className="space-y-1">
@@ -1133,6 +1187,30 @@ const ModelRow = memo(function ModelRow({
     </TableRow>
   );
 });
+
+function GpuStatsPanel({ stats }: { stats: GpuStats }) {
+  if (stats.gpus && stats.gpus.length > 1) {
+    return (
+      <div className="mb-4 rounded-lg border px-4 py-2 text-sm">
+        <span className="font-medium">GPU VRAM:</span>
+        <div className="mt-1 flex flex-col gap-0.5">
+          {stats.gpus.map((gpu: GpuCardStats, i: number) => (
+            <span key={i} className="text-muted-foreground">
+              <span className="font-medium text-foreground truncate max-w-[200px] inline-block align-bottom">{gpu.name}</span>
+              {" — "}{gpu.used_vram_gb.toFixed(1)} / {gpu.total_vram_gb.toFixed(1)} GB
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="mb-4 flex items-center gap-2 rounded-lg border px-4 py-2 text-sm">
+      <span className="font-medium">GPU VRAM:</span>
+      <span>{stats.used_vram_gb.toFixed(1)} GB used / {stats.total_vram_gb.toFixed(1)} GB total</span>
+    </div>
+  );
+}
 
 function ServiceModelsSkeleton() {
   return (

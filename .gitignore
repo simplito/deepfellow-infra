@@ -31,7 +31,6 @@ memory
 /ollama
 
 /openspec
+/memory
 
 /.coverage.json
-
-/.claude

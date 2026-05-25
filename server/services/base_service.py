@@ -170,6 +170,10 @@ class BaseService(ABC):
     async def restart_docker(self, instance: str, model_id: str | None) -> None:
         """Get docker compose file."""
 
+    async def get_loaded_model_info(self, instance: str) -> dict[str, int] | None:  # noqa: ARG002
+        """Return {model_name: context_length} for models currently in VRAM. None if not applicable."""
+        return None
+
     @abstractmethod
     async def stop_instance(self, instance: str) -> None:
         """Stop the service gracefully.

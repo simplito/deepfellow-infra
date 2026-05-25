@@ -16,6 +16,7 @@ import type {
   TestResult,
   ShowMeshInfoOut,
   InfraSettings,
+  GpuStats,
 } from "./types";
 import { InstallationWarningsError } from "./types";
 import { readSSEStream, type ProgressEvent } from "@/utils/sse-stream";
@@ -367,6 +368,14 @@ export class DeepFellowClient {
     return this.makeRequest<{ status: string }>(url, {
       method: "POST",
     });
+  }
+
+  async getGpuStats(): Promise<GpuStats | null> {
+    try {
+      return await this.makeRequest<GpuStats | null>("/admin/settings/hardware/gpu-stats");
+    } catch {
+      return null;
+    }
   }
 
   async getMeshInfo(): Promise<ShowMeshInfoOut> {

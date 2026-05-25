@@ -83,6 +83,20 @@ export interface ServiceModel {
   size: string;
   custom?: string; // Custom model ID if custom
   has_docker?: boolean;
+  vram_estimate_gb?: number | null;
+  is_loaded?: boolean | null;
+}
+
+export interface GpuCardStats {
+  name: string;
+  total_vram_gb: number;
+  used_vram_gb: number;
+}
+
+export interface GpuStats {
+  total_vram_gb: number;
+  used_vram_gb: number;
+  gpus?: GpuCardStats[] | null;
 }
 
 export interface ServiceModelsResponse {
