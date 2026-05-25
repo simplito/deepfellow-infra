@@ -9,9 +9,11 @@ __pycache__
 /.vscode
 /.claude/settings.json
 /.claude/settings.local.md
+.claude/settings.local.json
+.claude/skills/openspec-explore/memory/
 CLAUDE.local.md
-
 /openspec/changes/
+memory
 
 
 /static/assets

@@ -23,6 +23,7 @@ from starlette.datastructures import Headers
 
 from server.endpointregistry import ChatCompletionEndpoint, RegistryEntry, SimpleEndpoint
 from server.models.api import (
+    ALL_LLM_SUFFIXES,
     ChatCompletionRequest,
     CompletionLegacyRequest,
     CreateSpeechRequest,
@@ -39,6 +40,13 @@ from server.models.api import (
 from server.models.common import JsonSerializable, StarletteResponse
 
 logger = logging.getLogger("uvicorn.error")
+
+LLM_TEST_HANDLERS = {
+    "v3": "_test_responses",
+    "ant": "_test_messages",
+    "v2": "_test_chat_completions",
+    "v1": "_test_completions",
+}
 
 
 class Response(NamedTuple):
@@ -86,24 +94,13 @@ class ModelTester:
             logger.exception("Error during executing model test")
             return {"error": "Internal Server Error"}
 
-    async def _perform_test(self, entry: RegistryEntry) -> JsonSerializable:  # noqa: C901
-        if entry.registered_model.type in [
-            "llm",
-            "llm-v1-v2-v3",
-            "llm-v3",
-            "llm-v3-ant",
-            "llm-v2-v3",
-            "llm-v2-v3-ant",
-            "llm-v1-v3",
-            "llm-v1-v3-ant",
-        ]:
-            return await self._test_responses(entry.registered_model.name, entry.registered_model.endpoint)
-        if entry.registered_model.type in ["llm-v1-v2-ant", "llm-v1-ant", "llm-v2-ant", "llm-ant"]:
-            return await self._test_messages(entry.registered_model.name, entry.registered_model.endpoint)
-        if entry.registered_model.type in ["llm-v2", "llm-v1-v2"]:
-            return await self._test_chat_completions(entry.registered_model.name, entry.registered_model.endpoint)
-        if entry.registered_model.type == "llm-v1":
-            return await self._test_completions(entry.registered_model.name, entry.registered_model.endpoint)
+    async def _perform_test(self, entry: RegistryEntry) -> JsonSerializable:
+        if entry.registered_model.type == "llm" or entry.registered_model.type.startswith("llm-"):
+            parts = set(ALL_LLM_SUFFIXES) if entry.registered_model.type == "llm" else set(entry.registered_model.type.split("-")[1:])
+            for suffix, method_name in LLM_TEST_HANDLERS.items():
+                if suffix in parts:
+                    method = getattr(self, method_name)
+                    return await method(entry.registered_model.name, entry.registered_model.endpoint)
         if entry.registered_model.type == "embedding":
             return await self._test_embedding(entry.registered_model.name, entry.registered_model.endpoint)
         if entry.registered_model.type == "tts":
