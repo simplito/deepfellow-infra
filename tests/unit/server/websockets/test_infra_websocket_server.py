@@ -20,7 +20,7 @@ from server.websockets.infra_websocket_server import (
     InfraWebsocketServer,
     InfraWsData,
 )
-from server.websockets.models import InitRequest, UpdateModelsRequest, UsageChangeRequest
+from server.websockets.models import InitRequest, InitResponse, TopologyUpdateRequest, UpdateModelsRequest, UsageChangeRequest
 
 MESH_KEY = "secret-key"
 
@@ -38,6 +38,8 @@ def make_model(name: str = "test-model", model_type: str = "llm") -> Model:
 def make_server() -> InfraWebsocketServer:
     config = MagicMock()
     config.mesh_key.get_secret_value.return_value = MESH_KEY
+    config.infra_url = "http://test-infra"
+    config.name = "test-infra"
     parent_infra = MagicMock()
     endpoint_registry = MagicMock()
     return InfraWebsocketServer(
@@ -162,6 +164,19 @@ async def test_dispatch_update_models():
 
 
 @pytest.mark.asyncio
+async def test_dispatch_topology_update():
+    server = make_server()
+    server._on_topology_update = MagicMock(return_value="OK")  # pyright: ignore[reportPrivateUsage]
+    params = {"action": "join", "url": "http://sub", "name": "sub", "models": []}
+    ctx = InfraWsData(authorized=make_authorized())
+
+    result = await server._handle_json_rpc_request("topology_update", params, ctx)  # pyright: ignore[reportPrivateUsage]
+
+    assert server._on_topology_update.call_count == 1  # pyright: ignore[reportPrivateUsage]
+    assert result == "OK"
+
+
+@pytest.mark.asyncio
 async def test_dispatch_unknown_method_raises_api_error():
     server = make_server()
     ctx = InfraWsData(authorized=None)
@@ -225,7 +240,7 @@ async def test_on_init_success_without_check_key():
 
     result = await server._on_init(params, ctx)  # pyright: ignore[reportPrivateUsage]
 
-    assert result == "OK"
+    assert isinstance(result, InitResponse)
     assert ctx.authorized is not None
     assert ctx.authorized.name == "sub"
     assert cast("MagicMock", server.endpoint_registry).update_models.call_count == 1
@@ -245,7 +260,7 @@ async def test_on_init_with_check_key_http_200():
     with patch("server.websockets.infra_websocket_server.make_http_request", new=AsyncMock(return_value=http_response)):
         result = await server._on_init(params, ctx)  # pyright: ignore[reportPrivateUsage]
 
-    assert result == "OK"
+    assert isinstance(result, InitResponse)
     assert ctx.authorized is not None
     assert cast("MagicMock", server.endpoint_registry).update_models.call_count == 1
 
@@ -317,6 +332,122 @@ def test_on_update_models_unauthorised_raises():
         server._on_update_models(params, ctx)  # pyright: ignore[reportPrivateUsage]
 
     assert exc_info.value.code == 3
+
+
+def test_on_topology_update_unauthorised_raises():
+    server = make_server()
+    ctx = InfraWsData(authorized=None)
+    params = TopologyUpdateRequest(action="join", url="http://child", name="child")
+
+    with pytest.raises(ApiError) as exc_info:
+        server._on_topology_update(params, ctx)  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.code == 3
+
+
+def test_on_topology_update_join_adds_child():
+    server = make_server()
+    auth = make_authorized(url="http://reporter", name="reporter")
+    ctx = InfraWsData(authorized=auth)
+    params = TopologyUpdateRequest(action="join", url="http://child", name="child")
+
+    result = server._on_topology_update(params, ctx)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == "OK"
+    assert "http://child" in server._nested_topology["http://reporter"].children  # pyright: ignore[reportPrivateUsage]
+
+
+def test_on_topology_update_leave_removes_child():
+    server = make_server()
+    auth = make_authorized(url="http://reporter", name="reporter")
+    ctx = InfraWsData(authorized=auth)
+    server._nested_topology["http://reporter"] = TopologyUpdateRequest(  # pyright: ignore[reportPrivateUsage]
+        action="join",
+        url="http://reporter",
+        name="reporter",
+        children={"http://child": TopologyUpdateRequest(action="join", url="http://child", name="child")},
+    )
+
+    result = server._on_topology_update(TopologyUpdateRequest(action="leave", url="http://child", name="child"), ctx)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == "OK"
+    assert "http://child" not in server._nested_topology["http://reporter"].children  # pyright: ignore[reportPrivateUsage]
+
+
+def test_on_topology_update_creates_reporter_entry_if_missing():
+    server = make_server()
+    auth = make_authorized(url="http://reporter", name="reporter")
+    ctx = InfraWsData(authorized=auth)
+    params = TopologyUpdateRequest(action="join", url="http://child", name="child")
+
+    server._on_topology_update(params, ctx)  # pyright: ignore[reportPrivateUsage]
+
+    assert "http://reporter" in server._nested_topology  # pyright: ignore[reportPrivateUsage]
+
+
+def test_on_update_models_updates_nested_topology_models():
+    server = make_server()
+    auth = make_authorized()
+    ctx = InfraWsData(authorized=auth)
+    server._nested_topology[auth.url] = TopologyUpdateRequest(action="join", url=auth.url, name=auth.name)  # pyright: ignore[reportPrivateUsage]
+    new_models = [make_model("new-model")]
+    params = UpdateModelsRequest(models=new_models)
+
+    server._on_update_models(params, ctx)  # pyright: ignore[reportPrivateUsage]
+
+    assert server._nested_topology[auth.url].models == new_models  # pyright: ignore[reportPrivateUsage]
+
+
+def test_on_topology_update_skips_own_url():
+    server = make_server()
+    auth = make_authorized(url="http://reporter", name="reporter")
+    ctx = InfraWsData(authorized=auth)
+    # params.url matches config.infra_url — circular connection
+    params = TopologyUpdateRequest(action="join", url="http://test-infra", name="self")
+
+    result = server._on_topology_update(params, ctx)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == "OK"
+    empty = TopologyUpdateRequest(action="join", url="", name="")
+    reporter_entry = server._nested_topology.get("http://reporter", empty)  # pyright: ignore[reportPrivateUsage]
+    assert "http://test-infra" not in reporter_entry.children
+
+
+def test_on_topology_update_skips_ancestor_url():
+    server = make_server()
+    ancestor = MagicMock()
+    ancestor.url = "http://ancestor"
+    cast("MagicMock", server.parent_infra).ancestors = [ancestor]
+    auth = make_authorized(url="http://reporter", name="reporter")
+    ctx = InfraWsData(authorized=auth)
+    params = TopologyUpdateRequest(action="join", url="http://ancestor", name="ancestor")
+
+    result = server._on_topology_update(params, ctx)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == "OK"
+    # reporter entry should NOT have been created with the loop child
+    topology = server._nested_topology  # pyright: ignore[reportPrivateUsage]
+    empty = TopologyUpdateRequest(action="join", url="", name="")
+    reporter_entry = topology.get("http://reporter", empty)
+    assert "http://reporter" not in topology or "http://ancestor" not in reporter_entry.children
+
+
+def test_strip_loop_urls_removes_loop_children():
+    server = make_server()
+    safe_child = TopologyUpdateRequest(action="join", url="http://safe", name="safe")
+    loop_child = TopologyUpdateRequest(action="join", url="http://loop", name="loop")
+    params = TopologyUpdateRequest(
+        action="join",
+        url="http://parent",
+        name="parent",
+        children={"http://safe": safe_child, "http://loop": loop_child},
+    )
+
+    result = server._strip_loop_urls(params, {"http://loop"})  # pyright: ignore[reportPrivateUsage]
+
+    assert "http://loop" not in result.children
+    assert "http://safe" in result.children
+    assert result is not params  # new instance was created
 
 
 def test_get_mesh_info_no_connections():

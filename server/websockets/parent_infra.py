@@ -19,10 +19,12 @@ from server.utils.core import OneTimeKey
 from server.utils.exceptions import ApiError
 from server.utils.json_rpc_client import JsonRpcClient
 from server.websockets.infra_client import InfraClient
-from server.websockets.models import InitRequest, UpdateModelsRequest, UsageChangeRequest
+from server.websockets.models import AncestorInfo, InitRequest, TopologyUpdateRequest, UpdateModelsRequest, UsageChangeRequest
 from server.websockets.websocket_client import WebSocketClient
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from server.endpointregistry import EndpointRegistry
 
 logger = logging.getLogger("uvicorn.error")
@@ -31,15 +33,23 @@ logger = logging.getLogger("uvicorn.error")
 class ParentInfra(WebSocketClient):
     endpoint_registry: "EndpointRegistry"
 
-    def __init__(self, config: AppSettings, task_manager: TaskManager):
+    def __init__(self, config: AppSettings, task_manager: TaskManager, url: str = ""):
         self.config = config
         self.task_manager = task_manager
         self.client = JsonRpcClient(send=lambda x: self._send(x), timeout=30)
         self.infra_client = InfraClient(self.client)
-        self.enabled = self.config.connect_to_mesh_url != ""
+        self.parent_url = url or config.connect_to_mesh_url
+        self.enabled = self.parent_url != ""
         self.one_time_key = OneTimeKey()
-        uri = f"{self.config.connect_to_mesh_url}/ws" if self.enabled else ""
+        self._ancestors: list[AncestorInfo] = []
+        self.get_children: Callable[[], dict[str, TopologyUpdateRequest]] = dict
+        uri = f"{self.parent_url}/ws" if self.enabled else ""
         super().__init__(uri)
+
+    @property
+    def ancestors(self) -> list[AncestorInfo]:
+        """Ordered list of ancestors received during init handshake (parent first)."""
+        return self._ancestors
 
     async def _send(self, data: str) -> None:
         if not self.enabled or not self.ws:
@@ -61,16 +71,18 @@ class ParentInfra(WebSocketClient):
     async def on_start(self) -> None:
         """On start functions."""
         try:
-            await self.infra_client.init(
+            response = await self.infra_client.init(
                 InitRequest(
                     auth=self.config.connect_to_mesh_key.get_secret_value(),
                     name=self.config.name,
                     url=self.config.infra_url,
                     api_key=self.config.infra_api_key.get_secret_value(),
                     models=self.endpoint_registry.list_models(),
+                    children=self.get_children(),
                     check_key=self.one_time_key.key,
                 )
             )
+            self._ancestors = response.ancestors
         except ApiError as e:
             if e.code == 2 and e.message == "Invalid api key":
                 self.process_loop = False

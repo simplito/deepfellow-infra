@@ -15,6 +15,7 @@ import type {
   ServiceModel,
   TestResult,
   ShowMeshInfoOut,
+  MeshTopologyNode,
   InfraSettings,
   GpuStats,
 } from "./types";
@@ -380,6 +381,10 @@ export class DeepFellowClient {
 
   async getMeshInfo(): Promise<ShowMeshInfoOut> {
     return this.makeRequest<ShowMeshInfoOut>("/admin/mesh/info");
+  }
+
+  async getMeshTopology(): Promise<MeshTopologyNode[]> {
+    return this.makeRequest<MeshTopologyNode[]>("/admin/mesh/topology");
   }
 
   async getSettings(): Promise<InfraSettings> {

@@ -9,9 +9,29 @@
 
 """Infra client."""
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 from server.models.api import Model, RegistrationId
+
+
+class AncestorInfo(BaseModel):
+    url: str
+    name: str
+    models: list[Model] = []
+
+
+class InitResponse(BaseModel):
+    ancestors: list[AncestorInfo]
+
+
+class TopologyUpdateRequest(BaseModel):
+    action: Literal["join", "leave"]
+    url: str
+    name: str = ""
+    models: list[Model] = []
+    children: dict[str, "TopologyUpdateRequest"] = {}
 
 
 class InitRequest(BaseModel):
@@ -20,6 +40,7 @@ class InitRequest(BaseModel):
     url: str
     api_key: str
     models: list[Model]
+    children: dict[str, TopologyUpdateRequest] = {}
     check_key: str | None = None  # TODO: params.check_key should be switched to requried parameter after old infra migration
 
 

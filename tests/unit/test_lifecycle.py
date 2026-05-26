@@ -95,6 +95,7 @@ _BASE_PATCHES = [
     "server.lifecycle.TaskManager",
     "server.lifecycle.ServiceProvider",
     "server.lifecycle.ParentInfra",
+    "server.lifecycle.ParentInfraGroup",
     "server.lifecycle.ServicesManager",
     "server.lifecycle.ModelTester",
     "server.lifecycle.EndpointRegistry",

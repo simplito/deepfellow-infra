@@ -48,6 +48,7 @@ from server.utils.hardware import Hardware
 from server.utils.model_downloader import ModelDownloader
 from server.websockets.infra_websocket_server import InfraWebsocketServer
 from server.websockets.parent_infra import ParentInfra
+from server.websockets.parent_infra_group import ParentInfraGroup
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -78,7 +79,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         app.state.metrics_registry = metrics_registry = MetricsRegistry()
         app.state.task_manager = task_manager = TaskManager()
         app.state.service_provider = service_provider = ServiceProvider(config)
-        app.state.parent_infra = parent_infra = ParentInfra(config, task_manager)
+        parents = [ParentInfra(config, task_manager, config.connect_to_mesh_url)] if config.connect_to_mesh_url else []
+        app.state.parent_infra = parent_infra = ParentInfraGroup(parents)
         app.state.services_manager = services_manager = ServicesManager()
         app.state.model_tester = model_tester = ModelTester()
         app.state.endpoint_registry = endpoint_registry = EndpointRegistry(config, parent_infra, model_tester, metrics_registry)

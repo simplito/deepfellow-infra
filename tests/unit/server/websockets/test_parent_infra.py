@@ -13,7 +13,7 @@ import pytest
 
 from server.models.mesh import CheckMeshConnection
 from server.utils.exceptions import ApiError
-from server.websockets.models import InitRequest, UsageChangeRequest
+from server.websockets.models import InitRequest, InitResponse, UsageChangeRequest
 from server.websockets.parent_infra import ParentInfra
 
 
@@ -30,7 +30,7 @@ def make_parent_infra(url: str = "ws://mesh") -> ParentInfra:
 
     # Replace collaborators with mocks so tests don't need real JsonRpc/InfraClient
     infra.infra_client = MagicMock()
-    infra.infra_client.init = AsyncMock(return_value=None)
+    infra.infra_client.init = AsyncMock(return_value=InitResponse(ancestors=[]))
     infra.infra_client.usage_change = MagicMock()
     infra.infra_client.update_models = MagicMock()
 

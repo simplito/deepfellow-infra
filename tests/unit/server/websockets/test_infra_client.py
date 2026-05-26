@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 
 from server.websockets.infra_client import InfraClient
-from server.websockets.models import InitRequest, UpdateModelsRequest, UsageChangeRequest
+from server.websockets.models import InitRequest, InitResponse, TopologyUpdateRequest, UpdateModelsRequest, UsageChangeRequest
 
 
 def _make_rpc_client(return_value: object = "OK") -> MagicMock:
@@ -42,7 +42,7 @@ async def test_init_returns_ok() -> None:
 
     result = await infra.init(MagicMock(spec=InitRequest))
 
-    assert result == "OK"
+    assert result == InitResponse(ancestors=[])
 
 
 @pytest.mark.asyncio
@@ -85,5 +85,27 @@ async def test_update_models_returns_ok() -> None:
     infra = InfraClient(rpc)
 
     result = await infra.update_models(MagicMock(spec=UpdateModelsRequest))
+
+    assert result == "OK"
+
+
+@pytest.mark.asyncio
+async def test_topology_update_calls_topology_update_method() -> None:
+    rpc = _make_rpc_client()
+    infra = InfraClient(rpc)
+    params = MagicMock(spec=TopologyUpdateRequest)
+
+    await infra.topology_update(params)
+
+    assert rpc.request.await_count == 1
+    assert rpc.request.await_args == call("topology_update", params)
+
+
+@pytest.mark.asyncio
+async def test_topology_update_returns_ok() -> None:
+    rpc = _make_rpc_client("OK")
+    infra = InfraClient(rpc)
+
+    result = await infra.topology_update(MagicMock(spec=TopologyUpdateRequest))
 
     assert result == "OK"

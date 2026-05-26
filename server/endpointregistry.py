@@ -50,7 +50,7 @@ from server.models.api import (
 from server.models.common import JsonSerializable, StarletteResponse
 from server.utils.core import HttpClientError, Utils, make_http_request
 from server.websockets.models import RegistrationId, UsageChangeRequest
-from server.websockets.parent_infra import ParentInfra
+from server.websockets.parent_infra_group import ParentInfraGroup
 
 if TYPE_CHECKING:
     from server.model_tester import ModelTester
@@ -110,7 +110,7 @@ class Endpoint[T]:
     def __init__(
         self,
         registry: dict[RegistrationId, RegistryEntry],
-        parent_infra: ParentInfra,
+        parent_infra: ParentInfraGroup,
     ):
         self.registry = registry
         self.parent_infra = parent_infra
@@ -264,7 +264,7 @@ class EndpointRegistry:
     def __init__(
         self,
         config: AppSettings,
-        parent_infra: ParentInfra,
+        parent_infra: ParentInfraGroup,
         model_tester: "ModelTester",
         metrics_registry: MetricsRegistry,
     ):
