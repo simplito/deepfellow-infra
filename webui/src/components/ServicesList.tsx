@@ -425,15 +425,8 @@ export function ServicesList() {
     });
   };
 
-  const handleShowMeshInfo = async () => {
-    try {
-      const data = await apiClient.getMeshInfo();
-      modal.open(MeshInfoModal, {
-        meshInfo: data.info,
-      });
-    } catch (error) {
-      toast.error(`Failed to fetch mesh info: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
+  const handleShowMeshInfo = () => {
+    modal.open(MeshInfoModal, {});
   };
 
   const handleInstallClick = async (service: Service, installAnotherInstance: boolean) => {

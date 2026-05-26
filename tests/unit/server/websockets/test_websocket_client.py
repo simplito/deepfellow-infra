@@ -16,6 +16,32 @@ import server.websockets.websocket_client as _wc_module
 from server.websockets.websocket_client import WebSocketClient
 
 
+@pytest.mark.asyncio
+async def test_connect_passes_ping_parameters() -> None:
+    """websockets.connect is called with ping_interval=5 and ping_timeout=10."""
+    client = WebSocketClient("ws://localhost:9999")
+
+    connect_cm = MagicMock()
+    connect_cm.__aenter__ = AsyncMock(side_effect=RuntimeError("stop"))
+    connect_cm.__aexit__ = AsyncMock(return_value=False)
+    connect_mock = MagicMock(return_value=connect_cm)
+    mock_websockets = MagicMock()
+    mock_websockets.connect = connect_mock
+
+    def stop_on_disconnect() -> None:
+        client.process_loop = False
+
+    client.on_disconnect = stop_on_disconnect  # type: ignore[method-assign]
+
+    with (
+        patch.object(_wc_module, "websockets", mock_websockets),
+        patch("server.websockets.websocket_client.asyncio.sleep", AsyncMock()),
+    ):
+        await client.loop()
+
+    connect_mock.assert_called_once_with("ws://localhost:9999", ping_interval=5, ping_timeout=10)
+
+
 def make_client(uri: str = "ws://test") -> WebSocketClient:
     return WebSocketClient(uri)
 

@@ -26,6 +26,8 @@ _REQUIRED_ENV = {
 def settings(monkeypatch: pytest.MonkeyPatch) -> AppSettings:
     for k, v in _REQUIRED_ENV.items():
         monkeypatch.setenv(k, v)
+    monkeypatch.delenv("DF_CONNECT_TO_MESH_URL", raising=False)
+    monkeypatch.delenv("DF_CONNECT_TO_MESH_URLS", raising=False)
 
     return AppSettings()  # pyright: ignore[reportCallIssue]
 
@@ -142,3 +144,17 @@ def test_get_main_dir_returns_existing_path() -> None:
     result = get_main_dir()
     assert isinstance(result, Path)
     assert result.is_dir()
+
+
+def test_connect_to_mesh_url_empty_by_default(settings: AppSettings) -> None:
+    assert settings.connect_to_mesh_url == ""
+
+
+def test_connect_to_mesh_url_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    for k, v in _REQUIRED_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("DF_CONNECT_TO_MESH_URL", "http://mesh.url")
+
+    s = AppSettings()  # pyright: ignore[reportCallIssue]
+
+    assert s.connect_to_mesh_url == "http://mesh.url"

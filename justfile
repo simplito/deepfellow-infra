@@ -1,5 +1,5 @@
 dev:
-    uv run uvicorn server.main:app --host "localhost" --port 8086 --reload --log-level debug --log-config server/utils/logging_config.yaml --timeout-graceful-shutdown 5
+    uv run uvicorn server.main:app --host "localhost" --port 8086 --reload --log-level debug --log-config server/utils/logging_config.yaml --timeout-graceful-shutdown 5 --ws-ping-interval 5 --ws-ping-timeout 10
 
 dev-trace:
     uv run uvicorn server.main:app --reload --log-level trace --log-config server/utils/logging_config.yaml

@@ -90,6 +90,17 @@ def test_check_mesh_connection_200() -> None:
     assert resp.json() == "OK"
 
 
+def test_get_mesh_topology_200() -> None:
+    ws = _make_infra_ws_server()
+    ws.get_topology.return_value = []
+
+    with TestClient(_make_app(ws_server=ws)) as client:
+        resp = client.get("/admin/mesh/topology", headers=AUTH_HEADER)
+
+    assert resp.status_code == 200
+    ws.get_topology.assert_called_once()
+
+
 def test_check_mesh_connection_401() -> None:
     parent = _make_parent_infra(connected=False)
 

@@ -150,3 +150,16 @@ export interface MeshInfo {
 export interface ShowMeshInfoOut {
   info: MeshInfo;
 }
+
+export interface MeshTopologyModel {
+  name: string;
+  type: string;
+}
+
+export interface MeshTopologyNode {
+  url: string;
+  name: string;
+  models: MeshTopologyModel[];
+  children: MeshTopologyNode[];
+  you_are_here: boolean;
+}

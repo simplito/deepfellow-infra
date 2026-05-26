@@ -21,7 +21,7 @@ from server.serviceprovider import ServiceProvider
 from server.services_manager import ServicesManager
 from server.utils.hardware import Hardware
 from server.websockets.infra_websocket_server import InfraWebsocketServer
-from server.websockets.parent_infra import ParentInfra
+from server.websockets.parent_infra_group import ParentInfraGroup
 
 oauth2_scheme = HTTPBearer()
 basic_security = HTTPBasic()
@@ -61,7 +61,7 @@ def get_infra_websocket_server(request: Request) -> InfraWebsocketServer:
     return get_dependency(request, "infra_websocket_server")
 
 
-def get_parent_infra(request: Request) -> ParentInfra:
+def get_parent_infra(request: Request) -> ParentInfraGroup:
     """Get parent infra from application state."""
     return get_dependency(request, "parent_infra")
 

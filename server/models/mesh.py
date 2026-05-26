@@ -34,3 +34,11 @@ class ShowMeshInfoOut(BaseModel):
 class CheckMeshConnection(BaseModel):
     infra_api_key: str
     connection_verifier: str
+
+
+class MeshTopologyNode(BaseModel):
+    url: str
+    name: str
+    models: list[MeshInfoModel]
+    you_are_here: bool = False
+    children: list["MeshTopologyNode"]

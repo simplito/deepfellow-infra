@@ -44,14 +44,20 @@ class WebSocketClient:
         """Return a value that indicates whether the loop should start or not."""
         return True
 
+    def get_next_uri(self, failure_count: int) -> str:  # noqa: ARG002
+        """Return the URI to connect to for the given failure count."""
+        return self.uri
+
     async def loop(self) -> None:
         """Loop for external websocket."""
+        failure_count = 0
         while True:
             if not self.process_loop:
                 logger.info("WS client loop exit")
                 break
+            uri = self.get_next_uri(failure_count)
             try:
-                async with websockets.connect(self.uri) as ws:
+                async with websockets.connect(uri, ping_interval=5, ping_timeout=10) as ws:
                     logger.info("WS client connected")
                     queue = asyncio.Queue[str | None]()
                     send_task = asyncio.create_task(self._sender(ws, queue))
@@ -59,6 +65,7 @@ class WebSocketClient:
                     self.ws = (ws, queue)
                     try:
                         await self.on_start()
+                        failure_count = 0
                         logger.info("WS client setup finished")
                         await receive_task
                     finally:
@@ -69,6 +76,7 @@ class WebSocketClient:
                         await send_task
             except Exception:
                 logger.exception("WS client disconnected")
+                failure_count += 1
             self.on_disconnect()
             await asyncio.sleep(10)
 

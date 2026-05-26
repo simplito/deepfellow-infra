@@ -14,9 +14,9 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from server.core.dependencies import auth_admin, get_infra_websocket_server, get_parent_infra
-from server.models.mesh import CheckMeshConnection, ShowMeshInfoOut
+from server.models.mesh import CheckMeshConnection, MeshTopologyNode, ShowMeshInfoOut
 from server.websockets.infra_websocket_server import InfraWebsocketServer
-from server.websockets.parent_infra import ParentInfra
+from server.websockets.parent_infra_group import ParentInfraGroup
 
 router = APIRouter(prefix="/admin/mesh", tags=["Services"])
 
@@ -33,13 +33,25 @@ async def show_mesh_info(
     return ShowMeshInfoOut(info=infra_websocket_server.get_mesh_info())
 
 
+@router.get(
+    "/topology",
+    summary="Show the mesh topology as seen from this node.",
+)
+async def get_mesh_topology(
+    infra_websocket_server: Annotated[InfraWebsocketServer, Depends(get_infra_websocket_server)],
+    _: Annotated[str, Depends(auth_admin)],
+) -> list[MeshTopologyNode]:
+    """Show mesh topology."""
+    return infra_websocket_server.get_topology()
+
+
 @router.post(
     "/check",
     summary="Check mesh connection.",
 )
 async def check_mesh_connection(
     model: Annotated[CheckMeshConnection, Body()],
-    parent_infra: Annotated[ParentInfra, Depends(get_parent_infra)],
+    parent_infra: Annotated[ParentInfraGroup, Depends(get_parent_infra)],
 ) -> str:
     """Check mesh connection."""
     if not parent_infra.check_subinfra_connection(model):

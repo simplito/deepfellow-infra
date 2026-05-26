@@ -16,7 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.26.2] - 2026-05-25
 
-- Fixed `ollama-external` service not showing pre-existing Ollama models in the web UI after installation; models are now auto-synced on connect, periodically in the background, and on server restart.
+- Infra mesh topology: each node connects to a single parent and learns the full ancestor chain up the graph.
+- Propagation of topology changes via RPC `topology_update` (join/leave).
+- Every node has knowledge about other nodes (upwards and downwards).
+- New endpoint `GET /admin/mesh/topology` that returns the mesh topology tree from the current node's perspective.
 
 ## [0.26.1] - 2026-05-22
 
