@@ -61,11 +61,6 @@ type ModelType = Literal["tts", "stt"]
 type CustomModelId = str
 
 
-class CsvSpeachesModel(BaseModel):
-    type: ModelType
-    size: str
-
-
 type ImageTypes = Literal["cpu", "gpu"]
 
 

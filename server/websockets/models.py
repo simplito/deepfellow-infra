@@ -49,13 +49,5 @@ class UsageChangeRequest(BaseModel):
     usage: int
 
 
-class AddModelRequest(BaseModel):
-    model: Model
-
-
-class RemoveModelRequest(BaseModel):
-    id: RegistrationId
-
-
 class UpdateModelsRequest(BaseModel):
     models: list[Model]

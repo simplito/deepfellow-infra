@@ -12,9 +12,7 @@
 import asyncio
 import os
 import subprocess
-import wave
 from collections.abc import AsyncGenerator
-from typing import BinaryIO, cast
 
 
 def ffmpeg_command(
@@ -44,87 +42,6 @@ def ffmpeg_command(
     except subprocess.CalledProcessError as e:
         error_text = (e.stdout + e.stderr).decode("utf-8", errors="replace")
         return error_text, e
-
-
-def audio_to_wav_stream(input_stream: BinaryIO, output_stream: BinaryIO, input_format: str | None = None) -> None:
-    """Convert audio from stdin to WAV format on stdout.
-
-    Args:
-        input_stream: Binary input stream (e.g., sys.stdin.buffer)
-        output_stream: Binary output stream (e.g., sys.stdout.buffer)
-        input_format: Optional input format hint (e.g., 'mp3', 'ogg', etc.)
-
-    Raises:
-        Exception: If conversion fails
-    """
-    # Read all input data
-    input_data = input_stream.read()
-
-    # Build ffmpeg command for stdin/stdout streaming
-    command_args = [
-        "-i",
-        "pipe:0",  # Read from stdin
-        "-f",
-        "wav",  # Output format
-        "-acodec",
-        "pcm_s16le",
-        "-ar",
-        "16000",
-        "-ac",
-        "1",
-        "pipe:1",  # Write to stdout
-    ]
-
-    # Add input format hint if provided
-    if input_format:
-        command_args = ["-f", input_format, *command_args]
-
-    output_data, err = ffmpeg_command(command_args, input_data=input_data, stream_output=True)
-    if err:
-        raise RuntimeError("Conversion failed", output_data)
-
-    # Write output to stream
-    output_stream.write(cast("bytes", output_data))
-    output_stream.flush()
-
-
-async def audio_convert_stream(input_data: bytes, output_format: str, input_format: str = "wav") -> bytes:
-    """Async version of audio_convert_stream that works with bytes directly."""
-    # Map output formats to ffmpeg options
-    format_options = {
-        "opus": ["-f", "ogg", "-acodec", "libopus"],
-        "mp3": ["-f", "mp3", "-acodec", "libmp3lame"],
-        "aac": ["-f", "adts", "-acodec", "aac"],
-        "flac": ["-f", "flac", "-acodec", "flac"],
-        "wav": ["-f", "wav", "-acodec", "pcm_s16le"],
-    }
-
-    # Get format-specific options
-    format_args = format_options.get(output_format, ["-f", output_format])
-
-    # Build ffmpeg command
-    command_args = [
-        "-f",
-        input_format,
-        "-i",
-        "pipe:0",  # Read from stdin
-        "-vn",  # No video
-        *format_args,
-        "pipe:1",  # Write to stdout
-    ]
-
-    cmd = ["ffmpeg", *command_args]
-    process = await asyncio.create_subprocess_exec(
-        *cmd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=os.environ.copy()
-    )
-
-    stdout, stderr = await process.communicate(input=input_data)
-
-    if process.returncode != 0:
-        error_text = stderr.decode("utf-8", errors="replace")
-        raise RuntimeError("Conversion failed", error_text)
-
-    return stdout
 
 
 async def ffmpeg_audio_convert_async_gen(source: AsyncGenerator[bytes], input_format: str, output_format: str) -> AsyncGenerator[bytes]:
@@ -189,77 +106,3 @@ async def _stream_reader(stdout: asyncio.StreamReader) -> AsyncGenerator[bytes]:
         if not data:
             break
         yield data
-
-
-# Keep the original file-based functions for compatibility
-def audio_to_wav(src: str, dst: str) -> None:
-    """Convert audio file to wav format for transcription.
-
-    If the source is already a WAV file with the correct specifications
-    (16-bit, mono, 16kHz), it will be moved directly to the destination.
-    Otherwise, ffmpeg is used for conversion.
-
-    Args:
-        src: Source audio file path
-        dst: Destination wav file path
-
-    Raises:
-        Exception: If conversion fails
-    """
-    # Check if source is already a WAV file with correct specs
-    if src.endswith(".wav"):
-        try:
-            with wave.open(src, "rb") as wav_file:
-                params = wav_file.getparams()
-                # Check if WAV has correct specifications
-                if (
-                    params.sampwidth == 2  # 16-bit (2 bytes)
-                    and params.nchannels == 1  # mono
-                    and params.framerate == 16000
-                ):  # 16kHz
-                    os.rename(src, dst)  # noqa: PTH104
-                    return
-        except Exception:
-            # If we can't read the WAV file, proceed with conversion
-            pass
-
-    # Convert using ffmpeg
-    command_args = ["-i", src, "-f", "s16le", "-ar", "16000", "-ac", "1", "-acodec", "pcm_s16le", dst]
-
-    out, err = ffmpeg_command(command_args)
-    if err:
-        raise RuntimeError("error", (err, out))
-
-
-def audio_convert(src: str, format: str) -> str:
-    """Convert generated wav file from TTS to other output formats.
-
-    Args:
-        src: Source WAV file path
-        format: Target format (opus, mp3, aac, flac, or wav)
-
-    Returns:
-        Path to the converted file
-
-    Raises:
-        Exception: If conversion fails
-    """
-    # Compute file extension from format
-    extension_map = {"opus": ".ogg", "mp3": ".mp3", "aac": ".aac", "flac": ".flac"}
-
-    extension = extension_map.get(format, ".wav")
-
-    # If target format is WAV, do nothing
-    if extension == ".wav":
-        return src
-
-    # Create destination filename
-    dst = src.replace(".wav", extension)
-
-    command_args = ["-y", "-i", src, "-vn", dst]
-
-    out, err = ffmpeg_command(command_args)
-    if err:
-        raise RuntimeError("error", (err, out))
-
-    return dst

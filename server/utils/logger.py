@@ -14,12 +14,3 @@ import logging
 # uvicorn_logger is created to print out the logs in the terminal
 # when running the server with `uvicorn server.main:app ...`
 uvicorn_logger = logging.getLogger("uvicorn.error")
-
-
-# TODO Configure to log to the DeepFellow log collector
-def get_logger(module: str) -> logging.Logger:
-    """Get a logger for a module.
-
-    This logger is the default logger of the DeepFellow Server.
-    """
-    return logging.getLogger(module)

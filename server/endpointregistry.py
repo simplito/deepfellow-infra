@@ -747,44 +747,6 @@ class EndpointRegistry:
         else:
             logger.warning(f"Cannot register proxy with model_type={type}")  # noqa: G004
 
-    def has_chat_completion_model(self, model: str) -> bool:
-        """Check whether the chat completion model is registered."""
-        endpoint = self.chat_completion_endpoints.get_model(model, lambda x: x.on_chat_completion is not None)
-        return endpoint is not None and endpoint.endpoint.on_chat_completion is not None
-
-    def has_completion_model(self, model: str) -> bool:
-        """Check whether the completion model is registered."""
-        endpoint = self.chat_completion_endpoints.get_model(model, lambda x: x.on_completion is not None)
-        return endpoint is not None and endpoint.endpoint.on_completion is not None
-
-    def has_embeddings_model(self, model: str) -> bool:
-        """Check whether the embeddings model is registered."""
-        return self.embeddings_endpoints.has_model(model)
-
-    def has_audio_speech_model(self, model: str) -> bool:
-        """Check whether the audio speech model is registered."""
-        return self.audio_speech_endpoints.has_model(model)
-
-    def has_audio_transcriptions_model(self, model: str) -> bool:
-        """Check whether the audio transcriptions model is registered."""
-        return self.audio_transcriptions_endpoints.has_model(model)
-
-    def has_image_generations_model(self, model: str) -> bool:
-        """Check whether the image generations model is registered."""
-        return self.images_generations_endpoints.has_model(model)
-
-    def has_rerank_model(self, model: str) -> bool:
-        """Check whether the rerank model is registered."""
-        return self.rerank_endpoints.has_model(model)
-
-    def has_custom_endpoint(self, url: str) -> bool:
-        """Check whether the custom endpoint is registered."""
-        return self.custom_endpoints.has_model(url)
-
-    def has_mcp_endpoint(self, url: str) -> bool:
-        """Check whether the mcp endpoint is registered."""
-        return self.mcp_endpoints.has_model(url)
-
     async def execute_messages(
         self,
         body: MessagesRequest,

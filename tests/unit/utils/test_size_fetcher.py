@@ -21,8 +21,6 @@ from server.utils.size_fetcher import (
     _parse_ollama_tag_size,  # pyright: ignore[reportPrivateUsage]
     fetch_file_size_from_url,
     fetch_huggingface_model_size,
-    fetch_ollama_model_size,
-    fetch_ollama_modelfile_size,
     fetch_ollama_ref_bytes,
     fmt_size,
 )
@@ -163,52 +161,6 @@ async def test_fetch_file_size_from_url(mock_kwargs: dict[str, Any], expected: s
 async def test_fetch_huggingface_model_size(mock_kwargs: dict[str, Any], expected: str | None) -> None:
     with patch("server.utils.size_fetcher._fetch_hf_size_bytes", new=AsyncMock(**mock_kwargs)):
         result = await fetch_huggingface_model_size("google/gemma")
-
-    assert result == expected
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("mock_kwargs", "expected"),
-    [
-        ({"return_value": 1024}, "1.0 KB"),
-        ({"return_value": None}, None),
-        ({"side_effect": Exception("fail")}, None),
-    ],
-)
-async def test_fetch_ollama_model_size(mock_kwargs: dict[str, Any], expected: str | None) -> None:
-    with patch("server.utils.size_fetcher._fetch_ollama_size_bytes", new=AsyncMock(**mock_kwargs)):
-        result = await fetch_ollama_model_size("llama3")
-
-    assert result == expected
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "modelfile",
-    [
-        "",
-        "PARAMETER num_ctx 4096\nSYSTEM You are helpful.",
-    ],
-)
-async def test_fetch_ollama_modelfile_size_returns_none_without_refs(modelfile: str) -> None:
-    result = await fetch_ollama_modelfile_size(modelfile)
-    assert result is None
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("mock_kwargs", "modelfile", "expected"),
-    [
-        ({"return_value": 1024}, "FROM llama3\n", "1.0 KB"),
-        ({"side_effect": [1024, 2048]}, "FROM llama3\nADAPTER ./adapter.bin\n", fmt_size(1024 + 2048)),
-        ({"side_effect": [Exception("fail"), 512]}, "FROM llama3\nADAPTER ./adapter.bin\n", fmt_size(512)),
-        ({"return_value": None}, "FROM llama3\n", None),
-    ],
-)
-async def test_fetch_ollama_modelfile_size(mock_kwargs: dict[str, Any], modelfile: str, expected: str | None) -> None:
-    with patch("server.utils.size_fetcher.fetch_ollama_ref_bytes", new=AsyncMock(**mock_kwargs)):
-        result = await fetch_ollama_modelfile_size(modelfile)
 
     assert result == expected
 

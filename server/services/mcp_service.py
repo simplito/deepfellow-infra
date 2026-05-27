@@ -60,15 +60,6 @@ type SrvPcpModelX = Callable[["McpService", str | None], SrvMcpModel]
 
 
 @dataclass
-class DynamicField:
-    name: str
-    description: str
-    default: str | None = None
-    placeholder: str | None = None
-    required: bool = True
-
-
-@dataclass
 class SrvMcpModel:
     model_props: ModelProps
     model_spec: ModelSpecification
@@ -482,10 +473,6 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             empty_keys = [key for key in required_headers if not headers.get(key)]
             if empty_keys:
                 raise HTTPException(status_code=422, detail=f"The following headers are present but have no value: {', '.join(empty_keys)}")
-
-    def get_header(self, model: SrvMcpModel, options: McpModelOptions) -> dict[str, str]:
-        """Return common header for model and options."""
-        return model.headers | options.headers if model.headers else options.headers
 
     async def _install_model(
         self, instance: str, model_id: str, options: InstallModelIn

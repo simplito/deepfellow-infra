@@ -643,27 +643,6 @@ def test_check_headers_no_required_headers_passes(svc: McpService) -> None:
     svc.check_headers(None, {})
 
 
-def test_get_header_with_model_headers_merges(svc: McpService) -> None:
-    model = MagicMock()
-    model.headers = {"X-Model": "val"}
-    opts = McpModelOptions(prefix="px", headers={"X-Custom": "custom"})
-
-    result = svc.get_header(model, opts)
-
-    assert "X-Model" in result
-    assert "X-Custom" in result
-
-
-def test_get_header_without_model_headers_returns_options_headers(svc: McpService) -> None:
-    model = MagicMock()
-    model.headers = None
-    opts = McpModelOptions(prefix="px", headers={"X-Custom": "custom"})
-
-    result = svc.get_header(model, opts)
-
-    assert result == {"X-Custom": "custom"}
-
-
 @pytest.mark.asyncio
 async def test_install_model_already_installed_returns_ok(svc: McpService) -> None:
     installed = InstalledInfo(models={}, options=InstallServiceIn(spec={}))

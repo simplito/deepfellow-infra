@@ -68,12 +68,6 @@ class RerankModel(BaseModel):
     custom: CustomModelId | None = None
 
 
-class RerankCustomModel(BaseModel):
-    id: str
-    hf_id: str
-    size: str
-
-
 type ImageTypes = Literal["cpu", "gpu"]
 
 

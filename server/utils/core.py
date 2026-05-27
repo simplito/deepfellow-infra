@@ -107,20 +107,6 @@ class Utils:
         return CommandResult2(stdout=result.stdout, stderr=result.stderr)
 
     @staticmethod
-    async def wait_for_service(url: str, max_attempts: int = 30, delay: float = 1.0) -> bool:
-        """Wait for a service to become available."""
-        for attempt in range(max_attempts):
-            try:
-                async with ClientSession() as session, session.get(f"{url}") as resp:
-                    if resp.status == 200:
-                        return True
-            except Exception:
-                pass
-            if attempt < max_attempts - 1:
-                await asyncio.sleep(delay)
-        return False
-
-    @staticmethod
     def join_url(a: str, b: str) -> str:
         """Join two strings into one url."""
         aa = a[:-1] if a.endswith("/") else a
@@ -274,11 +260,6 @@ async def stream_fetch_from(
             yield FetchResult(status_code=response.status, data=chunk[0].decode())
 
 
-def add_token_to_civitai(url: str, token: str) -> str:
-    """Add token to civit."""
-    return f"{url}&token={token}"
-
-
 def normalize_name(s: str) -> str:
     """Normalize name."""
     result: list[str] = []
@@ -415,16 +396,6 @@ class Stream[T]:
             with contextlib.suppress(Exception):
                 self._subscribers.remove(q)
 
-    def pipe(self, stream: "Stream[T]") -> None:
-        """Send all events to given stream."""
-
-        async def proxy() -> None:
-            async for data in self.as_generator():
-                stream.emit(data)
-            stream.close()
-
-        self.pipe_task = asyncio.create_task(proxy())
-
 
 class PromiseWithProgress[T, U]:
     def __init__(self, value: T | None = None, func: Callable[[Stream[U]], Awaitable[T]] | None = None):
@@ -545,8 +516,7 @@ async def make_http_request(
     headers: dict[str, str] | None = None,
 ) -> HttpResponse:
     """Make HTTP request to given url."""
-    # NOTE: Uncomment to debug http request
-    # logger.info(f"Making HTTP request to: {url}")
+    logger.debug("HTTP request: %s %s", method, url)
     headers = headers or {}
     session = ClientSession()
     response = None

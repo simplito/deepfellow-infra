@@ -27,7 +27,6 @@ from server.utils.core import (
     StreamChunk,
     SuccessDownloadPacket,
     Utils,
-    add_token_to_civitai,
     convert_promise_with_progress_to_fastapi_response,
     convert_size_to_bytes,
     download_file,
@@ -65,51 +64,6 @@ async def test_run_command_for_success_returns_on_zero():
     result = await Utils.run_command_for_success("echo ok")
 
     assert result.stdout == "ok"
-
-
-@pytest.mark.asyncio
-async def test_wait_for_service_returns_true_when_200():
-    mock_resp = AsyncMock()
-    mock_resp.status = 200
-    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-    mock_resp.__aexit__ = AsyncMock(return_value=False)
-    mock_session = AsyncMock()
-    mock_session.get = MagicMock(return_value=mock_resp)
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=False)
-
-    with patch("server.utils.core.ClientSession", return_value=mock_session):
-        result = await Utils.wait_for_service("http://localhost:8080", max_attempts=3, delay=0)
-
-    assert result is True
-
-
-@pytest.mark.asyncio
-async def test_wait_for_service_returns_false_after_exhausting_attempts():
-    with patch("server.utils.core.ClientSession") as mock_cls:
-        mock_cls.return_value.__aenter__ = AsyncMock(side_effect=Exception("connection refused"))
-        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-
-        result = await Utils.wait_for_service("http://localhost:9999", max_attempts=2, delay=0)
-
-    assert result is False
-
-
-@pytest.mark.asyncio
-async def test_wait_for_service_retries_on_non_200():
-    mock_resp = MagicMock()
-    mock_resp.status = 503
-    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-    mock_resp.__aexit__ = AsyncMock(return_value=False)
-    mock_session = MagicMock()
-    mock_session.get = MagicMock(return_value=mock_resp)
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=False)
-
-    with patch("server.utils.core.ClientSession", return_value=mock_session):
-        result = await Utils.wait_for_service("http://localhost:8080", max_attempts=2, delay=0)
-
-    assert result is False
 
 
 @pytest.mark.asyncio
@@ -386,11 +340,6 @@ async def test_stream_fetch_from():
     assert results[1].data == "chunk2"
 
 
-def test_add_token_to_civitai():
-    result = add_token_to_civitai("https://civitai.com/api/download?modelVersionId=123", "mytoken")
-    assert result == "https://civitai.com/api/download?modelVersionId=123&token=mytoken"
-
-
 @pytest.mark.parametrize(
     ("size_str", "expected"),
     [
@@ -452,30 +401,6 @@ async def test_stream_as_generator_replays_history():
         collected.append(item)
 
     assert collected == ["a", "b"]
-
-
-@pytest.mark.asyncio
-async def test_stream_pipe():
-    source: Stream[int] = Stream()
-    target: Stream[int] = Stream()
-
-    source.pipe(target)
-
-    collected: list[int] = []
-
-    async def consume():
-        async for item in target.as_generator():
-            collected.append(item)
-
-    task = asyncio.create_task(consume())
-    await asyncio.sleep(0)
-
-    source.emit(10)
-    source.emit(20)
-    source.close()
-
-    await task
-    assert collected == [10, 20]
 
 
 @pytest.mark.asyncio

@@ -206,13 +206,6 @@ async def get_intel_gpus_info() -> list[IntelGpuInfo]:
     return gpus_info
 
 
-async def get_hardware_info() -> list[HardwarePartInfo]:
-    """Return hardware info."""
-    cpu_info = await get_cpu_info()
-    nvidia_gpus_info = await get_nvidia_gpus_info()
-    return [cpu_info, *nvidia_gpus_info]
-
-
 _REALTIME_STATS_TTL = 5.0
 
 
@@ -276,12 +269,6 @@ class Hardware:
         """Returns a list specifically containing NVIDIA GPU information."""
         self._ensure_collected()
         return self._nvidia_gpus
-
-    @property
-    def amd_gpus(self) -> list[AmdGpuInfo]:
-        """Returns a list specifically containing AMD GPU information."""
-        self._ensure_collected()
-        return self._amd_gpus
 
     @property
     def intel_gpus(self) -> list[IntelGpuInfo]:

@@ -71,23 +71,6 @@ def test_ancestors_empty_when_no_parents() -> None:
     assert ParentInfraGroup([]).ancestors == []
 
 
-# --- parent_urls ---
-
-
-def test_parent_urls_returns_direct_parent_urls() -> None:
-    p1 = _make_parent("http://a.url")
-    p2 = _make_parent("http://b.url")
-    group = ParentInfraGroup([p1, p2])
-    assert group.parent_urls == ["http://a.url", "http://b.url"]
-
-
-def test_parent_urls_excludes_disabled() -> None:
-    p1 = _make_parent("http://a.url", enabled=False)
-    p2 = _make_parent("http://b.url")
-    group = ParentInfraGroup([p1, p2])
-    assert group.parent_urls == ["http://b.url"]
-
-
 # --- send_topology_update ---
 
 

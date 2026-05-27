@@ -121,7 +121,7 @@ def test_load_config_missing_fields_raises(monkeypatch: pytest.MonkeyPatch) -> N
 def test_load_config_invalid_field_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     for k, v in _REQUIRED_ENV.items():
         monkeypatch.setenv(k, v)
-    monkeypatch.setenv("DF_NVIDIA_GPUS_COUNT", "not_a_number")
+    monkeypatch.setenv("DF_OTEL_TRACING_ENABLED", "not_a_bool")
 
     with pytest.raises(ConfigError):
         load_config()

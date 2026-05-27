@@ -9,15 +9,12 @@
 
 """Tests for server/utils/exceptions.py and server/utils/logger.py."""
 
-import logging
-
 import pytest
 
 from server.utils.exceptions import (
     DockerImageAuthorizationError,
     DockerImageDoesNotExistError,
 )
-from server.utils.logger import get_logger
 
 
 def test_docker_image_does_not_exist_error_stores_image_name() -> None:
@@ -51,14 +48,3 @@ def test_docker_image_authorization_error_message_contains_image() -> None:
 def test_docker_image_authorization_error_is_exception() -> None:
     with pytest.raises(DockerImageAuthorizationError):
         raise DockerImageAuthorizationError("img")
-
-
-def test_get_logger_returns_logger_with_given_name() -> None:
-    logger = get_logger("my.module")
-
-    assert isinstance(logger, logging.Logger)
-    assert logger.name == "my.module"
-
-
-def test_get_logger_returns_same_instance_for_same_name() -> None:
-    assert get_logger("some.module") is get_logger("some.module")
