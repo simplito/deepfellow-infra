@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Actual VRAM/RAM usage.
+- Estimated VRAM/RAM usage per model in ollama, llamacpp and vllm services.
+- Infra mesh topology: each node connects to a single parent and learns the full ancestor chain up the graph.
+- Propagation of topology changes via RPC `topology_update` (join/leave).
+- Every node has knowledge about other nodes (upwards and downwards).
+- New endpoint `GET /admin/mesh/topology` that returns the mesh topology tree from the current node's perspective.
+
 ### Changed
 - Removed unused Pydantic models, orphaned config fields, dead functions, and stale commented-out code across multiple services.
 - Replaced commented-out `print()` / `logger.info()` debug statements in `docker.py` and `core.py` with proper `logger.debug()` calls.
@@ -15,26 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 - Fixed typo `uliumits` → `ulimits` in `DockerOptions` (`docker.py`).
 - Fixed Stable Diffusion `n_iter` value defaulting to `None`/`0` when `body.n` is falsy — now correctly defaults to `1`.
-
-## [0.26.3] - 26.05.2026
-
-### Added
-- Actual VRAM/RAM usage 
-- Estimated VRAM/RAM usage per model in ollama, llamacpp and vllm services
-
-### Fixed
 - Fixed "Test" action for llama.cpp models in the admin UI — models with type `llm-v1-v2-v3-ant` were incorrectly reported as untestable.
-
-## [0.26.2] - 2026-05-25
-
-- Infra mesh topology: each node connects to a single parent and learns the full ancestor chain up the graph.
-- Propagation of topology changes via RPC `topology_update` (join/leave).
-- Every node has knowledge about other nodes (upwards and downwards).
-- New endpoint `GET /admin/mesh/topology` that returns the mesh topology tree from the current node's perspective.
-
-## [0.26.1] - 2026-05-22
-
 - Download progress counter no longer jumps back during model installation.
+- Removed broken PLLuM entries from `scripts/custom_models.json`: `tensorblock/Llama-PLLuM-8B-chat-GGUF` (account deleted, all URLs 404) and `CYFRAGOVPL/Llama-PLLuM-8B-chat` (modelfile error, cannot be installed). Refreshed `static/ollama-min.json` via `just ollama-get-models`.
 
 ## [0.26.0] - 2026-05-22
 

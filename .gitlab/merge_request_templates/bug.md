@@ -19,7 +19,6 @@
 
 - [ ] I reviewed the code
 - [ ] I updated CHANGELOG.md
-- [ ] I updated the version
 - [ ] I wrote/updated tests
 - [ ] I filled in the Docs section above
 - [ ] I added issue number "Closes #{ISSUE_NUMBER}" in the Relates section above
