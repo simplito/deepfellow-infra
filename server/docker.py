@@ -158,7 +158,7 @@ class DockerOptions:
         self.restart = restart
         self.volumes = volumes
         self.hardware = hardware
-        self.uliumits = ulimits
+        self.ulimits = ulimits
         self.shm_size = shm_size
         self.entrypoint = entrypoint
         self.healthcheck = healthcheck
@@ -168,11 +168,6 @@ class DockerOptions:
 
 class DockerNotInstalledError(Exception):
     pass
-
-
-class DockerComposeStatus(BaseModel):
-    success: bool
-    info: str
 
 
 class DockerComposeDevice(TypedDict):
@@ -516,14 +511,6 @@ class DockerService:
         result = await Utils.run_command_for_success(command)
         return result.stdout
 
-    async def docker_compose_status(self, docker_compose_file_path: Path) -> DockerComposeStatus:
-        """Get status for given docker compose."""
-        docker_compose_cmd = self.docker_compose_cmd
-        res = await Utils.run_command(f"{docker_compose_cmd} -f {docker_compose_file_path} logs")
-        if res.exit_code == 1 and res.stderr.strip() == f"Error: file '{docker_compose_file_path}' not found":
-            return DockerComposeStatus(success=True, info="not found")
-        return DockerComposeStatus(success=True, info=res.stdout)
-
     async def is_docker_compose_running(self, docker_compose_file_path: Path, service_name: str) -> bool:
         """Check whether the service from given docker compose is running."""
         docker_compose_cmd = self.docker_compose_cmd
@@ -753,7 +740,7 @@ class DockerService:
         # Check if there would be a difference in docker compose
         has_difference, port = await self.has_docker_compose_difference(docker_compose_file_path, options)
 
-        # print(f"{service_name}\n{is_running=}\n{has_difference=}\n")
+        logger.debug("docker_compose_start: %s is_running=%s has_difference=%s", service_name, is_running, has_difference)
         start_output = ""
 
         # Handle different scenarios based on running state, health, and differences
@@ -771,7 +758,7 @@ class DockerService:
             start_output = await self.start_docker_compose(docker_compose_file_path)
         elif is_running and has_difference:
             # Running but has difference -> stop -> render -> start
-            # print(f"{service_name} config was changed. Restarting...")
+            logger.debug("%s config changed, restarting", service_name)
             await self.stop_docker_compose(docker_compose_file_path)
             port = await self.create_compose_file(docker_compose_file_path, options)
             start_output = await self.start_docker_compose(docker_compose_file_path)

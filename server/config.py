@@ -40,7 +40,6 @@ class AppSettings(BaseSettings):
     container_name_prefix: str = ""
     compose_prefix: str = "df_"
     stop_containers_on_shutdown: str = ""
-    nvidia_gpus_count: int = 1
 
     # metrics are authorized by HTTPBasicAuth
     metrics_username: str = ""

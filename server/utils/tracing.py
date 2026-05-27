@@ -13,7 +13,6 @@ import functools
 import inspect
 import logging
 import time
-import traceback
 from collections.abc import Callable
 from typing import Any
 
@@ -61,7 +60,6 @@ class InfraTracer:
 
             otlp_endpoint = self._get_config().otel_exporter_otlp_endpoint
 
-            # processor = BatchSpanProcessor(ConsoleSpanExporter())
             processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True))
             provider.add_span_processor(processor)
 
@@ -76,20 +74,6 @@ class InfraTracer:
         for key, value in attributes.items():
             span.set_attribute(key, value)
         span.set_status(Status(StatusCode.OK))
-
-    def _set_error_attributes(self, span: Span, execution_time: float, error: Exception) -> None:
-        """Set error attributes on the span."""
-        attributes = {
-            "execution.time_ms": round(execution_time * 1000, 2),
-            "http.status_code": 500,
-            "error.type": type(error).__name__,
-            "error.message": str(error),
-            "error.stacktrace": traceback.format_exc(),
-        }
-        for key, value in attributes.items():
-            span.set_attribute(key, value)
-        span.record_exception(error)
-        span.set_status(Status(StatusCode.ERROR, description=str(error)))
 
     def _bind_args(self, func: Callable[..., Any], args: Any, kwargs: Any) -> inspect.BoundArguments | None:  # noqa: ANN401
         try:

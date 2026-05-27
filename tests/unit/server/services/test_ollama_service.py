@@ -32,7 +32,6 @@ from server.services.ollama_service import (
     OllamaOptions,
     OllamaService,
     _const,  # pyright: ignore[reportPrivateUsage]
-    _read_models_from_json,  # type: ignore
 )
 from server.utils.core import DownloadedPacket, FetchResult, PreDownloadPacket, Stream, StreamChunkProgress
 from server.utils.hardware import IntelGpuInfo, NvidiaGpuInfo
@@ -1176,19 +1175,6 @@ async def test_uninstall_instance_purges_working_dir_on_purge_single_instance(sv
 
     assert svc.service_downloaded is False
     assert mock_clear.call_count == 1
-
-
-def test_read_models_from_json_returns_flat_dict(tmp_path: Path) -> None:  # type: ignore[attr-defined]
-    data = {"list": [{"mainTags": ["llama3:latest", "llama3:8b"]}]}
-    static_dir = tmp_path / "static"
-    static_dir.mkdir()
-    (static_dir / "ollama.json").write_text(json.dumps(data))
-
-    with patch("server.services.ollama_service.get_main_dir", return_value=tmp_path):
-        result = _read_models_from_json()
-
-    assert "llama3" in result  # :latest suffix is stripped
-    assert "llama3:8b" in result
 
 
 @pytest.mark.asyncio

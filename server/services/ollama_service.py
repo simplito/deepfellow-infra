@@ -79,21 +79,6 @@ from server.utils.vram_calculator import GGUF_QUANTS, ArchParams, estimate_vram_
 logger = logging.getLogger("uvicorn.error")
 
 
-def _read_models_from_json() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
-    ollama_path = get_main_dir() / "./static/ollama.json"
-    with ollama_path.open(encoding="utf-8") as f:
-        data = json.loads(f.read())
-        # tags = [x["tags"] for x in data["list"]]
-        # flat: list[str] = [x["tag"] for sublist in tags for x in sublist]
-        tags = [x["mainTags"] for x in data["list"]]
-        flat: list[str] = [x.removesuffix(":latest") for sublist in tags for x in sublist]
-
-        map: dict[str, bool] = {}
-        for tag in flat:
-            map[tag] = True
-        return map
-
-
 type Quantization = Literal[
     "q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "q3_K_S", "q3_K_M", "q3_K_L", "q4_K_S", "q4_K_M", "q5_K_S", "q5_K_M", "q6_K"
 ]

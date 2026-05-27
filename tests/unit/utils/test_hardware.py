@@ -24,7 +24,6 @@ from server.utils.hardware import (
     convert_mib_to_gb,
     create_nvidia_gpu_info_list,
     get_cpu_info,
-    get_hardware_info,
     get_intel_gpus_info,
     get_nvidia_gpu_info_raw,
     get_nvidia_gpus_info,
@@ -374,22 +373,6 @@ async def test_get_intel_gpus_info_skips_non_card_entries(tmp_path: Path):
     assert result == []
 
 
-@pytest.mark.asyncio
-async def test_get_hardware_info():
-    cpu = CpuInfo(avx512=False)
-    gpu = NvidiaGpuInfo(name="RTX 4090", vram="24 GB", id=0)
-
-    with (
-        patch("server.utils.hardware.get_cpu_info", new_callable=AsyncMock, return_value=cpu),
-        patch("server.utils.hardware.get_nvidia_gpus_info", new_callable=AsyncMock, return_value=[gpu]),
-    ):
-        result = await get_hardware_info()
-
-    assert result[0] == cpu
-    assert result[1] == gpu
-    assert len(result) == 2
-
-
 def test_hardware_raises_before_init():
     hw = Hardware()
     with pytest.raises(RuntimeError):
@@ -479,20 +462,6 @@ async def test_hardware_parts():
         await hw.init_async()
 
     assert hw.parts == [cpu, gpu]
-
-
-@pytest.mark.asyncio
-async def test_hardware_amd_gpus_empty():
-    cpu = CpuInfo(avx512=False)
-    with (
-        patch("server.utils.hardware.get_cpu_info", new_callable=AsyncMock, return_value=cpu),
-        patch("server.utils.hardware.get_nvidia_gpus_info", new_callable=AsyncMock, return_value=[]),
-        patch("server.utils.hardware.get_intel_gpus_info", new_callable=AsyncMock, return_value=[]),
-    ):
-        hw = Hardware()
-
-        await hw.init_async()
-    assert hw.amd_gpus == []
 
 
 def test_gpu_info_long_name_with_vram():

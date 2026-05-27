@@ -19,7 +19,6 @@ from aiodocker import DockerError
 
 import server.docker as docker_mod
 from server.docker import (
-    DockerComposeStatus,
     DockerImageNameInfo,
     DockerNotInstalledError,
     DockerOptions,
@@ -440,29 +439,6 @@ async def test_run_command_docker_compose_calls_exec_and_returns_stdout(docker_s
     assert "exec" in cmd
     assert "myservice" in cmd
     assert "echo" in cmd
-
-
-@pytest.mark.asyncio
-async def test_docker_compose_status_not_found(docker_service: DockerService, tmp_path: Path) -> None:
-    compose_file = tmp_path / "missing.yaml"
-    stderr = f"Error: file '{compose_file}' not found"
-    with patch("server.docker.Utils.run_command", new_callable=AsyncMock) as mock_run:
-        mock_run.return_value = make_result(exit_code=1, stdout="", stderr=stderr)
-
-        result = await docker_service.docker_compose_status(compose_file)
-
-    assert result == DockerComposeStatus(success=True, info="not found")
-
-
-@pytest.mark.asyncio
-async def test_docker_compose_status_found(docker_service: DockerService, tmp_path: Path) -> None:
-    compose_file = tmp_path / "compose.yaml"
-    with patch("server.docker.Utils.run_command", new_callable=AsyncMock) as mock_run:
-        mock_run.return_value = make_result(exit_code=0, stdout="some logs")
-
-        result = await docker_service.docker_compose_status(compose_file)
-
-    assert result == DockerComposeStatus(success=True, info="some logs")
 
 
 @pytest.mark.asyncio

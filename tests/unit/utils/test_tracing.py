@@ -174,47 +174,6 @@ def test_set_success_attributes_rounds_execution_time() -> None:
     assert call[0][1] == round((1.0 / 3) * 1000, 2)
 
 
-def test_set_error_attributes_sets_error_attributes() -> None:
-    t = InfraTracer("svc")
-    span = _make_span()
-    err = ValueError("something broke")
-
-    t._set_error_attributes(span, 0.2, err)  # pyright: ignore[reportPrivateUsage]
-
-    keys_set = {call[0][0] for call in span.set_attribute.call_args_list}
-    assert "execution.time_ms" in keys_set
-    assert "http.status_code" in keys_set
-    assert "error.type" in keys_set
-    assert "error.message" in keys_set
-    assert "error.stacktrace" in keys_set
-
-
-def test_set_error_attributes_records_exception_and_error_status() -> None:
-    t = InfraTracer("svc")
-    span = _make_span()
-    err = RuntimeError("boom")
-
-    t._set_error_attributes(span, 0.1, err)  # pyright: ignore[reportPrivateUsage]
-
-    assert span.record_exception.call_count == 1
-    assert span.record_exception.call_args == call(err)
-    assert span.set_status.call_count == 1
-    status_arg = span.set_status.call_args[0][0]
-    assert status_arg.status_code == StatusCode.ERROR
-
-
-def test_set_error_attributes_error_type_is_class_name() -> None:
-    t = InfraTracer("svc")
-    span = _make_span()
-    err = TypeError("bad type")
-
-    t._set_error_attributes(span, 0.0, err)  # pyright: ignore[reportPrivateUsage]
-
-    attr_map = {c[0][0]: c[0][1] for c in span.set_attribute.call_args_list}
-    assert attr_map["error.type"] == "TypeError"
-    assert attr_map["error.message"] == "bad type"
-
-
 def test_bind_args_binds_correctly() -> None:
     t = InfraTracer("svc")
 

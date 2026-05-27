@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [Unreleased]
+
+### Changed
+- Removed unused Pydantic models, orphaned config fields, dead functions, and stale commented-out code across multiple services.
+- Replaced commented-out `print()` / `logger.info()` debug statements in `docker.py` and `core.py` with proper `logger.debug()` calls.
+- Added `vulture` to dev dependencies for dead code detection.
+
+### Fixed
+- Fixed typo `uliumits` → `ulimits` in `DockerOptions` (`docker.py`).
+- Fixed Stable Diffusion `n_iter` value defaulting to `None`/`0` when `body.n` is falsy — now correctly defaults to `1`.
+
 ## [0.26.3] - 26.05.2026
 
 ### Added

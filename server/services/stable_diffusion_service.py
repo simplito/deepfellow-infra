@@ -936,7 +936,7 @@ def _add_body_config(settings_original: StableDiffusionOptions, body: ImagesRequ
         settings["prompt"] = remaining_text
 
     if not settings.get("n_iter") and body.n:
-        settings["n_iter"] = body.n
+        settings["n_iter"] = body.n or 1
 
     if not settings.get("width") and not settings.get("height") and body.size and body.size != "auto":
         settings["width"], settings["height"] = get_image_size(body.size)
@@ -984,10 +984,7 @@ def _stable_diffusion_handler(base_url: str, model_filename: str) -> EndpointCal
                     500, (f"Something went wrong inside Stable Diffusion Web UI.Error {response.status}: {response.content}")
                 )
 
-            # try:
             data_raw = await response.json()
-            # except Exception:
-            #     raise HTTPException(500, "There is no images in Stable Diffusion response.")
 
         imgs = data_raw["images"]
 

@@ -45,11 +45,6 @@ class ParentInfraGroup:
         return result
 
     @property
-    def parent_urls(self) -> list[str]:
-        """Direct parent URLs (no ancestor chains)."""
-        return [parent.parent_url for parent in self.parents if parent.enabled]
-
-    @property
     def endpoint_registry(self) -> "EndpointRegistry | None":
         """Return the endpoint registry from the first parent."""
         return self.parents[0].endpoint_registry if self.parents else None
