@@ -34,3 +34,5 @@ memory
 /memory
 
 /.coverage.json
+.claude/skills/create-issue/SKILL.md
+.claude/skills/fill-mr/SKILL.md

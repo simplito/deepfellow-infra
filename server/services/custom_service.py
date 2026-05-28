@@ -83,7 +83,7 @@ class SrvCustomCustomModel(BaseModel):
     volumes: list[str] | None = None
     envs: dict[str, str] | None = None
     healthcheck_cmd: str | None = None
-    healthcheck_start_period: str | None = None  # TODO change to str time
+    healthcheck_start_period: Annotated[str, Field(pattern=r"^\d+[smh]$")] | None = None
 
 
 @dataclass
