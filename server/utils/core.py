@@ -15,7 +15,6 @@ import json
 import logging
 import platform
 import re
-import shlex
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -82,10 +81,10 @@ class SuccessDownloadPacket(DownloadPacket):
 
 class Utils:
     @staticmethod
-    async def run_command(cmd: str) -> CommandResult:
+    async def run_command(cmd: list[str]) -> CommandResult:
         """Run given command."""
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -99,7 +98,7 @@ class Utils:
         )
 
     @staticmethod
-    async def run_command_for_success(cmd: str) -> CommandResult2:
+    async def run_command_for_success(cmd: list[str]) -> CommandResult2:
         """Run given command and if the exit code is not 0 raise and exception."""
         result = await Utils.run_command(cmd)
         if result.exit_code != 0:
@@ -134,11 +133,6 @@ class Utils:
         if name and not name[0].isalpha() and name[0] != "_":
             name = f"service-{name}"
         return name.lower()
-
-    @staticmethod
-    def shell_escape(arg: str) -> str:
-        """Return shell-escaped version of a string."""
-        return shlex.quote(arg)
 
     @staticmethod
     def str_encode(text: str, safe: str = "") -> str:

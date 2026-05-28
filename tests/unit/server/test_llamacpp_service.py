@@ -61,10 +61,6 @@ ARCH = ArchParams(
 )
 
 
-def shell_escape(p: str) -> str:
-    return p
-
-
 def _make_service_with_model(
     model_path: Path,
     context_window: int | None = 4096,
@@ -211,7 +207,7 @@ async def test_get_vram_from_logs_command_error_returns_none():
 @patch("server.services.base2_service.Utils", new_callable=MagicMock)
 async def test_get_docker_logs_cache_hit_skips_run_command(mock_utils: MagicMock):
     mock_utils.run_command = AsyncMock(return_value=MagicMock(stdout="log", stderr=""))
-    mock_utils.shell_escape = shell_escape
+
     svc = object.__new__(LLamacppService)
     svc._log_cache = {"my-container": (time.monotonic(), "cached log")}  # pyright: ignore[reportPrivateUsage]
 
@@ -228,7 +224,7 @@ async def test_get_docker_logs_cache_miss_calls_run_command(mock_utils: MagicMoc
     mock_result.stdout = "fresh log"
     mock_result.stderr = ""
     mock_utils.run_command = AsyncMock(return_value=mock_result)
-    mock_utils.shell_escape = shell_escape
+
     svc = object.__new__(LLamacppService)
     svc._log_cache = {}  # pyright: ignore[reportPrivateUsage]
 
@@ -245,7 +241,7 @@ async def test_get_docker_logs_cache_expired_calls_run_command(mock_utils: Magic
     mock_result.stdout = "new log"
     mock_result.stderr = ""
     mock_utils.run_command = AsyncMock(return_value=mock_result)
-    mock_utils.shell_escape = shell_escape
+
     svc = object.__new__(LLamacppService)
     svc._log_cache = {"my-container": (time.monotonic() - 100, "stale log")}  # pyright: ignore[reportPrivateUsage]
 

@@ -664,7 +664,6 @@ async def test_arch_cache_separate_per_instance():
 @patch("server.services.base2_service.Utils", new_callable=MagicMock)
 async def test_get_docker_logs_cache_hit_skips_run_command(mock_utils: MagicMock):
     mock_utils.run_command = AsyncMock()
-    mock_utils.shell_escape = lambda p: p  # pyright: ignore[reportUnknownLambdaType]
     svc = _make_service()
     svc._log_cache["ollama-default"] = (time.monotonic(), "cached output")  # pyright: ignore[reportPrivateUsage]
 
@@ -681,7 +680,6 @@ async def test_get_docker_logs_cache_miss_calls_run_command(mock_utils: MagicMoc
     mock_result.stdout = "fresh logs"
     mock_result.stderr = ""
     mock_utils.run_command = AsyncMock(return_value=mock_result)
-    mock_utils.shell_escape = lambda p: p  # pyright: ignore[reportUnknownLambdaType]
     svc = _make_service()
 
     result = await svc._get_docker_logs("ollama-default")  # pyright: ignore[reportPrivateUsage]
@@ -697,7 +695,6 @@ async def test_get_docker_logs_expired_cache_refreshes(mock_utils: MagicMock):
     mock_result.stdout = "new logs"
     mock_result.stderr = ""
     mock_utils.run_command = AsyncMock(return_value=mock_result)
-    mock_utils.shell_escape = lambda p: p  # pyright: ignore[reportUnknownLambdaType]
     svc = _make_service()
     svc._log_cache["ollama-default"] = (time.monotonic() - 100, "stale logs")  # pyright: ignore[reportPrivateUsage]
 

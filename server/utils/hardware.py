@@ -128,7 +128,17 @@ def get_vram_gb(vram_str: str | None) -> float:
 
 async def get_nvidia_gpu_info_raw() -> str:
     """Get Nvidia GPU info."""
-    cmd = "docker run --gpus all --rm gcr.io/distroless/base nvidia-smi --query-gpu=index,name,memory.total --format=csv"
+    cmd = [
+        "docker",
+        "run",
+        "--gpus",
+        "all",
+        "--rm",
+        "gcr.io/distroless/base",
+        "nvidia-smi",
+        "--query-gpu=index,name,memory.total",
+        "--format=csv",
+    ]
     try:
         result = await Utils.run_command_for_success(cmd)
     except RuntimeError:
@@ -309,7 +319,7 @@ class Hardware:
 
     async def _get_nvidia_stats(self) -> list[GpuCardStats] | None:
         """Return per-card stats from nvidia-smi, or None if unavailable."""
-        cmd = "nvidia-smi --query-gpu=name,memory.total,memory.used --format=csv,noheader,nounits"
+        cmd = ["nvidia-smi", "--query-gpu=name,memory.total,memory.used", "--format=csv,noheader,nounits"]
         try:
             result = await Utils.run_command_for_success(cmd)
         except RuntimeError:
@@ -334,7 +344,7 @@ class Hardware:
 
     async def _get_amd_stats(self) -> list[GpuCardStats] | None:
         """Return per-card stats from rocm-smi, or None if unavailable."""
-        cmd = "rocm-smi --showmeminfo vram --csv --noheader"
+        cmd = ["rocm-smi", "--showmeminfo", "vram", "--csv", "--noheader"]
         try:
             result = await Utils.run_command_for_success(cmd)
         except RuntimeError:

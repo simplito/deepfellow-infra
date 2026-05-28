@@ -40,7 +40,7 @@ from server.utils.core import (
 
 @pytest.mark.asyncio
 async def test_run_command_success():
-    result = await Utils.run_command("echo hello")
+    result = await Utils.run_command(["echo", "hello"])
 
     assert result.exit_code == 0
     assert result.stdout == "hello"
@@ -48,7 +48,7 @@ async def test_run_command_success():
 
 @pytest.mark.asyncio
 async def test_run_command_nonzero_exit():
-    result = await Utils.run_command("exit 1")
+    result = await Utils.run_command(["false"])
 
     assert result.exit_code == 1
 
@@ -56,12 +56,12 @@ async def test_run_command_nonzero_exit():
 @pytest.mark.asyncio
 async def test_run_command_for_success_raises_on_nonzero():
     with pytest.raises(RuntimeError):
-        await Utils.run_command_for_success("exit 2")
+        await Utils.run_command_for_success(["sh", "-c", "exit 2"])
 
 
 @pytest.mark.asyncio
 async def test_run_command_for_success_returns_on_zero():
-    result = await Utils.run_command_for_success("echo ok")
+    result = await Utils.run_command_for_success(["echo", "ok"])
 
     assert result.stdout == "ok"
 
