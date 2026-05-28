@@ -134,7 +134,7 @@ class DockerOptions:
         container_name: str | None,
         image: str,
         image_port: int,
-        command: str | None = None,
+        command: str | list[str] | None = None,
         hardware: Sequence[HardwarePartInfo] | None = None,
         volumes: list[str] | None = None,
         restart: str | None = None,
@@ -195,7 +195,7 @@ class DockerComposeService(TypedDict):
     ports: NotRequired[list[str]]
     environment: NotRequired[dict[str, str]]
     healthcheck: NotRequired[dict[str, str]]
-    command: NotRequired[str]
+    command: NotRequired[str | list[str]]
     volumes: NotRequired[list[str]]
     restart: NotRequired[str]
     shm_size: NotRequired[str]
@@ -353,14 +353,13 @@ class DockerService:
             output from docker builx imagetools inspect --raw {image} in python dict format.
         """
         cmd_parts = ["docker", "buildx", "imagetools", "inspect", image, "--raw"]
-        cmd = " ".join(Utils.shell_escape(part) for part in cmd_parts)
-        output = await Utils.run_command(cmd)
+        output = await Utils.run_command(cmd_parts)
         if output.exit_code != 0:
             if "not found" in output.stderr:
                 raise DockerImageDoesNotExistError(image)
             if "authorization failed" in output.stderr or "failed to authorize" in output.stderr:
                 raise DockerImageAuthorizationError(image)
-            raise RuntimeError("Invalid exit code for command", (output.exit_code, cmd, output.stdout, output.stderr))
+            raise RuntimeError("Invalid exit code for command", (output.exit_code, cmd_parts, output.stdout, output.stderr))
         if output.stderr:
             logger.exception(output.stderr)
             raise AppError("Something went wrong. Check logs.")
@@ -402,7 +401,7 @@ class DockerService:
         """
         try:
             # Inspect the image to get its metadata
-            result = await Utils.run_command_for_success(f"docker image inspect {image}")
+            result = await Utils.run_command_for_success(["docker", "image", "inspect", image])
 
             # Parse JSON output
             image_data = json.loads(result.stdout)
@@ -472,8 +471,7 @@ class DockerService:
         """Start given docker compose."""
         docker_compose_cmd = self.docker_compose_cmd
         cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "up", "-d", "--wait"]
-        command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
-        return await Utils.run_command_for_success(command)
+        return await Utils.run_command_for_success(cmd_parts)
 
     async def stop_docker(self, options: DockerOptions) -> None:
         """Stop docker."""
@@ -485,30 +483,26 @@ class DockerService:
         """Stop given docker compose."""
         docker_compose_cmd = self.docker_compose_cmd
         cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "down", "--remove-orphans"]
-        command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
-        await Utils.run_command_for_success(command)
+        await Utils.run_command_for_success(cmd_parts)
 
     async def restart_docker_compose(self, docker_compose_file_path: Path) -> None:
         """Restart given docker compose."""
         docker_compose_cmd = self.docker_compose_cmd
         cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "restart"]
-        command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
-        await Utils.run_command_for_success(command)
+        await Utils.run_command_for_success(cmd_parts)
 
     async def get_docker_compose_logs(self, docker_compose_file_path: Path) -> str:
         """Get docker compose logs."""
         docker_compose_cmd = self.docker_compose_cmd
         cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "logs"]
-        command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
-        result = await Utils.run_command_for_success(command)
+        result = await Utils.run_command_for_success(cmd_parts)
         return result.stdout
 
     async def run_command_docker_compose(self, filepath: Path, service_name: str, command: str) -> str:
         """Run command in docker compose service."""
         docker_compose_cmd = self.docker_compose_cmd
         cmd_parts = [*docker_compose_cmd.split(), "-f", str(filepath), "exec", service_name, *command.split(" ")]
-        command = " ".join(Utils.shell_escape(part) for part in cmd_parts)
-        result = await Utils.run_command_for_success(command)
+        result = await Utils.run_command_for_success(cmd_parts)
         return result.stdout
 
     async def is_docker_compose_running(self, docker_compose_file_path: Path, service_name: str) -> bool:
@@ -517,8 +511,8 @@ class DockerService:
         if not docker_compose_file_path.exists():
             return False
         try:
-            cmd = f"{docker_compose_cmd} -f {docker_compose_file_path} ps --services --filter status=running"
-            result = await Utils.run_command(cmd)
+            cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "ps", "--services", "--filter", "status=running"]
+            result = await Utils.run_command(cmd_parts)
             return service_name in result.stdout  # noqa: TRY300
         except Exception:
             return False
@@ -577,11 +571,11 @@ class DockerService:
             return False
 
         try:
-            cmd = f"{docker_compose_cmd} -f {docker_compose_file_path} ps {service_name} --format json"
-            result = await Utils.run_command(cmd)
+            cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "ps", service_name, "--format", "json"]
+            result = await Utils.run_command(cmd_parts)
 
             if result.exit_code != 0:
-                msg = f"{docker_compose_file_path} {cmd} exit code is not 0. Exit code is {result.exit_code}"
+                msg = f"{docker_compose_file_path} {cmd_parts} exit code is not 0. Exit code is {result.exit_code}"
                 logger.debug(msg)
                 return False
 
@@ -782,7 +776,7 @@ class DockerService:
         """Stop docker compose and remove the file."""
         docker_compose_cmd = self.docker_compose_cmd
         docker_compose_file = self.get_docker_compose_file_path(options.name)
-        await Utils.run_command(f"{docker_compose_cmd} -f {docker_compose_file} down")
+        await Utils.run_command([*docker_compose_cmd.split(), "-f", str(docker_compose_file), "down"])
         if docker_compose_file.is_file():
             docker_compose_file.unlink()
         if self.config.compose_prefix:
@@ -829,7 +823,7 @@ async def create_docker_service(port_service: PortService, config: AppSettings) 
     async def get_docker_compose_cmd() -> str:
         """Return docker compose command."""
         if shutil.which("docker"):
-            result = await Utils.run_command("docker compose version")
+            result = await Utils.run_command(["docker", "compose", "version"])
             if result.exit_code == 0:
                 return "docker compose"
             if shutil.which("docker-compose"):
@@ -839,12 +833,12 @@ async def create_docker_service(port_service: PortService, config: AppSettings) 
 
     async def has_gpu_support() -> bool:
         """Return whether there is GPU support."""
-        result = await Utils.run_command("docker run --gpus all --rm busybox echo")
+        result = await Utils.run_command(["docker", "run", "--gpus", "all", "--rm", "busybox", "echo"])
         return result.exit_code == 0
 
     async def is_rootless() -> bool:
         """Return whether docker is running in rootless mode."""
-        result = await Utils.run_command("docker info")
+        result = await Utils.run_command(["docker", "info"])
         return result.exit_code == 0 and "rootless" in result.stdout
 
     def get_host_platform() -> str:

@@ -167,8 +167,7 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         cached = self._log_cache.get(container_name)
         if cached and (time.monotonic() - cached[0]) < _LOG_CACHE_TTL:
             return cached[1]
-        cmd = " ".join(Utils.shell_escape(p) for p in ["docker", "logs", container_name]) + " 2>&1"
-        result = await Utils.run_command(cmd)
+        result = await Utils.run_command(["docker", "logs", container_name])
         raw = result.stdout + result.stderr
         self._log_cache[container_name] = (time.monotonic(), raw)
         return raw

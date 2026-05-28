@@ -9,6 +9,7 @@
 
 """Coqui service."""
 
+import shlex
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from pathlib import Path
@@ -414,7 +415,7 @@ class CoquiService(Base2Service[InstalledInfo, DownloadedInfo]):
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    def _build_coqui_command(self, options: CoquiCmdOptions) -> str:
+    def _build_coqui_command(self, options: CoquiCmdOptions) -> list[str]:
         cmd_args = ["python3", "TTS/server/server.py"]
 
         if options.model_path:
@@ -432,8 +433,7 @@ class CoquiService(Base2Service[InstalledInfo, DownloadedInfo]):
         if options.language:
             cmd_args.extend(["--language", options.language])
 
-        command_string = " ".join(cmd_args)
-        return f"-c {Utils.shell_escape(command_string)}"
+        return ["-c", shlex.join(cmd_args)]
 
     async def _uninstall_model(self, instance: str, model_id: str, options: UninstallModelIn) -> None:
         info = self.get_instance_installed_info(instance)

@@ -171,8 +171,8 @@ def test_build_coqui_command_uses_model_name(svc: CoquiService) -> None:
         CoquiCmdOptions(model_name="tts_models/en/vctk/vits", model_path=None, cuda=False, language=None)
     )
 
-    assert "tts_models/en/vctk/vits" in cmd
-    assert "--model_name" in cmd
+    assert "tts_models/en/vctk/vits" in cmd[1]
+    assert "--model_name" in cmd[1]
 
 
 def test_build_coqui_command_uses_model_path_over_name(svc: CoquiService) -> None:
@@ -180,9 +180,9 @@ def test_build_coqui_command_uses_model_path_over_name(svc: CoquiService) -> Non
         CoquiCmdOptions(model_name="some-name", model_path="/data/model.pth", cuda=False, language=None)
     )
 
-    assert "--model_path" in cmd
-    assert "/data/model.pth" in cmd
-    assert "--model_name" not in cmd
+    assert "--model_path" in cmd[1]
+    assert "/data/model.pth" in cmd[1]
+    assert "--model_name" not in cmd[1]
 
 
 def test_build_coqui_command_includes_port_5002(svc: CoquiService) -> None:
@@ -190,7 +190,7 @@ def test_build_coqui_command_includes_port_5002(svc: CoquiService) -> None:
         CoquiCmdOptions(model_name="any-model", model_path=None, cuda=False, language=None)
     )
 
-    assert "5002" in cmd
+    assert "5002" in cmd[1]
 
 
 def test_build_coqui_command_cuda_flag_when_true(svc: CoquiService) -> None:
@@ -198,8 +198,8 @@ def test_build_coqui_command_cuda_flag_when_true(svc: CoquiService) -> None:
         CoquiCmdOptions(model_name="any-model", model_path=None, cuda=True, language=None)
     )
 
-    assert "--use_cuda" in cmd
-    assert "true" in cmd
+    assert "--use_cuda" in cmd[1]
+    assert "true" in cmd[1]
 
 
 def test_build_coqui_command_no_cuda_when_false(svc: CoquiService) -> None:
@@ -207,7 +207,7 @@ def test_build_coqui_command_no_cuda_when_false(svc: CoquiService) -> None:
         CoquiCmdOptions(model_name="any-model", model_path=None, cuda=False, language=None)
     )
 
-    assert "--use_cuda" not in cmd
+    assert "--use_cuda" not in cmd[1]
 
 
 def test_build_coqui_command_language_included(svc: CoquiService) -> None:
@@ -215,8 +215,8 @@ def test_build_coqui_command_language_included(svc: CoquiService) -> None:
         CoquiCmdOptions(model_name="any-model", model_path=None, cuda=False, language="en")
     )
 
-    assert "--language" in cmd
-    assert "en" in cmd
+    assert "--language" in cmd[1]
+    assert "en" in cmd[1]
 
 
 def test_build_coqui_command_no_language_omitted(svc: CoquiService) -> None:
@@ -224,7 +224,7 @@ def test_build_coqui_command_no_language_omitted(svc: CoquiService) -> None:
         CoquiCmdOptions(model_name="any-model", model_path=None, cuda=False, language=None)
     )
 
-    assert "--language" not in cmd
+    assert "--language" not in cmd[1]
 
 
 def test_build_coqui_command_raises_when_neither_name_nor_path(svc: CoquiService) -> None:
@@ -239,7 +239,7 @@ def test_build_coqui_command_starts_with_dash_c(svc: CoquiService) -> None:
         CoquiCmdOptions(model_name="any-model", model_path=None, cuda=False, language=None)
     )
 
-    assert cmd.startswith("-c ")
+    assert cmd[0] == "-c"
 
 
 def test_model_installed_info_get_info() -> None:
