@@ -87,7 +87,7 @@ class SrvMcpCustomModel(BaseModel):
     envs: dict[str, str] | None = None
     headers: dict[str, str] | None = None
     healthcheck_cmd: str | None = None
-    healthcheck_start_period: str | None = None  # TODO change to str time
+    healthcheck_start_period: Annotated[str, Field(pattern=r"^\d+[smh]$")] | None = None
     required_envs: dict[str, str] | None = None
     required_headers: dict[str, str] | None = None
 
