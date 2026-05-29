@@ -42,6 +42,7 @@ import { InstallationWarningsError } from "@/deepfellow/types";
 import type { ProgressEvent } from "@/utils/sse-stream";
 import {
   clearServiceInstallProgress,
+  getSnapshot,
   setServiceInstallProgress,
   useInstallProgressSnapshot,
 } from "@/state/install-progress-store";
@@ -109,6 +110,22 @@ export function ServicesList() {
   useEffect(() => {
     if (!servicesList.length) return;
 
+    // Reconcile: clear progress for services that are no longer in-progress so stale
+    // badges don't linger after installation completes between effect runs.
+    const inProgressIds = new Set<string>();
+    for (const service of servicesList) {
+      const inst = service.installed;
+      if (!inst || typeof inst !== "object") continue;
+      const s = (inst as { stage?: unknown }).stage;
+      const v = (inst as { value?: unknown }).value;
+      if ((s === "install" || s === "download") && typeof v === "number" && Number.isFinite(v)) {
+        inProgressIds.add(service.id);
+      }
+    }
+    for (const id of Object.keys(getSnapshot().services)) {
+      if (!inProgressIds.has(id)) clearServiceInstallProgress(id);
+    }
+
     const cleanups: Array<() => void> = [];
 
     for (const service of servicesList) {
@@ -125,13 +142,26 @@ export function ServicesList() {
       if (!installedIsProgress) continue;
 
       const serviceId = service.id;
+      // Skip if already tracked by an active install mutation — prevents double-tracking
+      // and orphaned simulation timers when the 10 s refetch fires mid-install.
+      if (simulationStopFnsRef.current[serviceId]) continue;
+
       let currentStage: "install" | "download" = installedStage as "install" | "download";
       const abortController = new AbortController();
       let isCancelled = false;
 
+      // Use the existing store value (preserved across effect re-runs) or the backend
+      // value as the starting point — avoids showing 0 % when the page reloads mid-install.
+      const existingProgress = getSnapshot().services[serviceId];
+      const startValue = existingProgress?.value ?? (installedValue as number);
+      if (!existingProgress) {
+        setServiceInstallProgress(serviceId, { stage: currentStage, value: installedValue as number });
+      }
+
       const installStartTime = Date.now();
       const sim = startProgressSimulation({
         stepPerTick: getStepPerTick(service.size),
+        initialValue: startValue,
         onTick: (value) => {
           if (isCancelled) return;
           setServiceInstallProgress(serviceId, { stage: currentStage, value });
@@ -150,23 +180,21 @@ export function ServicesList() {
 
             if (event.type === "progress" && stage && value !== undefined) {
               currentStage = stage;
-              if (value > 0 && value < 1) {
-                hasRealProgressRef.current[serviceId] = true;
-              }
+              hasRealProgressRef.current[serviceId] = true;
               setServiceInstallProgress(serviceId, { stage, value });
               return;
             }
 
             if (event.type === "finish") {
               if (event.status === "ok") {
-                sim.smoothComplete(Math.max(COMPLETION_SMOOTH_MIN_MS, Math.min(Date.now() - installStartTime, COMPLETION_SMOOTH_MS)), () => {
-                  delete simulationStopFnsRef.current[serviceId];
-                  // Deliberately NOT clearing progress here — the store stays at 1.0
-                  // until the query refetch completes and the effect cleanup fires.
-                  // Clearing early would cause the bar to flash back to the stale
-                  // backend value still in the React Query cache.
-                  queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
-                });
+                sim.smoothComplete(
+                  Math.max(COMPLETION_SMOOTH_MIN_MS, Math.min(Date.now() - installStartTime, COMPLETION_SMOOTH_MS)),
+                  () => {
+                    delete simulationStopFnsRef.current[serviceId];
+                    queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
+                  },
+                  getSnapshot().services[serviceId]?.value
+                );
               } else {
                 sim.stop();
                 delete simulationStopFnsRef.current[serviceId];
@@ -191,7 +219,8 @@ export function ServicesList() {
         sim.stop();
         delete simulationStopFnsRef.current[serviceId];
         delete hasRealProgressRef.current[serviceId];
-        clearServiceInstallProgress(serviceId);
+        // Progress is NOT cleared here — the reconciliation step at the top of the next
+        // effect run handles cleanup for services that are no longer in-progress.
       });
     }
 
@@ -222,17 +251,22 @@ export function ServicesList() {
 
             if (event.type === "progress" && stage && value !== undefined) {
               currentStage = stage;
-              if (value > 0 && value < 1) {
-                hasRealProgressRef.current[serviceId] = true;
-              }
+              hasRealProgressRef.current[serviceId] = true;
               setServiceInstallProgress(serviceId, { stage, value });
             } else if (event.type === "finish") {
               if (event.status === "ok") {
-                sim.smoothComplete(Math.max(COMPLETION_SMOOTH_MIN_MS, Math.min(Date.now() - installStartTime, COMPLETION_SMOOTH_MS)), () => {
-                  delete simulationStopFnsRef.current[serviceId];
-                  clearServiceInstallProgress(serviceId);
-                  resolve();
-                });
+                sim.smoothComplete(
+                  Math.max(COMPLETION_SMOOTH_MIN_MS, Math.min(Date.now() - installStartTime, COMPLETION_SMOOTH_MS)),
+                  () => {
+                    delete simulationStopFnsRef.current[serviceId];
+                    // Do NOT clear progress here — if the backend still reports the service
+                    // as in-progress on the next refetch, clearing now would cause the bar
+                    // to jump back to the stale backend value. Reconciliation clears it once
+                    // the backend confirms the service is no longer in-progress.
+                    resolve();
+                  },
+                  getSnapshot().services[serviceId]?.value
+                );
               } else {
                 sim.stop();
                 delete simulationStopFnsRef.current[serviceId];
@@ -254,7 +288,6 @@ export function ServicesList() {
       delete hasRealProgressRef.current[variables.serviceId];
       queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
       pendingInstallationRef.current = null;
-      clearServiceInstallProgress(variables.serviceId);
       toast.success("Service installed successfully");
     },
     onError: (error, variables) => {

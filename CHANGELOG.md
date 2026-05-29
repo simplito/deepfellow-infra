@@ -4,7 +4,6 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-
 ## [Unreleased]
 
 ### Changed
@@ -14,10 +13,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added opt-in OTLP log export (`otel_logging_enabled = true`): Python application logs and uvicorn access/error logs are forwarded to the configured OTLP endpoint alongside traces.
 
 ### Fixed
+- Fixed WebUI installation progress bar resetting to 0% when the page is reloaded mid-install.
+- Fixed progress bar jumping backwards during active installation on each 10-second background refetch.
+- Fixed progress bar regressing from 100% back to ~90% and replaying the completion animation a second time.
+- Fixed orphaned `setInterval` timers when the polling effect and an active install mutation raced to track the same service/model.
+- Fixed Ollama and Ollama External download progress overcounting bytes when multiple model layers are downloaded in parallel — per-digest tracking replaces the previous single `(last_digest, last_value)` pair.
+- Added Vitest unit tests for `progress-simulation.ts` and `install-progress-store.ts` covering all regression scenarios.
+- Added backend regression tests for Ollama per-digest progress tracking in `test_ollama_service.py` and `test_ollama_external_service.py`.
 - Fixed command injection vulnerability in `Utils.run_command` — replaced `create_subprocess_shell` with `create_subprocess_exec` and changed the signature to `list[str]`, eliminating shell interpretation of subprocess arguments.
 
 ### Changed
 - `check_key` is now a required field in the WebSocket `InitRequest`; subinfra nodes that omit it are rejected at parse time. The optional-field migration workaround has been removed.
+>>>>>>> CHANGELOG.md
 - `healthcheck_start_period` in `SrvMcpCustomModel` and `SrvCustomCustomModel` now validates against `^\d+[smh]$` (e.g. `30s`, `5m`, `1h`), rejecting invalid Docker duration strings at parse time.
 
 ## [0.27.0] - 2026-05-27
@@ -38,6 +45,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 - Fixed typo `uliumits` → `ulimits` in `DockerOptions` (`docker.py`).
 - Fixed Stable Diffusion `n_iter` value defaulting to `None`/`0` when `body.n` is falsy — now correctly defaults to `1`.
+
+## [0.26.3] - 26.05.2026
+
+### Added
+- Actual VRAM/RAM usage 
+- Estimated VRAM/RAM usage per model in ollama, llamacpp and vllm services
+
+### Fixed
 - Fixed "Test" action for llama.cpp models in the admin UI — models with type `llm-v1-v2-v3-ant` were incorrectly reported as untestable.
 - Download progress counter no longer jumps back during model installation.
 - Removed broken PLLuM entries from `scripts/custom_models.json`: `tensorblock/Llama-PLLuM-8B-chat-GGUF` (account deleted, all URLs 404) and `CYFRAGOVPL/Llama-PLLuM-8B-chat` (modelfile error, cannot be installed). Refreshed `static/ollama-min.json` via `just ollama-get-models`.
