@@ -9,6 +9,7 @@
 
 """Sindri service."""
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -245,12 +246,19 @@ class SindriService(Base2Service[InstalledInfo, DownloadedInfo]):
     async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
         installed = self.get_instance_info(instance).installed
         if installed:
-            for model in installed.models.copy().values():
+            models = list(installed.models.copy().values())
+
+            for model in models:
                 if model.type == "llm":
                     self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
 
-                if not self.is_model_installed_in_other_instance(instance, model.id):
-                    await self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
+            await asyncio.gather(
+                *[
+                    self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
+                    for model in models
+                    if not self.is_model_installed_in_other_instance(instance, model.id)
+                ]
+            )
 
             await self.docker_service.uninstall_docker(installed.docker)
 
