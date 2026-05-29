@@ -11,6 +11,7 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
+from pydantic import ValidationError
 
 from server.models.api import Model, ModelProps
 from server.models.mesh import MeshInfo
@@ -128,7 +129,7 @@ async def test_process_message_does_not_send_none_result():
 async def test_dispatch_init():
     server = make_server()
     server._on_init = AsyncMock(return_value="OK")  # pyright: ignore[reportPrivateUsage]
-    params = {"auth": MESH_KEY, "name": "sub", "url": "http://sub", "api_key": "key", "models": []}
+    params = {"auth": MESH_KEY, "name": "sub", "url": "http://sub", "api_key": "key", "models": [], "check_key": "ck"}
     ctx = InfraWsData(authorized=None)
 
     result = await server._handle_json_rpc_request("init", params, ctx)  # pyright: ignore[reportPrivateUsage]
@@ -211,7 +212,7 @@ def test_try_parse_invalid_raises_api_error():
 async def test_on_init_already_authorised_raises():
     server = make_server()
     ctx = InfraWsData(authorized=make_authorized())
-    params = InitRequest(auth=MESH_KEY, name="sub", url="http://sub", api_key="key", models=[])
+    params = InitRequest(auth=MESH_KEY, name="sub", url="http://sub", api_key="key", models=[], check_key="ck")
 
     with pytest.raises(ApiError) as exc_info:
         await server._on_init(params, ctx)  # pyright: ignore[reportPrivateUsage]
@@ -223,7 +224,7 @@ async def test_on_init_already_authorised_raises():
 async def test_on_init_wrong_key_raises():
     server = make_server()
     ctx = InfraWsData(authorized=None)
-    params = InitRequest(auth="wrong-key", name="sub", url="http://sub", api_key="key", models=[])
+    params = InitRequest(auth="wrong-key", name="sub", url="http://sub", api_key="key", models=[], check_key="ck")
 
     with pytest.raises(ApiError) as exc_info:
         await server._on_init(params, ctx)  # pyright: ignore[reportPrivateUsage]
@@ -231,14 +232,23 @@ async def test_on_init_wrong_key_raises():
     assert exc_info.value.code == 2
 
 
+def test_init_request_rejects_empty_check_key():
+    with pytest.raises(ValidationError):
+        InitRequest(auth=MESH_KEY, name="sub", url="http://sub", api_key="key", models=[], check_key="")
+
+
 @pytest.mark.asyncio
-async def test_on_init_success_without_check_key():
+async def test_on_init_success():
     server = make_server()
     ctx = InfraWsData(authorized=None)
     models = [make_model()]
-    params = InitRequest(auth=MESH_KEY, name="sub", url="http://sub", api_key="key", models=models)
+    params = InitRequest(auth=MESH_KEY, name="sub", url="http://sub", api_key="key", models=models, check_key="ck")
 
-    result = await server._on_init(params, ctx)  # pyright: ignore[reportPrivateUsage]
+    http_response = MagicMock()
+    http_response.response.status = 200
+
+    with patch("server.websockets.infra_websocket_server.make_http_request", new=AsyncMock(return_value=http_response)):
+        result = await server._on_init(params, ctx)  # pyright: ignore[reportPrivateUsage]
 
     assert isinstance(result, InitResponse)
     assert ctx.authorized is not None

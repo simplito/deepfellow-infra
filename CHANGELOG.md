@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed command injection vulnerability in `Utils.run_command` — replaced `create_subprocess_shell` with `create_subprocess_exec` and changed the signature to `list[str]`, eliminating shell interpretation of subprocess arguments.
 
 ### Changed
+- `check_key` is now a required field in the WebSocket `InitRequest`; subinfra nodes that omit it are rejected at parse time. The optional-field migration workaround has been removed.
 - `healthcheck_start_period` in `SrvMcpCustomModel` and `SrvCustomCustomModel` now validates against `^\d+[smh]$` (e.g. `30s`, `5m`, `1h`), rejecting invalid Docker duration strings at parse time.
 
 ## [0.27.0] - 2026-05-27

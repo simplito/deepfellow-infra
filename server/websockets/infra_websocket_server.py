@@ -107,18 +107,15 @@ class InfraWebsocketServer(WebSocketServer[InfraWsData]):
         if params.auth != self.config.mesh_key.get_secret_value():
             raise ApiError(code=2, message="Invalid api key")
 
-        if params.check_key:  # TODO: params.check_key should be switched to requried parameter after old infra migration
-            url = f"{params.url}/admin/mesh/check"
-            connection_info = await make_http_request(
-                method="POST",
-                url=url,
-                data=CheckMeshConnection(connection_verifier=params.check_key, infra_api_key=params.api_key)
-                .model_dump_json()
-                .encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-            )
-            if connection_info.response.status != 200:
-                raise ApiError(code=4, message="Subinfra verification error", data={"url": url, "status": connection_info.response.status})
+        url = f"{params.url}/admin/mesh/check"
+        connection_info = await make_http_request(
+            method="POST",
+            url=url,
+            data=CheckMeshConnection(connection_verifier=params.check_key, infra_api_key=params.api_key).model_dump_json().encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        if connection_info.response.status != 200:
+            raise ApiError(code=4, message="Subinfra verification error", data={"url": url, "status": connection_info.response.status})
 
         loop_urls = {self.config.infra_url} | {a.url for a in self._own_ancestors}
         clean_children = {url: self._strip_loop_urls(child, loop_urls) for url, child in params.children.items() if url not in loop_urls}
