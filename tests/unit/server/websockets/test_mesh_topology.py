@@ -7,8 +7,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Generator
 from typing import cast
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -47,9 +48,24 @@ def _make_server(
 
 
 def _init_params(**kwargs: object) -> InitRequest:
-    defaults: dict[str, object] = {"auth": "secret", "name": "child", "url": "http://child.url", "api_key": "key", "models": []}
+    defaults: dict[str, object] = {
+        "auth": "secret",
+        "name": "child",
+        "url": "http://child.url",
+        "api_key": "key",
+        "models": [],
+        "check_key": "ck",
+    }
     defaults.update(kwargs)
     return InitRequest(**defaults)  # type: ignore[arg-type]
+
+
+@pytest.fixture(autouse=True)
+def mock_check_key_http() -> Generator[MagicMock]:
+    http_ok = MagicMock()
+    http_ok.response.status = 200
+    with patch("server.websockets.infra_websocket_server.make_http_request", new=AsyncMock(return_value=http_ok)):
+        yield http_ok
 
 
 @pytest.mark.asyncio
@@ -168,7 +184,7 @@ async def test_infra_client_init_handles_plain_ok_response() -> None:
     mock_rpc.request = AsyncMock(return_value="OK")
 
     client = InfraClient(mock_rpc)
-    params = InitRequest(auth="a", name="n", url="http://x.url", api_key="k", models=[])
+    params = InitRequest(auth="a", name="n", url="http://x.url", api_key="k", models=[], check_key="ck")
     result = await client.init(params)
 
     assert isinstance(result, InitResponse)
@@ -181,7 +197,7 @@ async def test_infra_client_init_parses_init_response() -> None:
     mock_rpc.request = AsyncMock(return_value={"ancestors": [{"url": "http://root.url", "name": ""}]})
 
     client = InfraClient(mock_rpc)
-    params = InitRequest(auth="a", name="n", url="http://x.url", api_key="k", models=[])
+    params = InitRequest(auth="a", name="n", url="http://x.url", api_key="k", models=[], check_key="ck")
     result = await client.init(params)
 
     assert result.ancestors == [AncestorInfo(url="http://root.url", name="")]
