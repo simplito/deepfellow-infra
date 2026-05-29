@@ -9,6 +9,7 @@
 
 """Remote service."""
 
+import asyncio
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Any, Generic, Literal, TypeVar
@@ -290,7 +291,9 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
     async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:  # noqa: C901
         instance_info = self.get_instance_info(instance)
         if instance_info.installed:
-            for model in instance_info.installed.models.copy().values():
+            models = list(instance_info.installed.models.copy().values())
+
+            for model in models:
                 if model.type == "llm":
                     self.endpoint_registry.unregister_chat_completion(model.registered_name, model.registration_id)
                 if model.type == "tts":
@@ -302,8 +305,13 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                 if model.type == "embedding":
                     self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
 
-                if not self.is_model_installed_in_other_instance(instance, model.id):
-                    await self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
+            await asyncio.gather(
+                *[
+                    self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
+                    for model in models
+                    if not self.is_model_installed_in_other_instance(instance, model.id)
+                ]
+            )
 
         self.instances_info[instance].installed = None
 

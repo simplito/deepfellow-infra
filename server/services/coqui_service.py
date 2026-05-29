@@ -9,6 +9,7 @@
 
 """Coqui service."""
 
+import asyncio
 import shlex
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
@@ -239,9 +240,13 @@ class CoquiService(Base2Service[InstalledInfo, DownloadedInfo]):
     async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
         installed = self.get_instance_info(instance).installed
         if installed:
-            for model in installed.models.copy().values():
-                if not self.is_model_installed_in_other_instance(instance, model.id):
-                    await self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
+            await asyncio.gather(
+                *[
+                    self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
+                    for model in installed.models.copy().values()
+                    if not self.is_model_installed_in_other_instance(instance, model.id)
+                ]
+            )
 
         self.instances_info[instance].installed = None
 

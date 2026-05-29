@@ -9,6 +9,7 @@
 
 """Speaches AI service."""
 
+import asyncio
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -656,14 +657,21 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
     async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
         installed = self.get_instance_info(instance).installed
         if installed:
-            for model in installed.models.copy().values():
+            models = list(installed.models.copy().values())
+
+            for model in models:
                 if model.type == "tts":
                     self.endpoint_registry.unregister_audio_speech(model.registered_name, model.registration_id)
                 if model.type == "stt":
                     self.endpoint_registry.unregister_audio_transcriptions(model.registered_name, model.registration_id)
 
-                if not self.is_model_installed_in_other_instance(instance, model.id):
-                    await self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
+            await asyncio.gather(
+                *[
+                    self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
+                    for model in models
+                    if not self.is_model_installed_in_other_instance(instance, model.id)
+                ]
+            )
 
             await self.docker_service.uninstall_docker(installed.docker)
 
