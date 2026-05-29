@@ -19,7 +19,11 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from opentelemetry import trace
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import Status, StatusCode, TracerProvider  # type: ignore
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -29,6 +33,22 @@ from pydantic import BaseModel
 from server.config import AppSettings, load_config
 
 uvicorn_logger = logging.getLogger("uvicorn")
+
+
+def setup_otlp_logging(config: AppSettings) -> None:
+    """Attach an OTLP log handler to the root Python logger and non-propagating uvicorn loggers."""
+    resource = Resource(attributes={"service.name": "llm-audit"})
+    provider = LoggerProvider(resource=resource)
+    processor = BatchLogRecordProcessor(OTLPLogExporter(endpoint=config.otel_exporter_otlp_endpoint, insecure=True))
+    provider.add_log_record_processor(processor)
+    set_logger_provider(provider)
+
+    handler = LoggingHandler(level=logging.DEBUG, logger_provider=provider)
+    logging.getLogger().addHandler(handler)
+
+    # uvicorn loggers have propagate=false in logging_config.yaml so they won't reach root
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        logging.getLogger(name).addHandler(handler)
 
 
 class FuncArgs:

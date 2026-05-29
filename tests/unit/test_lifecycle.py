@@ -90,6 +90,7 @@ SERVICE_CLASSES = [
 
 _BASE_PATCHES = [
     "server.lifecycle.load_config",
+    "server.lifecycle.setup_otlp_logging",
     "server.lifecycle.Hardware",
     "server.lifecycle.MetricsRegistry",
     "server.lifecycle.TaskManager",
@@ -109,9 +110,10 @@ _BASE_PATCHES = [
 ]
 
 
-def _make_config(*, docker_subnet: str = "", stop_on_shutdown: bool = False) -> MagicMock:
+def _make_config(*, docker_subnet: str = "", stop_on_shutdown: bool = False, otel_logging_enabled: bool = False) -> MagicMock:
     cfg = MagicMock()
     cfg.docker_subnet = docker_subnet
+    cfg.otel_logging_enabled = otel_logging_enabled
     cfg.is_stop_containers_on_shutdown_enabled.return_value = stop_on_shutdown
     return cfg
 
@@ -151,6 +153,29 @@ def app() -> FastAPI:
 def base_mocks() -> Generator[dict[str, Mock]]:
     with ExitStack() as stack:
         yield {t: stack.enter_context(patch(t)) for t in _BASE_PATCHES}
+
+
+@pytest.mark.asyncio
+async def test_lifespan_calls_setup_otlp_logging_when_enabled(app: FastAPI, base_mocks: dict[str, Mock]) -> None:
+    cfg = _make_config(otel_logging_enabled=True)
+    _apply_base_patches(base_mocks, config=cfg)
+
+    async with lifespan(app):
+        pass
+
+    assert base_mocks["server.lifecycle.setup_otlp_logging"].call_count == 1
+    assert base_mocks["server.lifecycle.setup_otlp_logging"].call_args == call(cfg)
+
+
+@pytest.mark.asyncio
+async def test_lifespan_skips_setup_otlp_logging_when_disabled(app: FastAPI, base_mocks: dict[str, Mock]) -> None:
+    cfg = _make_config(otel_logging_enabled=False)
+    _apply_base_patches(base_mocks, config=cfg)
+
+    async with lifespan(app):
+        pass
+
+    assert base_mocks["server.lifecycle.setup_otlp_logging"].call_count == 0
 
 
 @pytest.mark.asyncio

@@ -8,6 +8,7 @@
 # limitations under the License.
 
 import inspect
+import logging
 from typing import Any
 from unittest.mock import MagicMock, call, patch
 
@@ -17,7 +18,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from opentelemetry.trace.status import StatusCode
 from pydantic import BaseModel
 
-from server.utils.tracing import FuncArgs, InfraTracer
+from server.utils.tracing import FuncArgs, InfraTracer, setup_otlp_logging
 
 
 def _make_config(enabled: bool = True, endpoint: str = "http://localhost:4317") -> MagicMock:
@@ -81,6 +82,76 @@ def _patch_otel_context_managers():
         patch("server.utils.tracing.trace.set_tracer_provider"),
         patch("server.utils.tracing.trace.get_tracer"),
     ]
+
+
+def _patch_otlp_logging_context_managers():
+    return [
+        patch("server.utils.tracing.LoggerProvider"),
+        patch("server.utils.tracing.OTLPLogExporter"),
+        patch("server.utils.tracing.BatchLogRecordProcessor"),
+        patch("server.utils.tracing.set_logger_provider"),
+        patch("server.utils.tracing.LoggingHandler"),
+    ]
+
+
+def test_setup_otlp_logging_creates_provider_with_service_name() -> None:
+    cfg = _make_config(endpoint="http://otel:4317")
+    patches = _patch_otlp_logging_context_managers()
+
+    with patches[0] as mock_provider_cls, patches[1], patches[2], patches[3], patches[4]:
+        setup_otlp_logging(cfg)
+
+    resource_arg = mock_provider_cls.call_args[1]["resource"]
+    assert resource_arg.attributes["service.name"] == "llm-audit"
+
+
+def test_setup_otlp_logging_uses_endpoint_from_config() -> None:
+    cfg = _make_config(endpoint="http://otel:4317")
+    patches = _patch_otlp_logging_context_managers()
+
+    with patches[0], patches[1] as mock_exporter_cls, patches[2], patches[3], patches[4]:
+        setup_otlp_logging(cfg)
+
+    assert mock_exporter_cls.call_args == call(endpoint="http://otel:4317", insecure=True)
+
+
+def test_setup_otlp_logging_registers_processor_and_sets_global_provider() -> None:
+    cfg = _make_config(endpoint="http://otel:4317")
+    patches = _patch_otlp_logging_context_managers()
+
+    with patches[0] as mock_provider_cls, patches[1], patches[2] as mock_processor_cls, patches[3] as mock_set, patches[4]:
+        setup_otlp_logging(cfg)
+
+    provider = mock_provider_cls.return_value
+    assert provider.add_log_record_processor.call_args == call(mock_processor_cls.return_value)
+    assert mock_set.call_args == call(provider)
+
+
+def test_setup_otlp_logging_attaches_handler_to_root_and_uvicorn_loggers() -> None:
+    cfg = _make_config(endpoint="http://otel:4317")
+    patches = _patch_otlp_logging_context_managers()
+
+    with (
+        patches[0] as mock_provider_cls,
+        patches[1],
+        patches[2],
+        patches[3],
+        patches[4] as mock_handler_cls,
+        patch("server.utils.tracing.logging.getLogger") as mock_get_logger,
+    ):
+        setup_otlp_logging(cfg)
+
+    handler = mock_handler_cls.return_value
+    assert mock_handler_cls.call_args == call(level=logging.DEBUG, logger_provider=mock_provider_cls.return_value)
+
+    logger_names = [c[0][0] if c[0] else "" for c in mock_get_logger.call_args_list]
+    assert "" in logger_names
+    assert "uvicorn" in logger_names
+    assert "uvicorn.error" in logger_names
+    assert "uvicorn.access" in logger_names
+
+    for logger_call in mock_get_logger.return_value.addHandler.call_args_list:
+        assert logger_call == call(handler)
 
 
 def test_func_args_defaults_are_none() -> None:

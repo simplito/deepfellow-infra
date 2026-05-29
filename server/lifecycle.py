@@ -46,6 +46,7 @@ from server.task_manager import TaskManager
 from server.utils.exceptions import AppStartError
 from server.utils.hardware import Hardware
 from server.utils.model_downloader import ModelDownloader
+from server.utils.tracing import setup_otlp_logging
 from server.websockets.infra_websocket_server import InfraWebsocketServer
 from server.websockets.parent_infra import ParentInfra
 from server.websockets.parent_infra_group import ParentInfraGroup
@@ -69,6 +70,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             raise AppStartError(str(e))  # noqa: B904
         except Exception as e:
             raise AppStartError("Config error. Have you created the .env file?") from e
+
+        if config.otel_logging_enabled:
+            setup_otlp_logging(config)
 
         if app.state.config.docker_subnet:
             check_subnet(app.state.config.docker_subnet)
