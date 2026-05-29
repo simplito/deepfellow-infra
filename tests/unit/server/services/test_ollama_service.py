@@ -8,6 +8,7 @@
 # limitations under the License.
 
 import hashlib
+import itertools
 import json
 from pathlib import Path
 from typing import Any
@@ -2163,3 +2164,99 @@ async def test_get_model_with_loaded_info_none(svc: OllamaService) -> None:
         result = await svc.get_model("default", model_id)
 
     assert result.id == model_id
+
+
+@pytest.mark.asyncio
+async def test_download_with_ollama_interleaved_digests_progress_never_decreases(svc: OllamaService) -> None:
+    # Regression test for issue #464 root cause 2:
+    # Ollama streams progress records for multiple layers in parallel, interleaving digests.
+    # The old single-(last_diggest, last_value) tracker treated every digest switch as a
+    # fresh start (increment = full completed value), overcounting bytes and pushing percentage
+    # above 1.0 prematurely — then a correction event caused a visible regression.
+    stream = MagicMock()
+    records = [
+        {"status": "pulling", "digest": "sha256:aaa", "completed": 1_000_000_000},  # layer A: 1 GB
+        {"status": "pulling", "digest": "sha256:bbb", "completed": 500_000_000},  # layer B: 0.5 GB
+        {"status": "pulling", "digest": "sha256:aaa", "completed": 2_000_000_000},  # layer A delta: +1 GB
+        {"status": "pulling", "digest": "sha256:bbb", "completed": 1_000_000_000},  # layer B delta: +0.5 GB
+        {"status": "success"},
+    ]
+    data = "\n".join(json.dumps(r) for r in records)
+
+    async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield FetchResult(status_code=200, data=data)
+
+    with patch("server.services.ollama_service.stream_fetch_from", side_effect=mock_stream):
+        # Model size matches total bytes: 2 GB (layer A) + 1 GB (layer B) = 3 GB
+        await svc._download_with_ollama(stream, "http://localhost:11434", "llama3", "3GB")  # pyright: ignore[reportPrivateUsage]
+
+    progress_values = [
+        call.args[0]["value"]
+        for call in stream.emit.call_args_list
+        if isinstance(call.args[0], dict) and call.args[0].get("type") == "progress"
+    ]
+    assert progress_values, "no progress events emitted"
+    # Progress must be monotonically non-decreasing
+    for prev, curr in itertools.pairwise(progress_values):
+        assert curr >= prev, f"progress went backward: {prev} → {curr}"
+    # Final progress before the explicit 1.0 must not have exceeded 1.0
+    assert all(v <= 1.0 for v in progress_values)
+
+
+@pytest.mark.asyncio
+async def test_download_with_ollama_duplicate_completed_value_not_double_counted(svc: OllamaService) -> None:
+    # Covers the increment == 0 branch: same completed value sent twice for a digest must not
+    # add anything to progress (increment = max(0, value - last_values[digest]) == 0).
+    stream = MagicMock()
+    records = [
+        {"status": "pulling", "digest": "sha256:aaa", "completed": 500_000_000},
+        {"status": "pulling", "digest": "sha256:aaa", "completed": 500_000_000},  # duplicate — increment=0
+        {"status": "success"},
+    ]
+    data = "\n".join(json.dumps(r) for r in records)
+
+    async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield FetchResult(status_code=200, data=data)
+
+    with patch("server.services.ollama_service.stream_fetch_from", side_effect=mock_stream):
+        await svc._download_with_ollama(stream, "http://localhost:11434", "llama3", "1GB")  # pyright: ignore[reportPrivateUsage]
+
+    progress_values = [
+        call.args[0]["value"]
+        for call in stream.emit.call_args_list
+        if isinstance(call.args[0], dict) and call.args[0].get("type") == "progress"
+    ]
+    assert progress_values, "no progress events emitted"
+    # Both records for sha256:aaa report the same completed value — second must not advance progress.
+    for prev, curr in itertools.pairwise(progress_values):
+        assert curr >= prev, f"progress went backward: {prev} → {curr}"
+
+
+@pytest.mark.asyncio
+async def test_download_with_ollama_interleaved_digests_correct_total(svc: OllamaService) -> None:
+    # Each digest's contribution should be counted exactly once — no overcounting.
+    stream = MagicMock()
+    records = [
+        {"status": "pulling", "digest": "sha256:aaa", "completed": 1_000_000_000},
+        {"status": "pulling", "digest": "sha256:bbb", "completed": 500_000_000},
+        {"status": "pulling", "digest": "sha256:aaa", "completed": 2_000_000_000},
+        {"status": "pulling", "digest": "sha256:bbb", "completed": 1_000_000_000},
+    ]
+    data = "\n".join(json.dumps(r) for r in records)
+
+    async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield FetchResult(status_code=200, data=data)
+
+    with patch("server.services.ollama_service.stream_fetch_from", side_effect=mock_stream):
+        await svc._download_with_ollama(stream, "http://localhost:11434", "llama3", "3GB")  # pyright: ignore[reportPrivateUsage]
+
+    # The last progress event emitted before the final 1.0 should be ≤ 1.0.
+    # With overcounting the value would exceed 1.0 (clamped to 1.0 by get_percentage),
+    # but the intermediate events would have hit 1.0 too early.
+    progress_values = [
+        call.args[0]["value"]
+        for call in stream.emit.call_args_list
+        if isinstance(call.args[0], dict) and call.args[0].get("type") == "progress" and call.args[0]["value"] < 1.0
+    ]
+    # There should be at least one intermediate event below 1.0 (not immediately saturated)
+    assert progress_values, "progress jumped straight to 1.0 — overcounting likely"

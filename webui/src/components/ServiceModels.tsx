@@ -44,6 +44,7 @@ import { toast } from "sonner";
 import { getStageLabel } from "@/utils/sse-stream";
 import {
   clearModelInstallProgress,
+  getSnapshot,
   setModelInstallProgress,
   useModelInstallProgress,
 } from "@/state/install-progress-store";
@@ -141,6 +142,24 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
   useEffect(() => {
     if (!modelsData?.list) return;
 
+    // Reconcile: clear progress for models that are no longer in-progress.
+    const inProgressKeys = new Set<string>();
+    for (const model of modelsData.list) {
+      const inst = model.installed;
+      if (!inst || typeof inst !== "object") continue;
+      const s = (inst as { stage?: unknown }).stage;
+      const v = (inst as { value?: unknown }).value;
+      if ((s === "install" || s === "download") && typeof v === "number" && Number.isFinite(v)) {
+        inProgressKeys.add(`${serviceId}::${model.id}`);
+      }
+    }
+    const prefix = `${serviceId}::`;
+    for (const key of Object.keys(getSnapshot().models)) {
+      if (key.startsWith(prefix) && !inProgressKeys.has(key)) {
+        clearModelInstallProgress(serviceId, key.slice(prefix.length));
+      }
+    }
+
     const cleanups: Array<() => void> = [];
 
     for (const model of modelsData.list) {
@@ -157,14 +176,25 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       if (!installedIsProgress) continue;
 
       const modelId = model.id;
-      let currentStage: "install" | "download" = installedStage as "install" | "download";
       const simKey = `${serviceId}::${modelId}`;
+      // Skip if already tracked by an active install mutation.
+      if (simulationStopFnsRef.current[simKey]) continue;
+
+      let currentStage: "install" | "download" = installedStage as "install" | "download";
       const abortController = new AbortController();
       let isCancelled = false;
+
+      // Use existing store value or backend value as starting point.
+      const existingProgress = getSnapshot().models[simKey];
+      const startValue = existingProgress?.value ?? (installedValue as number);
+      if (!existingProgress) {
+        setModelInstallProgress(serviceId, modelId, { stage: currentStage, value: installedValue as number });
+      }
 
       const installStartTime = Date.now();
       const sim = startProgressSimulation({
         stepPerTick: getStepPerTick(model.size, serviceId === "vllm" ? 0.2 : 1.6),
+        initialValue: startValue,
         onTick: (value) => {
           if (isCancelled) return;
           setModelInstallProgress(serviceId, modelId, { stage: currentStage, value });
@@ -184,21 +214,21 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
 
             if (event.type === "progress" && stage && value !== undefined) {
               currentStage = stage;
-              if (value > 0 && value < 1) {
-                hasRealProgressByModelRef.current[modelId] = true;
-              }
+              hasRealProgressByModelRef.current[modelId] = true;
               setModelInstallProgress(serviceId, modelId, { stage, value });
               return;
             }
 
             if (event.type === "finish") {
               if (event.status === "ok") {
-                sim.smoothComplete(Math.max(COMPLETION_SMOOTH_MIN_MS, Math.min(Date.now() - installStartTime, COMPLETION_SMOOTH_MS)), () => {
-                  delete simulationStopFnsRef.current[simKey];
-                  // Deliberately NOT clearing progress here — same reasoning as ServicesList:
-                  // keep store at 1.0 until the effect cleanup fires after the refetch.
-                  queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
-                });
+                sim.smoothComplete(
+                  Math.max(COMPLETION_SMOOTH_MIN_MS, Math.min(Date.now() - installStartTime, COMPLETION_SMOOTH_MS)),
+                  () => {
+                    delete simulationStopFnsRef.current[simKey];
+                    queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
+                  },
+                  getSnapshot().models[simKey]?.value
+                );
               } else {
                 sim.stop();
                 delete simulationStopFnsRef.current[simKey];
@@ -223,7 +253,7 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
         sim.stop();
         delete simulationStopFnsRef.current[simKey];
         delete hasRealProgressByModelRef.current[modelId];
-        clearModelInstallProgress(serviceId, modelId);
+        // Progress is NOT cleared here — reconciliation at the top handles cleanup.
       });
     }
 
@@ -261,9 +291,7 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
 
               if (event.type === "progress" && stage && value !== undefined) {
                 currentStage = stage;
-                if (value > 0 && value < 1) {
-                  hasRealProgressByModelRef.current[modelId] = true;
-                }
+                hasRealProgressByModelRef.current[modelId] = true;
                 setModelInstallProgress(serviceId, modelId, { stage, value });
                 const toastId = toastIdsRef.current[modelId];
                 if (toastId) {
@@ -273,16 +301,22 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
                 }
               } else if (event.type === "finish") {
                 if (event.status === "ok") {
-                  sim.smoothComplete(Math.max(COMPLETION_SMOOTH_MIN_MS, Math.min(Date.now() - installStartTime, COMPLETION_SMOOTH_MS)), () => {
-                    delete simulationStopFnsRef.current[simKey];
-                    clearModelInstallProgress(serviceId, modelId);
-                    const toastId = toastIdsRef.current[modelId];
-                    if (toastId) {
-                      toast.success(`Model ${modelId} installed successfully`, { id: toastId });
-                      delete toastIdsRef.current[modelId];
-                    }
-                    resolve();
-                  });
+                  sim.smoothComplete(
+                    Math.max(COMPLETION_SMOOTH_MIN_MS, Math.min(Date.now() - installStartTime, COMPLETION_SMOOTH_MS)),
+                    () => {
+                      delete simulationStopFnsRef.current[simKey];
+                      // Do NOT clear progress here — reconciliation clears it once the
+                      // backend confirms the model is no longer in-progress. Clearing early
+                      // would cause the bar to jump back to the stale backend value.
+                      const toastId = toastIdsRef.current[modelId];
+                      if (toastId) {
+                        toast.success(`Model ${modelId} installed successfully`, { id: toastId });
+                        delete toastIdsRef.current[modelId];
+                      }
+                      resolve();
+                    },
+                    getSnapshot().models[simKey]?.value
+                  );
                 } else {
                   sim.stop();
                   delete simulationStopFnsRef.current[simKey];
@@ -312,8 +346,6 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       delete hasRealProgressByModelRef.current[variables.modelId];
       queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
       pendingInstallationRef.current = null;
-      const modelId = variables.modelId;
-      clearModelInstallProgress(serviceId, modelId);
     },
     onError: (error, variables) => {
       const simKey = `${serviceId}::${variables.modelId}`;

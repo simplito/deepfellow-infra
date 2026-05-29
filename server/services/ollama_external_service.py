@@ -506,8 +506,7 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     async def _download_model(self, stream: Stream[StreamChunk], model: OllamaModel, model_id: str, base_url: str) -> None:
         progress = Progress(convert_size_to_bytes(model.size) or 0)
-        last_diggest: str = ""
-        last_value: int = 0
+        last_values: dict[str, int] = {}
 
         stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
         async for ollama_stream in stream_fetch_from(f"{base_url}/api/pull", "POST", {"model": model_id}, timeout=24 * 60 * 60):
@@ -519,11 +518,11 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
             if progress.max != 0:
                 for record in records:
                     if value := record.get("completed"):
-                        digest = record.get("digest")
-                        batch_download_bytes_size = value - last_value if digest == last_diggest else value
-                        progress.add_to_actual_value(batch_download_bytes_size)
-                        last_value = value
-                        last_diggest = digest
+                        digest: str = record.get("digest") or ""
+                        increment = max(0, value - last_values.get(digest, 0))
+                        if increment > 0:
+                            progress.add_to_actual_value(increment)
+                        last_values[digest] = value
 
                     elif record.get("status") == "success":
                         progress.set_actual_value(progress.max)

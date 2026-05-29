@@ -59,6 +59,12 @@ npm run build
 
 # Build and copy to static folder
 npm run buildx
+
+# Run unit tests (one-shot)
+npm test
+
+# Run tests in watch mode (reruns on file save)
+npx vitest
 ```
 
 ## API Endpoints Used

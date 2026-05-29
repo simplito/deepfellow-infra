@@ -44,6 +44,9 @@ check: license-check ruff ruff-format pyright auth-static auth-runtime
 ui-rebuild:
    (cd $(git rev-parse --show-toplevel)/webui && npm run buildx)
 
+test-webui:
+   (cd $(git rev-parse --show-toplevel)/webui && npm test)
+
 env-copy:
     uv run python ./scripts/copy_envs.py
 

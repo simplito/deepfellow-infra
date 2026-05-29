@@ -20,11 +20,14 @@ All Python commands use `uv` via `just`. Run from the project root.
 | `just ruff-format` | Format Python files |
 | `just pyright` | Type-check with pyright |
 | `just ui-rebuild` | Build WebUI and copy to `static/` |
+| `just test-webui` | Run WebUI unit tests (Vitest) |
 
 WebUI (from `webui/` directory):
 - `npm run dev` — dev server on port 3000
 - `npm run buildx` — build and copy to `../static/`
 - `npm run check` — biome lint + format check
+- `npm test` — run unit tests once (same as `just test-webui`)
+- `npx vitest` — run tests in watch mode (re-runs on file change)
 
 ## Code Style
 
@@ -50,10 +53,18 @@ WebUI (from `webui/` directory):
 
 ## Testing
 
+**Backend (Python):**
 - Pytest with strict async mode; per-function scope
 - Tests load `.test.env` — create from `example.env` if missing
 - Single test: `just test -k 'test_name'`
 - Coverage covers `server/` and `scripts/`
+
+**WebUI (TypeScript):**
+- Framework: Vitest — installed automatically with `npm install` (it's in `devDependencies`)
+- No extra setup required; test files live next to source files as `*.test.ts`
+- Run once: `just test-webui` or `npm test` (from `webui/`)
+- Watch mode: `npx vitest` (from `webui/`) — reruns on save
+- Tests cover pure utilities and store logic (`src/utils/`, `src/state/`)
 
 ## Required Environment Variables
 

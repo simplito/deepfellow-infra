@@ -18,16 +18,17 @@ export const COMPLETION_SMOOTH_MIN_MS = 300;
 export interface SimulationConfig {
   stepPerTick: number;
   onTick: (value: number) => void;
+  initialValue?: number;
 }
 
 export interface SimulationHandle {
   stop: () => void;
-  smoothComplete: (durationMs?: number, onDone?: () => void) => void;
+  smoothComplete: (durationMs?: number, onDone?: () => void, currentValue?: number) => void;
 }
 
 export function startProgressSimulation(config: SimulationConfig): SimulationHandle {
   let stopped = false;
-  let simulated = 0;
+  let simulated = Math.min(MAX_SIMULATED, Math.max(0, config.initialValue ?? 0));
   let smoothing = false;
   let smoothStep = 0;
   let onSmoothDone: (() => void) | undefined;
@@ -54,7 +55,11 @@ export function startProgressSimulation(config: SimulationConfig): SimulationHan
       stopped = true;
       clearInterval(id);
     },
-    smoothComplete: (durationMs = COMPLETION_SMOOTH_MS, onDone?: () => void) => {
+    smoothComplete: (durationMs = COMPLETION_SMOOTH_MS, onDone?: () => void, currentValue?: number) => {
+      // Sync with the store's current value — real SSE data may have advanced past the
+      // simulation's internal position (whose updates were ignored by monotonicity rules),
+      // so without this the animation would waste time replaying already-visible values.
+      if (currentValue !== undefined && currentValue > simulated) simulated = currentValue;
       const remaining = 1 - simulated;
       if (remaining <= 0) {
         stopped = true;

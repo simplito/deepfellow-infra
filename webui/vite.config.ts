@@ -8,6 +8,7 @@ This software is Licensed under the DeepFellow Free License.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+/// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -33,5 +34,8 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  test: {
+    environment: 'node',
   },
 })
