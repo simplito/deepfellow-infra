@@ -516,6 +516,41 @@ async def test_download_model_or_set_progress_forwards_existing_stream(svc: Olla
 
 
 @pytest.mark.asyncio
+async def test_download_model_or_set_progress_cleans_up_on_failure(svc: OllamaExternalService) -> None:
+    # Regression test for issue #458:
+    # If _download_model raises, the entry must be removed from models_download_progress
+    # so that a subsequent install attempt re-downloads instead of following the dead stream.
+    stream = MagicMock()
+    model = OllamaModel(id="llama3", size="1GB", type="llm")
+
+    with (
+        patch.object(svc, "_download_model", new_callable=AsyncMock, side_effect=HTTPException(400, "Model not available")),
+        pytest.raises(HTTPException),
+    ):
+        await svc._download_model_or_set_progress(stream, model, "llama3", "http://localhost:11434")  # pyright: ignore[reportPrivateUsage]
+
+    assert "llama3" not in svc.models_download_progress
+
+
+@pytest.mark.asyncio
+async def test_download_model_or_set_progress_retries_download_after_failure(svc: OllamaExternalService) -> None:
+    # Regression test for issue #458:
+    # After a failed first attempt, the second call must invoke _download_model again
+    # (not silently replay the dead stream), ensuring the model is actually fetched.
+    stream1 = MagicMock()
+    stream2 = MagicMock()
+    model = OllamaModel(id="llama3", size="1GB", type="llm")
+
+    mock_dl = AsyncMock(side_effect=[HTTPException(400, "Model not available"), None])
+    with patch.object(svc, "_download_model", mock_dl):  # pyright: ignore[reportPrivateUsage]
+        with pytest.raises(HTTPException):
+            await svc._download_model_or_set_progress(stream1, model, "llama3", "http://localhost:11434")  # pyright: ignore[reportPrivateUsage]
+        await svc._download_model_or_set_progress(stream2, model, "llama3", "http://localhost:11434")  # pyright: ignore[reportPrivateUsage]
+
+    assert mock_dl.call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_install_model_returns_already_installed(svc: OllamaExternalService, installed: InstalledInfo) -> None:
     model_id = next(iter(svc.models["default"]))
     installed.models[model_id] = ModelInstalledInfo(
