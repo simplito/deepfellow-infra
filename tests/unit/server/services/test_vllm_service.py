@@ -465,6 +465,39 @@ async def test_download_model_or_set_progress_starts_new_download(svc: VllmServi
 
 
 @pytest.mark.asyncio
+async def test_download_model_or_set_progress_cleans_up_on_failure(svc: VllmService, tmp_path: Path) -> None:
+    stream = MagicMock()
+    model_id = "google/test-model"
+    model = VllmModel(hf_id=model_id, size="1GB")
+    svc.models["default"][model_id] = model
+
+    with (
+        patch.object(svc, "_download_model", new_callable=AsyncMock, side_effect=HTTPException(400, "boom")),  # pyright: ignore[reportPrivateUsage]
+        pytest.raises(HTTPException),
+    ):
+        await svc._download_model_or_set_progress(stream, model_id, model, tmp_path)  # pyright: ignore[reportPrivateUsage]
+
+    assert model_id not in svc.models_download_progress
+
+
+@pytest.mark.asyncio
+async def test_download_model_or_set_progress_retries_download_after_failure(svc: VllmService, tmp_path: Path) -> None:
+    stream1 = MagicMock()
+    stream2 = MagicMock()
+    model_id = "google/test-model"
+    model = VllmModel(hf_id=model_id, size="1GB")
+    svc.models["default"][model_id] = model
+
+    mock_dl = AsyncMock(side_effect=[HTTPException(400, "boom"), tmp_path / "model"])
+    with patch.object(svc, "_download_model", mock_dl):  # pyright: ignore[reportPrivateUsage]
+        with pytest.raises(HTTPException):
+            await svc._download_model_or_set_progress(stream1, model_id, model, tmp_path)  # pyright: ignore[reportPrivateUsage]
+        await svc._download_model_or_set_progress(stream2, model_id, model, tmp_path)  # pyright: ignore[reportPrivateUsage]
+
+    assert mock_dl.call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_download_model_or_set_progress_forwards_existing_stream(svc: VllmService, tmp_path: Path) -> None:
     existing_stream: Stream[StreamChunk] = Stream()  # type: ignore[type-arg]
     chunk = StreamChunkProgress(type="progress", stage="download", value=0.5, data={"local_model_path": str(tmp_path / "model")})

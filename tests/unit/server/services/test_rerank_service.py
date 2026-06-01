@@ -503,6 +503,37 @@ async def test_download_model_or_set_progress_starts_download(svc: RerankService
 
 
 @pytest.mark.asyncio
+async def test_download_model_or_set_progress_cleans_up_on_failure(svc: RerankService) -> None:
+    model_id = "cross-encoder/ms-marco-MiniLM-L6-v2"
+    model = _const.models[model_id]
+    stream = MagicMock()
+
+    with (
+        patch.object(svc, "_download_model", new_callable=AsyncMock, side_effect=HTTPException(400, "boom")),  # pyright: ignore[reportPrivateUsage]
+        pytest.raises(HTTPException),
+    ):
+        await svc._download_model_or_set_progress(stream, model, model_id, Path("/tmp"))  # pyright: ignore[reportPrivateUsage]
+
+    assert model_id not in svc.models_download_progress
+
+
+@pytest.mark.asyncio
+async def test_download_model_or_set_progress_retries_download_after_failure(svc: RerankService) -> None:
+    model_id = "cross-encoder/ms-marco-MiniLM-L6-v2"
+    model = _const.models[model_id]
+    stream1 = MagicMock()
+    stream2 = MagicMock()
+
+    mock_dl = AsyncMock(side_effect=[HTTPException(400, "boom"), None])
+    with patch.object(svc, "_download_model", mock_dl):  # pyright: ignore[reportPrivateUsage]
+        with pytest.raises(HTTPException):
+            await svc._download_model_or_set_progress(stream1, model, model_id, Path("/tmp"))  # pyright: ignore[reportPrivateUsage]
+        await svc._download_model_or_set_progress(stream2, model, model_id, Path("/tmp"))  # pyright: ignore[reportPrivateUsage]
+
+    assert mock_dl.call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_download_model_or_set_progress_forwards_when_in_progress(svc: RerankService) -> None:
     model_id = "cross-encoder/ms-marco-MiniLM-L6-v2"
     model = _const.models[model_id]

@@ -838,6 +838,33 @@ async def test_download_model_or_set_progress_starts_download(svc: OllamaService
 
 
 @pytest.mark.asyncio
+async def test_download_model_or_set_progress_cleans_up_on_failure(svc: OllamaService) -> None:
+    stream = MagicMock()
+
+    with (
+        patch.object(svc, "_download_with_downloader", new_callable=AsyncMock, side_effect=HTTPException(400, "boom")),  # pyright: ignore[reportPrivateUsage]
+        pytest.raises(HTTPException),
+    ):
+        await svc._download_model_or_set_progress(stream, "http://localhost:11434", "llama3", "llama3", "1GB")  # pyright: ignore[reportPrivateUsage]
+
+    assert "llama3" not in svc.models_download_progress
+
+
+@pytest.mark.asyncio
+async def test_download_model_or_set_progress_retries_download_after_failure(svc: OllamaService) -> None:
+    stream1 = MagicMock()
+    stream2 = MagicMock()
+
+    mock_dl = AsyncMock(side_effect=[HTTPException(400, "boom"), None])
+    with patch.object(svc, "_download_with_downloader", mock_dl):  # pyright: ignore[reportPrivateUsage]
+        with pytest.raises(HTTPException):
+            await svc._download_model_or_set_progress(stream1, "http://localhost:11434", "llama3", "llama3", "1GB")  # pyright: ignore[reportPrivateUsage]
+        await svc._download_model_or_set_progress(stream2, "http://localhost:11434", "llama3", "llama3", "1GB")  # pyright: ignore[reportPrivateUsage]
+
+    assert mock_dl.call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_download_model_or_set_progress_forwards_when_in_progress(svc: OllamaService) -> None:
     existing_stream: Stream[StreamChunkProgress] = Stream()  # type: ignore[type-arg]
     chunk = StreamChunkProgress(type="progress", stage="download", value=0.5, data={})

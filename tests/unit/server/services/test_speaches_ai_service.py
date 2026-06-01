@@ -666,6 +666,35 @@ async def test_download_model_or_set_progress_starts_fresh_download(svc: Speache
 
 
 @pytest.mark.asyncio
+async def test_download_model_or_set_progress_cleans_up_on_failure(svc: SpeachesAIService) -> None:
+    model = SpeachesModel(id="test-model", type="tts", size="")
+    stream = MagicMock()
+
+    with (
+        patch.object(svc, "_download_model", new_callable=AsyncMock, side_effect=HTTPException(400, "boom")),  # pyright: ignore[reportPrivateUsage]
+        pytest.raises(HTTPException),
+    ):
+        await svc._download_model_or_set_progress(stream, model, "test-model", Path("/tmp"))  # pyright: ignore[reportPrivateUsage]
+
+    assert "test-model" not in svc.models_download_progress
+
+
+@pytest.mark.asyncio
+async def test_download_model_or_set_progress_retries_download_after_failure(svc: SpeachesAIService) -> None:
+    model = SpeachesModel(id="test-model", type="tts", size="")
+    stream1 = MagicMock()
+    stream2 = MagicMock()
+
+    mock_dl = AsyncMock(side_effect=[HTTPException(400, "boom"), None])
+    with patch.object(svc, "_download_model", mock_dl):  # pyright: ignore[reportPrivateUsage]
+        with pytest.raises(HTTPException):
+            await svc._download_model_or_set_progress(stream1, model, "test-model", Path("/tmp"))  # pyright: ignore[reportPrivateUsage]
+        await svc._download_model_or_set_progress(stream2, model, "test-model", Path("/tmp"))  # pyright: ignore[reportPrivateUsage]
+
+    assert mock_dl.call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_download_model_or_set_progress_forwards_existing_stream(svc: SpeachesAIService) -> None:
     existing_stream: Stream[StreamChunkProgress] = Stream()  # type: ignore[type-arg]
     chunk = StreamChunkProgress(type="progress", stage="download", value=0.5, data={})

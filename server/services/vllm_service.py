@@ -489,8 +489,10 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
         local_model_path: Path | None = None
         if model_id not in self.models_download_progress:
             self.models_download_progress[model_id] = stream
-            local_model_path = await self._download_model(stream, model_id, model, model_dir)
-            del self.models_download_progress[model_id]
+            try:
+                local_model_path = await self._download_model(stream, model_id, model, model_dir)
+            finally:
+                del self.models_download_progress[model_id]
         else:
             chunk: StreamChunk
             async for chunk in self.models_download_progress[model_id].as_generator():

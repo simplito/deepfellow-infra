@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added Vitest unit tests for `progress-simulation.ts` and `install-progress-store.ts` covering all regression scenarios.
 - Added backend regression tests for Ollama per-digest progress tracking in `test_ollama_service.py` and `test_ollama_external_service.py`.
 - Fixed command injection vulnerability in `Utils.run_command` — replaced `create_subprocess_shell` with `create_subprocess_exec` and changed the signature to `list[str]`, eliminating shell interpretation of subprocess arguments.
+- Fixed model install falsely reporting success after a failed download: a stale download-progress entry could make a retry skip the actual download and leave the model "not installed". The entry is now always cleaned up on failure across all model services (llamacpp, ollama, ollama-external, rerank, speaches-ai, stable-diffusion, vllm).
+- Added backend regression tests for download-progress cleanup on failure across all model services.
 
 ### Changed
 - `check_key` is now a required field in the WebSocket `InitRequest`; subinfra nodes that omit it are rejected at parse time. The optional-field migration workaround has been removed.
