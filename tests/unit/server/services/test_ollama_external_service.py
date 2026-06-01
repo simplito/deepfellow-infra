@@ -517,9 +517,6 @@ async def test_download_model_or_set_progress_forwards_existing_stream(svc: Olla
 
 @pytest.mark.asyncio
 async def test_download_model_or_set_progress_cleans_up_on_failure(svc: OllamaExternalService) -> None:
-    # Regression test for issue #458:
-    # If _download_model raises, the entry must be removed from models_download_progress
-    # so that a subsequent install attempt re-downloads instead of following the dead stream.
     stream = MagicMock()
     model = OllamaModel(id="llama3", size="1GB", type="llm")
 
@@ -534,9 +531,6 @@ async def test_download_model_or_set_progress_cleans_up_on_failure(svc: OllamaEx
 
 @pytest.mark.asyncio
 async def test_download_model_or_set_progress_retries_download_after_failure(svc: OllamaExternalService) -> None:
-    # Regression test for issue #458:
-    # After a failed first attempt, the second call must invoke _download_model again
-    # (not silently replay the dead stream), ensuring the model is actually fetched.
     stream1 = MagicMock()
     stream2 = MagicMock()
     model = OllamaModel(id="llama3", size="1GB", type="llm")

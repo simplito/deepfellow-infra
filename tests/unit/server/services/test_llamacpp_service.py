@@ -429,6 +429,37 @@ async def test_download_model_or_set_progress_starts_new_download(svc: LLamacppS
 
 
 @pytest.mark.asyncio
+async def test_download_model_or_set_progress_cleans_up_on_failure(svc: LLamacppService) -> None:
+    stream = MagicMock()
+    model = LlamacppModel(url="https://example.com/model.gguf", size="1GB")
+    svc.models["default"]["my-model"] = model
+
+    with (
+        patch.object(svc, "_download_model", new_callable=AsyncMock, side_effect=HTTPException(400, "boom")),  # pyright: ignore[reportPrivateUsage]
+        pytest.raises(HTTPException),
+    ):
+        await svc._download_model_or_set_progress(stream, model, "my-model")  # pyright: ignore[reportPrivateUsage]
+
+    assert "my-model" not in svc.models_download_progress
+
+
+@pytest.mark.asyncio
+async def test_download_model_or_set_progress_retries_download_after_failure(svc: LLamacppService) -> None:
+    stream1 = MagicMock()
+    stream2 = MagicMock()
+    model = LlamacppModel(url="https://example.com/model.gguf", size="1GB")
+    svc.models["default"]["my-model"] = model
+
+    mock_dl = AsyncMock(side_effect=[HTTPException(400, "boom"), (Path("/tmp/model.gguf"), "model.gguf")])
+    with patch.object(svc, "_download_model", mock_dl):  # pyright: ignore[reportPrivateUsage]
+        with pytest.raises(HTTPException):
+            await svc._download_model_or_set_progress(stream1, model, "my-model")  # pyright: ignore[reportPrivateUsage]
+        await svc._download_model_or_set_progress(stream2, model, "my-model")  # pyright: ignore[reportPrivateUsage]
+
+    assert mock_dl.call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_download_model_or_set_progress_forwards_existing_stream(svc: LLamacppService) -> None:
     existing_stream: Stream[StreamChunk] = Stream()  # type: ignore[type-arg]
     chunk = StreamChunkProgress(type="progress", stage="download", value=0.5, data={})

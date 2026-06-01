@@ -417,8 +417,10 @@ class RerankService(Base2Service[InstalledInfo, DownloadedInfo]):
     ) -> None:
         if model_id not in self.models_download_progress:
             self.models_download_progress[model_id] = stream
-            await self._download_model(stream, model, model_id, model_dir)
-            del self.models_download_progress[model_id]
+            try:
+                await self._download_model(stream, model, model_id, model_dir)
+            finally:
+                del self.models_download_progress[model_id]
         else:
             chunk: StreamChunk
             async for chunk in self.models_download_progress[model_id].as_generator():
