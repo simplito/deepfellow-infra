@@ -12,7 +12,6 @@ __pycache__
 .claude/settings.local.json
 .claude/skills/openspec-explore/memory/
 CLAUDE.local.md
-/openspec/changes/
 memory
 
 
@@ -30,7 +29,8 @@ memory
 
 /ollama
 
-/openspec
+/openspec/*
+!/openspec/specs
 /memory
 
 /.coverage.json

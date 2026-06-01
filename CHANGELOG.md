@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - Concurrent model uninstallation in all services.
+- `openspec/specs` directory is now tracked in git so OpenSpec can read project specs between tasks
 
 ### Added
 - Added opt-in OTLP log export (`otel_logging_enabled = true`): Python application logs and uvicorn access/error logs are forwarded to the configured OTLP endpoint alongside traces.
