@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added opt-in OTLP log export (`otel_logging_enabled = true`): Python application logs and uvicorn access/error logs are forwarded to the configured OTLP endpoint alongside traces.
 
 ### Fixed
+- Fixed GPU realtime stats raising an uncaught `OSError` when `nvidia-smi`/`rocm-smi` cannot be launched by the server process — a missing or non-launchable binary now correctly results in no GPU stats instead of an error.
 - Fixed test result modal leaving the test running and stuck in "pending" when dismissed via Esc, backdrop click, or the X button — every dismissal method now cancels the in-flight test, same as the Cancel button.
 - Fixed WebUI installation progress bar resetting to 0% when the page is reloaded mid-install.
 - Fixed progress bar jumping backwards during active installation on each 10-second background refetch.
@@ -28,7 +29,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - `check_key` is now a required field in the WebSocket `InitRequest`; subinfra nodes that omit it are rejected at parse time. The optional-field migration workaround has been removed.
->>>>>>> CHANGELOG.md
 - `healthcheck_start_period` in `SrvMcpCustomModel` and `SrvCustomCustomModel` now validates against `^\d+[smh]$` (e.g. `30s`, `5m`, `1h`), rejecting invalid Docker duration strings at parse time.
 
 ## [0.27.0] - 2026-05-27

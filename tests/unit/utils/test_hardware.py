@@ -169,6 +169,16 @@ async def test_get_realtime_stats_command_fails_returns_none(mock_cmd: AsyncMock
 
 @pytest.mark.asyncio
 @patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock)
+async def test_get_realtime_stats_command_not_found_returns_none(mock_cmd: AsyncMock):
+    mock_cmd.side_effect = FileNotFoundError(2, "No such file or directory", "nvidia-smi")
+
+    result = await _make_hardware().get_realtime_stats()
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+@patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock)
 async def test_get_realtime_stats_malformed_lines_are_skipped(mock_cmd: AsyncMock):
     mock_cmd.return_value = CommandResult2(stdout="bad line\nNVIDIA RTX 4090, 24576, 8192\nnot,enough\n", stderr="")
 
@@ -285,6 +295,15 @@ async def test_get_nvidia_gpu_info_raw_success():
 @pytest.mark.asyncio
 async def test_get_nvidia_gpu_info_raw_failure():
     with patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock, side_effect=RuntimeError("docker not found")):
+        result = await get_nvidia_gpu_info_raw()
+
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_get_nvidia_gpu_info_raw_command_not_found():
+    side_effect = FileNotFoundError(2, "No such file or directory", "docker")
+    with patch("server.utils.hardware.Utils.run_command_for_success", new_callable=AsyncMock, side_effect=side_effect):
         result = await get_nvidia_gpu_info_raw()
 
     assert result == ""

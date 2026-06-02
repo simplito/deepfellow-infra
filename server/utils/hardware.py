@@ -141,7 +141,7 @@ async def get_nvidia_gpu_info_raw() -> str:
     ]
     try:
         result = await Utils.run_command_for_success(cmd)
-    except RuntimeError:
+    except (RuntimeError, OSError):
         return ""
 
     return result.stdout
@@ -322,7 +322,7 @@ class Hardware:
         cmd = ["nvidia-smi", "--query-gpu=name,memory.total,memory.used", "--format=csv,noheader,nounits"]
         try:
             result = await Utils.run_command_for_success(cmd)
-        except RuntimeError:
+        except (RuntimeError, OSError):
             return None
 
         cards: list[GpuCardStats] = []
@@ -347,7 +347,7 @@ class Hardware:
         cmd = ["rocm-smi", "--showmeminfo", "vram", "--csv", "--noheader"]
         try:
             result = await Utils.run_command_for_success(cmd)
-        except RuntimeError:
+        except (RuntimeError, OSError):
             return None
 
         cards: list[GpuCardStats] = []
