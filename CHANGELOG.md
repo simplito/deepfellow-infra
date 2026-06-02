@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added opt-in OTLP log export (`otel_logging_enabled = true`): Python application logs and uvicorn access/error logs are forwarded to the configured OTLP endpoint alongside traces.
 
 ### Fixed
+- Fixed test result modal leaving the test running and stuck in "pending" when dismissed via Esc, backdrop click, or the X button — every dismissal method now cancels the in-flight test, same as the Cancel button.
 - Fixed WebUI installation progress bar resetting to 0% when the page is reloaded mid-install.
 - Fixed progress bar jumping backwards during active installation on each 10-second background refetch.
 - Fixed progress bar regressing from 100% back to ~90% and replaying the completion animation a second time.

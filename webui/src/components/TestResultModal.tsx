@@ -65,8 +65,16 @@ export function TestResultModal({ open, onOpenChange, result, isLoading = false,
     );
   };
 
+  const handleOpenChange = (next: boolean) => {
+    if (!next && isLoading && onCancel) {
+      onCancel();
+      return;
+    }
+    onOpenChange(next);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>Test Result</DialogTitle>
@@ -129,5 +137,3 @@ export function TestResultModal({ open, onOpenChange, result, isLoading = false,
     </Dialog>
   );
 }
-
-
