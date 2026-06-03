@@ -336,7 +336,9 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         self._sync_tasks[instance] = asyncio.create_task(_sync_loop())
 
-    def _register_synced_model(self, instance: str, installed_info: InstalledInfo, model_id: str, size_bytes: int) -> None:
+    def _register_synced_model(
+        self, instance: str, installed_info: InstalledInfo, model_id: str, size_bytes: int, context_length: int | None = None
+    ) -> None:
         model_type = self._determine_model_type(model_id, instance)
         size_str = fmt_size(size_bytes) if size_bytes else ""
 
@@ -354,7 +356,13 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
         if model_type == "llm":
             model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                 model=model_id,
-                props=ModelProps(private=True, type="llm", endpoints=self.get_supported_endpoints()),
+                props=ModelProps(
+                    private=True,
+                    type="llm",
+                    endpoints=self.get_supported_endpoints(),
+                    context_window=context_length,
+                    max_context_window=context_length,
+                ),
                 chat_completions=ProxyOptions(url=f"{installed_info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
                 completions=ProxyOptions(url=f"{installed_info.base_url}/v1/completions", rewrite_model_to=model_id),
                 responses=(
@@ -371,11 +379,31 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
         if model_type == "embedding":
             model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
                 model=model_id,
-                props=ModelProps(private=True, type="embedding", endpoints=EMBEDDINGS_ENDPOINTS),
+                props=ModelProps(
+                    private=True,
+                    type="embedding",
+                    endpoints=EMBEDDINGS_ENDPOINTS,
+                    context_window=context_length,
+                    max_context_window=context_length,
+                ),
                 options=ProxyOptions(url=f"{installed_info.base_url}/v1/embeddings", rewrite_model_to=model_id),
                 registration_options=None,
             )
         installed_info.models[model_id] = model_info
+
+    async def _fetch_context_length(self, base_url: str, model_id: str) -> int | None:
+        try:
+            result = await fetch_from(f"{base_url}/api/show", "POST", {"name": model_id})
+            if result.status_code == 200:
+                data = json.loads(result.data)
+                info = data.get("model_info", {})
+                arch = info.get("general.architecture", "")
+                context_length = info.get(f"{arch}.context_length")
+                if isinstance(context_length, int) and context_length > 0:
+                    return context_length
+        except Exception:
+            pass
+        return None
 
     def _remove_stale_models(self, installed_info: InstalledInfo, stale_ids: set[str]) -> None:
         for removed_id in stale_ids:
@@ -407,7 +435,8 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
             if not is_initial_sync and model_id in self.models_downloaded:
                 continue
 
-            self._register_synced_model(instance, installed_info, model_id, entry.get("size", 0))
+            context_length = await self._fetch_context_length(installed_info.base_url, model_id)
+            self._register_synced_model(instance, installed_info, model_id, entry.get("size", 0), context_length)
 
         self._remove_stale_models(installed_info, (set(installed_info.models) | saved_model_ids) - current_model_ids)
 
@@ -577,6 +606,7 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
                     {"model": model_id, "keep_alive": parsed_model_options.alive_time},
                 )
 
+            context_length = await self._fetch_context_length(info.base_url, model_id)
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id
             info.models[model_id] = model_info = ModelInstalledInfo(
                 id=model_id,
@@ -588,7 +618,13 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model.type == "llm":
                 model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                     model=registered_name,
-                    props=ModelProps(private=True, type="llm", endpoints=self.get_supported_endpoints()),
+                    props=ModelProps(
+                        private=True,
+                        type="llm",
+                        endpoints=self.get_supported_endpoints(),
+                        context_window=context_length,
+                        max_context_window=context_length,
+                    ),
                     chat_completions=ProxyOptions(url=f"{info.base_url}/v1/chat/completions", rewrite_model_to=model_id),
                     completions=ProxyOptions(url=f"{info.base_url}/v1/completions", rewrite_model_to=model_id),
                     responses=(
@@ -603,7 +639,13 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model.type == "embedding":
                 model_info.registration_id = self.endpoint_registry.register_embeddings_as_proxy(
                     model=registered_name,
-                    props=ModelProps(private=True, type="embedding", endpoints=EMBEDDINGS_ENDPOINTS),
+                    props=ModelProps(
+                        private=True,
+                        type="embedding",
+                        endpoints=EMBEDDINGS_ENDPOINTS,
+                        context_window=context_length,
+                        max_context_window=context_length,
+                    ),
                     options=ProxyOptions(url=f"{info.base_url}/v1/embeddings", rewrite_model_to=model_id),
                     registration_options=None,
                 )

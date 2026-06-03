@@ -616,6 +616,7 @@ async def test_install_model_calls_generate_when_alive_time_set(svc: OllamaExter
     with (
         patch.object(svc, "_download_model_or_set_progress", new_callable=AsyncMock),  # pyright: ignore[reportPrivateUsage]
         patch.object(svc, "_sync_models_from_external_ollama", new_callable=AsyncMock),  # pyright: ignore[reportPrivateUsage]
+        patch.object(svc, "_fetch_context_length", new_callable=AsyncMock, return_value=None),  # pyright: ignore[reportPrivateUsage]
         patch("server.services.ollama_external_service.fetch_from", new_callable=AsyncMock) as mock_fetch,
     ):
         mock_fetch.return_value = FetchResult(status_code=200, data="")
@@ -908,16 +909,13 @@ TAGS_RESPONSE = json.dumps({"models": [{"name": "new-model:latest", "size": 1024
 async def test_install_model_triggers_sync_for_new_models(svc: OllamaExternalService, installed: InstalledInfo) -> None:
     svc.models["default"]["test-llm"] = OllamaModel(id="test-llm", size="1GB", type="llm")
 
-    fetch_results = [
-        FetchResult(status_code=200, data=TAGS_RESPONSE),
-    ]
-
     with (
         patch.object(svc, "_download_model_or_set_progress", new_callable=AsyncMock),  # pyright: ignore[reportPrivateUsage]
+        patch.object(svc, "_fetch_context_length", new_callable=AsyncMock, return_value=None),  # pyright: ignore[reportPrivateUsage]
         patch("server.services.ollama_external_service.fetch_from", new_callable=AsyncMock) as mock_fetch,
         patch.object(svc, "_save", new_callable=AsyncMock),  # pyright: ignore[reportPrivateUsage]
     ):
-        mock_fetch.side_effect = fetch_results
+        mock_fetch.return_value = FetchResult(status_code=200, data=TAGS_RESPONSE)
         promise = await svc._install_model("default", "test-llm", InstallModelIn())  # pyright: ignore[reportPrivateUsage]
         await promise.wait()
 
@@ -1294,6 +1292,115 @@ async def test_sync_models_skips_already_downloaded_on_non_initial_sync(
         await svc._sync_models_from_external_ollama("default", installed, is_initial_sync=False)  # pyright: ignore[reportPrivateUsage]
 
     assert deps["endpoint_registry"].register_chat_completion_as_proxy.call_count == 0
+
+
+SHOW_RESPONSE = json.dumps(
+    {
+        "model_info": {
+            "general.architecture": "llama",
+            "llama.context_length": 131072,
+            "llama.embedding_length": 4096,
+        }
+    }
+)
+
+
+@pytest.mark.asyncio
+async def test_fetch_context_length_returns_value(svc: OllamaExternalService) -> None:
+    with patch("server.services.ollama_external_service.fetch_from", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = FetchResult(status_code=200, data=SHOW_RESPONSE)
+        result = await svc._fetch_context_length("http://localhost:11434", "llama3")  # pyright: ignore[reportPrivateUsage]
+
+    assert result == 131072
+
+
+@pytest.mark.asyncio
+async def test_fetch_context_length_returns_none_on_bad_status(svc: OllamaExternalService) -> None:
+    with patch("server.services.ollama_external_service.fetch_from", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = FetchResult(status_code=404, data="")
+        result = await svc._fetch_context_length("http://localhost:11434", "unknown")  # pyright: ignore[reportPrivateUsage]
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_context_length_returns_none_on_exception(svc: OllamaExternalService) -> None:
+    with patch("server.services.ollama_external_service.fetch_from", side_effect=ConnectionError("refused")):
+        result = await svc._fetch_context_length("http://localhost:11434", "llama3")  # pyright: ignore[reportPrivateUsage]
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_context_length_returns_none_when_field_missing(svc: OllamaExternalService) -> None:
+    data = json.dumps({"model_info": {"general.architecture": "llama"}})
+    with patch("server.services.ollama_external_service.fetch_from", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = FetchResult(status_code=200, data=data)
+        result = await svc._fetch_context_length("http://localhost:11434", "llama3")  # pyright: ignore[reportPrivateUsage]
+
+    assert result is None
+
+
+def test_register_synced_model_passes_context_length_to_props(
+    svc: OllamaExternalService, installed: InstalledInfo, deps: dict[str, Any]
+) -> None:
+    svc.models["default"]["ctx-llm"] = OllamaModel(id="ctx-llm", size="4GB", type="llm")
+
+    svc._register_synced_model("default", installed, "ctx-llm", 0, context_length=8192)  # pyright: ignore[reportPrivateUsage]
+
+    call_kwargs = deps["endpoint_registry"].register_chat_completion_as_proxy.call_args.kwargs
+    assert call_kwargs["props"].context_window == 8192
+    assert call_kwargs["props"].max_context_window == 8192
+
+
+def test_register_synced_model_none_context_length_leaves_props_none(
+    svc: OllamaExternalService, installed: InstalledInfo, deps: dict[str, Any]
+) -> None:
+    svc.models["default"]["no-ctx-llm"] = OllamaModel(id="no-ctx-llm", size="4GB", type="llm")
+
+    svc._register_synced_model("default", installed, "no-ctx-llm", 0)  # pyright: ignore[reportPrivateUsage]
+
+    call_kwargs = deps["endpoint_registry"].register_chat_completion_as_proxy.call_args.kwargs
+    assert call_kwargs["props"].context_window is None
+    assert call_kwargs["props"].max_context_window is None
+
+
+@pytest.mark.asyncio
+async def test_sync_models_fetches_and_passes_context_length(
+    svc: OllamaExternalService, installed: InstalledInfo, deps: dict[str, Any]
+) -> None:
+    tags = json.dumps({"models": [{"name": "ctx-model:latest", "size": 1024}]})
+
+    with (
+        patch("server.services.ollama_external_service.fetch_from", new_callable=AsyncMock) as mock_fetch,
+        patch.object(svc, "_fetch_context_length", new_callable=AsyncMock, return_value=32768) as mock_ctx,  # pyright: ignore[reportPrivateUsage]
+    ):
+        mock_fetch.return_value = FetchResult(status_code=200, data=tags)
+        await svc._sync_models_from_external_ollama("default", installed)  # pyright: ignore[reportPrivateUsage]
+
+    mock_ctx.assert_called_once_with(installed.base_url, "ctx-model")
+    call_kwargs = deps["endpoint_registry"].register_chat_completion_as_proxy.call_args.kwargs
+    assert call_kwargs["props"].context_window == 32768
+    assert call_kwargs["props"].max_context_window == 32768
+
+
+@pytest.mark.asyncio
+async def test_install_model_passes_context_length_to_props(
+    svc: OllamaExternalService, installed: InstalledInfo, deps: dict[str, Any]
+) -> None:
+    svc.models["default"]["ctx-llm"] = OllamaModel(id="ctx-llm", size="4GB", type="llm")
+
+    with (
+        patch.object(svc, "_download_model_or_set_progress", new_callable=AsyncMock),  # pyright: ignore[reportPrivateUsage]
+        patch.object(svc, "_sync_models_from_external_ollama", new_callable=AsyncMock),  # pyright: ignore[reportPrivateUsage]
+        patch.object(svc, "_fetch_context_length", new_callable=AsyncMock, return_value=65536),  # pyright: ignore[reportPrivateUsage]
+    ):
+        promise = await svc._install_model("default", "ctx-llm", InstallModelIn())  # pyright: ignore[reportPrivateUsage]
+        await promise.wait()
+
+    call_kwargs = deps["endpoint_registry"].register_chat_completion_as_proxy.call_args.kwargs
+    assert call_kwargs["props"].context_window == 65536
+    assert call_kwargs["props"].max_context_window == 65536
 
 
 @pytest.mark.asyncio
