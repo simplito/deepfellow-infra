@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `openspec/specs` directory is now tracked in git so OpenSpec can read project specs between tasks
 
 ### Added
+- Ollama External service models now report `context_window` and `max_context_window` in `GET /v1/models?additional_data=true`, populated from Ollama's `/api/show` endpoint.
 - Added opt-in OTLP log export (`otel_logging_enabled = true`): Python application logs and uvicorn access/error logs are forwarded to the configured OTLP endpoint alongside traces.
 
 ### Fixed
