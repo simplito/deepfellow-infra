@@ -488,6 +488,87 @@ async def test_download_model_raises_400_on_bad_status(svc: OllamaExternalServic
 
 
 @pytest.mark.asyncio
+async def test_download_model_raises_on_missing_hf_prefix(svc: OllamaExternalService) -> None:
+    stream = MagicMock()
+    model = OllamaModel(id="bartowski/Qwen3-0.6B-GGUF", size="1GB", type="llm")
+
+    async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield FetchResult(status_code=200, data=json.dumps({"status": "pulling manifest"}))
+        yield FetchResult(status_code=200, data=json.dumps({"error": "pull model manifest: file does not exist"}))
+
+    with (
+        patch("server.services.ollama_external_service.stream_fetch_from", side_effect=mock_stream),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await svc._download_model(stream, model, "bartowski/Qwen3-0.6B-GGUF", "http://localhost:11434")  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.status_code == 400
+    assert "hf.co/" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_download_model_raises_on_non_gguf_repo(svc: OllamaExternalService) -> None:
+    stream = MagicMock()
+    model = OllamaModel(id="hf.co/Qwen/Qwen3-0.6B", size="1GB", type="llm")
+
+    async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield FetchResult(status_code=200, data=json.dumps({"status": "pulling manifest"}))
+        yield FetchResult(
+            status_code=200,
+            data=json.dumps({"error": 'pull model manifest: 400: {"error":"Repository is not GGUF or is not compatible with llama.cpp"}'}),
+        )
+
+    with (
+        patch("server.services.ollama_external_service.stream_fetch_from", side_effect=mock_stream),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await svc._download_model(stream, model, "hf.co/Qwen/Qwen3-0.6B", "http://localhost:11434")  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.status_code == 400
+    assert "GGUF" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_download_model_raises_on_gated_model(svc: OllamaExternalService) -> None:
+    stream = MagicMock()
+    model = OllamaModel(id="hf.co/meta-llama/Llama-3.2-1B", size="1GB", type="llm")
+
+    async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield FetchResult(status_code=200, data=json.dumps({"status": "pulling manifest"}))
+        yield FetchResult(
+            status_code=200,
+            data=json.dumps({"error": 'pull model manifest: realm host "huggingface.co" does not match original host "hf.co"'}),
+        )
+
+    with (
+        patch("server.services.ollama_external_service.stream_fetch_from", side_effect=mock_stream),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await svc._download_model(stream, model, "hf.co/meta-llama/Llama-3.2-1B", "http://localhost:11434")  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.status_code == 400
+    assert "HuggingFace" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_download_model_raises_with_raw_error_for_unknown_errors(svc: OllamaExternalService) -> None:
+    stream = MagicMock()
+    model = OllamaModel(id="llama3", size="1GB", type="llm")
+
+    async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield FetchResult(status_code=200, data=json.dumps({"error": "some unexpected ollama error"}))
+
+    with (
+        patch("server.services.ollama_external_service.stream_fetch_from", side_effect=mock_stream),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await svc._download_model(stream, model, "llama3", "http://localhost:11434")  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.status_code == 400
+    assert "some unexpected ollama error" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
 async def test_download_model_or_set_progress_starts_download(svc: OllamaExternalService) -> None:
     stream = MagicMock()
     model = OllamaModel(id="llama3", size="1GB", type="llm")

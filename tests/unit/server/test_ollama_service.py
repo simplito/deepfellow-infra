@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from server.docker import DockerOptions
 from server.models.services import InstallServiceIn, MemoryLoadComponent, MemoryLoadOut, MemoryLoadSession
@@ -702,3 +703,84 @@ async def test_get_docker_logs_expired_cache_refreshes(mock_utils: MagicMock):
 
     assert result == "new logs"
     mock_utils.run_command.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_download_with_ollama_raises_on_missing_hf_prefix() -> None:
+    svc = _make_service()
+    stream = MagicMock()
+
+    async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield FetchResult(status_code=200, data=json.dumps({"status": "pulling manifest"}))
+        yield FetchResult(status_code=200, data=json.dumps({"error": "pull model manifest: file does not exist"}))
+
+    with (
+        patch("server.services.ollama_service.stream_fetch_from", side_effect=mock_stream),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await svc._download_with_ollama(stream, "http://localhost:11434", "bartowski/Qwen3-0.6B-GGUF", "4GB")  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.status_code == 400
+    assert "hf.co/" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_download_with_ollama_raises_on_non_gguf_repo() -> None:
+    svc = _make_service()
+    stream = MagicMock()
+
+    async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield FetchResult(status_code=200, data=json.dumps({"status": "pulling manifest"}))
+        yield FetchResult(
+            status_code=200,
+            data=json.dumps({"error": 'pull model manifest: 400: {"error":"Repository is not GGUF or is not compatible with llama.cpp"}'}),
+        )
+
+    with (
+        patch("server.services.ollama_service.stream_fetch_from", side_effect=mock_stream),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await svc._download_with_ollama(stream, "http://localhost:11434", "hf.co/Qwen/Qwen3-0.6B", "4GB")  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.status_code == 400
+    assert "GGUF" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_download_with_ollama_raises_on_gated_model() -> None:
+    svc = _make_service()
+    stream = MagicMock()
+
+    async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield FetchResult(status_code=200, data=json.dumps({"status": "pulling manifest"}))
+        yield FetchResult(
+            status_code=200,
+            data=json.dumps({"error": 'pull model manifest: realm host "huggingface.co" does not match original host "hf.co"'}),
+        )
+
+    with (
+        patch("server.services.ollama_service.stream_fetch_from", side_effect=mock_stream),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await svc._download_with_ollama(stream, "http://localhost:11434", "hf.co/meta-llama/Llama-3.2-1B", "4GB")  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.status_code == 400
+    assert "HuggingFace" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_download_with_ollama_raises_with_raw_error_for_unknown_errors() -> None:
+    svc = _make_service()
+    stream = MagicMock()
+
+    async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield FetchResult(status_code=200, data=json.dumps({"error": "some unexpected ollama error"}))
+
+    with (
+        patch("server.services.ollama_service.stream_fetch_from", side_effect=mock_stream),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await svc._download_with_ollama(stream, "http://localhost:11434", "llama3", "4GB")  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.status_code == 400
+    assert "some unexpected ollama error" in exc_info.value.detail
