@@ -28,7 +28,7 @@ from pydantic import BaseModel
 from server.config import AppSettings
 from server.portservice import PortService
 from server.utils.core import CommandResult2, Utils, get_cpu_architecture, get_os
-from server.utils.exceptions import AppError, DockerImageAuthorizationError, DockerImageDoesNotExistError
+from server.utils.exceptions import AppError, DockerComposeStartError, DockerImageAuthorizationError, DockerImageDoesNotExistError
 from server.utils.hardware import HardwarePartInfo, IntelGpuInfo, NvidiaGpuInfo
 from server.utils.loading import Progress
 from server.utils.logger import uvicorn_logger
@@ -45,6 +45,38 @@ ARCH_ALIASES = {
 }
 
 ARCHES_WITH_REQUIRED_VARIANT = ["arm", "arm64"]
+
+# Substrings that indicate the NVIDIA container toolkit is not installed.
+_GPU_TOOLKIT_PATTERNS = (
+    "could not select device driver",
+    "nvidia-container-cli",
+    "nvidia container cli",
+)
+
+# Substrings that indicate the GPU driver itself has failed.
+_GPU_DRIVER_PATTERNS = (
+    "failed to initialize nvml",
+    "no devices were found",
+    "nvml error",
+    "driver/library version mismatch",
+)
+
+
+def _diagnose_gpu_error(text: str) -> str | None:
+    """Return a user-facing message if *text* contains a known GPU failure, else None."""
+    lower = text.lower()
+    if any(p in lower for p in _GPU_TOOLKIT_PATTERNS):
+        return (
+            "GPU is unavailable: the NVIDIA container toolkit is not installed on this host. "
+            "Install it with: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html"
+        )
+    if any(p in lower for p in _GPU_DRIVER_PATTERNS):
+        return (
+            "GPU driver failure detected. The NVIDIA drivers may have crashed or been updated "
+            "without a reboot. Run `nvidia-smi` on the host to verify driver status."
+        )
+    return None
+
 
 DEFAULT_VARIANTS = {
     "arm": "v7",
@@ -471,7 +503,10 @@ class DockerService:
         """Start given docker compose."""
         docker_compose_cmd = self.docker_compose_cmd
         cmd_parts = [*docker_compose_cmd.split(), "-f", str(docker_compose_file_path), "up", "-d", "--wait"]
-        return await Utils.run_command_for_success(cmd_parts)
+        result = await Utils.run_command(cmd_parts)
+        if result.exit_code != 0:
+            raise DockerComposeStartError(result.stdout, result.stderr)
+        return CommandResult2(stdout=result.stdout, stderr=result.stderr)
 
     async def stop_docker(self, options: DockerOptions) -> None:
         """Stop docker."""
@@ -722,54 +757,84 @@ class DockerService:
 
         return port
 
+    async def _ensure_compose_running(
+        self,
+        compose_path: Path,
+        options: DockerOptions,
+        is_running: bool,
+        has_difference: bool,
+        port: int | None,
+    ) -> tuple[CommandResult2 | None, int | None]:
+        """Start, stop, or recreate the compose stack as needed. Returns (start_output, port)."""
+        uses_gpu = bool(options.hardware)
+        start_output: CommandResult2 | None = None
+        try:
+            if not is_running and not has_difference:
+                if port is not None and self.port_service.is_port_available(port):
+                    start_output = await self.start_docker_compose(compose_path)
+                else:
+                    port = await self.create_compose_file(compose_path, options)
+                    start_output = await self.start_docker_compose(compose_path)
+            elif not is_running and has_difference:
+                port = await self.create_compose_file(compose_path, options)
+                start_output = await self.start_docker_compose(compose_path)
+            elif is_running and has_difference:
+                logger.debug("%s config changed, restarting", options.service_name)
+                await self.stop_docker_compose(compose_path)
+                port = await self.create_compose_file(compose_path, options)
+                start_output = await self.start_docker_compose(compose_path)
+        except DockerComposeStartError as exc:
+            if uses_gpu:
+                gpu_msg = _diagnose_gpu_error(f"{exc.stdout}\n{exc.stderr}")
+                if gpu_msg:
+                    self.has_gpu_support = False
+                    raise AppError(gpu_msg) from None
+            msg = f"Failed to start {options.name}: {exc.stderr or exc.stdout}"
+            raise AppError(msg) from None
+        return start_output, port
+
+    async def _assert_compose_healthy(self, compose_path: Path, options: DockerOptions, start_output: CommandResult2 | None) -> None:
+        """Raise AppError if the container is not healthy after starting."""
+        is_healthy = await self.is_docker_compose_healthy(compose_path, options.service_name)
+        if is_healthy:
+            return
+        if bool(options.hardware):
+            logs = ""
+            with suppress(Exception):
+                logs = await self.get_docker_compose_logs(compose_path)
+            combined = "\n".join(
+                filter(
+                    None,
+                    [
+                        start_output.stdout if start_output else "",
+                        start_output.stderr if start_output else "",
+                        logs,
+                    ],
+                )
+            )
+            gpu_msg = _diagnose_gpu_error(combined)
+            if gpu_msg:
+                self.has_gpu_support = False
+                raise AppError(gpu_msg)
+        msg = f"Container {options.name} failed to become healthy"
+        raise AppError(msg)
+
     async def install_and_run_docker(self, options: DockerOptions) -> int:
         """Run docker compose and return port under it works."""
-        port = None
-        docker_compose_file_path = self.get_docker_compose_file_path(options.name)
-        service_name = options.service_name
+        compose_path = self.get_docker_compose_file_path(options.name)
+        is_running = await self.is_docker_compose_running(compose_path, options.service_name)
+        has_difference, port = await self.has_docker_compose_difference(compose_path, options)
 
-        # Check if docker compose is working
-        is_running = await self.is_docker_compose_running(docker_compose_file_path, service_name)
+        logger.debug("docker_compose_start: %s is_running=%s has_difference=%s", options.service_name, is_running, has_difference)
 
-        # Check if there would be a difference in docker compose
-        has_difference, port = await self.has_docker_compose_difference(docker_compose_file_path, options)
-
-        logger.debug("docker_compose_start: %s is_running=%s has_difference=%s", service_name, is_running, has_difference)
-        start_output = ""
-
-        # Handle different scenarios based on running state, health, and differences
-        if not is_running and not has_difference:
-            if port is not None and self.port_service.is_port_available(port):
-                # Not running, no difference -> start
-                start_output = await self.start_docker_compose(docker_compose_file_path)
-            else:
-                # Old port is taken -> render then start
-                port = await self.create_compose_file(docker_compose_file_path, options)
-                start_output = await self.start_docker_compose(docker_compose_file_path)
-        elif not is_running and has_difference:
-            # Not running, has difference -> render then start
-            port = await self.create_compose_file(docker_compose_file_path, options)
-            start_output = await self.start_docker_compose(docker_compose_file_path)
-        elif is_running and has_difference:
-            # Running but has difference -> stop -> render -> start
-            logger.debug("%s config changed, restarting", service_name)
-            await self.stop_docker_compose(docker_compose_file_path)
-            port = await self.create_compose_file(docker_compose_file_path, options)
-            start_output = await self.start_docker_compose(docker_compose_file_path)
-
-        # Check if container is healthy after starting
-        is_healthy = await self.is_docker_compose_healthy(docker_compose_file_path, service_name)
-
-        if not is_healthy:
-            msg = f"Container {options.name} failed to become healthy, output: {start_output}"
-            raise AppError(msg)
+        start_output, port = await self._ensure_compose_running(compose_path, options, is_running, has_difference, port)
+        await self._assert_compose_healthy(compose_path, options, start_output)
 
         if not port and options.subnet:
             # in subnet mode the port is not used so it could be anything, for example -1
             port = -1
         if port is None:
             raise AppError("Cannot register service.")
-
         return port
 
     async def uninstall_docker(self, options: DockerOptions) -> None:
