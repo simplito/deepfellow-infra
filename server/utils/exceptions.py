@@ -44,3 +44,12 @@ class DockerImageAuthorizationError(Exception):
     def __init__(self, image: str):
         super().__init__(f"Cannot access docker image, authorization failed {image}")
         self.image = image
+
+
+class DockerComposeStartError(AppError):
+    """Raised when docker compose up exits with a non-zero code."""
+
+    def __init__(self, stdout: str, stderr: str) -> None:
+        super().__init__(stderr or stdout or "docker compose failed")
+        self.stdout = stdout
+        self.stderr = stderr

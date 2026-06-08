@@ -24,12 +24,13 @@ from server.docker import (
     DockerOptions,
     DockerPath,
     DockerService,
+    _diagnose_gpu_error,  # type: ignore[reportPrivateUsage]
     create_docker_service,
     get_docker_auths,
     normalize_docker_platform,
 )
 from server.utils.core import CommandResult, CommandResult2
-from server.utils.exceptions import AppError, DockerImageAuthorizationError, DockerImageDoesNotExistError
+from server.utils.exceptions import AppError, DockerComposeStartError, DockerImageAuthorizationError, DockerImageDoesNotExistError
 from server.utils.hardware import IntelGpuInfo, NvidiaGpuInfo
 
 
@@ -350,8 +351,8 @@ async def test_get_user_for_docker_non_rootless(docker_service: DockerService) -
 async def test_start_docker_compose_command_contains_keywords(docker_service: DockerService, tmp_path: Path) -> None:
     compose_file = tmp_path / "compose.yaml"
 
-    with patch("server.docker.Utils.run_command_for_success", new_callable=AsyncMock) as mock_run:
-        mock_run.return_value = make_result2()
+    with patch("server.docker.Utils.run_command", new_callable=AsyncMock) as mock_run:
+        mock_run.return_value = make_result(exit_code=0)
 
         await docker_service.start_docker_compose(compose_file)
 
@@ -1455,6 +1456,134 @@ async def test_uninstall_docker_with_compose_prefix_calls_rmdir(docker_service: 
     assert not compose_file.exists()
     # parent dir should have been removed (it was empty after unlink)
     assert not service_dir.exists()
+
+
+# _diagnose_gpu_error
+
+
+def test_diagnose_gpu_error_toolkit_pattern_returns_toolkit_message() -> None:
+    result = _diagnose_gpu_error("could not select device driver for this platform")
+    assert result is not None
+    assert "toolkit" in result.lower()
+
+
+def test_diagnose_gpu_error_driver_pattern_returns_driver_message() -> None:
+    result = _diagnose_gpu_error("failed to initialize nvml: unknown error")
+    assert result is not None
+    assert "driver" in result.lower()
+
+
+def test_diagnose_gpu_error_no_match_returns_none() -> None:
+    assert _diagnose_gpu_error("container started successfully") is None
+
+
+# start_docker_compose
+
+
+@pytest.mark.asyncio
+async def test_start_docker_compose_raises_docker_compose_start_error_on_nonzero_exit(
+    docker_service: DockerService, tmp_path: Path
+) -> None:
+    compose_file = tmp_path / "compose.yaml"
+
+    with patch("server.docker.Utils.run_command", new_callable=AsyncMock) as mock_run:
+        mock_run.return_value = make_result(exit_code=1, stdout="out", stderr="err")
+        with pytest.raises(DockerComposeStartError):
+            await docker_service.start_docker_compose(compose_file)
+
+
+# _ensure_compose_running
+
+
+@pytest.mark.asyncio
+async def test_ensure_compose_running_gpu_toolkit_error_sets_no_gpu_support(docker_service: DockerService, tmp_path: Path) -> None:
+    gpu = NvidiaGpuInfo(name="RTX 3090", vram="24 GB", id=0)
+    options = _opts(hardware=[gpu])
+    compose_file = tmp_path / "compose.yaml"
+
+    with (
+        patch.object(docker_service, "create_compose_file", new_callable=AsyncMock, return_value=11434),
+        patch.object(
+            docker_service,
+            "start_docker_compose",
+            new_callable=AsyncMock,
+            side_effect=DockerComposeStartError("", "could not select device driver"),
+        ),
+        pytest.raises(AppError),
+    ):
+        await docker_service._ensure_compose_running(compose_file, options, is_running=False, has_difference=True, port=None)  # type: ignore[reportPrivateUsage]
+
+    assert docker_service.has_gpu_support is False
+
+
+@pytest.mark.asyncio
+async def test_ensure_compose_running_gpu_unknown_error_raises_generic_app_error(docker_service: DockerService, tmp_path: Path) -> None:
+    gpu = NvidiaGpuInfo(name="RTX 3090", vram="24 GB", id=0)
+    options = _opts(hardware=[gpu])
+    compose_file = tmp_path / "compose.yaml"
+
+    with (
+        patch.object(docker_service, "create_compose_file", new_callable=AsyncMock, return_value=11434),
+        patch.object(
+            docker_service,
+            "start_docker_compose",
+            new_callable=AsyncMock,
+            side_effect=DockerComposeStartError("out", "unrelated error"),
+        ),
+        pytest.raises(AppError, match="Failed to start"),
+    ):
+        await docker_service._ensure_compose_running(compose_file, options, is_running=False, has_difference=True, port=None)  # type: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_ensure_compose_running_non_gpu_start_error_raises_app_error(docker_service: DockerService, tmp_path: Path) -> None:
+    options = _opts()
+    compose_file = tmp_path / "compose.yaml"
+
+    with (
+        patch.object(docker_service, "create_compose_file", new_callable=AsyncMock, return_value=11434),
+        patch.object(
+            docker_service,
+            "start_docker_compose",
+            new_callable=AsyncMock,
+            side_effect=DockerComposeStartError("out", "err"),
+        ),
+        pytest.raises(AppError, match="Failed to start"),
+    ):
+        await docker_service._ensure_compose_running(compose_file, options, is_running=False, has_difference=True, port=None)  # type: ignore[reportPrivateUsage]
+
+
+# _assert_compose_healthy
+
+
+@pytest.mark.asyncio
+async def test_assert_compose_healthy_gpu_error_in_logs_sets_no_gpu_support(docker_service: DockerService, tmp_path: Path) -> None:
+    gpu = NvidiaGpuInfo(name="RTX 3090", vram="24 GB", id=0)
+    options = _opts(hardware=[gpu])
+    compose_file = tmp_path / "compose.yaml"
+
+    with (
+        patch.object(docker_service, "is_docker_compose_healthy", new_callable=AsyncMock, return_value=False),
+        patch.object(docker_service, "get_docker_compose_logs", new_callable=AsyncMock, return_value="could not select device driver"),
+        pytest.raises(AppError),
+    ):
+        await docker_service._assert_compose_healthy(compose_file, options, start_output=None)  # type: ignore[reportPrivateUsage]
+
+    assert docker_service.has_gpu_support is False
+
+
+@pytest.mark.asyncio
+async def test_assert_compose_healthy_gpu_no_known_error_raises_generic_app_error(docker_service: DockerService, tmp_path: Path) -> None:
+    gpu = NvidiaGpuInfo(name="RTX 3090", vram="24 GB", id=0)
+    options = _opts(hardware=[gpu])
+    compose_file = tmp_path / "compose.yaml"
+
+    with (
+        patch.object(docker_service, "is_docker_compose_healthy", new_callable=AsyncMock, return_value=False),
+        patch.object(docker_service, "get_docker_compose_logs", new_callable=AsyncMock, return_value="unrelated output"),
+        pytest.raises(AppError, match="failed to become healthy"),
+    ):
+        await docker_service._assert_compose_healthy(compose_file, options, start_output=None)  # type: ignore[reportPrivateUsage]
 
 
 def test_get_docker_compose_dir_creates_dir_when_missing(tmp_path: Path) -> None:
