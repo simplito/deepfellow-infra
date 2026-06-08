@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added opt-in OTLP log export (`otel_logging_enabled = true`): Python application logs and uvicorn access/error logs are forwarded to the configured OTLP endpoint alongside traces.
 
 ### Fixed
+- Removed "Required for OpenAI" flag for API_KEY when installing cloud service through Infra UI
 - Improved error messages when pulling a HuggingFace model fails in Ollama and Ollama External: missing `hf.co/` prefix, non-GGUF repository, and gated model now show actionable messages instead of a generic "Model not available". Unknown errors now include the raw Ollama error text.
 - Fixed GPU realtime stats raising an uncaught `OSError` when `nvidia-smi`/`rocm-smi` cannot be launched by the server process — a missing or non-launchable binary now correctly results in no GPU stats instead of an error.
 - Fixed test result modal leaving the test running and stuck in "pending" when dismissed via Esc, backdrop click, or the X button — every dismissal method now cancels the in-flight test, same as the Cancel button.

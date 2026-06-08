@@ -200,7 +200,7 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
         return ServiceSpecification(
             fields=[
                 ServiceField(type="text", name="api_url", description="API URL", required=False, default=self.get_default_url()),
-                ServiceField(type="password", name="api_key", description="API Key (required for OpenAI)", required=False),
+                ServiceField(type="password", name="api_key", description="API Key", required=False),
             ]
         )
 
