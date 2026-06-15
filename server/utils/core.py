@@ -11,6 +11,7 @@
 
 import asyncio
 import contextlib
+import errno
 import json
 import logging
 import platform
@@ -175,12 +176,14 @@ class Utils:
                     async for download_packet in download_file(model_url, temp_path, headers):
                         yield download_packet
 
-                except Exception:
-                    # Clean up any partial download
+                except Exception as e:
                     msg = f"Exception while downloading {model_url} to {temp_path}"
                     logger.exception(msg)
-                    if temp_path.exists():
-                        temp_path.unlink()
+                    temp_path.unlink(missing_ok=True)
+                    if isinstance(e, TimeoutError):
+                        raise HTTPException(504, "Download timed out") from e
+                    if isinstance(e, OSError) and e.errno == errno.ENOSPC:
+                        raise HTTPException(507, "Not enough disk space to download model") from e
                     raise
 
                 # Validate the downloaded file
@@ -496,10 +499,11 @@ async def convert_promise_with_progress_to_fastapi_response(promise: PromiseWith
             return
         except Exception as e:
             logger.exception("Error during generator")
+            details = f"{e.status_code} {e.detail}" if isinstance(e, HTTPException) else (str(e.args[0]) if e.args else "<unknown>")
             chunk: StreamChunk = {
                 "type": "finish",
                 "status": "error",
-                "details": f"{e.status_code} {e.detail}" if isinstance(e, HTTPException) else "<unknown>",
+                "details": details,
             }
             yield "data: " + json.dumps(chunk) + "\n\n"
 

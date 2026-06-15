@@ -663,7 +663,7 @@ class DockerService:
             nvidia_gpus = [gpu for gpu in options.hardware if isinstance(gpu, NvidiaGpuInfo)]
             if nvidia_gpus:
                 if not self.has_gpu_support:
-                    raise AppError("Docker doesn't support GPU on this machine.")
+                    raise AppError("GPU is not available on this machine")
                 service["deploy"] = {
                     "resources": {
                         "reservations": {
@@ -834,7 +834,7 @@ class DockerService:
             # in subnet mode the port is not used so it could be anything, for example -1
             port = -1
         if port is None:
-            raise AppError("Cannot register service.")
+            raise AppError("Engine not available: cannot allocate service port")
         return port
 
     async def uninstall_docker(self, options: DockerOptions) -> None:

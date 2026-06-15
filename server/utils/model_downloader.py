@@ -16,7 +16,7 @@ from abc import abstractmethod
 from collections.abc import AsyncGenerator
 from contextlib import suppress
 from pathlib import Path
-from typing import Any, NotRequired, TypedDict
+from typing import Any, Never, NotRequired, TypedDict
 from urllib.parse import urlparse, urlunparse
 from uuid import uuid4
 
@@ -46,6 +46,9 @@ class BDownloader:
         except Exception:
             pass
         return self._replace_str(msg)
+
+    def _raise_http_error(self, e: HttpClientError) -> Never:
+        raise HTTPException(404 if e.status_code == 404 else 500, self.create_error_msg(e.body)) from e
 
     def _replace_str(self, msg: str) -> str:
         new_msg = msg
@@ -190,7 +193,7 @@ class HuggingFaceRepoWithBlobsDownloader(BDownloader):
                     continue
                 symlink_path.symlink_to(f"../../blobs/{file['oid']}", target_is_directory=False)
             except HttpClientError as e:
-                raise HTTPException(500, self.create_error_msg(e.body)) from e
+                self._raise_http_error(e)
 
         yield SuccessDownloadPacket(model_dir)
 
@@ -278,7 +281,7 @@ class HuggingFaceRepoDownloader(BaseDownloader):
                     if not isinstance(packet, PreDownloadPacket):
                         yield packet
             except HttpClientError as e:
-                raise HTTPException(500, self.create_error_msg(e.body)) from e
+                self._raise_http_error(e)
 
         yield SuccessDownloadPacket(model_dir)
 
@@ -322,7 +325,7 @@ class HuggingFaceModelDownloader(BaseDownloader):
             async for packet in Utils.ensure_model_downloaded(url_without_query, model_dir, temp_dir, filename, self.headers):
                 yield packet
         except HttpClientError as e:
-            raise HTTPException(500, self.create_error_msg(e.body)) from e
+            self._raise_http_error(e)
 
 
 class CivitaiModelDownloader(BaseDownloader):
@@ -352,7 +355,7 @@ class CivitaiModelDownloader(BaseDownloader):
             async for packet in Utils.ensure_model_downloaded(self.add_token_to_url(url), model_dir, temp_dir, filename):
                 yield packet
         except HttpClientError as e:
-            raise HTTPException(500, self.create_error_msg(e.body)) from e
+            self._raise_http_error(e)
 
 
 class AdapterRegistryDownloader(BaseDownloader):
@@ -398,7 +401,7 @@ class AdapterRegistryDownloader(BaseDownloader):
         except HttpClientError as e:
             if temp_path.exists():
                 temp_path.unlink()
-            raise HTTPException(500, self.create_error_msg(e.body)) from e
+            self._raise_http_error(e)
         except Exception:
             if temp_path.exists():
                 temp_path.unlink()

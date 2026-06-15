@@ -73,7 +73,7 @@ from server.utils.core import (
 from server.utils.files import detect_context_window_from_path
 from server.utils.hardware import GpuInfo, HardwarePartInfo, IntelGpuInfo, get_vram_gb
 from server.utils.loading import Progress
-from server.utils.ollama import ERROR_MAPPING
+from server.utils.ollama import raise_ollama_pull_error
 from server.utils.size_fetcher import fetch_ollama_ref_bytes, fmt_size
 from server.utils.vram_calculator import GGUF_QUANTS, ArchParams, estimate_vram_gb, parse_cache_type_bits, parse_parameter_count
 
@@ -893,13 +893,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
         async for ollama_stream in stream_fetch_from(f"{base_url}/api/pull", "POST", {"model": model_id}, timeout=24 * 60 * 60):
             if (ollama_stream.status_code != 200 and ollama_stream.status_code != 201) or "error" in ollama_stream.data:
-                record = json.loads(ollama_stream.data)
-                ollama_error = record.get("error", "")
-                for error_fragment, (status_code, message) in ERROR_MAPPING.items():
-                    if error_fragment in ollama_error:
-                        raise HTTPException(status_code, message)
-
-                raise HTTPException(400, f"Model not available: {ollama_error}" if ollama_error else "Model not available")
+                raise_ollama_pull_error(ollama_stream.data)
 
             data_cleared: list[str] = ollama_stream.data.rstrip().split("\n")
             records = [json.loads(s) for s in data_cleared if s]
@@ -1149,7 +1143,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
 
         if model_id not in self.models[instance]:
-            raise HTTPException(400, f"Model {model_id} not found")
+            raise HTTPException(400, f"Model {model_id!r} not found")
 
         model = self.models[instance][model_id]
 

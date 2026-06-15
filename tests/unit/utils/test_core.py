@@ -8,6 +8,7 @@
 # limitations under the License.
 
 import asyncio
+import errno
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -222,6 +223,40 @@ async def test_ensure_model_downloaded_raises_when_temp_file_empty(tmp_path: Pat
             temp_dir=tmp_path / "tmp",
         ):
             pass
+
+
+@pytest.mark.asyncio
+async def test_ensure_model_downloaded_timeout_raises_504(tmp_path: Path):
+    async def fake_download(url: str, path: Path, headers: dict[str, str]):
+        raise TimeoutError("timed out")
+        yield  # make it an async generator
+
+    with patch("server.utils.core.download_file", side_effect=fake_download), pytest.raises(HTTPException) as exc_info:
+        async for _ in Utils.ensure_model_downloaded(
+            "https://example.com/slow.bin",
+            model_dir=tmp_path,
+            temp_dir=tmp_path / "tmp",
+        ):
+            pass
+
+    assert exc_info.value.status_code == 504
+
+
+@pytest.mark.asyncio
+async def test_ensure_model_downloaded_no_space_raises_507(tmp_path: Path):
+    async def fake_download(url: str, path: Path, headers: dict[str, str]):
+        raise OSError(errno.ENOSPC, "No space left on device")
+        yield  # make it an async generator
+
+    with patch("server.utils.core.download_file", side_effect=fake_download), pytest.raises(HTTPException) as exc_info:
+        async for _ in Utils.ensure_model_downloaded(
+            "https://example.com/big.bin",
+            model_dir=tmp_path,
+            temp_dir=tmp_path / "tmp",
+        ):
+            pass
+
+    assert exc_info.value.status_code == 507
 
 
 @pytest.mark.parametrize(
