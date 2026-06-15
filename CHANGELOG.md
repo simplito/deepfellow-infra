@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 - Installing a GPU-dependent service (e.g. Stable Diffusion) on a host without the NVIDIA container toolkit now surfaces a clear, actionable error instead of silently appearing to succeed and then failing health checks repeatedly.
 - `push_to_github` release job no longer fails on a shallow clone; release tags are now verified to originate from `main`.
+- CI no longer fails `pyright` non-deterministically on merge pipelines: the CI uv version is bumped to `0.11.8`, which understands the relative `exclude-newer` cooldown, so `uv.lock` is honored instead of being silently ignored and re-resolved. A `required-version = ">=0.11.8"` floor prevents an older uv from reintroducing the issue.
 
 ## [0.28.0] - 2026-06-03
 
