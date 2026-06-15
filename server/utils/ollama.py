@@ -9,6 +9,10 @@
 
 """Common types for Ollama/Ollama External."""
 
+import json
+
+from fastapi import HTTPException
+
 ERROR_MAPPING = {
     "file does not exist": (
         400,
@@ -25,3 +29,13 @@ ERROR_MAPPING = {
         "Cannot authenticate with HuggingFace — this may be a gated model. Try using a direct GGUF download URL instead.",
     ),
 }
+
+
+def raise_ollama_pull_error(raw_data: str) -> None:
+    """Parse a failed Ollama /api/pull response and raise an appropriate HTTPException."""
+    record = json.loads(raw_data)
+    ollama_error: str = record.get("error", "")
+    for error_fragment, (status_code, message) in ERROR_MAPPING.items():
+        if error_fragment in ollama_error:
+            raise HTTPException(status_code, message)
+    raise HTTPException(400, f"Model not available: {ollama_error}" if ollama_error else "Model not available")

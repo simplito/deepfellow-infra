@@ -11,9 +11,9 @@ stages:
 
 variables:
   DOCKER_TLS_CERTDIR: ""
-  UV_VERSION: "0.9.9"
+  UV_VERSION: "0.11"
   PYTHON_VERSION: "3.13"
-  BASE_LAYER: bookworm-slim
+  BASE_LAYER: trixie
   # GitLab CI creates a separate mountpoint for the build directory,
   # so we need to copy instead of using hard links.
   UV_LINK_MODE: copy

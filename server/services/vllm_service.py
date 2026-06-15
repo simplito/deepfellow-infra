@@ -623,7 +623,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
 
         if model_id not in self.models[instance]:
-            raise HTTPException(400, "Model not found")
+            raise HTTPException(400, f"Model {model_id!r} not found")
 
         model = self.models[instance][model_id]
 
@@ -697,7 +697,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             )
             try:
                 docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
-            except RuntimeError:
+            except Exception:
                 if model.gpu_memory_utilization:
                     self.gpu_memory_utilization -= model.gpu_memory_utilization
                     if self.gpu_memory_utilization < 0:
