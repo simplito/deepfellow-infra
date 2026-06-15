@@ -460,6 +460,65 @@ async def test_convert_promise_with_stream_error():
     assert any('"error"' in c for c in chunks)
 
 
+@pytest.mark.asyncio
+async def test_convert_promise_stream_completes_cleanly_when_cancelled():
+    class MyModel(BaseModel):
+        value: int
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def work(_stream: Stream[StreamChunk]) -> MyModel:
+        started.set()
+        await release.wait()
+        return MyModel(value=1)
+
+    promise: PromiseWithProgress[MyModel, StreamChunk] = PromiseWithProgress(func=work)
+    response = await convert_promise_with_progress_to_fastapi_response(promise)
+    assert isinstance(response, StreamingResponse)
+
+    await started.wait()
+    promise.cancel()
+
+    chunks = []
+    async for chunk in response.body_iterator:  # type: ignore[attr-defined]
+        chunks.append(chunk)
+
+    assert not any('"error"' in c for c in chunks)
+
+
+@pytest.mark.asyncio
+async def test_cancel_propagates_through_chain():
+    class MyModel(BaseModel):
+        value: int
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def work(_stream: Stream[StreamChunk]) -> MyModel:
+        started.set()
+        await release.wait()
+        return MyModel(value=1)
+
+    async def step(model: MyModel) -> MyModel:
+        return MyModel(value=model.value + 1)
+
+    parent: PromiseWithProgress[MyModel, StreamChunk] = PromiseWithProgress(func=work)
+    child = parent.next(step, lambda _e: None)
+
+    await started.wait()
+
+    parent.cancel()
+    await asyncio.gather(*parent.tasks(), return_exceptions=True)
+
+    assert parent.task.done()
+    assert child.task.done()
+    assert parent._future.cancelled()  # pyright: ignore[reportPrivateUsage]
+    assert child._future.cancelled()  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(asyncio.CancelledError):
+        await child.wait()
+
+
 @pytest.mark.parametrize(
     ("machine", "expected"),
     [

@@ -290,6 +290,14 @@ def test_is_cloud_service_default_false(base_svc: _BaseImpl) -> None:
     assert base_svc.is_cloud_service() is False
 
 
+@pytest.mark.asyncio
+async def test_cancel_model_install_default_raises_405(base_svc: _BaseImpl) -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        await base_svc.cancel_model_install("default", "m1")
+
+    assert exc_info.value.status_code == 405
+
+
 def test_is_cloud_service_true_when_class_attr_set() -> None:
     class CloudSvc(_BaseImpl):
         is_cloud = True
@@ -479,6 +487,58 @@ def test_get_model_install_progress_returns_promise(base2_svc: _Base2Impl) -> No
     base2_svc.instances_info["default"].installing_model_progress["m1"] = mock_installing
 
     assert base2_svc.get_model_install_progress("default", "m1") is mock_promise
+
+
+@pytest.mark.asyncio
+async def test_cancel_model_install_raises_when_not_installing(base2_svc: _Base2Impl) -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        await base2_svc.cancel_model_install("default", "unknown-model")
+
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_cancel_model_install_cancels_tasks_and_clears_tracking(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["service_provider"].save_service_config = AsyncMock()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def func(_stream: Stream[StreamChunk]) -> InstallModelOut:
+        started.set()
+        await release.wait()
+        return InstallModelOut(status="OK", details="done")
+
+    promise: PromiseWithProgress[InstallModelOut, StreamChunk] = PromiseWithProgress(func=func)
+
+    with patch.object(base2_svc, "_install_model", new=AsyncMock(return_value=promise)):
+        returned_promise = await base2_svc.install_model("default", "m1", InstallModelIn())
+
+    await started.wait()
+    installing = base2_svc.instances_info["default"].installing_model_progress["m1"]
+
+    await base2_svc.cancel_model_install("default", "m1")
+
+    assert "m1" not in base2_svc.instances_info["default"].installing_model_progress
+    assert promise.task.cancelled()
+    assert installing.task.cancelled()
+    assert promise.progress._closed  # pyright: ignore[reportPrivateUsage]
+    assert promise._future.cancelled()  # pyright: ignore[reportPrivateUsage]
+    assert returned_promise.task.done()
+    assert returned_promise._future.cancelled()  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_download_image_progress_cleared_on_cancel(base2_svc: _Base2Impl) -> None:
+    image = DockerImage(name="example/image:latest", size="1GB")
+    stream: Stream[StreamChunk] = Stream()
+
+    async def fake_pull(_image: DockerImage, _stream: Stream[StreamChunk]) -> None:
+        raise asyncio.CancelledError
+
+    with patch.object(base2_svc, "_docker_pull", new=fake_pull), pytest.raises(asyncio.CancelledError):
+        await base2_svc._download_image_or_set_progress(stream, image)  # pyright: ignore[reportPrivateUsage]
+
+    assert image.name not in base2_svc.images_download_progress
 
 
 def test_get_instance_install_progress_raises_when_not_installing(base2_svc: _Base2Impl) -> None:

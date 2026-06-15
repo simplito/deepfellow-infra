@@ -123,3 +123,7 @@ class RemoveCustomModelOut(BaseModel):
 
 class SyncModelsOut(BaseModel):
     status: Literal["OK"]
+
+
+class CancelModelInstallOut(BaseModel):
+    status: Literal["OK"]

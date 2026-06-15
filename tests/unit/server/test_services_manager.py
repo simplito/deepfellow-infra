@@ -343,6 +343,18 @@ async def test_uninstall_model_from_service(services_manager: ServicesManager):
 
 
 @pytest.mark.asyncio
+async def test_cancel_model_install(services_manager: ServicesManager):
+    svc = FakeService("ollama")
+    svc.cancel_model_install = AsyncMock()
+    services_manager.register_service(svc)
+
+    await services_manager.cancel_model_install("ollama", "llama3")
+
+    assert svc.cancel_model_install.await_count == 1
+    assert svc.cancel_model_install.await_args == call("default", "llama3")
+
+
+@pytest.mark.asyncio
 async def test_add_custom_model(services_manager: ServicesManager):
     svc = FakeService("ollama")
     svc.add_custom_model = AsyncMock(return_value="my-custom-id")

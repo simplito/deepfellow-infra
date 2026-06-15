@@ -395,6 +395,8 @@ class PromiseWithProgress[T, U]:
     def __init__(self, value: T | None = None, func: Callable[[Stream[U]], Awaitable[T]] | None = None):
         self._future = asyncio.get_running_loop().create_future()
         self.progress = Stream[U]()
+        # Promises chained via ``next`` so cancel() can tear down the whole chain, not just this link.
+        self._children: list[PromiseWithProgress[Any, U]] = []
 
         if value is not None:
             self.has_stream = False
@@ -406,9 +408,17 @@ class PromiseWithProgress[T, U]:
             async def the_func() -> None:
                 try:
                     result = await func(self.progress)
-                    self._future.set_result(result)
+                    if not self._future.done():
+                        self._future.set_result(result)
+                except asyncio.CancelledError:
+                    # Finalize the future as cancelled so awaiters (e.g. chained promises or the SSE
+                    # response generator) unwind instead of blocking forever on a never-set future.
+                    if not self._future.done():
+                        self._future.cancel()
+                    raise
                 except Exception as e:
-                    self._future.set_exception(e)
+                    if not self._future.done():
+                        self._future.set_exception(e)
                 finally:
                     self.progress.close()
 
@@ -417,6 +427,28 @@ class PromiseWithProgress[T, U]:
     async def wait(self) -> T:
         """Wait for the result."""
         return await self._future
+
+    def cancel(self) -> None:
+        """Cancel the running work and fail any awaiters of this promise.
+
+        Cancelling the future as well as the task ensures chained promises (created via ``next``)
+        that are blocked on ``wait`` unwind instead of being left as orphaned pending tasks. The
+        cancellation propagates down the whole chain so every linked task/future is torn down.
+        """
+        task = getattr(self, "task", None)
+        if task is not None:
+            task.cancel()
+        if not self._future.done():
+            self._future.cancel()
+        for child in self._children:
+            child.cancel()
+
+    def tasks(self) -> list["asyncio.Task[None]"]:
+        """Return this promise's task and those of every chained promise, for awaiting after cancel()."""
+        collected = [task] if (task := getattr(self, "task", None)) is not None else []
+        for child in self._children:
+            collected.extend(child.tasks())
+        return collected
 
     def next[Z](self, func: Callable[[T], Awaitable[Z]], on_error: Callable[[Exception], None]) -> "PromiseWithProgress[Z, U]":
         """Add next step."""
@@ -432,6 +464,7 @@ class PromiseWithProgress[T, U]:
 
         promise = PromiseWithProgress[Z, U](func=the_func)
         promise.progress = self.progress
+        self._children.append(promise)
         return promise
 
 
@@ -452,6 +485,15 @@ async def convert_promise_with_progress_to_fastapi_response(promise: PromiseWith
                 "details": result.model_dump(),
             }
             yield "data: " + json.dumps(chunk) + "\n\n"
+        except asyncio.CancelledError:
+            # The awaited promise was cancelled (e.g. the install was cancelled), which surfaces here as
+            # a CancelledError. Finish the SSE stream cleanly so the ASGI response completes instead of
+            # raising ("ASGI callable returned without completing response"). If the response task itself
+            # is being cancelled (client disconnect / shutdown), propagate so cancellation is honoured.
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                raise
+            return
         except Exception as e:
             logger.exception("Error during generator")
             chunk: StreamChunk = {
