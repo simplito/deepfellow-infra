@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - Installing a GPU-dependent service (e.g. Stable Diffusion) on a host without the NVIDIA container toolkit now surfaces a clear, actionable error instead of silently appearing to succeed and then failing health checks repeatedly.
+- `push_to_github` release job no longer fails on a shallow clone; release tags are now verified to originate from `main`.
 
 ## [0.28.0] - 2026-06-03
 
