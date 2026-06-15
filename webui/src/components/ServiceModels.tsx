@@ -73,6 +73,8 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
   const toastIdsRef = useRef<Record<string, string | number>>({});
   const restartDockerToastIdRef = useRef<string | number | null>(null);
   const testAbortControllerRef = useRef<AbortController | null>(null);
+  const installAbortControllersRef = useRef<Record<string, AbortController>>({});
+  const cancelledInstallsRef = useRef<Set<string>>(new Set());
   const queryClient = useQueryClient();
 
   const serviceInfoQuery = useQuery({
@@ -262,8 +264,64 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
     };
   }, [modelsData, serviceId, queryClient]);
 
+  // Cancel an in-progress install: stop the backend Docker pull, abort the local SSE read, and reset the UI.
+  const handleCancelInstall = useCallback(
+    async (modelId: string) => {
+      const simKey = `${serviceId}::${modelId}`;
+      // Flag the cancel so the install mutation's error path swallows the AbortError it triggers.
+      cancelledInstallsRef.current.add(modelId);
+
+      // Abort the local SSE fetch (terminates the pending install promise immediately).
+      installAbortControllersRef.current[modelId]?.abort();
+      delete installAbortControllersRef.current[modelId];
+
+      // Stop the progress simulation and clear UI progress.
+      simulationStopFnsRef.current[simKey]?.stop();
+      delete simulationStopFnsRef.current[simKey];
+      delete hasRealProgressByModelRef.current[modelId];
+      clearModelInstallProgress(serviceId, modelId);
+
+      // Dismiss the long-lived loading progress toast and show a FRESH cancellation toast.
+      const toastId = toastIdsRef.current[modelId];
+      if (toastId) {
+        toast.dismiss(toastId);
+        delete toastIdsRef.current[modelId];
+      }
+      toast.success(`Installation cancelled for ${modelId}`, { duration: 8000 });
+
+      setInstallingModelId(null);
+
+      try {
+        // Stop the actual Docker image pull on the backend.
+        await apiClient.cancelAdminServiceModelInstall(serviceId, modelId);
+      } catch (error) {
+        // A 404 just means the install already finished/cleared on the backend — safe to ignore.
+        const isAlreadyGone = error instanceof Error && error.message.includes("HTTP 404");
+        if (!isAlreadyGone) {
+          toast.error(`Failed to cancel installation for ${modelId} — please try again`);
+        }
+        console.error(`Failed to cancel install for ${modelId}:`, error);
+      }
+
+      // Let reconciliation confirm the reset.
+      queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
+    },
+    [serviceId, queryClient]
+  );
+
+  // Shared sonner options for an installing model's progress toast, including the Cancel action.
+  const progressToastOptions = useCallback(
+    (modelId: string, toastId: string | number) => ({
+      id: toastId,
+      action: { label: "Cancel", onClick: () => handleCancelInstall(modelId) },
+    }),
+    [handleCancelInstall]
+  );
+
   const installMutation = useMutation({
     mutationFn: async ({ modelId, spec, size, ignoreWarnings = false }: { modelId: string; spec: Record<string, unknown>; size?: string; ignoreWarnings?: boolean }) => {
+      const abortController = new AbortController();
+      installAbortControllersRef.current[modelId] = abortController;
       try {
         return await new Promise<void>((resolve, reject) => {
           let currentStage: "install" | "download" = "download";
@@ -275,7 +333,7 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
               setModelInstallProgress(serviceId, modelId, { stage: currentStage, value });
               const toastId = toastIdsRef.current[modelId];
               if (toastId && !hasRealProgressByModelRef.current[modelId]) {
-                toast.loading(`${getStageLabel(currentStage)} ${modelId}: ${(value * 100).toFixed(1)}%`, { id: toastId });
+                toast.loading(`${getStageLabel(currentStage)} ${modelId}: ${(value * 100).toFixed(1)}%`, progressToastOptions(modelId, toastId));
               }
             },
           });
@@ -297,7 +355,7 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
                 if (toastId) {
                   const percentage = (value * 100).toFixed(1);
                   const stageLabel = getStageLabel(stage);
-                  toast.loading(`${stageLabel} ${modelId}: ${percentage}%`, { id: toastId });
+                  toast.loading(`${stageLabel} ${modelId}: ${percentage}%`, progressToastOptions(modelId, toastId));
                 }
               } else if (event.type === "finish") {
                 if (event.status === "ok") {
@@ -310,7 +368,8 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
                       // would cause the bar to jump back to the stale backend value.
                       const toastId = toastIdsRef.current[modelId];
                       if (toastId) {
-                        toast.success(`Model ${modelId} installed successfully`, { id: toastId });
+                        // action: undefined removes the Cancel button — the install is done.
+                        toast.success(`Model ${modelId} installed successfully`, { id: toastId, action: undefined });
                         delete toastIdsRef.current[modelId];
                       }
                       resolve();
@@ -324,17 +383,27 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
                 }
               }
             },
-            ignoreWarnings
+            ignoreWarnings,
+            abortController.signal
           ).catch(reject);
         });
       }
       catch (e) {
+        // Intentional cancel: the UI was already reset by handleCancelInstall — swallow the AbortError.
+        if (cancelledInstallsRef.current.has(modelId)) {
+          cancelledInstallsRef.current.delete(modelId);
+          return;
+        }
         clearModelInstallProgress(serviceId, modelId);
         const toastId = toastIdsRef.current[modelId];
         if (toastId) {
-          toast.error(`Failed to install model ${modelId}: ${(e instanceof Error ? e.message : "") || "Installation failed"}`, { id: toastId });
+          // action: undefined removes the Cancel button — there is nothing left to cancel.
+          toast.error(`Failed to install model ${modelId}: ${(e instanceof Error ? e.message : "") || "Installation failed"}`, { id: toastId, action: undefined });
           delete toastIdsRef.current[modelId];
         }
+      }
+      finally {
+        delete installAbortControllersRef.current[modelId];
       }
     },
     onMutate: ({ modelId }) => {
@@ -382,7 +451,9 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       }
       clearModelInstallProgress(serviceId, modelId);
     },
-    onSettled: () => {
+    onSettled: (_data, _error, variables) => {
+      cancelledInstallsRef.current.delete(variables.modelId);
+      delete installAbortControllersRef.current[variables.modelId];
       // Only reset if not showing warnings modal
       if (!hasWarningsRef.current) {
         setInstallingModelId(null);
@@ -647,7 +718,9 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
           ) as Record<string, unknown>;
           pendingInstallationRef.current = { modelId: modelDetail.id, spec: cleanedSpec, size: modelDetail.size };
           modal.close();
-          const toastId: string | number = toast.loading(`Starting installation for ${modelDetail.id}...`);
+          const toastId: string | number = toast.loading(`Starting installation for ${modelDetail.id}...`, {
+            action: { label: "Cancel", onClick: () => handleCancelInstall(modelDetail.id) },
+          });
           toastIdsRef.current[modelDetail.id] = toastId;
           installMutation.mutate({ modelId: modelDetail.id, spec: cleanedSpec, size: modelDetail.size });
         },
@@ -658,7 +731,7 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       modal.close();
       toast.error("Failed to load model details");
     }
-  }, [modal, serviceId, installMutation.mutate]);
+  }, [modal, serviceId, installMutation.mutate, handleCancelInstall]);
 
   const handleWarningsContinue = useCallback(() => {
     if (pendingInstallationRef.current) {

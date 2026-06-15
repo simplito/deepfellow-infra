@@ -19,6 +19,7 @@ from server.core.dependencies import auth_admin, get_services_manager
 from server.models.models import (
     AddCustomModelIn,
     AddCustomModelOut,
+    CancelModelInstallOut,
     InstallModelIn,
     ListModelsFilters,
     ListModelsOut,
@@ -74,6 +75,27 @@ async def get_install_progress_model(
     """Get progress of installing model."""
     promise = await services_manager.get_model_install_progress(service_id, query.model_id)
     return await convert_promise_with_progress_to_fastapi_response(promise)
+
+
+@router.post(
+    "/cancel",
+    summary="Cancel an in-progress model install.",
+)
+@tracer.trace_request()
+async def cancel_model_install(
+    request: Request,  # noqa: ARG001 needed for tracer
+    service_id: Annotated[str, Path(description="The ID of the service to use.")],
+    query: Annotated[ModelIdQuery, Query()],
+    services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
+    _: Annotated[str, Depends(auth_admin)],
+) -> CancelModelInstallOut:
+    """Cancel an in-progress model install, stopping the underlying Docker image pull."""
+    msg = f"{service_id} model install cancelling."
+    logger.debug(msg)
+    await services_manager.cancel_model_install(service_id, query.model_id)
+    msg = f"{service_id} model install cancelled."
+    logger.info(msg)
+    return CancelModelInstallOut(status="OK")
 
 
 @router.delete(

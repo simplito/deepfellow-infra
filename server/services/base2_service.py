@@ -208,6 +208,25 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
 
         return installing.promise
 
+    async def cancel_model_install(self, instance: str, model_id: str) -> None:
+        """Cancel an in-progress model install, stopping the underlying Docker image pull."""
+        installing = self.get_instance_info(instance).installing_model_progress.get(model_id)
+
+        if not installing:
+            raise HTTPException(404, f"Model {model_id} is not installing now.")
+
+        # Cancel the real pull work and every chained promise (cancel() propagates down the chain),
+        # plus the chunk reader, then await them all so no task is left pending and GC'd mid-run.
+        # promise.tasks() also returns the chained promise's task (it is registered as a child).
+        installing.promise.cancel()
+        installing.task.cancel()
+        tasks = [*installing.promise.tasks(), installing.task]
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+        installing.promise.progress.close()
+
+        self.get_instance_info(instance).installing_model_progress.pop(model_id, None)
+
     def get_instance_install_progress(self, instance: str) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
         """Return actually installing service."""
         installing = self.get_instance_info(instance).installing
@@ -475,8 +494,10 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     async def _download_image_or_set_progress(self, stream: Stream[StreamChunk], image: DockerImage) -> None:
         if image.name not in self.images_download_progress:
             self.images_download_progress[image.name] = stream
-            await self._docker_pull(image, stream)
-            del self.images_download_progress[image.name]
+            try:
+                await self._docker_pull(image, stream)
+            finally:
+                self.images_download_progress.pop(image.name, None)
         else:
             chunk: StreamChunk
             async for chunk in self.images_download_progress[image.name].as_generator():

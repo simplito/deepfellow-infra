@@ -58,6 +58,7 @@ def services_manager(retrieve_model_out: RetrieveModelOut) -> MagicMock:
     manager.add_custom_model = AsyncMock(return_value="custom-123")
     manager.remove_custom_model = AsyncMock(return_value=None)
     manager.sync_models_in_service = AsyncMock(return_value=None)
+    manager.cancel_model_install = AsyncMock(return_value=None)
     return manager
 
 
@@ -153,6 +154,20 @@ def test_get_install_progress_calls_manager(services_manager: MagicMock, client:
 
     assert services_manager.get_model_install_progress.await_count == 1
     assert services_manager.get_model_install_progress.await_args == call("my-svc", MODEL_ID)
+
+
+def test_cancel_model_install_returns_ok_status(client: TestClient, auth_header: dict[str, str]) -> None:
+    resp = client.post(f"/admin/services/{SERVICE_ID}/models/cancel", params={"model_id": MODEL_ID}, headers=auth_header)
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "OK"
+
+
+def test_cancel_model_install_calls_manager(services_manager: MagicMock, client: TestClient, auth_header: dict[str, str]) -> None:
+    client.post("/admin/services/my-svc/models/cancel", params={"model_id": MODEL_ID}, headers=auth_header)
+
+    assert services_manager.cancel_model_install.await_count == 1
+    assert services_manager.cancel_model_install.await_args == call("my-svc", MODEL_ID)
 
 
 UNINSTALL_BODY = {"purge": False}

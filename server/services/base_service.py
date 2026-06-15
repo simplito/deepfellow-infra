@@ -12,6 +12,8 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
+from fastapi import HTTPException
+
 from server.models.models import (
     AddCustomModelIn,
     CustomModelId,
@@ -96,6 +98,10 @@ class BaseService(ABC):
     @abstractmethod
     def get_model_install_progress(self, instance: str, model: str) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         """Return actually installing models."""
+
+    async def cancel_model_install(self, instance: str, model_id: str) -> None:  # noqa: ARG002
+        """Cancel an in-progress model install. Services without install progress cannot cancel."""
+        raise HTTPException(405, f"Service for model {model_id} does not support cancelling an installation.")
 
     @abstractmethod
     def is_installed(self, instance: str) -> bool:

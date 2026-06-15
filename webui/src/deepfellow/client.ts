@@ -233,12 +233,22 @@ export class DeepFellowClient {
     );
   }
 
+  async cancelAdminServiceModelInstall(serviceId: string, modelId: string): Promise<{ status: string }> {
+    return this.makeRequest<{ status: string }>(
+      `/admin/services/${serviceId}/models/cancel?model_id=${encodeURIComponent(modelId)}`,
+      {
+        method: "POST",
+      }
+    );
+  }
+
   async installAdminServiceModelStreaming(
     serviceId: string,
     modelId: string,
     spec: Record<string, unknown>,
     onProgress: (event: ProgressEvent) => void,
-    ignoreWarnings = false
+    ignoreWarnings = false,
+    signal?: AbortSignal
   ): Promise<void> {
     const url = `${this.baseURL}/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`;
     const adminApiKey = AdminApiKeyStorage.get();
@@ -260,6 +270,7 @@ export class DeepFellowClient {
       method: "POST",
       headers,
       body: JSON.stringify(body),
+      signal,
     });
 
     if (!response.ok) {
