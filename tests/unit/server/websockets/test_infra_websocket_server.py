@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 from pydantic import ValidationError
 
-from server.models.api import Model, ModelProps
+from server.models.api import Model, ModelProps, ModelType
 from server.models.mesh import MeshInfo
 from server.utils.exceptions import ApiError
 from server.websockets.infra_websocket_server import (
@@ -26,7 +26,7 @@ from server.websockets.models import InitRequest, InitResponse, TopologyUpdateRe
 MESH_KEY = "secret-key"
 
 
-def make_model(name: str = "test-model", model_type: str = "llm") -> Model:
+def make_model(name: str = "test-model", model_type: ModelType = "llm") -> Model:
     return Model(
         id="reg-1",
         name=name,

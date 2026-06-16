@@ -376,6 +376,21 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         """Remove custom model."""
         raise HTTPException(400, "This service does not support custom models.")
 
+    async def update_custom_model(self, instance: str, custom_model_id: CustomModelId, options: AddCustomModelIn) -> None:
+        """Update custom model."""
+        config = self.get_instance_info(instance).config
+        model = next((x for x in config.custom or [] if x.id == custom_model_id), None)
+        if model is None:
+            raise HTTPException(404, f"Custom model {custom_model_id} not found.")
+        new_data: dict[str, Any] = dict(options.spec)
+        await self._update_custom_model(instance, model, new_data)
+        model.data = new_data
+        await self._save()
+
+    async def _update_custom_model(self, instance: str, model: CustomModel, new_data: dict[str, Any]) -> None:  # noqa: ARG002
+        """Update custom model."""
+        raise HTTPException(400, "This service does not support custom model updates.")
+
     async def install_model(
         self, instance: str, model_id: str, options: InstallModelIn
     ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:

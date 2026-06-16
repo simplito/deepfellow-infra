@@ -1,3 +1,59 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { apiClient } from "@/deepfellow/client";
+import type { GpuCardStats, GpuStats } from "@/deepfellow/types";
+import type { ServiceModel } from "@/deepfellow/types";
+import { InstallationWarningsError } from "@/deepfellow/types";
+import { MODEL_TYPES } from "@/deepfellow/types";
+import { useModal } from "@/hooks/use-modal";
+import {
+  clearModelInstallProgress,
+  getSnapshot,
+  setModelInstallProgress,
+  useModelInstallProgress,
+} from "@/state/install-progress-store";
+import {
+  COMPLETION_SMOOTH_MIN_MS,
+  COMPLETION_SMOOTH_MS,
+  getStepPerTick,
+  startProgressSimulation,
+} from "@/utils/progress-simulation";
+import type { SimulationHandle } from "@/utils/progress-simulation";
+import type { ProgressEvent } from "@/utils/sse-stream";
+import { getStageLabel } from "@/utils/sse-stream";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Info, MoreVertical } from "lucide-react";
 /*
 DeepFellow Software Framework.
 Copyright © 2025 Simplito sp. z o.o.
@@ -8,48 +64,31 @@ This software is Licensed under the DeepFellow Free License.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-import { useState, useMemo, useEffect, useRef, useDeferredValue, startTransition, memo, useCallback, type RefObject } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "@/deepfellow/client";
-import type { GpuStats, GpuCardStats } from "@/deepfellow/types";
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import { MoreVertical, Info } from "lucide-react";
-import { DynamicFormModal } from "./DynamicFormModal";
+  type RefObject,
+  memo,
+  startTransition,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { toast } from "sonner";
+import { AddMcpServerModal } from "./AddMcpServerModal";
+import type {
+  AddMcpServerPayload,
+  AddMcpServerSpec,
+  ProxyMcpServerSpec,
+} from "./AddMcpServerModal";
 import { ConfirmModal } from "./ConfirmModal";
-import { UninstallWithPurgeModal } from "./UninstallWithPurgeModal";
+import { ContentModal } from "./ContentModal";
+import { DynamicFormModal } from "./DynamicFormModal";
 import { ProgressBadge } from "./ProgressBadge";
 import { TestResultModal } from "./TestResultModal";
-import { ContentModal } from "./ContentModal";
+import { UninstallWithPurgeModal } from "./UninstallWithPurgeModal";
 import { WarningsModal } from "./WarningsModal";
-import { useModal } from "@/hooks/use-modal";
-import type { ServiceModel } from "@/deepfellow/types";
-import { InstallationWarningsError } from "@/deepfellow/types";
-import { MODEL_TYPES } from "@/deepfellow/types";
-import type { ProgressEvent } from "@/utils/sse-stream";
-import { toast } from "sonner";
-import { getStageLabel } from "@/utils/sse-stream";
-import {
-  clearModelInstallProgress,
-  getSnapshot,
-  setModelInstallProgress,
-  useModelInstallProgress,
-} from "@/state/install-progress-store";
-import { startProgressSimulation, getStepPerTick, COMPLETION_SMOOTH_MS, COMPLETION_SMOOTH_MIN_MS } from "@/utils/progress-simulation";
-import type { SimulationHandle } from "@/utils/progress-simulation";
 
 interface ServiceModelsProps {
   serviceId: string;
@@ -63,9 +102,21 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
   const [filterInstalled, setFilterInstalled] = useState<string>("__all");
   const [filterDownloaded, setFilterDownloaded] = useState<string>("__all");
   const [filterCustom, setFilterCustom] = useState<string>("__all");
+  const [addMcpServerOpen, setAddMcpServerOpen] = useState(false);
+  const [editMcpServer, setEditMcpServer] = useState<{
+    customModelId: string;
+    spec: AddMcpServerSpec | ProxyMcpServerSpec;
+  } | null>(null);
+  const [mcpApiError, setMcpApiError] = useState<string | null>(null);
   const [showEntrySkeleton, setShowEntrySkeleton] = useState(true);
-  const [installingModelId, setInstallingModelId] = useState<string | null>(null);
-  const pendingInstallationRef = useRef<{ modelId: string; spec: Record<string, unknown>; size?: string } | null>(null);
+  const [installingModelId, setInstallingModelId] = useState<string | null>(
+    null,
+  );
+  const pendingInstallationRef = useRef<{
+    modelId: string;
+    spec: Record<string, unknown>;
+    size?: string;
+  } | null>(null);
   const lastAddedCustomModelIdRef = useRef<string | null>(null);
   const hasWarningsRef = useRef(false);
   const simulationStopFnsRef = useRef<Record<string, SimulationHandle>>({});
@@ -112,7 +163,6 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
     refetchInterval: 10_000,
   });
 
-
   // Always show skeleton on entry to this page, even if React Query has cached data.
   // This avoids a "blank/lag" feel on subsequent navigations.
   useEffect(() => {
@@ -151,7 +201,11 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       if (!inst || typeof inst !== "object") continue;
       const s = (inst as { stage?: unknown }).stage;
       const v = (inst as { value?: unknown }).value;
-      if ((s === "install" || s === "download") && typeof v === "number" && Number.isFinite(v)) {
+      if (
+        (s === "install" || s === "download") &&
+        typeof v === "number" &&
+        Number.isFinite(v)
+      ) {
         inProgressKeys.add(`${serviceId}::${model.id}`);
       }
     }
@@ -182,7 +236,9 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       // Skip if already tracked by an active install mutation.
       if (simulationStopFnsRef.current[simKey]) continue;
 
-      let currentStage: "install" | "download" = installedStage as "install" | "download";
+      let currentStage: "install" | "download" = installedStage as
+        | "install"
+        | "download";
       const abortController = new AbortController();
       let isCancelled = false;
 
@@ -190,16 +246,25 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       const existingProgress = getSnapshot().models[simKey];
       const startValue = existingProgress?.value ?? (installedValue as number);
       if (!existingProgress) {
-        setModelInstallProgress(serviceId, modelId, { stage: currentStage, value: installedValue as number });
+        setModelInstallProgress(serviceId, modelId, {
+          stage: currentStage,
+          value: installedValue as number,
+        });
       }
 
       const installStartTime = Date.now();
       const sim = startProgressSimulation({
-        stepPerTick: getStepPerTick(model.size, serviceId === "vllm" ? 0.2 : 1.6),
+        stepPerTick: getStepPerTick(
+          model.size,
+          serviceId === "vllm" ? 0.2 : 1.6,
+        ),
         initialValue: startValue,
         onTick: (value) => {
           if (isCancelled) return;
-          setModelInstallProgress(serviceId, modelId, { stage: currentStage, value });
+          setModelInstallProgress(serviceId, modelId, {
+            stage: currentStage,
+            value,
+          });
         },
       });
       simulationStopFnsRef.current[simKey] = sim;
@@ -224,22 +289,32 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
             if (event.type === "finish") {
               if (event.status === "ok") {
                 sim.smoothComplete(
-                  Math.max(COMPLETION_SMOOTH_MIN_MS, Math.min(Date.now() - installStartTime, COMPLETION_SMOOTH_MS)),
+                  Math.max(
+                    COMPLETION_SMOOTH_MIN_MS,
+                    Math.min(
+                      Date.now() - installStartTime,
+                      COMPLETION_SMOOTH_MS,
+                    ),
+                  ),
                   () => {
                     delete simulationStopFnsRef.current[simKey];
-                    queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
+                    queryClient.invalidateQueries({
+                      queryKey: ["admin", "services", serviceId, "models"],
+                    });
                   },
-                  getSnapshot().models[simKey]?.value
+                  getSnapshot().models[simKey]?.value,
                 );
               } else {
                 sim.stop();
                 delete simulationStopFnsRef.current[simKey];
                 clearModelInstallProgress(serviceId, modelId);
-                toast.error(`Installation failed for ${modelId}: ${event.details || "Unknown error"}`);
+                toast.error(
+                  `Installation failed for ${modelId}: ${event.details || "Unknown error"}`,
+                );
               }
             }
           },
-          abortController.signal
+          abortController.signal,
         )
         .catch((error) => {
           if (isCancelled) return;
@@ -330,7 +405,10 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
           const sim = startProgressSimulation({
             stepPerTick: getStepPerTick(size ?? ""),
             onTick: (value) => {
-              setModelInstallProgress(serviceId, modelId, { stage: currentStage, value });
+              setModelInstallProgress(serviceId, modelId, {
+                stage: currentStage,
+                value,
+              });
               const toastId = toastIdsRef.current[modelId];
               if (toastId && !hasRealProgressByModelRef.current[modelId]) {
                 toast.loading(`${getStageLabel(currentStage)} ${modelId}: ${(value * 100).toFixed(1)}%`, progressToastOptions(modelId, toastId));
@@ -339,13 +417,14 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
           });
           simulationStopFnsRef.current[simKey] = sim;
 
-          apiClient.installAdminServiceModelStreaming(
-            serviceId,
-            modelId,
-            spec,
-            (event: ProgressEvent) => {
-              const stage = event.stage;
-              const value = event.value;
+          apiClient
+            .installAdminServiceModelStreaming(
+              serviceId,
+              modelId,
+              spec,
+              (event: ProgressEvent) => {
+                const stage = event.stage;
+                const value = event.value;
 
               if (event.type === "progress" && stage && value !== undefined) {
                 currentStage = stage;
@@ -413,7 +492,9 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       const simKey = `${serviceId}::${variables.modelId}`;
       delete simulationStopFnsRef.current[simKey];
       delete hasRealProgressByModelRef.current[variables.modelId];
-      queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "services", serviceId, "models"],
+      });
       pendingInstallationRef.current = null;
     },
     onError: (error, variables) => {
@@ -431,7 +512,10 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
 
         const toastId = toastIdsRef.current[variables.modelId];
         if (toastId) {
-          toast.loading(`Warnings for ${variables.modelId}: awaiting confirmation...`, { id: toastId });
+          toast.loading(
+            `Warnings for ${variables.modelId}: awaiting confirmation...`,
+            { id: toastId },
+          );
         }
 
         modal.open(WarningsModal, {
@@ -462,9 +546,12 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
   });
 
   const uninstallMutation = useMutation({
-    mutationFn: (modelId: string) => apiClient.uninstallAdminServiceModel(serviceId, modelId, false),
+    mutationFn: (modelId: string) =>
+      apiClient.uninstallAdminServiceModel(serviceId, modelId, false),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "services", serviceId, "models"],
+      });
       modal.close();
       toast.success("Model uninstalled successfully");
     },
@@ -474,9 +561,12 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
   });
 
   const purgeMutation = useMutation({
-    mutationFn: (modelId: string) => apiClient.uninstallAdminServiceModel(serviceId, modelId, true),
+    mutationFn: (modelId: string) =>
+      apiClient.uninstallAdminServiceModel(serviceId, modelId, true),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "services", serviceId, "models"],
+      });
       modal.close();
       toast.success("Model purged successfully");
     },
@@ -494,7 +584,7 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
     },
     onMutate: () => {
       // Open modal immediately with loading state
-      modal.open(TestResultModal, { 
+      modal.open(TestResultModal, {
         result: {},
         isLoading: true,
         onCancel: () => {
@@ -502,13 +592,15 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
           testMutation.reset();
           testAbortControllerRef.current = null;
           modal.close();
-        }
+        },
       });
     },
     onSuccess: (result) => {
       // Clear the abort controller ref
       testAbortControllerRef.current = null;
-      queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "services", serviceId, "models"],
+      });
       // Update modal with actual result
       modal.open(TestResultModal, {
         result,
@@ -516,30 +608,32 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
         onCancel: () => {
           testMutation.reset();
           modal.close();
-        }
+        },
       });
     },
     onError: (error) => {
       // Clear the abort controller ref
       testAbortControllerRef.current = null;
       // If the error is from user cancellation, just close the modal
-      if (error instanceof Error && error.name === 'AbortError') {
+      if (error instanceof Error && error.name === "AbortError") {
         testMutation.reset();
         modal.close();
         return;
       }
-      queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "services", serviceId, "models"],
+      });
       // Show error state in modal
-      modal.open(TestResultModal, { 
+      modal.open(TestResultModal, {
         result: {
           error: true,
-          details: { message: error.message }
+          details: { message: error.message },
         },
         isLoading: false,
         onCancel: () => {
           testMutation.reset();
           modal.close();
-        }
+        },
       });
     },
   });
@@ -549,16 +643,19 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       return apiClient.addCustomModel(serviceId, spec);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "services", serviceId, "models"],
+      });
       modal.close();
       toast.success("Custom model added successfully");
-
 
       const addedId = lastAddedCustomModelIdRef.current;
       if (addedId) {
         setFilterText(addedId);
         setTimeout(() => {
-          const input = document.getElementById("search-models") as HTMLInputElement | null;
+          const input = document.getElementById(
+            "search-models",
+          ) as HTMLInputElement | null;
           input?.focus();
         }, 0);
       }
@@ -573,18 +670,73 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       return apiClient.removeCustomModel(serviceId, customModelId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
-      modal.close();  
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "services", serviceId, "models"],
+      });
+      modal.close();
       toast.success("Custom model removed successfully");
     },
     onError: (error) => {
       // Check if this is a validation error about the model being in use
       const errorMessage = error.message || "";
-      if (errorMessage.includes("Cannot remove custom model") || errorMessage.includes("it is in use")) {
-        toast.error("Cannot remove custom model: it is currently installed. Please uninstall it first.");
+      if (
+        errorMessage.includes("Cannot remove custom model") ||
+        errorMessage.includes("it is in use")
+      ) {
+        toast.error(
+          "Cannot remove custom model: it is currently installed. Please uninstall it first.",
+        );
       } else {
         toast.error(`Failed to remove custom model: ${errorMessage}`);
       }
+    },
+  });
+
+  const addMcpServerMutation = useMutation({
+    mutationFn: async (payload: AddMcpServerPayload) => {
+      const spec =
+        payload.kind === "docker"
+          ? payload.data
+          : (payload as unknown as Record<string, unknown>);
+      return apiClient.addCustomModel(serviceId, spec);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "services", serviceId, "models"],
+      });
+      setAddMcpServerOpen(false);
+      setMcpApiError(null);
+      toast.success("MCP server added successfully");
+    },
+    onError: (error) => {
+      setMcpApiError(error.message || "Failed to add MCP server");
+    },
+  });
+
+  const updateMcpServerMutation = useMutation({
+    mutationFn: async ({
+      customModelId,
+      spec,
+    }: {
+      customModelId: string;
+      spec: AddMcpServerSpec | ProxyMcpServerSpec;
+    }) => {
+      return apiClient.updateCustomModel(
+        serviceId,
+        customModelId,
+        spec as unknown as Record<string, unknown>,
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "services", serviceId, "models"],
+      });
+      setEditMcpServer(null);
+      setMcpApiError(null);
+      toast.success("MCP server updated. Reinstall to apply changes.");
+    },
+    onError: (error) => {
+      setMcpApiError(error.message || "Failed to update MCP server");
     },
   });
 
@@ -593,7 +745,9 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       return apiClient.syncModels(serviceId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "services", serviceId, "models"] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "services", serviceId, "models"],
+      });
       toast.success("Models synced successfully");
     },
     onError: (error) => {
@@ -602,14 +756,17 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
   });
 
   const dockerRestartMutation = useMutation({
-    mutationFn: (modelId: string) => apiClient.restartDocker(serviceId, modelId),
+    mutationFn: (modelId: string) =>
+      apiClient.restartDocker(serviceId, modelId),
     onMutate: () => {
       const toastId = toast.loading("Restarting Docker...");
       restartDockerToastIdRef.current = toastId;
     },
     onSuccess: () => {
       if (restartDockerToastIdRef.current) {
-        toast.success("Docker restarted successfully", { id: restartDockerToastIdRef.current });
+        toast.success("Docker restarted successfully", {
+          id: restartDockerToastIdRef.current,
+        });
         restartDockerToastIdRef.current = null;
       } else {
         toast.success("Docker restarted successfully");
@@ -617,7 +774,9 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
     },
     onError: (error) => {
       if (restartDockerToastIdRef.current) {
-        toast.error(`Failed to restart Docker: ${error.message}`, { id: restartDockerToastIdRef.current });
+        toast.error(`Failed to restart Docker: ${error.message}`, {
+          id: restartDockerToastIdRef.current,
+        });
         restartDockerToastIdRef.current = null;
       } else {
         toast.error(`Failed to restart Docker: ${error.message}`);
@@ -625,113 +784,142 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
     },
   });
 
-  const handleShowDockerLogs = useCallback(async (modelId: string) => {
-    // Open modal immediately with loading state
-    modal.open(ContentModal, {
-      title: "Docker Logs",
-      content: "",
-      wide: true,
-      pre: true,
-      isLoading: true,
-      onCancel: () => {
-        modal.close();
-      },
-    });
-
-    try {
-      const data = await apiClient.getDockerLogs(serviceId, modelId);
-      // Update modal with actual content
+  const handleShowDockerLogs = useCallback(
+    async (modelId: string) => {
+      // Open modal immediately with loading state
       modal.open(ContentModal, {
         title: "Docker Logs",
-        content: data.logs,
+        content: "",
         wide: true,
         pre: true,
-        isLoading: false,
+        isLoading: true,
+        onCancel: () => {
+          modal.close();
+        },
       });
-    } catch (error) {
-      modal.close();
-      toast.error(`Failed to fetch Docker logs: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
-  }, [modal, serviceId]);
 
-  const handleShowDockerCompose = useCallback(async (modelId: string) => {
-    // Open modal immediately with loading state
-    modal.open(ContentModal, {
-      title: "Docker Compose File",
-      content: "",
-      wide: true,
-      pre: true,
-      isLoading: true,
-      onCancel: () => {
+      try {
+        const data = await apiClient.getDockerLogs(serviceId, modelId);
+        // Update modal with actual content
+        modal.open(ContentModal, {
+          title: "Docker Logs",
+          content: data.logs,
+          wide: true,
+          pre: true,
+          isLoading: false,
+        });
+      } catch (error) {
         modal.close();
-      },
-    });
+        toast.error(
+          `Failed to fetch Docker logs: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+    },
+    [modal, serviceId],
+  );
 
-    try {
-      const data = await apiClient.getDockerCompose(serviceId, modelId);
-      // Update modal with actual content
+  const handleShowDockerCompose = useCallback(
+    async (modelId: string) => {
+      // Open modal immediately with loading state
       modal.open(ContentModal, {
         title: "Docker Compose File",
-        content: data.compose_file,
+        content: "",
         wide: true,
         pre: true,
-        isLoading: false,
-      });
-    } catch (error) {
-      modal.close();
-      toast.error(`Failed to fetch Docker compose file: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
-  }, [modal, serviceId]);
-
-  const handleRestartDocker = useCallback((modelId: string) => {
-    modal.open(ConfirmModal, {
-      title: "Restart Docker",
-      description: `Are you sure you want to restart Docker for model ${modelId}?`,
-      confirmText: "Restart",
-      cancelText: "Cancel",
-      onConfirm: () => {
-        modal.close();
-        dockerRestartMutation.mutate(modelId);
-      },
-      isLoading: dockerRestartMutation.isPending,
-      variant: "warning",
-    });
-  }, [modal, dockerRestartMutation.isPending, dockerRestartMutation.mutate]);
-
-  const handleInstallClick = useCallback(async (model: ServiceModel) => {
-    modal.open(DynamicFormModal, {
-      title: `Install ${model.id}`,
-      fields: [],
-      isLoading: true,
-      isSubmitting: false,
-      onSubmit: () => {},
-    });
-
-    try {
-      const modelDetail = await apiClient.getAdminServiceModel(serviceId, model.id);
-      modal.open(DynamicFormModal, {
-        title: `Install ${modelDetail.id}`,
-        fields: modelDetail.spec.fields,
-        onSubmit: (spec: Record<string, unknown>) => {
-          const cleanedSpec = Object.fromEntries(
-            Object.entries(spec).filter(([_, value]) => value !== null && value !== undefined)
-          ) as Record<string, unknown>;
-          pendingInstallationRef.current = { modelId: modelDetail.id, spec: cleanedSpec, size: modelDetail.size };
+        isLoading: true,
+        onCancel: () => {
           modal.close();
-          const toastId: string | number = toast.loading(`Starting installation for ${modelDetail.id}...`, {
-            action: { label: "Cancel", onClick: () => handleCancelInstall(modelDetail.id) },
-          });
-          toastIdsRef.current[modelDetail.id] = toastId;
-          installMutation.mutate({ modelId: modelDetail.id, spec: cleanedSpec, size: modelDetail.size });
         },
-        // Keep modal interactive; don't disable because another install is running.
-        isSubmitting: false,
       });
-    } catch {
-      modal.close();
-      toast.error("Failed to load model details");
-    }
-  }, [modal, serviceId, installMutation.mutate, handleCancelInstall]);
+
+      try {
+        const data = await apiClient.getDockerCompose(serviceId, modelId);
+        // Update modal with actual content
+        modal.open(ContentModal, {
+          title: "Docker Compose File",
+          content: data.compose_file,
+          wide: true,
+          pre: true,
+          isLoading: false,
+        });
+      } catch (error) {
+        modal.close();
+        toast.error(
+          `Failed to fetch Docker compose file: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+    },
+    [modal, serviceId],
+  );
+
+  const handleRestartDocker = useCallback(
+    (modelId: string) => {
+      modal.open(ConfirmModal, {
+        title: "Restart Docker",
+        description: `Are you sure you want to restart Docker for model ${modelId}?`,
+        confirmText: "Restart",
+        cancelText: "Cancel",
+        onConfirm: () => {
+          modal.close();
+          dockerRestartMutation.mutate(modelId);
+        },
+        isLoading: dockerRestartMutation.isPending,
+        variant: "warning",
+      });
+    },
+    [modal, dockerRestartMutation.isPending, dockerRestartMutation.mutate],
+  );
+
+  const handleInstallClick = useCallback(
+    async (model: ServiceModel) => {
+      modal.open(DynamicFormModal, {
+        title: `Install ${model.id}`,
+        fields: [],
+        isLoading: true,
+        isSubmitting: false,
+        onSubmit: () => {},
+      });
+
+      try {
+        const modelDetail = await apiClient.getAdminServiceModel(
+          serviceId,
+          model.id,
+        );
+        modal.open(DynamicFormModal, {
+          title: `Install ${modelDetail.id}`,
+          fields: modelDetail.spec.fields,
+          onSubmit: (spec: Record<string, unknown>) => {
+            const cleanedSpec = Object.fromEntries(
+              Object.entries(spec).filter(
+                ([_, value]) => value !== null && value !== undefined,
+              ),
+            ) as Record<string, unknown>;
+            pendingInstallationRef.current = {
+              modelId: modelDetail.id,
+              spec: cleanedSpec,
+              size: modelDetail.size,
+            };
+            modal.close();
+            const toastId: string | number = toast.loading(
+              `Starting installation for ${modelDetail.id}...`,
+            );
+            toastIdsRef.current[modelDetail.id] = toastId;
+            installMutation.mutate({
+              modelId: modelDetail.id,
+              spec: cleanedSpec,
+              size: modelDetail.size,
+            });
+          },
+          // Keep modal interactive; don't disable because another install is running.
+          isSubmitting: false,
+        });
+      } catch {
+        modal.close();
+        toast.error("Failed to load model details");
+      }
+    },
+    [modal, serviceId, installMutation.mutate],
+  );
 
   const handleWarningsContinue = useCallback(() => {
     if (pendingInstallationRef.current) {
@@ -740,63 +928,76 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
         modelId: pendingInstallationRef.current.modelId,
         spec: pendingInstallationRef.current.spec,
         size: pendingInstallationRef.current.size,
-        ignoreWarnings: true
+        ignoreWarnings: true,
       });
     }
   }, [installMutation.mutate]);
 
-  const handleUninstallClick = useCallback((modelId: string) => {
-    modal.open(UninstallWithPurgeModal, {
-      title: "Uninstall Model",
-      description: `Are you sure you want to uninstall ${modelId}? This action cannot be undone.`,
-      confirmText: "Uninstall",
-      cancelText: "Cancel",
-      purgeLabel: "Purge",
-      purgeDescription: "Also remove downloaded model files and local data. This cannot be undone.",
-      onConfirm: (purge) => {
-        modal.close();
-        if (purge) {
+  const handleUninstallClick = useCallback(
+    (modelId: string) => {
+      modal.open(UninstallWithPurgeModal, {
+        title: "Uninstall Model",
+        description: `Are you sure you want to uninstall ${modelId}? This action cannot be undone.`,
+        confirmText: "Uninstall",
+        cancelText: "Cancel",
+        purgeLabel: "Purge",
+        purgeDescription:
+          "Also remove downloaded model files and local data. This cannot be undone.",
+        onConfirm: (purge) => {
+          modal.close();
+          if (purge) {
+            purgeMutation.mutate(modelId);
+          } else {
+            uninstallMutation.mutate(modelId);
+          }
+        },
+        isLoading: uninstallMutation.isPending || purgeMutation.isPending,
+        variant: "destructive",
+      });
+    },
+    [
+      modal,
+      uninstallMutation.isPending,
+      purgeMutation.isPending,
+      uninstallMutation.mutate,
+      purgeMutation.mutate,
+    ],
+  );
+
+  const handlePurgeClick = useCallback(
+    (modelId: string) => {
+      modal.open(ConfirmModal, {
+        title: "Purge Model",
+        description:
+          "This will remove all downloaded files for the model. This action cannot be undone.",
+        confirmText: "Purge",
+        cancelText: "Cancel",
+        onConfirm: () => {
+          modal.close();
           purgeMutation.mutate(modelId);
-        } else {
-          uninstallMutation.mutate(modelId);
-        }
-      },
-      isLoading: uninstallMutation.isPending || purgeMutation.isPending,
-      variant: "destructive",
-    });
-  }, [
-    modal,
-    uninstallMutation.isPending,
-    purgeMutation.isPending,
-    uninstallMutation.mutate,
-    purgeMutation.mutate,
-  ]);
+        },
+        isLoading: purgeMutation.isPending,
+        variant: "destructive",
+      });
+    },
+    [modal, purgeMutation.isPending, purgeMutation.mutate],
+  );
 
-  const handlePurgeClick = useCallback((modelId: string) => {
-    modal.open(ConfirmModal, {
-      title: "Purge Model",
-      description: "This will remove all downloaded files for the model. This action cannot be undone.",
-      confirmText: "Purge",
-      cancelText: "Cancel",
-      onConfirm: () => {
-        modal.close();
-        purgeMutation.mutate(modelId);
-      },
-      isLoading: purgeMutation.isPending,
-      variant: "destructive",
-    });
-  }, [modal, purgeMutation.isPending, purgeMutation.mutate]);
+  const handleTestClick = useCallback(
+    (model: ServiceModel) => {
+      const installedInfo =
+        model.installed && typeof model.installed === "object"
+          ? model.installed
+          : null;
 
-  const handleTestClick = useCallback((model: ServiceModel) => {
-    const installedInfo =
-      model.installed && typeof model.installed === "object" ? model.installed : null;
-
-    if (!installedInfo?.registration_id) {
-      toast.error("Model registration ID not found. Cannot test model.");
-      return;
-    }
-    testMutation.mutate(installedInfo.registration_id);
-  }, [testMutation.mutate]);
+      if (!installedInfo?.registration_id) {
+        toast.error("Model registration ID not found. Cannot test model.");
+        return;
+      }
+      testMutation.mutate(installedInfo.registration_id);
+    },
+    [testMutation.mutate],
+  );
 
   const handleAddCustomModel = () => {
     if (!serviceInfo?.custom_model_spec) return;
@@ -810,7 +1011,9 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       submittingLabel: "Adding...",
       onSubmit: (spec: Record<string, unknown>) => {
         const cleanedSpec = Object.fromEntries(
-          Object.entries(spec).filter(([_, value]) => value !== null && value !== undefined)
+          Object.entries(spec).filter(
+            ([_, value]) => value !== null && value !== undefined,
+          ),
         ) as Record<string, unknown>;
 
         const maybeId = cleanedSpec.id;
@@ -822,26 +1025,89 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
     });
   };
 
-  const handleRemoveCustomModelClick = useCallback((model: ServiceModel) => {
+  const handleRemoveCustomModelClick = useCallback(
+    (model: ServiceModel) => {
+      const customModelId = model.custom;
+      if (!customModelId) {
+        toast.error("Model is not a custom model.");
+        return;
+      }
+      if (model.installed) {
+        toast.error(
+          "Cannot remove custom model: it is currently installed. Please uninstall it first.",
+        );
+        return;
+      }
+      modal.open(ConfirmModal, {
+        title: "Remove Custom Model",
+        description: `Are you sure you want to remove the custom model ${model.id}? Only uninstalled custom models can be removed. This action cannot be undone.`,
+        confirmText: "Remove",
+        cancelText: "Cancel",
+        onConfirm: () => removeCustomModelMutation.mutate({ customModelId }),
+        isLoading: removeCustomModelMutation.isPending,
+        variant: "destructive",
+      });
+    },
+    [
+      modal,
+      removeCustomModelMutation.isPending,
+      removeCustomModelMutation.mutate,
+    ],
+  );
+
+  const handleEditMcpServerClick = useCallback((model: ServiceModel) => {
     const customModelId = model.custom;
-    if (!customModelId) {
-      toast.error("Model is not a custom model.");
-      return;
-    }
+    if (!customModelId) return;
     if (model.installed) {
-      toast.error("Cannot remove custom model: it is currently installed. Please uninstall it first.");
+      toast.error(
+        "Cannot edit: server is currently installed. Uninstall it first.",
+      );
       return;
     }
-    modal.open(ConfirmModal, {
-      title: "Remove Custom Model",
-      description: `Are you sure you want to remove the custom model ${model.id}? Only uninstalled custom models can be removed. This action cannot be undone.`,
-      confirmText: "Remove",
-      cancelText: "Cancel",
-      onConfirm: () => removeCustomModelMutation.mutate({ customModelId }),
-      isLoading: removeCustomModelMutation.isPending,
-      variant: "destructive",
-    });
-  }, [modal, removeCustomModelMutation.isPending, removeCustomModelMutation.mutate]);
+    setMcpApiError(null);
+    const rawSpec = model.custom_spec;
+    const kind = rawSpec?.kind === "proxy" ? "proxy" : "user";
+    if (kind === "proxy") {
+      setEditMcpServer({
+        customModelId,
+        spec: {
+          kind: "proxy",
+          id: model.id,
+          name: String(rawSpec?.name ?? model.id),
+          server_url: String(rawSpec?.server_url ?? ""),
+          transport:
+            (rawSpec?.transport as ProxyMcpServerSpec["transport"]) ??
+            "streamable_http",
+          default_prefix:
+            rawSpec?.default_prefix != null
+              ? String(rawSpec.default_prefix)
+              : undefined,
+          headers: rawSpec?.headers as Record<string, string> | undefined,
+        },
+      });
+    } else {
+      setEditMcpServer({
+        customModelId,
+        spec: {
+          kind: "user",
+          id: model.id,
+          name: model.id,
+          variant: (model.variant ??
+            "node-headless") as AddMcpServerSpec["variant"],
+          command: String(rawSpec?.command ?? model.command ?? ""),
+          base_image:
+            rawSpec?.base_image != null
+              ? String(rawSpec.base_image)
+              : (model.base_image ?? undefined),
+          envs: rawSpec?.envs as Record<string, string> | undefined,
+          default_prefix:
+            rawSpec?.default_prefix != null
+              ? String(rawSpec.default_prefix)
+              : undefined,
+        },
+      });
+    }
+  }, []);
 
   const sortedModels = useMemo(() => {
     if (!modelsData?.list) return [];
@@ -863,7 +1129,9 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
     const normalizedFilterText = deferredFilterText.toLowerCase();
 
     return sortedModels.filter((model) => {
-      const matchesText = !normalizedFilterText || model.id.toLowerCase().includes(normalizedFilterText);
+      const matchesText =
+        !normalizedFilterText ||
+        model.id.toLowerCase().includes(normalizedFilterText);
       const matchesType = filterType === "__all" || model.type === filterType;
       const matchesInstalled =
         filterInstalled === "__all" ||
@@ -879,9 +1147,22 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
         (filterCustom === "onlycustom" && !!model.custom) ||
         (filterCustom === "onlynotcustom" && !model.custom);
 
-      return matchesText && matchesType && matchesInstalled && matchesDownloaded && matchesCustom;
+      return (
+        matchesText &&
+        matchesType &&
+        matchesInstalled &&
+        matchesDownloaded &&
+        matchesCustom
+      );
     });
-  }, [sortedModels, deferredFilterText, filterType, filterInstalled, filterDownloaded, filterCustom]);
+  }, [
+    sortedModels,
+    deferredFilterText,
+    filterType,
+    filterInstalled,
+    filterDownloaded,
+    filterCustom,
+  ]);
 
   if (showEntrySkeleton) {
     return <ServiceModelsSkeleton />;
@@ -890,8 +1171,6 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
   return (
     <div className="w-full mx-auto p-6">
       <div className="mb-6">
-
-
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold">Models for {serviceId}</h1>
           <div className="flex gap-2">
@@ -904,8 +1183,18 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
                 {syncModelsMutation.isPending ? "Syncing…" : "↺ Sync"}
               </Button>
             )}
-            {serviceInfo?.custom_model_spec && (
-              <Button onClick={handleAddCustomModel}>
+            {serviceId === "mcp" && serviceInfo?.custom_model_spec && (
+              <Button
+                onClick={() => {
+                  setMcpApiError(null);
+                  setAddMcpServerOpen(true);
+                }}
+              >
+                Add MCP Server
+              </Button>
+            )}
+            {serviceInfo?.custom_model_spec && serviceId !== "mcp" && (
+              <Button onClick={handleAddCustomModel} variant="outline">
                 Add custom model
               </Button>
             )}
@@ -914,7 +1203,9 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
 
         <div className="flex flex-col md:flex-row gap-4">
           <div className="md:flex-1">
-            <Label htmlFor="search-models" className="sr-only">Search models</Label>
+            <Label htmlFor="search-models" className="sr-only">
+              Search models
+            </Label>
             <Input
               id="search-models"
               placeholder="Search models..."
@@ -924,7 +1215,10 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
           </div>
           <div className="flex gap-4">
             <div className="space-y-1">
-              <Select value={filterType} onValueChange={(v) => startTransition(() => setFilterType(v))}>
+              <Select
+                value={filterType}
+                onValueChange={(v) => startTransition(() => setFilterType(v))}
+              >
                 <SelectTrigger id="filter-type" className="w-[200px]">
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
@@ -940,7 +1234,12 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
             </div>
 
             <div className="space-y-1">
-              <Select value={filterInstalled} onValueChange={(v) => startTransition(() => setFilterInstalled(v))}>
+              <Select
+                value={filterInstalled}
+                onValueChange={(v) =>
+                  startTransition(() => setFilterInstalled(v))
+                }
+              >
                 <SelectTrigger id="filter-installed" className="w-[200px]">
                   <SelectValue placeholder="Installation status" />
                 </SelectTrigger>
@@ -953,28 +1252,42 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
             </div>
 
             <div className="space-y-1">
-              <Select value={filterDownloaded} onValueChange={(v) => startTransition(() => setFilterDownloaded(v))}>
+              <Select
+                value={filterDownloaded}
+                onValueChange={(v) =>
+                  startTransition(() => setFilterDownloaded(v))
+                }
+              >
                 <SelectTrigger id="filter-downloaded" className="w-[200px]">
                   <SelectValue placeholder="Downloaded" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all">All</SelectItem>
                   <SelectItem value="downloaded">Only downloaded</SelectItem>
-                  <SelectItem value="notdownloaded">Only not downloaded</SelectItem>
+                  <SelectItem value="notdownloaded">
+                    Only not downloaded
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             {serviceInfo?.custom_model_spec && (
               <div className="space-y-1">
-                  <Select value={filterCustom} onValueChange={(v) => startTransition(() => setFilterCustom(v))}>
+                <Select
+                  value={filterCustom}
+                  onValueChange={(v) =>
+                    startTransition(() => setFilterCustom(v))
+                  }
+                >
                   <SelectTrigger id="filter-custom" className="w-[200px]">
                     <SelectValue placeholder="Custom" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all">All models</SelectItem>
                     <SelectItem value="onlycustom">Only custom</SelectItem>
-                    <SelectItem value="onlynotcustom">Only not custom</SelectItem>
+                    <SelectItem value="onlynotcustom">
+                      Only not custom
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -999,6 +1312,7 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
         hasRealProgressByModelRef={hasRealProgressByModelRef}
         onInstallClick={handleInstallClick}
         onRemoveCustomModelClick={handleRemoveCustomModelClick}
+        onEditMcpServerClick={handleEditMcpServerClick}
         onPurgeClick={handlePurgeClick}
         onTestClick={handleTestClick}
         onShowDockerLogs={handleShowDockerLogs}
@@ -1006,6 +1320,41 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
         onRestartDocker={handleRestartDocker}
         onUninstallClick={handleUninstallClick}
       />
+
+      <AddMcpServerModal
+        open={addMcpServerOpen}
+        onOpenChange={setAddMcpServerOpen}
+        onSubmit={(payload) => addMcpServerMutation.mutate(payload)}
+        isSubmitting={addMcpServerMutation.isPending}
+        dockerFields={serviceInfo?.custom_model_spec?.fields ?? []}
+        apiError={mcpApiError}
+      />
+
+      {editMcpServer && (
+        <AddMcpServerModal
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) {
+              setEditMcpServer(null);
+              setMcpApiError(null);
+            }
+          }}
+          onSubmit={(payload) => {
+            if (payload.kind === "user" || payload.kind === "proxy") {
+              updateMcpServerMutation.mutate({
+                customModelId: editMcpServer.customModelId,
+                spec: payload,
+              });
+            }
+          }}
+          isSubmitting={updateMcpServerMutation.isPending}
+          dockerFields={[]}
+          initialValues={editMcpServer.spec}
+          title="Edit MCP Server"
+          notice="After saving, reinstall the server to apply changes."
+          apiError={mcpApiError}
+        />
+      )}
     </div>
   );
 }
@@ -1024,6 +1373,7 @@ type ModelsTableProps = {
   hasRealProgressByModelRef: RefObject<Record<string, boolean>>;
   onInstallClick: (model: ServiceModel) => void | Promise<void>;
   onRemoveCustomModelClick: (model: ServiceModel) => void;
+  onEditMcpServerClick: (model: ServiceModel) => void;
   onPurgeClick: (modelId: string) => void;
   onTestClick: (model: ServiceModel) => void;
   onShowDockerLogs: (modelId: string) => void | Promise<void>;
@@ -1044,6 +1394,7 @@ const ModelsTable = memo(function ModelsTable({
   hasRealProgressByModelRef,
   onInstallClick,
   onRemoveCustomModelClick,
+  onEditMcpServerClick,
   onPurgeClick,
   onTestClick,
   onShowDockerLogs,
@@ -1065,7 +1416,8 @@ const ModelsTable = memo(function ModelsTable({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="flex items-center gap-1 cursor-default">
-                      {isCpuOnly ? "RAM (est.)" : "VRAM (est.)"} <Info className="h-3 w-3 text-muted-foreground" />
+                      {isCpuOnly ? "RAM (est.)" : "VRAM (est.)"}{" "}
+                      <Info className="h-3 w-3 text-muted-foreground" />
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -1083,7 +1435,10 @@ const ModelsTable = memo(function ModelsTable({
         <TableBody>
           {models.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="text-center text-muted-foreground">
+              <TableCell
+                colSpan={7}
+                className="text-center text-muted-foreground"
+              >
                 No models found
               </TableCell>
             </TableRow>
@@ -1102,6 +1457,7 @@ const ModelsTable = memo(function ModelsTable({
                 hasRealProgressByModelRef={hasRealProgressByModelRef}
                 onInstallClick={onInstallClick}
                 onRemoveCustomModelClick={onRemoveCustomModelClick}
+                onEditMcpServerClick={onEditMcpServerClick}
                 onPurgeClick={onPurgeClick}
                 onTestClick={onTestClick}
                 onShowDockerLogs={onShowDockerLogs}
@@ -1129,6 +1485,7 @@ type ModelRowProps = {
   hasRealProgressByModelRef: RefObject<Record<string, boolean>>;
   onInstallClick: (model: ServiceModel) => void | Promise<void>;
   onRemoveCustomModelClick: (model: ServiceModel) => void;
+  onEditMcpServerClick: (model: ServiceModel) => void;
   onPurgeClick: (modelId: string) => void;
   onTestClick: (model: ServiceModel) => void;
   onShowDockerLogs: (modelId: string) => void | Promise<void>;
@@ -1149,6 +1506,7 @@ const ModelRow = memo(function ModelRow({
   hasRealProgressByModelRef,
   onInstallClick,
   onRemoveCustomModelClick,
+  onEditMcpServerClick,
   onPurgeClick,
   onTestClick,
   onShowDockerLogs,
@@ -1158,18 +1516,24 @@ const ModelRow = memo(function ModelRow({
 }: ModelRowProps) {
   const isInstalled = !!model.installed;
   const isDownloaded = !!model.downloaded;
-  const installedInfo = model.installed && typeof model.installed === "object" ? model.installed : null;
+  const installedInfo =
+    model.installed && typeof model.installed === "object"
+      ? model.installed
+      : null;
   const installedSpec = installedInfo?.spec ?? EMPTY_SPEC;
 
   const currentProgress = useModelInstallProgress(serviceId, model.id);
   const isInProgress = !!currentProgress;
-  const hasProgressStage = !!installedInfo?.stage && installedInfo?.value !== undefined;
+  const hasProgressStage =
+    !!installedInfo?.stage && installedInfo?.value !== undefined;
   const isInstallingCurrent = isInstallingAny && installingModelId === model.id;
 
   const installedSpecEntries = useMemo(() => {
-    if (!isInstalled || hasProgressStage) return [] as Array<{ key: string; displayValue: string }>;
+    if (!isInstalled || hasProgressStage)
+      return [] as Array<{ key: string; displayValue: string }>;
     const entries = Object.entries(installedSpec);
-    if (entries.length === 0) return [] as Array<{ key: string; displayValue: string }>;
+    if (entries.length === 0)
+      return [] as Array<{ key: string; displayValue: string }>;
 
     const fieldTypeByName = new Map<string, string>();
     for (const f of model.spec.fields) fieldTypeByName.set(f.name, f.type);
@@ -1178,7 +1542,12 @@ const ModelRow = memo(function ModelRow({
       const type = fieldTypeByName.get(key);
       return {
         key,
-        displayValue: type === "password" ? "•••••" : ((value && typeof(value) === "object") ? JSON.stringify(value) : String(value ?? "")),
+        displayValue:
+          type === "password"
+            ? "•••••"
+            : value && typeof value === "object"
+              ? JSON.stringify(value)
+              : String(value ?? ""),
       };
     });
   }, [installedSpec, isInstalled, hasProgressStage, model.spec.fields]);
@@ -1191,29 +1560,45 @@ const ModelRow = memo(function ModelRow({
             {model.id}
           </div>
           {model.custom && <Badge variant="secondary">Custom</Badge>}
+          {model.variant && <Badge variant="outline">{model.variant}</Badge>}
         </div>
       </TableCell>
-      <TableCell className="text-sm">{MODEL_TYPES[model.type] || model.type}</TableCell>
+      <TableCell className="text-sm">
+        {MODEL_TYPES[model.type] || model.type}
+      </TableCell>
       <TableCell>
         {isInProgress || hasProgressStage ? (
           <ProgressBadge
-            stage={currentProgress?.stage || (installedInfo?.stage as "install" | "download")}
+            stage={
+              currentProgress?.stage ||
+              (installedInfo?.stage as "install" | "download")
+            }
             value={currentProgress?.value ?? installedInfo?.value ?? 0}
             variant="default"
             simulated={!hasRealProgressByModelRef.current?.[model.id]}
           />
         ) : (
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={isInstalled ? "default" : "secondary"}>{isInstalled ? "Installed" : "Not installed"}</Badge>
-            {!isInstalled && isDownloaded && <Badge variant="outline">Downloaded</Badge>}
-            {isInstalled && model.is_loaded === true && <Badge variant="outline">{isCpuOnly ? "In RAM" : "In VRAM"}</Badge>}
+            <Badge variant={isInstalled ? "default" : "secondary"}>
+              {isInstalled ? "Installed" : "Not installed"}
+            </Badge>
+            {!isInstalled && isDownloaded && (
+              <Badge variant="outline">Downloaded</Badge>
+            )}
+            {isInstalled && model.is_loaded === true && (
+              <Badge variant="outline">
+                {isCpuOnly ? "In RAM" : "In VRAM"}
+              </Badge>
+            )}
           </div>
         )}
       </TableCell>
       <TableCell className="font-mono text-sm">{model.size || "N/A"}</TableCell>
       <TableCell className="font-mono text-sm">
         {isInstalled
-          ? (model.vram_estimate_gb != null ? `${model.vram_estimate_gb.toFixed(1)}GB` : "—")
+          ? model.vram_estimate_gb != null
+            ? `${model.vram_estimate_gb.toFixed(1)}GB`
+            : "—"
           : null}
       </TableCell>
       <TableCell>
@@ -1229,10 +1614,14 @@ const ModelRow = memo(function ModelRow({
           <span className="text-sm text-muted-foreground">—</span>
         )}
       </TableCell>
-      <TableCell className="text-right" style={({height: "49px"})}>
+      <TableCell className="text-right" style={{ height: "49px" }}>
         {isInProgress || hasProgressStage ? null : !isInstalled ? (
           <div className="flex justify-end gap-2">
-            <Button onClick={() => onInstallClick(model)} size="sm" disabled={isInstallingCurrent}>
+            <Button
+              onClick={() => onInstallClick(model)}
+              size="sm"
+              disabled={isInstallingCurrent}
+            >
               {isInstallingCurrent ? "Installing..." : "Install"}
             </Button>
             {model.custom && (
@@ -1247,11 +1636,25 @@ const ModelRow = memo(function ModelRow({
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" disabled={!isDownloaded}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!isDownloaded && !model.custom}
+                >
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {model.custom && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={() => onEditMcpServerClick(model)}
+                    >
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem
                   onClick={() => onPurgeClick(model.id)}
                   disabled={!isDownloaded || isPurgePending}
@@ -1270,19 +1673,33 @@ const ModelRow = memo(function ModelRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onTestClick(model)} disabled={isTestPending}>
+              <DropdownMenuItem
+                onClick={() => onTestClick(model)}
+                disabled={isTestPending}
+              >
                 {isTestPending ? "Testing..." : "Test"}
               </DropdownMenuItem>
               {model.has_docker && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => onShowDockerLogs(model.id)}>Docker Logs</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onShowDockerCompose(model.id)}>Docker Compose</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onRestartDocker(model.id)}>Restart Docker</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onShowDockerLogs(model.id)}>
+                    Docker Logs
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => onShowDockerCompose(model.id)}
+                  >
+                    Docker Compose
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onRestartDocker(model.id)}>
+                    Restart Docker
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>
               )}
-              <DropdownMenuItem onClick={() => onUninstallClick(model.id)} variant="destructive">
+              <DropdownMenuItem
+                onClick={() => onUninstallClick(model.id)}
+                variant="destructive"
+              >
                 Uninstall
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -1300,9 +1717,13 @@ function GpuStatsPanel({ stats }: { stats: GpuStats }) {
         <span className="font-medium">GPU VRAM:</span>
         <div className="mt-1 flex flex-col gap-0.5">
           {stats.gpus.map((gpu: GpuCardStats, i: number) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: GPUs have no stable identity
             <span key={i} className="text-muted-foreground">
-              <span className="font-medium text-foreground truncate max-w-[200px] inline-block align-bottom">{gpu.name}</span>
-              {" — "}{gpu.used_vram_gb.toFixed(1)} / {gpu.total_vram_gb.toFixed(1)} GB
+              <span className="font-medium text-foreground truncate max-w-[200px] inline-block align-bottom">
+                {gpu.name}
+              </span>
+              {" — "}
+              {gpu.used_vram_gb.toFixed(1)} / {gpu.total_vram_gb.toFixed(1)} GB
             </span>
           ))}
         </div>
@@ -1312,7 +1733,10 @@ function GpuStatsPanel({ stats }: { stats: GpuStats }) {
   return (
     <div className="mb-4 flex items-center gap-2 rounded-lg border px-4 py-2 text-sm">
       <span className="font-medium">GPU VRAM:</span>
-      <span>{stats.used_vram_gb.toFixed(1)} GB used / {stats.total_vram_gb.toFixed(1)} GB total</span>
+      <span>
+        {stats.used_vram_gb.toFixed(1)} GB used /{" "}
+        {stats.total_vram_gb.toFixed(1)} GB total
+      </span>
     </div>
   );
 }

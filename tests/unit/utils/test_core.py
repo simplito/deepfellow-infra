@@ -714,3 +714,120 @@ def test_one_time_key_generates_new_key_each_time():
     key1 = otk.key
     key2 = otk.key
     assert key1 != key2
+
+
+@pytest.mark.asyncio
+async def test_cancel_value_promise_no_task_and_done_future():
+    """cancel() on a value-based promise — covers 442->444 (no task) and 444->446 (future already done)."""
+
+    class MyModel(BaseModel):
+        value: int
+
+    promise: PromiseWithProgress[MyModel, StreamChunk] = PromiseWithProgress(value=MyModel(value=1))
+    promise.cancel()  # should not raise
+
+
+@pytest.mark.asyncio
+async def test_promise_cancelled_error_cancels_future_when_not_done():
+    """CancelledError in the task body cancels _future when it is not yet done — covers line 420."""
+
+    class MyModel(BaseModel):
+        value: int
+
+    async def work(_stream: Stream[StreamChunk]) -> MyModel:
+        await asyncio.sleep(10)
+        return MyModel(value=1)
+
+    promise: PromiseWithProgress[MyModel, StreamChunk] = PromiseWithProgress(func=work)
+    await asyncio.sleep(0)
+
+    # Cancel only the task directly — future is NOT yet cancelled, so line 420 will execute
+    promise.task.cancel()
+    await asyncio.gather(promise.task, return_exceptions=True)
+
+    assert promise._future.cancelled()  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_promise_future_already_done_when_func_succeeds():
+    """Future is already done when func returns — covers branch 414->426."""
+
+    class MyModel(BaseModel):
+        value: int
+
+    barrier = asyncio.Event()
+
+    async def work(_stream: Stream[StreamChunk]) -> MyModel:
+        await barrier.wait()
+        return MyModel(value=1)
+
+    promise: PromiseWithProgress[MyModel, StreamChunk] = PromiseWithProgress(func=work)
+    await asyncio.sleep(0)
+
+    promise._future.set_result(MyModel(value=99))  # pyright: ignore[reportPrivateUsage]
+    barrier.set()
+
+    await asyncio.gather(promise.task, return_exceptions=True)
+
+    result = await promise.wait()
+    assert result.value == 99
+
+
+@pytest.mark.asyncio
+async def test_promise_future_already_done_when_func_raises():
+    """Future is already done when func raises an exception — covers branch 423->426."""
+
+    class MyModel(BaseModel):
+        value: int
+
+    barrier = asyncio.Event()
+
+    async def work(_stream: Stream[StreamChunk]) -> MyModel:
+        await barrier.wait()
+        raise ValueError("late error")
+
+    promise: PromiseWithProgress[MyModel, StreamChunk] = PromiseWithProgress(func=work)
+    await asyncio.sleep(0)
+
+    promise._future.set_result(MyModel(value=99))  # pyright: ignore[reportPrivateUsage]
+    barrier.set()
+
+    await asyncio.gather(promise.task, return_exceptions=True)
+
+    result = await promise.wait()
+    assert result.value == 99
+
+
+@pytest.mark.asyncio
+async def test_sse_generator_reraises_cancellation_when_task_cancelling():
+    """SSE generator re-raises CancelledError when the current consumer task is being cancelled — covers line 498."""
+
+    class MyModel(BaseModel):
+        value: int
+
+    started = asyncio.Event()
+
+    async def work(_stream: Stream[StreamChunk]) -> MyModel:
+        started.set()
+        await asyncio.sleep(100)
+        return MyModel(value=1)
+
+    promise: PromiseWithProgress[MyModel, StreamChunk] = PromiseWithProgress(func=work)
+    response = await convert_promise_with_progress_to_fastapi_response(promise)
+    assert isinstance(response, StreamingResponse)
+
+    await started.wait()
+
+    async def consume() -> None:
+        async for _ in response.body_iterator:  # type: ignore[attr-defined]
+            pass
+
+    consumer_task = asyncio.create_task(consume())
+    await asyncio.sleep(0)
+
+    consumer_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await consumer_task
+
+    promise.cancel()
+    await asyncio.gather(*promise.tasks(), return_exceptions=True)

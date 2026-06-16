@@ -41,6 +41,9 @@ class AppSettings(BaseSettings):
     compose_prefix: str = "df_"
     stop_containers_on_shutdown: str = ""
 
+    mcp_sse_session_ttl_seconds: int = 300
+    mcp_sse_max_sessions: int = 128
+
     # metrics are authorized by HTTPBasicAuth
     metrics_username: str = ""
     metrics_password: str = ""

@@ -29,6 +29,7 @@ from server.models.models import (
     SyncModelsOut,
     UninstallModelIn,
     UninstallModelOut,
+    UpdateCustomModelOut,
 )
 from server.services_manager import ServicesManager
 from server.utils.core import convert_promise_with_progress_to_fastapi_response
@@ -177,9 +178,27 @@ async def remove_custom_model(
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
     _: Annotated[str, Depends(auth_admin)],
 ) -> RemoveCustomModelOut:
-    """List models in the service."""
+    """Remove custom model from the service."""
     await services_manager.remove_custom_model(service_id, custom_model_id)
     return RemoveCustomModelOut(status="OK")
+
+
+@router.put(
+    "/custom/{custom_model_id}",
+    summary="Update custom model.",
+)
+@tracer.trace_request()
+async def update_custom_model(
+    request: Request,  # noqa: ARG001 needed for tracer
+    model: Annotated[AddCustomModelIn, Body()],
+    service_id: Annotated[str, Path(description="The ID of the service to use.")],
+    custom_model_id: Annotated[str, Path(description="The ID of the custom model to update.")],
+    services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
+    _: Annotated[str, Depends(auth_admin)],
+) -> UpdateCustomModelOut:
+    """Update a custom model definition."""
+    await services_manager.update_custom_model(service_id, custom_model_id, model)
+    return UpdateCustomModelOut(status="OK")
 
 
 @router.post(

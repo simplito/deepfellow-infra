@@ -9,6 +9,7 @@
 
 import json
 import logging
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -18,17 +19,20 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+import server.endpointregistry as _er_module
 from server.endpointregistry import (
     ChatCompletionEndpoint,
     CustomEndpoint,
     Endpoint,
     EndpointRegistry,
     McpEndpoint,
+    McpSseSessionStore,
     ProxyOptions,
     RegisteredModel,
     RegistrationOptions,
     SimpleEndpoint,
     _classify_error,  # pyright: ignore[reportPrivateUsage]
+    _rewrite_sse_endpoint_events,  # pyright: ignore[reportPrivateUsage]
     post_form,
     post_json,
 )
@@ -2586,3 +2590,314 @@ async def test_execute_ollama_chat_error_with_no_supported_endpoints():
     assert "/v1/responses" not in exc_info.value.detail
     assert "/v1/chat/completions" not in exc_info.value.detail
     assert "/v1/completions" not in exc_info.value.detail
+
+
+def test_session_store_add_and_get() -> None:
+    store = McpSseSessionStore()
+    store.add("sid1", "https://upstream/msg?sessionId=sid1")
+    assert store.get("sid1") == "https://upstream/msg?sessionId=sid1"
+
+
+def test_session_store_get_unknown_returns_none() -> None:
+    store = McpSseSessionStore()
+    assert store.get("nonexistent") is None
+
+
+def test_session_store_remove() -> None:
+    store = McpSseSessionStore()
+    store.add("sid1", "https://upstream/msg?sessionId=sid1")
+    store.remove("sid1")
+    assert store.get("sid1") is None
+
+
+def test_session_store_remove_unknown_is_noop() -> None:
+    store = McpSseSessionStore()
+    store.remove("nonexistent")  # must not raise
+
+
+def test_session_store_evicts_expired(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = McpSseSessionStore(ttl_seconds=10)
+    real_now = time.monotonic()
+    store.add("sid1", "url1")
+    # Make the store think 20 seconds have passed
+    monkeypatch.setattr(_er_module.time, "monotonic", lambda: real_now + 20)
+    assert store.get("sid1") is None
+
+
+def test_session_store_evicts_oldest_when_at_capacity() -> None:
+    store = McpSseSessionStore(max_sessions=2)
+    store.add("sid1", "url1")
+    store.add("sid2", "url2")
+    store.add("sid3", "url3")
+    assert store.get("sid1") is None  # evicted
+    assert store.get("sid2") == "url2"
+    assert store.get("sid3") == "url3"
+
+
+def test_session_store_add_overwrites_existing() -> None:
+    store = McpSseSessionStore()
+    store.add("sid1", "url-v1")
+    store.add("sid1", "url-v2")
+    assert store.get("sid1") == "url-v2"
+
+
+async def _collect(gen: object) -> bytes:
+    """Consume an async generator and return all bytes concatenated."""
+    result = b""
+    async for chunk in gen:  # type: ignore[union-attr]
+        result += chunk
+    return result
+
+
+@pytest.mark.asyncio
+async def test_rewrite_rewrites_endpoint_data_url() -> None:
+    store = McpSseSessionStore()
+
+    async def source():  # type: ignore[return]
+        yield b"event: endpoint\ndata: https://upstream.example.com/msg?sessionId=abc123\n\n"
+
+    result = await _collect(
+        _rewrite_sse_endpoint_events(source(), "https://upstream.example.com/sse", "https://proxy.example.com/mcp", store)
+    )
+
+    assert b"data: https://proxy.example.com/mcp?sessionId=abc123" in result
+    assert store.get("abc123") == "https://upstream.example.com/msg?sessionId=abc123"
+
+
+@pytest.mark.asyncio
+async def test_rewrite_passes_through_non_endpoint_events() -> None:
+    store = McpSseSessionStore()
+
+    async def source():  # type: ignore[return]
+        yield b'event: message\ndata: {"jsonrpc":"2.0"}\n\n'
+
+    result = await _collect(_rewrite_sse_endpoint_events(source(), "https://up.example.com/sse", "https://proxy.example.com/mcp", store))
+
+    assert b'data: {"jsonrpc":"2.0"}' in result
+    assert b"proxy" not in result.split(b"data:")[1]
+
+
+@pytest.mark.asyncio
+async def test_rewrite_resolves_relative_endpoint_url() -> None:
+    store = McpSseSessionStore()
+
+    async def source():  # type: ignore[return]
+        yield b"event: endpoint\ndata: /msg?sessionId=rel123\n\n"
+
+    result = await _collect(
+        _rewrite_sse_endpoint_events(source(), "https://upstream.example.com/sse", "https://proxy.example.com/mcp", store)
+    )
+
+    assert b"sessionId=rel123" in result
+    assert store.get("rel123") is not None
+
+
+@pytest.mark.asyncio
+async def test_rewrite_handles_chunked_delivery() -> None:
+    """SSE data split across multiple chunks must be reassembled correctly."""
+    store = McpSseSessionStore()
+
+    async def source():  # type: ignore[return]
+        yield b"event: endpoi"
+        yield b"nt\ndata: https://up.example.com/msg?sessionId=chunk1\n\n"
+
+    result = await _collect(_rewrite_sse_endpoint_events(source(), "https://up.example.com/sse", "https://proxy.example.com/mcp", store))
+
+    assert b"sessionId=chunk1" in result
+    assert store.get("chunk1") is not None
+
+
+@pytest.mark.asyncio
+async def test_rewrite_passes_through_non_event_non_data_lines() -> None:
+    store = McpSseSessionStore()
+
+    async def source():  # type: ignore[return]
+        yield b"retry: 3000\n\n"
+
+    result = await _collect(_rewrite_sse_endpoint_events(source(), "https://up.example.com/sse", "https://proxy.example.com/mcp", store))
+
+    assert b"retry: 3000" in result
+
+
+@pytest.mark.asyncio
+async def test_rewrite_emits_remaining_buffer_without_newline() -> None:
+    """Incomplete final line (no trailing newline) must still be emitted."""
+    store = McpSseSessionStore()
+
+    async def source():  # type: ignore[return]
+        yield b"id: 42"  # no trailing \n
+
+    result = await _collect(_rewrite_sse_endpoint_events(source(), "https://up.example.com/sse", "https://proxy.example.com/mcp", store))
+
+    assert b"id: 42" in result
+
+
+@pytest.mark.asyncio
+async def test_mcp_sse_proxy_get_streams_rewritten_events() -> None:
+    reg = make_registry()
+    reg.config.mcp_sse_session_ttl_seconds = 300
+    reg.config.mcp_sse_max_sessions = 128
+    opts = ProxyOptions(url="https://upstream.example.com/sse")
+    reg.register_mcp_sse_endpoint_as_proxy("sse-svc", make_props(), opts, None)
+    ep = reg.mcp_endpoints.get_model("sse-svc")
+
+    async def fake_content():  # type: ignore[return]
+        yield b"event: endpoint\ndata: https://upstream.example.com/msg?sessionId=sess1\n\n"
+
+    mock_upstream = MagicMock()
+    mock_upstream.content = fake_content()
+    mock_upstream.response = AsyncMock()
+    mock_upstream.response.release = AsyncMock()
+
+    request = MagicMock()
+    request.method = "GET"
+    request.headers = {}
+    request.url = MagicMock()
+    request.url.__str__ = MagicMock(return_value="https://proxy.example.com/mcp/sse-svc/mcp")
+
+    with patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, return_value=mock_upstream):
+        response = await ep.endpoint.on_request(request)  # pyright: ignore[reportOptionalMemberAccess]
+
+    assert isinstance(response, StreamingResponse)
+    assert response.status_code == 200
+
+    # Consume the streaming body to verify URL rewriting
+    chunks: list[bytes] = []
+    async for chunk in response.body_iterator:  # type: ignore[union-attr]
+        chunks.append(chunk if isinstance(chunk, bytes) else chunk.encode())  # type: ignore[union-attr]
+    body = b"".join(chunks)
+    assert b"sessionId=sess1" in body
+    assert b"proxy.example.com" in body
+
+
+@pytest.mark.asyncio
+async def test_mcp_sse_proxy_post_missing_session_id_raises_400() -> None:
+    reg = make_registry()
+    reg.config.mcp_sse_session_ttl_seconds = 300
+    reg.config.mcp_sse_max_sessions = 128
+    opts = ProxyOptions(url="https://upstream.example.com/sse")
+    reg.register_mcp_sse_endpoint_as_proxy("sse-svc", make_props(), opts, None)
+    ep = reg.mcp_endpoints.get_model("sse-svc")
+
+    request = MagicMock()
+    request.method = "POST"
+    request.headers = {}
+    request.query_params = {}
+
+    with pytest.raises(HTTPException) as exc_info:
+        await ep.endpoint.on_request(request)  # pyright: ignore[reportOptionalMemberAccess]
+    assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_mcp_sse_proxy_post_unknown_session_id_raises_404() -> None:
+    reg = make_registry()
+    reg.config.mcp_sse_session_ttl_seconds = 300
+    reg.config.mcp_sse_max_sessions = 128
+    opts = ProxyOptions(url="https://upstream.example.com/sse")
+    reg.register_mcp_sse_endpoint_as_proxy("sse-svc", make_props(), opts, None)
+    ep = reg.mcp_endpoints.get_model("sse-svc")
+
+    request = MagicMock()
+    request.method = "POST"
+    request.headers = {}
+    request.query_params = {"sessionId": "unknown-session"}
+
+    with pytest.raises(HTTPException) as exc_info:
+        await ep.endpoint.on_request(request)  # pyright: ignore[reportOptionalMemberAccess]
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_mcp_sse_proxy_post_valid_session_forwards_to_upstream() -> None:
+    mock_store = MagicMock(spec=McpSseSessionStore)
+    mock_store.get.return_value = "https://upstream.example.com/msg?sessionId=valid1"
+
+    opts = ProxyOptions(url="https://upstream.example.com/sse", allowed_response_headers=["content-type"])
+    with patch("server.endpointregistry.McpSseSessionStore", return_value=mock_store):
+        reg = make_registry()
+        reg.config.mcp_sse_session_ttl_seconds = 300
+        reg.config.mcp_sse_max_sessions = 128
+        reg.register_mcp_sse_endpoint_as_proxy("sse-svc2", make_props(), opts, None)
+
+    ep = reg.mcp_endpoints.get_model("sse-svc2")
+
+    mock_upstream_post = MagicMock()
+    mock_streaming = MagicMock(spec=StreamingResponse)
+    mock_upstream_post.as_streaming_response.return_value = mock_streaming
+
+    post_request = MagicMock()
+    post_request.method = "POST"
+    post_request.headers = {"content-type": "application/json"}
+    post_request.query_params = {"sessionId": "valid1"}
+    post_request.stream = AsyncMock()
+
+    with patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, return_value=mock_upstream_post):
+        result = await ep.endpoint.on_request(post_request)  # pyright: ignore[reportOptionalMemberAccess]
+
+    assert result is mock_streaming
+    mock_upstream_post.as_streaming_response.assert_called_once_with(["content-type"])
+
+
+def test_session_store_evict_expired_removes_stale_session() -> None:
+    """Line 258: del self._sessions[sid] in _evict_expired loop."""
+    store = McpSseSessionStore(ttl_seconds=1, max_sessions=128)
+    store.add("stale", "url-stale")
+    # Manually backdate the timestamp so the session appears expired
+    store._sessions["stale"] = ("url-stale", store._sessions["stale"][1] - 2)  # pyright: ignore[reportPrivateUsage]
+    # Calling add() triggers _evict_expired, which should delete "stale"
+    store.add("fresh", "url-fresh")
+    assert store.get("stale") is None
+    assert store.get("fresh") == "url-fresh"
+
+
+@pytest.mark.asyncio
+async def test_rewrite_endpoint_data_without_session_id_passes_through() -> None:
+    """Line 319: data line in endpoint event with no sessionId is yielded as-is."""
+    store = McpSseSessionStore()
+
+    async def source():  # type: ignore[return]
+        yield b"event: endpoint\ndata: https://upstream.example.com/no-session-here\n\n"
+
+    result = await _collect(
+        _rewrite_sse_endpoint_events(source(), "https://upstream.example.com/sse", "https://proxy.example.com/mcp", store)
+    )
+
+    assert b"data: https://upstream.example.com/no-session-here" in result
+    assert b"proxy.example.com" not in result
+
+
+@pytest.mark.asyncio
+async def test_mcp_sse_proxy_get_finally_no_session_id() -> None:
+    """Lines 733->735: finally block with session_id=None skips remove() call."""
+    reg = make_registry()
+    reg.config.mcp_sse_session_ttl_seconds = 300
+    reg.config.mcp_sse_max_sessions = 128
+    opts = ProxyOptions(url="https://upstream.example.com/sse")
+    reg.register_mcp_sse_endpoint_as_proxy("sse-nosession", make_props(), opts, None)
+    ep = reg.mcp_endpoints.get_model("sse-nosession")
+
+    async def fake_content():  # type: ignore[return]
+        # SSE stream with no endpoint event → no sessionId captured
+        yield b"event: message\ndata: hello\n\n"
+
+    mock_upstream = MagicMock()
+    mock_upstream.content = fake_content()
+    mock_upstream.response = AsyncMock()
+    mock_upstream.response.release = AsyncMock()
+
+    request = MagicMock()
+    request.method = "GET"
+    request.headers = {}
+    request.url = MagicMock()
+    request.url.__str__ = MagicMock(return_value="https://proxy.example.com/mcp/sse-nosession/mcp")
+
+    with patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, return_value=mock_upstream):
+        response = await ep.endpoint.on_request(request)  # pyright: ignore[reportOptionalMemberAccess]
+
+    # Consume the full stream — finally block fires with session_id=None
+    chunks: list[bytes] = []
+    async for chunk in response.body_iterator:  # type: ignore[union-attr]
+        chunks.append(chunk if isinstance(chunk, bytes) else chunk.encode())  # type: ignore[union-attr]
+
+    mock_upstream.response.release.assert_awaited_once()

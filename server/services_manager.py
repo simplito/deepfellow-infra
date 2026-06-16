@@ -175,6 +175,11 @@ class ServicesManager:
         service_type, instance = self.split_service_type_and_instance(service_id)
         return await self._get_service(service_type).remove_custom_model(instance, custom_model_id)
 
+    async def update_custom_model(self, service_id: str, custom_model_id: CustomModelId, options: AddCustomModelIn) -> None:
+        """Update custom model."""
+        service_type, instance = self.split_service_type_and_instance(service_id)
+        return await self._get_service(service_type).update_custom_model(instance, custom_model_id, options)
+
     async def sync_models_in_service(self, service_id: str) -> None:
         """Trigger immediate model sync for the service instance."""
         service_type, instance = self.split_service_type_and_instance(service_id)

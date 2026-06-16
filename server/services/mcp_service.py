@@ -11,9 +11,12 @@
 
 import asyncio
 import json
+import shlex
+import shutil
 from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -57,6 +60,62 @@ from server.utils.core import (
 )
 from server.utils.size_fetcher import fmt_size
 
+
+class McpUserVariant(StrEnum):
+    node_headless = "node-headless"
+    node_headed = "node-headed"
+    python_headless = "python-headless"
+    python_headed = "python-headed"
+
+
+McpModelKind = Literal["custom", "user", "proxy"]
+
+PythonVersion = Literal["3.10", "3.11", "3.12", "3.13", "3.14", "latest"]
+NodeVersion = Literal["20", "22", "24", "latest"]
+
+_DEFAULT_PYTHON_VERSION: PythonVersion = "3.13"
+_DEFAULT_NODE_VERSION: NodeVersion = "22"
+
+
+def _version_to_base_image(variant: McpUserVariant, python_version: PythonVersion | None, node_version: NodeVersion | None) -> str:
+    if variant in (McpUserVariant.python_headless, McpUserVariant.python_headed):
+        ver = python_version or _DEFAULT_PYTHON_VERSION
+        return "python:slim" if ver == "latest" else f"python:{ver}-slim"
+    ver = node_version or _DEFAULT_NODE_VERSION
+    return "node:slim" if ver == "latest" else f"node:{ver}-slim"
+
+
+# Per-variant setup layers: RUN + EXPOSE + ENTRYPOINT (no FROM, no CMD).
+_DOCKERFILE_SETUP: dict[McpUserVariant, str] = {
+    McpUserVariant.node_headless: """\
+RUN npm install -g supergateway
+EXPOSE 8000
+ENTRYPOINT ["supergateway", "--port", "8000", "--outputTransport", "streamableHttp", "--stateful", "--stdio"]
+""",
+    McpUserVariant.node_headed: """\
+RUN apt-get update && apt-get install -y chromium --no-install-recommends && rm -rf /var/lib/apt/lists/*
+RUN npm install -g supergateway
+EXPOSE 8000
+ENTRYPOINT ["supergateway", "--port", "8000", "--outputTransport", "streamableHttp", "--stateful", "--stdio"]
+""",
+    McpUserVariant.python_headless: """\
+RUN pip install --no-cache-dir uv mcp-proxy
+EXPOSE 8000
+ENTRYPOINT ["mcp-proxy", "--host", "0.0.0.0", "--port", "8000", "--"]
+""",
+    McpUserVariant.python_headed: """\
+RUN apt-get update && apt-get install -y chromium --no-install-recommends && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir uv mcp-proxy
+EXPOSE 8000
+ENTRYPOINT ["mcp-proxy", "--host", "0.0.0.0", "--port", "8000", "--"]
+""",
+}
+
+
+def _build_dockerfile(variant: McpUserVariant, cmd_json: str, base_image: str) -> str:
+    return f"FROM {base_image}\n{_DOCKERFILE_SETUP[variant]}CMD {cmd_json}\n"
+
+
 type SrvPcpModelX = Callable[["McpService", str | None], SrvMcpModel]
 
 
@@ -67,12 +126,20 @@ class SrvMcpModel:
     model_type: str
     default_prefix: str
     size: str
-    options: DockerOptions
+    options: DockerOptions | None
     required_envs: list[str] | None = None
     required_headers: list[str] | None = None
     envs: dict[str, str] | None = None
     headers: dict[str, str] | None = None
     custom: CustomModelId | None = None
+    kind: McpModelKind = field(default="custom")
+    variant: str | None = field(default=None)
+    command: str | None = field(default=None)
+    base_image: str | None = field(default=None)
+    python_version: str | None = field(default=None)
+    node_version: str | None = field(default=None)
+    proxy_url: str | None = field(default=None)
+    proxy_transport: str = field(default="streamable_http")
 
 
 class SrvMcpCustomModel(BaseModel):
@@ -90,6 +157,35 @@ class SrvMcpCustomModel(BaseModel):
     healthcheck_cmd: str | None = None
     healthcheck_start_period: Annotated[str, Field(pattern=r"^\d+[smh]$")] | None = None
     required_envs: dict[str, str] | None = None
+    required_headers: dict[str, str] | None = None
+
+
+class SrvMcpUserModel(BaseModel):
+    kind: Literal["user"] = "user"
+    id: str
+    name: str
+    variant: McpUserVariant
+    command: str
+    python_version: PythonVersion | None = None
+    node_version: NodeVersion | None = None
+    base_image: str | None = None
+    envs: dict[str, str] | None = None
+    required_envs: dict[str, str] | None = None
+    private: bool = True
+    default_prefix: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]+$")] | None = None
+
+
+class SrvMcpProxyModel(BaseModel):
+    """Remote MCP server registered as a persistent proxy endpoint."""
+
+    kind: Literal["proxy"] = "proxy"
+    id: str
+    name: str
+    server_url: str
+    transport: Literal["streamable_http", "sse"] = "streamable_http"
+    private: bool = True
+    default_prefix: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]+$")] | None = None
+    headers: dict[str, str] | None = None
     required_headers: dict[str, str] | None = None
 
 
@@ -116,7 +212,7 @@ class McpModelOptions(BaseModel):
 class ModelInstalledInfo:
     id: str
     options: InstallModelIn
-    docker_options: DockerOptions
+    docker_options: DockerOptions | None
     container_host: str
     container_port: int
     docker_exposed_port: int
@@ -227,7 +323,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
         installed = self.get_instance_info(instance).installed
         if not installed:
             return
-        await self._stop_dockers_parallel([model.docker_options for model in installed.models.values()])
+        await self._stop_dockers_parallel([m.docker_options for m in installed.models.values() if m.docker_options is not None])
 
     def get_custom_model_spec(self) -> CustomModelSpecification | None:
         """Return the custom model specification or None if custom model is not supported."""
@@ -258,7 +354,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                     placeholder="10s",
                     required=False,
                 ),
-                CustomModelField(type="list", name="volumes", description="Docker volumes", placeholder="/work/storage", required=False),
+                CustomModelField(type="list", name="volumes", description="Bind mounts", placeholder="/work/storage", required=False),
                 CustomModelField(type="map", name="envs", description="Docker environment variables", required=False),
                 CustomModelField(type="map", name="headers", description="Headers for mcp connection", required=False),
                 CustomModelField(
@@ -314,7 +410,8 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                     self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
                     for model in installed.models.copy().values()
                     if not self.is_model_installed_in_other_instance(instance, model.id)
-                ]
+                ],
+                return_exceptions=True,
             )
 
         self.instances_info[instance].installed = None
@@ -340,9 +437,77 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
         if not model_installed:
             raise HTTPException(status_code=400, detail="Model not installed")
 
+        if model_installed.docker_options is None:
+            raise HTTPException(400, "Docker is not bound with this model")
         return self.docker_service.get_docker_compose_file_path(model_installed.docker_options.name)
 
+    def _get_dockerfile_dir(self, instance: str, name: str) -> Path:
+        return self.get_working_dir() / "models" / instance / name
+
+    def _write_dockerfile(self, instance: str, name: str, variant: McpUserVariant, command: str, base_image: str) -> None:
+        dockerfile_dir = self._get_dockerfile_dir(instance, name)
+        dockerfile_dir.mkdir(parents=True, exist_ok=True)
+        # supergateway (node) expects the full command as a single string passed to --stdio;
+        # mcp-proxy (python) expects the command split into individual args after --.
+        if variant in (McpUserVariant.node_headless, McpUserVariant.node_headed):
+            cmd_json = json.dumps([command])
+        else:
+            try:
+                cmd_json = json.dumps(shlex.split(command))
+            except ValueError as e:
+                raise HTTPException(400, f"Invalid command syntax: {e}") from e
+        content = _build_dockerfile(variant, cmd_json, base_image)
+        (dockerfile_dir / "Dockerfile").write_text(content, encoding="utf-8")
+
+    def _delete_dockerfile_dir(self, instance: str, name: str) -> None:
+        dockerfile_dir = self._get_dockerfile_dir(instance, name)
+        if dockerfile_dir.exists():
+            shutil.rmtree(dockerfile_dir)
+
+    def _build_user_model(self, instance: str, parsed: SrvMcpUserModel, custom_id: CustomModelId | None = None) -> SrvMcpModel:
+        effective_base_image = parsed.base_image or _version_to_base_image(parsed.variant, parsed.python_version, parsed.node_version)
+        self._write_dockerfile(instance, parsed.id, parsed.variant, parsed.command, effective_base_image)
+        name = normalize_name(f"{parsed.id}_{instance}")
+        image_tag = f"deepfellow-mcp-{name}:latest"
+        prefix = parsed.default_prefix or normalize_name(parsed.id)
+        subnet = self.docker_service.get_docker_subnet()
+        required_envs = list(parsed.required_envs.keys() if parsed.required_envs else [])
+        return SrvMcpModel(
+            model_props=ModelProps(private=parsed.private, type="mcp", endpoints=[f"/mcp/{prefix}/mcp"]),
+            model_spec=self.get_default_model_spec(prefix, parsed.required_envs),
+            model_type="mcp",
+            default_prefix=prefix,
+            size="",
+            options=DockerOptions(
+                image_port=8000,
+                name=name,
+                container_name=self.docker_service.get_docker_container_name(name),
+                image=image_tag,
+                env_vars=parsed.envs,
+                restart="unless-stopped",
+                subnet=subnet,
+            ),
+            custom=custom_id,
+            required_envs=required_envs,
+            kind="user",
+            variant=parsed.variant.value,
+            command=parsed.command,
+            base_image=parsed.base_image,
+            python_version=parsed.python_version,
+            node_version=parsed.node_version,
+            envs=parsed.envs,
+        )
+
     def _add_custom_model(self, instance: str, model: CustomModel) -> None:
+        kind = model.data.get("kind")
+        if kind == "user":
+            self._add_user_model(instance, model)
+        elif kind == "proxy":
+            self._add_proxy_model(instance, model)
+        else:
+            self._add_image_model(instance, model)
+
+    def _add_image_model(self, instance: str, model: CustomModel) -> None:
         parsed = try_parse_pydantic(SrvMcpCustomModel, model.data)
 
         if not self.models.get(instance):
@@ -355,7 +520,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
         required_envs = list(parsed.required_envs.keys() if parsed.required_envs else [])
         required_headers = list(parsed.required_headers.keys() if parsed.required_headers else [])
         self.models[instance][parsed.id] = SrvMcpModel(
-            model_props=ModelProps(private=parsed.private, type="mcp", endpoints=[f"/mcp/{parsed.default_prefix}/"]),
+            model_props=ModelProps(private=parsed.private, type="mcp", endpoints=[f"/mcp/{parsed.default_prefix}/mcp"]),
             model_spec=self.get_default_model_spec(parsed.default_prefix, parsed.required_envs, parsed.required_headers),
             model_type="mcp",
             default_prefix=parsed.default_prefix,
@@ -387,12 +552,156 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             required_headers=required_headers,
         )
 
+    def _add_user_model(self, instance: str, model: CustomModel) -> None:
+        parsed = try_parse_pydantic(SrvMcpUserModel, model.data)
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
+        if parsed.id in self.models[instance]:
+            raise HTTPException(400, f"Model with {parsed.id} id already exists.")
+
+        prefix = parsed.default_prefix or normalize_name(parsed.id)
+        self._check_prefix_collision(instance, prefix, exclude_model_id=None)
+
+        srv_model = self._build_user_model(instance, parsed, custom_id=model.id)
+        self.models[instance][parsed.id] = srv_model
+
+    def _add_proxy_model(self, instance: str, model: CustomModel) -> None:
+        parsed = try_parse_pydantic(SrvMcpProxyModel, model.data)
+
+        if not self.models.get(instance):
+            self.models[instance] = {}
+
+        if parsed.id in self.models[instance]:
+            raise HTTPException(400, f"Model with {parsed.id} id already exists.")
+
+        prefix = parsed.default_prefix or normalize_name(parsed.id)
+        self._check_prefix_collision(instance, prefix, exclude_model_id=None)
+
+        required_headers = list(parsed.required_headers.keys() if parsed.required_headers else [])
+        self.models[instance][parsed.id] = SrvMcpModel(
+            model_props=ModelProps(private=parsed.private, type="mcp", endpoints=[f"/mcp/{prefix}/mcp"]),
+            model_spec=self.get_default_model_spec(prefix, None, parsed.required_headers),
+            model_type="mcp",
+            default_prefix=prefix,
+            size="",
+            options=None,
+            custom=model.id,
+            kind="proxy",
+            headers=parsed.headers,
+            required_headers=required_headers,
+            proxy_url=parsed.server_url,
+            proxy_transport=parsed.transport,
+        )
+
+    def _check_prefix_collision(self, instance: str, prefix: str, exclude_model_id: str | None) -> None:
+        for mid, m in self.models.get(instance, {}).items():
+            if mid != exclude_model_id and m.default_prefix == prefix:
+                raise HTTPException(400, f"Prefix '{prefix}' is already in use by model '{mid}'.")
+
+    async def _update_custom_model(self, instance: str, model: CustomModel, new_data: dict[str, Any]) -> None:
+        kind = model.data.get("kind")
+        if kind == "proxy":
+            parsed_old = try_parse_pydantic(SrvMcpProxyModel, model.data)
+            parsed_new = try_parse_pydantic(SrvMcpProxyModel, new_data)
+            if parsed_new.id != parsed_old.id:
+                raise HTTPException(400, "Cannot change the server ID.")
+            installed = self.get_instance_info(instance).installed
+            if installed and parsed_old.id in installed.models:
+                raise HTTPException(400, "Cannot update an installed server. Uninstall it first.")
+            new_prefix = parsed_new.default_prefix or normalize_name(parsed_new.id)
+            self._check_prefix_collision(instance, new_prefix, exclude_model_id=parsed_old.id)
+            if instance in self.models and parsed_old.id in self.models[instance]:
+                del self.models[instance][parsed_old.id]
+            self._add_proxy_model(instance, CustomModel(id=model.id, data=new_data))
+            return
+        if kind != "user":
+            raise HTTPException(400, "Only user-defined MCP servers support editing.")
+
+        parsed_old = try_parse_pydantic(SrvMcpUserModel, model.data)
+        parsed_new = try_parse_pydantic(SrvMcpUserModel, new_data)
+
+        if parsed_new.id != parsed_old.id:
+            raise HTTPException(400, "Cannot change the server ID.")
+
+        installed = self.get_instance_info(instance).installed
+        if installed and parsed_old.id in installed.models:
+            raise HTTPException(400, "Cannot update an installed server. Uninstall it first.")
+
+        new_prefix = parsed_new.default_prefix or normalize_name(parsed_new.id)
+        self._check_prefix_collision(instance, new_prefix, exclude_model_id=parsed_old.id)
+
+        old_name = normalize_name(f"{parsed_old.id}_{instance}")
+        old_tag = f"deepfellow-mcp-{old_name}:latest"
+
+        # Build the new model first (writes Dockerfile). If this fails the old model is preserved.
+        new_srv_model = self._build_user_model(instance, parsed_new, custom_id=model.id)
+
+        await self.docker_service.remove_image(old_tag)
+        if instance in self.models and parsed_old.id in self.models[instance]:
+            del self.models[instance][parsed_old.id]
+        if instance not in self.models:
+            self.models[instance] = {}
+        self.models[instance][parsed_new.id] = new_srv_model
+
     def _remove_custom_model(self, instance: str, model: CustomModel) -> None:
         installed = self.get_instance_info(instance).installed
-        parsed = try_parse_pydantic(SrvMcpCustomModel, model.data)
-        if installed and parsed.id in installed.models:
-            raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
-        del self.models[instance][parsed.id]
+        kind = model.data.get("kind")
+        if kind == "user":
+            parsed = try_parse_pydantic(SrvMcpUserModel, model.data)
+            if installed and parsed.id in installed.models:
+                raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
+            self._delete_dockerfile_dir(instance, parsed.id)
+            if instance in self.models and parsed.id in self.models[instance]:
+                del self.models[instance][parsed.id]
+        elif kind == "proxy":
+            parsed_proxy = try_parse_pydantic(SrvMcpProxyModel, model.data)
+            if installed and parsed_proxy.id in installed.models:
+                raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
+            if instance in self.models and parsed_proxy.id in self.models[instance]:
+                del self.models[instance][parsed_proxy.id]
+        else:
+            parsed_custom = try_parse_pydantic(SrvMcpCustomModel, model.data)
+            if installed and parsed_custom.id in installed.models:
+                raise HTTPException(400, "Cannot remove custom model, it is in use, uninstall it first.")
+            if instance in self.models and parsed_custom.id in self.models[instance]:
+                del self.models[instance][parsed_custom.id]
+
+    def _get_custom_spec(self, model_id: str, model: SrvMcpModel) -> dict[str, Any] | None:
+        if not model.custom:
+            return None
+        if model.kind == "proxy":
+            spec: dict[str, Any] = {
+                "kind": "proxy",
+                "id": model_id,
+                "name": model_id,
+                "server_url": model.proxy_url,
+                "transport": model.proxy_transport,
+                "default_prefix": model.default_prefix,
+            }
+            if model.headers:
+                spec["headers"] = model.headers
+            return spec
+        if model.kind == "user":
+            spec = {
+                "kind": "user",
+                "id": model_id,
+                "name": model_id,
+                "command": model.command or "",
+                "variant": model.variant,
+                "default_prefix": model.default_prefix,
+            }
+            if model.envs:
+                spec["envs"] = model.envs
+            if model.base_image:
+                spec["base_image"] = model.base_image
+            if model.python_version:
+                spec["python_version"] = model.python_version
+            if model.node_version:
+                spec["node_version"] = model.node_version
+            return spec
+        return None
 
     async def list_models(self, input_instance: str | list[str] | None, filters: ListModelsFilters) -> ListModelsOut:
         """List models."""
@@ -425,7 +734,11 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                             size=model.size,
                             custom=model.custom,
                             spec=model.model_spec,
-                            has_docker=True,
+                            has_docker=model.kind != "proxy",
+                            variant=model.variant,
+                            command=model.command,
+                            base_image=model.base_image,
+                            custom_spec=self._get_custom_spec(model_id, model),
                         )
                     )
 
@@ -450,7 +763,11 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             size=model.size,
             custom=model.custom,
             spec=model.model_spec,
-            has_docker=True,
+            has_docker=model.kind != "proxy",
+            variant=model.variant,
+            command=model.command,
+            base_image=model.base_image,
+            custom_spec=self._get_custom_spec(model_id, model),
         )
 
     def check_envs(self, required_envs: list[str] | None, envs: dict[str, str]) -> None:
@@ -479,12 +796,30 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             if empty_keys:
                 raise HTTPException(status_code=422, detail=f"The following headers are present but have no value: {', '.join(empty_keys)}")
 
+    def _register_proxy_model(self, model: SrvMcpModel, parsed_options: McpModelOptions) -> RegistrationId:
+        """Register a proxy model endpoint, choosing SSE or Streamable HTTP transport."""
+        if model.proxy_url is None:
+            raise HTTPException(400, "proxy_url is required for proxy models")
+        merged_headers = {**(model.headers or {}), **parsed_options.headers}
+        proxy_options = ProxyOptions(
+            url=model.proxy_url,
+            headers=merged_headers if merged_headers else None,
+            allowed_request_headers=["accept", "mcp-session-id"],
+            allowed_response_headers=["accept", "mcp-session-id"],
+        )
+        if model.proxy_transport == "sse":
+            return self.endpoint_registry.register_mcp_sse_endpoint_as_proxy(
+                url=parsed_options.prefix, props=model.model_props, options=proxy_options, registration_options=None
+            )
+        return self.endpoint_registry.register_mcp_endpoint_as_proxy(
+            url=parsed_options.prefix, props=model.model_props, options=proxy_options, registration_options=None
+        )
+
     async def _install_model(
         self, instance: str, model_id: str, options: InstallModelIn
     ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         info = self.get_instance_installed_info(instance)
-        if not self.models.get(instance):
-            self.models[instance] = {}
+        self.models.setdefault(instance, {})
         if model_id in info.models:
             return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed"))
         if model_id not in self.models[instance]:
@@ -500,15 +835,41 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
         self.check_envs(model.required_envs, parsed_model_options.envs)
         self.check_headers(model.required_headers, parsed_model_options.headers)
 
-        await self._verify_docker_image(model.options.image, options.ignore_warnings)
+        if model.kind == "proxy":
+            registration_id = self._register_proxy_model(model, parsed_model_options)
+            assert model.proxy_url is not None
+            info.models[model_id] = ModelInstalledInfo(
+                id=model_id,
+                options=options,
+                docker_options=None,
+                container_host="",
+                container_port=0,
+                docker_exposed_port=0,
+                registration_id=registration_id,
+                prefix=parsed_model_options.prefix,
+                base_url=model.proxy_url,
+                headers=parsed_model_options.headers,
+                envs={},
+            )
+            return PromiseWithProgress(value=InstallModelOut(status="OK", details="Installed"))
+
+        if model.options is None:
+            raise HTTPException(400, "options are required for this model kind")
+        if model.kind != "user":
+            await self._verify_docker_image(model.options.image, options.ignore_warnings)
 
         async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
             model_dir = self._get_working_dir() / "models"
             model_dir.mkdir(parents=True, exist_ok=True)
             subnet = self.docker_service.get_docker_subnet()
             docker_options = model.options
-            image = DockerImage(name=docker_options.image, size=model.size)
-            await self._download_image_or_set_progress(stream, image)
+            assert docker_options is not None
+            if model.kind == "user":
+                dockerfile_dir = self._get_dockerfile_dir(instance, model_id)
+                await self.docker_service.build_image(dockerfile_dir, docker_options.image, stream)
+            else:
+                image = DockerImage(name=docker_options.image, size=model.size)
+                await self._download_image_or_set_progress(stream, image)
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={}))
             docker_options_edited = deepcopy(docker_options)
             docker_options_edited.env_vars = docker_options_edited.env_vars | parsed_model_options.envs
@@ -539,7 +900,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                 ),
                 registration_options=None,
             )
-            self.models_downloaded[model_id] = DownloadedInfo(image.name)
+            self.models_downloaded[model_id] = DownloadedInfo(docker_options.image)
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             return InstallModelOut(status="OK", details="Installed")
 
@@ -547,15 +908,20 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     async def _uninstall_model(self, instance: str, model_id: str, options: UninstallModelIn) -> None:
         info = self.get_instance_installed_info(instance)
+        srv_model = self.models.get(instance, {}).get(model_id)
         if model_id in info.models:
-            model = info.models[model_id]
-            self.endpoint_registry.unregister_mcp_endpoint(model.prefix, model.registration_id)
-            await self.docker_service.uninstall_docker(model.docker_options)
+            model_info = info.models[model_id]
+            self.endpoint_registry.unregister_mcp_endpoint(model_info.prefix, model_info.registration_id)
+            if srv_model and srv_model.kind != "proxy" and model_info.docker_options:
+                await self.docker_service.uninstall_docker(model_info.docker_options)
             del info.models[model_id]
 
         if options.purge and model_id in self.models_downloaded:
             await self.docker_service.remove_image(self.models_downloaded[model_id].image)
             del self.models_downloaded[model_id]
+
+        if options.purge and srv_model and srv_model.kind == "user":
+            self._delete_dockerfile_dir(instance, model_id)
 
     def get_working_dir(self) -> Path:
         """Get working dir."""

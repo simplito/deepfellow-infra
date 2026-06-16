@@ -29,11 +29,19 @@ export interface InstallProgress {
 export interface SpecField {
   name: string;
   description: string;
-  type: "text" | "password" | "number" | "bool" | "oneof" | "list" | "map" | "textarea";
+  type:
+    | "text"
+    | "password"
+    | "number"
+    | "bool"
+    | "oneof"
+    | "list"
+    | "map"
+    | "textarea";
   required: boolean;
   default?: string | number | boolean;
   placeholder?: string;
-  values?: (string|{label: string, value: string})[]; // For oneof type
+  values?: (string | { label: string; value: string })[]; // For oneof type
   display?: string; // Conditional display: "fieldName=value"
 }
 
@@ -85,6 +93,10 @@ export interface ServiceModel {
   has_docker?: boolean;
   vram_estimate_gb?: number | null;
   is_loaded?: boolean | null;
+  variant?: string | null; // For user-defined MCP servers
+  command?: string | null; // For user-defined MCP servers
+  base_image?: string | null; // For user-defined MCP servers
+  custom_spec?: Record<string, unknown> | null;
 }
 
 export interface GpuCardStats {
@@ -106,10 +118,12 @@ export interface ServiceModelsResponse {
 export interface TestResult {
   result?: boolean; // true if test passed
   error?: boolean; // true if test failed
-  output?: string | {
-    content_type: string; // e.g., "audio/wav", "image/png"
-    data: string; // base64 encoded data
-  };
+  output?:
+    | string
+    | {
+        content_type: string; // e.g., "audio/wav", "image/png"
+        data: string; // base64 encoded data
+      };
   details?: Record<string, unknown>; // Additional details
 }
 

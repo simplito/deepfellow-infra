@@ -7,6 +7,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -1803,3 +1804,95 @@ async def test_create_docker_service_raises_when_compose_not_available(tmp_path:
 
         with pytest.raises(DockerNotInstalledError):
             await create_docker_service(port_service, config)
+
+
+class _AsyncLineIterator:
+    """Async iterator over a list of byte lines for mocking asyncio StreamReader."""
+
+    def __init__(self, lines: list[bytes]) -> None:
+        self._iter = iter(lines)
+
+    def __aiter__(self) -> "_AsyncLineIterator":
+        return self
+
+    async def __anext__(self) -> bytes:
+        try:
+            return next(self._iter)
+        except StopIteration:
+            raise StopAsyncIteration from None
+
+
+@pytest.mark.asyncio
+async def test_build_image_calls_docker_build_with_correct_args(docker_service: DockerService, tmp_path: Path) -> None:
+    """build_image shells out to 'docker build -t <tag> <dir>'."""
+    mock_proc = MagicMock()
+    mock_proc.stdout = _AsyncLineIterator([b"Step 1/3 : FROM node:lts-slim\n"])
+    mock_proc.wait = AsyncMock()
+    mock_proc.returncode = 0
+
+    with patch("server.docker.asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc) as mock_exec:
+        stream = MagicMock()
+        stream.emit = MagicMock()
+        await docker_service.build_image(tmp_path, "my-tag:latest", stream)  # type: ignore[arg-type]
+
+    mock_exec.assert_called_once_with(
+        "docker",
+        "build",
+        "-t",
+        "my-tag:latest",
+        str(tmp_path),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+
+
+@pytest.mark.asyncio
+async def test_build_image_emits_log_lines_as_progress(docker_service: DockerService, tmp_path: Path) -> None:
+    """build_image emits each build output line as a progress chunk."""
+    mock_proc = MagicMock()
+    mock_proc.stdout = _AsyncLineIterator([b"Step 1/2\n", b"Step 2/2\n"])
+    mock_proc.wait = AsyncMock()
+    mock_proc.returncode = 0
+
+    with patch("server.docker.asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        stream = MagicMock()
+        stream.emit = MagicMock()
+        await docker_service.build_image(tmp_path, "tag:latest", stream)  # type: ignore[arg-type]
+
+    assert stream.emit.call_count == 2
+    first_call_arg = stream.emit.call_args_list[0][0][0]
+    assert first_call_arg["type"] == "progress"
+    assert first_call_arg["stage"] == "install"
+    assert "log" in first_call_arg["data"]
+
+
+@pytest.mark.asyncio
+async def test_build_image_raises_on_nonzero_exit(docker_service: DockerService, tmp_path: Path) -> None:
+    """build_image raises RuntimeError when docker build exits non-zero."""
+    mock_proc = MagicMock()
+    mock_proc.stdout = _AsyncLineIterator([b"error: build failed\n"])
+    mock_proc.wait = AsyncMock()
+    mock_proc.returncode = 1
+
+    with patch("server.docker.asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        stream = MagicMock()
+        stream.emit = MagicMock()
+        with pytest.raises(RuntimeError, match="docker build failed"):
+            await docker_service.build_image(tmp_path, "tag:latest", stream)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_build_image_timeout_raises_runtime_error(docker_service: DockerService, tmp_path: Path) -> None:
+    """build_image kills the process and raises RuntimeError when docker build times out."""
+    mock_proc = MagicMock()
+    mock_proc.stdout = _AsyncLineIterator([])
+    mock_proc.wait = AsyncMock(side_effect=TimeoutError)
+    mock_proc.kill = MagicMock()
+
+    with patch("server.docker.asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        stream = MagicMock()
+        stream.emit = MagicMock()
+        with pytest.raises(RuntimeError, match="timed out"):
+            await docker_service.build_image(tmp_path, "tag:latest", stream)  # type: ignore[arg-type]
+
+    mock_proc.kill.assert_called_once()

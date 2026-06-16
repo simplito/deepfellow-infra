@@ -161,6 +161,9 @@ class BaseService(ABC):
     async def remove_custom_model(self, instance: str, custom_model_id: CustomModelId) -> None:
         """Remove custom model."""
 
+    async def update_custom_model(self, instance: str, custom_model_id: CustomModelId, options: AddCustomModelIn) -> None:  # noqa: B027
+        """Update custom model. No-op by default; override to support."""
+
     async def sync_models(self, instance: str) -> None:  # noqa: B027
         """Trigger an immediate model sync. No-op for services without sync support."""
 

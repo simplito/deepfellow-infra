@@ -1,3 +1,4 @@
+import { type ProgressEvent, readSSEStream } from "@/utils/sse-stream";
 /*
 DeepFellow Software Framework.
 Copyright © 2025 Simplito sp. z o.o.
@@ -9,18 +10,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 import type {
-  ServiceListResponse,
-  Service,
-  ServiceModelsResponse,
-  ServiceModel,
-  TestResult,
-  ShowMeshInfoOut,
-  MeshTopologyNode,
-  InfraSettings,
   GpuStats,
+  InfraSettings,
+  MeshTopologyNode,
+  Service,
+  ServiceListResponse,
+  ServiceModel,
+  ServiceModelsResponse,
+  ShowMeshInfoOut,
+  TestResult,
 } from "./types";
 import { InstallationWarningsError } from "./types";
-import { readSSEStream, type ProgressEvent } from "@/utils/sse-stream";
 
 // Simple admin API key storage
 export class AdminApiKeyStorage {
@@ -82,7 +82,9 @@ export class DeepFellowClient {
         throw new Error(`HTTP ${response.status}: ${errorMessage}`);
       } catch (e) {
         if (e instanceof SyntaxError) {
-          throw new Error(`HTTP ${response.status}: ${content || response.statusText}`);
+          throw new Error(
+            `HTTP ${response.status}: ${content || response.statusText}`,
+          );
         }
         throw e;
       }
@@ -106,7 +108,10 @@ export class DeepFellowClient {
     return this.makeRequest<Service>(`/admin/services/${serviceId}`);
   }
 
-  async installAdminService(serviceId: string, spec: Record<string, unknown>): Promise<void> {
+  async installAdminService(
+    serviceId: string,
+    spec: Record<string, unknown>,
+  ): Promise<void> {
     return this.makeRequest<void>(`/admin/services/${serviceId}`, {
       method: "POST",
       body: JSON.stringify({ spec }),
@@ -124,7 +129,7 @@ export class DeepFellowClient {
     serviceId: string,
     spec: Record<string, unknown>,
     onProgress: (event: ProgressEvent) => void,
-    ignoreWarnings = false
+    ignoreWarnings = false,
   ): Promise<void> {
     const url = `${this.baseURL}/admin/services/${serviceId}`;
     const adminApiKey = AdminApiKeyStorage.get();
@@ -152,12 +157,19 @@ export class DeepFellowClient {
       const content = await response.text();
       try {
         const errorData = JSON.parse(content);
-        
+
         // Check if this is a 400 with warnings
-        if (response.status === 400 && errorData.warnings && Array.isArray(errorData.warnings)) {
-          throw new InstallationWarningsError(errorData.warnings, errorData.detail || errorData.message);
+        if (
+          response.status === 400 &&
+          errorData.warnings &&
+          Array.isArray(errorData.warnings)
+        ) {
+          throw new InstallationWarningsError(
+            errorData.warnings,
+            errorData.detail || errorData.message,
+          );
         }
-        
+
         const errorMessage = formatApiErrorMessage(errorData, content);
         throw new Error(`HTTP ${response.status}: ${errorMessage}`);
       } catch (e) {
@@ -165,13 +177,17 @@ export class DeepFellowClient {
           throw e;
         }
         if (e instanceof SyntaxError) {
-          throw new Error(`HTTP ${response.status}: ${content || response.statusText}`);
+          throw new Error(
+            `HTTP ${response.status}: ${content || response.statusText}`,
+          );
         }
         throw e;
       }
     }
 
-    const contentType = (response.headers.get("content-type") || "").split(";")[0].trim();
+    const contentType = (response.headers.get("content-type") || "")
+      .split(";")[0]
+      .trim();
     if (contentType === "text/event-stream") {
       await readSSEStream(response, onProgress);
     } else {
@@ -183,7 +199,7 @@ export class DeepFellowClient {
   async getServiceProgress(
     serviceId: string,
     onProgress: (event: ProgressEvent) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     const url = `${this.baseURL}/admin/services/${serviceId}/progress`;
     const adminApiKey = AdminApiKeyStorage.get();
@@ -203,33 +219,48 @@ export class DeepFellowClient {
   }
 
   // Admin Service Models methods
-  async listAdminServiceModels(serviceId: string): Promise<ServiceModelsResponse> {
-    return this.makeRequest<ServiceModelsResponse>(`/admin/services/${serviceId}/models`);
-  }
-
-  async getAdminServiceModel(serviceId: string, modelId: string): Promise<ServiceModel> {
-    return this.makeRequest<ServiceModel>(
-      `/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`
+  async listAdminServiceModels(
+    serviceId: string,
+  ): Promise<ServiceModelsResponse> {
+    return this.makeRequest<ServiceModelsResponse>(
+      `/admin/services/${serviceId}/models`,
     );
   }
 
-  async installAdminServiceModel(serviceId: string, modelId: string, spec: Record<string, unknown>): Promise<void> {
+  async getAdminServiceModel(
+    serviceId: string,
+    modelId: string,
+  ): Promise<ServiceModel> {
+    return this.makeRequest<ServiceModel>(
+      `/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`,
+    );
+  }
+
+  async installAdminServiceModel(
+    serviceId: string,
+    modelId: string,
+    spec: Record<string, unknown>,
+  ): Promise<void> {
     return this.makeRequest<void>(
       `/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`,
       {
         method: "POST",
         body: JSON.stringify({ spec }),
-      }
+      },
     );
   }
 
-  async uninstallAdminServiceModel(serviceId: string, modelId: string, purge = false): Promise<void> {
+  async uninstallAdminServiceModel(
+    serviceId: string,
+    modelId: string,
+    purge = false,
+  ): Promise<void> {
     return this.makeRequest<void>(
       `/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`,
       {
         method: "DELETE",
         body: JSON.stringify({ purge }),
-      }
+      },
     );
   }
 
@@ -277,12 +308,19 @@ export class DeepFellowClient {
       const content = await response.text();
       try {
         const errorData = JSON.parse(content);
-        
+
         // Check if this is a 400 with warnings
-        if (response.status === 400 && errorData.warnings && Array.isArray(errorData.warnings)) {
-          throw new InstallationWarningsError(errorData.warnings, errorData.detail || errorData.message);
+        if (
+          response.status === 400 &&
+          errorData.warnings &&
+          Array.isArray(errorData.warnings)
+        ) {
+          throw new InstallationWarningsError(
+            errorData.warnings,
+            errorData.detail || errorData.message,
+          );
         }
-        
+
         const errorMessage = formatApiErrorMessage(errorData, content);
         throw new Error(`HTTP ${response.status}: ${errorMessage}`);
       } catch (e) {
@@ -290,13 +328,17 @@ export class DeepFellowClient {
           throw e;
         }
         if (e instanceof SyntaxError) {
-          throw new Error(`HTTP ${response.status}: ${content || response.statusText}`);
+          throw new Error(
+            `HTTP ${response.status}: ${content || response.statusText}`,
+          );
         }
         throw e;
       }
     }
 
-    const contentType = (response.headers.get("content-type") || "").split(";")[0].trim();
+    const contentType = (response.headers.get("content-type") || "")
+      .split(";")[0]
+      .trim();
     if (contentType === "text/event-stream") {
       await readSSEStream(response, onProgress);
     } else {
@@ -309,7 +351,7 @@ export class DeepFellowClient {
     serviceId: string,
     modelId: string,
     onProgress: (event: ProgressEvent) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     const url = `${this.baseURL}/admin/services/${serviceId}/models/progress?model_id=${encodeURIComponent(modelId)}`;
     const adminApiKey = AdminApiKeyStorage.get();
@@ -328,52 +370,90 @@ export class DeepFellowClient {
     await readSSEStream(response, onProgress);
   }
 
-  async testModel(registrationId: string, signal?: AbortSignal): Promise<TestResult> {
-    return this.makeRequest<TestResult>(`/admin/services/model/test/${registrationId}`, {
-      signal,
-    });
+  async testModel(
+    registrationId: string,
+    signal?: AbortSignal,
+  ): Promise<TestResult> {
+    return this.makeRequest<TestResult>(
+      `/admin/services/model/test/${registrationId}`,
+      {
+        signal,
+      },
+    );
   }
 
-  async addCustomModel(serviceId: string, spec: Record<string, unknown>): Promise<{ custom_model_id: string }> {
+  async addCustomModel(
+    serviceId: string,
+    spec: Record<string, unknown>,
+  ): Promise<{ custom_model_id: string }> {
     return this.makeRequest<{ custom_model_id: string }>(
       `/admin/services/${serviceId}/models/custom`,
       {
         method: "POST",
         body: JSON.stringify({ spec }),
-      }
+      },
     );
   }
 
-  async removeCustomModel(serviceId: string, customModelId: string): Promise<{ status: string }> {
+  async removeCustomModel(
+    serviceId: string,
+    customModelId: string,
+  ): Promise<{ status: string }> {
     return this.makeRequest<{ status: string }>(
       `/admin/services/${serviceId}/models/custom/${customModelId}`,
       {
         method: "DELETE",
-      }
+      },
+    );
+  }
+
+  async updateCustomModel(
+    serviceId: string,
+    customModelId: string,
+    spec: Record<string, unknown>,
+  ): Promise<{ status: string }> {
+    return this.makeRequest<{ status: string }>(
+      `/admin/services/${serviceId}/models/custom/${customModelId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ spec }),
+      },
     );
   }
 
   async syncModels(serviceId: string): Promise<{ status: string }> {
-    return this.makeRequest<{ status: string }>(`/admin/services/${serviceId}/models/sync`, {
-      method: "POST",
-    });
+    return this.makeRequest<{ status: string }>(
+      `/admin/services/${serviceId}/models/sync`,
+      {
+        method: "POST",
+      },
+    );
   }
 
-  async getDockerLogs(serviceId: string, modelId?: string): Promise<{ logs: string }> {
+  async getDockerLogs(
+    serviceId: string,
+    modelId?: string,
+  ): Promise<{ logs: string }> {
     const url = modelId
       ? `/admin/services/${serviceId}/docker/logs?model_id=${encodeURIComponent(modelId)}`
       : `/admin/services/${serviceId}/docker/logs`;
     return this.makeRequest<{ logs: string }>(url);
   }
 
-  async getDockerCompose(serviceId: string, modelId?: string): Promise<{ compose_file: string }> {
+  async getDockerCompose(
+    serviceId: string,
+    modelId?: string,
+  ): Promise<{ compose_file: string }> {
     const url = modelId
       ? `/admin/services/${serviceId}/docker/compose?model_id=${encodeURIComponent(modelId)}`
       : `/admin/services/${serviceId}/docker/compose`;
     return this.makeRequest<{ compose_file: string }>(url);
   }
 
-  async restartDocker(serviceId: string, modelId?: string): Promise<{ status: string }> {
+  async restartDocker(
+    serviceId: string,
+    modelId?: string,
+  ): Promise<{ status: string }> {
     const url = modelId
       ? `/admin/services/${serviceId}/docker/restart?model_id=${encodeURIComponent(modelId)}`
       : `/admin/services/${serviceId}/docker/restart`;
@@ -384,7 +464,9 @@ export class DeepFellowClient {
 
   async getGpuStats(): Promise<GpuStats | null> {
     try {
-      return await this.makeRequest<GpuStats | null>("/admin/settings/hardware/gpu-stats");
+      return await this.makeRequest<GpuStats | null>(
+        "/admin/settings/hardware/gpu-stats",
+      );
     } catch {
       return null;
     }
@@ -402,7 +484,9 @@ export class DeepFellowClient {
     return this.makeRequest<InfraSettings>("/admin/settings");
   }
 
-  async updateSettings(settings: Partial<InfraSettings>): Promise<InfraSettings> {
+  async updateSettings(
+    settings: Partial<InfraSettings>,
+  ): Promise<InfraSettings> {
     return this.makeRequest<InfraSettings>("/admin/settings", {
       method: "PUT",
       body: JSON.stringify(settings),

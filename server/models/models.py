@@ -99,6 +99,10 @@ class RetrieveModelOut(BaseModel):
     has_docker: bool
     vram_estimate_gb: float | None = None
     is_loaded: bool | None = None
+    variant: str | None = None
+    command: str | None = None
+    base_image: str | None = None
+    custom_spec: dict[str, Any] | None = None
 
 
 class ListModelsFilters(BaseModel):
@@ -118,6 +122,10 @@ class AddCustomModelOut(BaseModel):
 
 
 class RemoveCustomModelOut(BaseModel):
+    status: Literal["OK"]
+
+
+class UpdateCustomModelOut(BaseModel):
     status: Literal["OK"]
 
 
