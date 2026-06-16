@@ -15,8 +15,8 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar
-from urllib.parse import urljoin
+from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar, cast
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import aiohttp
 from aiohttp import JsonPayload
@@ -88,7 +88,7 @@ class RegisteredModel[T](BaseModel):
     name: ModelId
     origin: str
     props: ModelProps
-    type: ModelType
+    type: str
     endpoint: T
     usage: int
 
@@ -117,7 +117,7 @@ class Endpoint[T]:
         self.models = dict[ModelId, dict[RegistrationId, RegisteredModel[T]]]()
 
     def add_model(
-        self, model_id: ModelId, props: ModelProps, endpoint: T, type: ModelType, options: RegistrationOptions | None
+        self, model_id: ModelId, props: ModelProps, endpoint: T, type: str, options: RegistrationOptions | None
     ) -> RegistrationId:
         """Add model to registry."""
         registered_model = RegisteredModel(
@@ -228,12 +228,100 @@ class Endpoint[T]:
                     Model(
                         id=item.id,
                         name=model_id,
-                        type=item.type,
+                        type=cast("ModelType", item.type.split("-")[0]),
                         props=item.props,
                         usage=item.usage,
                     )
                 )
         return res
+
+
+class McpSseSessionStore:
+    """Maps session IDs to upstream message endpoint URLs for SSE transport.
+
+    All mutations are plain dict operations with no await points inside them,
+    so they are atomic from asyncio's single-threaded event loop perspective.
+    No asyncio.Lock is needed here — that would only be required with threads or
+    if an await were introduced inside a mutation.
+    """
+
+    def __init__(self, ttl_seconds: int = 300, max_sessions: int = 128) -> None:
+        self._sessions: dict[str, tuple[str, float]] = {}
+        self._ttl = ttl_seconds
+        self._max = max_sessions
+
+    def _evict_expired(self) -> None:
+        """Remove all sessions whose TTL has elapsed."""
+        now = time.monotonic()
+        expired = [sid for sid, (_, ts) in self._sessions.items() if now - ts >= self._ttl]
+        for sid in expired:
+            del self._sessions[sid]
+
+    def add(self, session_id: str, upstream_url: str) -> None:
+        """Store session → upstream messages URL mapping, evicting expired/oldest if at capacity."""
+        self._evict_expired()
+        if len(self._sessions) >= self._max:
+            # evict oldest (first inserted) to make room
+            oldest = next(iter(self._sessions))
+            del self._sessions[oldest]
+        self._sessions[session_id] = (upstream_url, time.monotonic())
+
+    def get(self, session_id: str) -> str | None:
+        """Return upstream messages URL for a session, or None if unknown or expired."""
+        entry = self._sessions.get(session_id)
+        if entry is None:
+            return None
+        url, ts = entry
+        if time.monotonic() - ts >= self._ttl:
+            del self._sessions[session_id]
+            return None
+        return url
+
+    def remove(self, session_id: str) -> None:
+        """Remove a session mapping."""
+        self._sessions.pop(session_id, None)
+
+
+async def _rewrite_sse_endpoint_events(
+    content: AsyncGenerator[bytes],
+    upstream_sse_url: str,
+    proxy_endpoint_url: str,
+    session_store: McpSseSessionStore,
+) -> AsyncGenerator[bytes]:
+    """Stream SSE events, rewriting 'endpoint' event data URLs to point through the proxy."""
+    buffer = ""
+    in_endpoint_event = False
+
+    async for chunk in content:
+        buffer += chunk.decode("utf-8", errors="replace")
+
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            line = line.rstrip("\r")
+
+            if not line:
+                in_endpoint_event = False
+                yield b"\n"
+                continue
+
+            if line.startswith("event:"):
+                in_endpoint_event = line[6:].strip() == "endpoint"
+                yield (line + "\n").encode()
+            elif line.startswith("data:") and in_endpoint_event:
+                raw = line[5:].strip()
+                upstream_url = raw if raw.startswith("http") else urljoin(upstream_sse_url, raw)
+                parsed = urlparse(upstream_url)
+                session_id = (parse_qs(parsed.query).get("sessionId") or [None])[0]
+                if session_id:
+                    session_store.add(session_id, upstream_url)
+                    yield f"data: {proxy_endpoint_url}?sessionId={session_id}\n".encode()
+                else:
+                    yield (line + "\n").encode()
+            else:
+                yield (line + "\n").encode()
+
+    if buffer:
+        yield buffer.encode()
 
 
 @dataclass
@@ -550,7 +638,8 @@ class EndpointRegistry:
         async def on_request(request: Request) -> StreamingResponse:
             headers = options.get_request_headers(request)
             headers["content-type"] = request.headers.get("content-type") or "application/octet-stream"
-            full_url = Utils.join_url(options.url, request.path_params["full_path"].split("/", 1)[-1])
+            _, _, sub_path = request.path_params["full_path"].partition("/")
+            full_url = Utils.join_url(options.url, sub_path) if sub_path else options.url
             if request.url.query:
                 full_url = f"{full_url}?{request.url.query}"
             return (
@@ -590,17 +679,77 @@ class EndpointRegistry:
         async def on_request(request: Request) -> StreamingResponse:
             headers = options.get_request_headers(request)
             headers["content-type"] = request.headers.get("content-type") or "application/octet-stream"
-            full_url = Utils.join_url(options.url, request.path_params["full_path"].split("/", 1)[-1])
+            full_url = options.url
             if request.url.query:
                 full_url = f"{full_url}?{request.url.query}"
-            return (
-                await make_http_request(
-                    url=full_url,
-                    method=request.method,
-                    data=request.stream(),
-                    headers=headers,
+            logger.debug("MCP proxy: %s %s -> %s", request.method, request.path_params["full_path"], full_url)
+            response = await make_http_request(url=full_url, method=request.method, data=request.stream(), headers=headers)
+            logger.debug("MCP proxy response: %s", response.response.status)
+            return response.as_streaming_response(options.allowed_response_headers)
+
+        return self.register_mcp_endpoint(url, props, McpEndpoint(on_request=on_request), registration_options)
+
+    def register_mcp_sse_endpoint_as_proxy(
+        self,
+        url: str,
+        props: ModelProps,
+        options: ProxyOptions,
+        registration_options: RegistrationOptions | None,
+    ) -> RegistrationId:
+        """Register an SSE-transport MCP endpoint as a proxy.
+
+        GET  → streams upstream SSE, rewriting the 'endpoint' event URL to route
+               through this proxy so the client never speaks directly to upstream.
+        POST → forwards the client message to the upstream messages URL stored in
+               the session store that was populated during the GET phase.
+        """
+        session_store = McpSseSessionStore(
+            ttl_seconds=self.config.mcp_sse_session_ttl_seconds,
+            max_sessions=self.config.mcp_sse_max_sessions,
+        )
+
+        async def on_request(request: Request) -> StreamingResponse:
+            headers = options.get_request_headers(request)
+
+            if request.method == "GET":
+                headers["accept"] = "text/event-stream"
+                headers.pop("content-type", None)
+                proxy_endpoint_url = str(request.url).split("?")[0]
+                upstream_response = await make_http_request(url=options.url, method="GET", headers=headers)
+
+                async def rewritten() -> AsyncGenerator[bytes]:
+                    session_id: str | None = None
+                    try:
+                        async for chunk in _rewrite_sse_endpoint_events(
+                            upstream_response.content,
+                            options.url,
+                            proxy_endpoint_url,
+                            session_store,
+                        ):
+                            if session_id is None and b"sessionId=" in chunk:
+                                session_id = chunk.decode(errors="replace").split("sessionId=")[-1].strip()
+                            yield chunk
+                    finally:
+                        if session_id:
+                            session_store.remove(session_id)
+                        await upstream_response.response.release()
+
+                return StreamingResponse(
+                    rewritten(),
+                    media_type="text/event-stream",
+                    status_code=200,
+                    headers={"cache-control": "no-cache", "x-accel-buffering": "no"},
                 )
-            ).as_streaming_response(options.allowed_response_headers)
+
+            session_id = request.query_params.get("sessionId")
+            if not session_id:
+                raise HTTPException(400, "Missing sessionId query parameter")
+            upstream_url = session_store.get(session_id)
+            if upstream_url is None:
+                raise HTTPException(404, f"Unknown session: {session_id}")
+            headers["content-type"] = request.headers.get("content-type") or "application/json"
+            response = await make_http_request(url=upstream_url, method="POST", data=request.stream(), headers=headers)
+            return response.as_streaming_response(options.allowed_response_headers)
 
         return self.register_mcp_endpoint(url, props, McpEndpoint(on_request=on_request), registration_options)
 
@@ -650,7 +799,7 @@ class EndpointRegistry:
     def _register_proxy(
         self,
         model_id: ModelId,
-        type: ModelType,
+        type: str,
         props: ModelProps,
         url: str,
         api_key: str,

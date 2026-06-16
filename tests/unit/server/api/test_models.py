@@ -57,6 +57,7 @@ def services_manager(retrieve_model_out: RetrieveModelOut) -> MagicMock:
     manager.list_models_from_service = AsyncMock(return_value=ListModelsOut(list=[]))
     manager.add_custom_model = AsyncMock(return_value="custom-123")
     manager.remove_custom_model = AsyncMock(return_value=None)
+    manager.update_custom_model = AsyncMock(return_value=None)
     manager.sync_models_in_service = AsyncMock(return_value=None)
     manager.cancel_model_install = AsyncMock(return_value=None)
     return manager
@@ -352,6 +353,31 @@ def test_remove_custom_model_passes_ids(
 
 def test_remove_custom_model_returns_ok_status(client: TestClient, auth_header: dict[str, str]) -> None:
     resp = client.request("DELETE", f"/admin/services/{SERVICE_ID}/models/custom/cust-1", headers=auth_header)
+
+    assert resp.json()["status"] == "OK"
+
+
+def test_update_custom_model_returns_200(client: TestClient, auth_header: dict[str, str]) -> None:
+    resp = client.put(f"/admin/services/{SERVICE_ID}/models/custom/cust-1", json={"spec": {"name": "x"}}, headers=auth_header)
+
+    assert resp.status_code == 200
+
+
+def test_update_custom_model_calls_manager(services_manager: MagicMock, client: TestClient, auth_header: dict[str, str]) -> None:
+    client.put(f"/admin/services/{SERVICE_ID}/models/custom/cust-1", json={"spec": {"name": "x"}}, headers=auth_header)
+
+    services_manager.update_custom_model.assert_awaited_once()
+
+
+def test_update_custom_model_passes_ids(services_manager: MagicMock, client: TestClient, auth_header: dict[str, str]) -> None:
+    client.put("/admin/services/my-svc/models/custom/my-id", json={"spec": {"name": "x"}}, headers=auth_header)
+
+    assert services_manager.update_custom_model.call_args.args[0] == "my-svc"
+    assert services_manager.update_custom_model.call_args.args[1] == "my-id"
+
+
+def test_update_custom_model_returns_ok_status(client: TestClient, auth_header: dict[str, str]) -> None:
+    resp = client.put(f"/admin/services/{SERVICE_ID}/models/custom/cust-1", json={"spec": {"name": "x"}}, headers=auth_header)
 
     assert resp.json()["status"] == "OK"
 

@@ -9,6 +9,7 @@
 
 """Docker backend."""
 
+import asyncio
 import json
 import logging
 import os
@@ -27,7 +28,7 @@ from pydantic import BaseModel
 
 from server.config import AppSettings
 from server.portservice import PortService
-from server.utils.core import CommandResult2, Utils, get_cpu_architecture, get_os
+from server.utils.core import CommandResult2, Stream, StreamChunk, StreamChunkProgress, Utils, get_cpu_architecture, get_os
 from server.utils.exceptions import AppError, DockerComposeStartError, DockerImageAuthorizationError, DockerImageDoesNotExistError
 from server.utils.hardware import HardwarePartInfo, IntelGpuInfo, NvidiaGpuInfo
 from server.utils.loading import Progress
@@ -264,6 +265,7 @@ class DockerPath(BaseModel):
 
 class DockerService:
     auths: dict[str, str]
+    build_timeout = 30 * 60  # 30 minutes
 
     def __init__(
         self,
@@ -596,6 +598,41 @@ class DockerService:
         except DockerError as err:
             if err.status != 404:
                 raise
+
+    @property
+    def _docker_bin(self) -> str:
+        """Return the docker binary derived from docker_compose_cmd.
+
+        "docker compose" → "docker"; "docker-compose" → "docker"
+        (create_docker_service guarantees the docker binary is in PATH when docker-compose is used).
+        """
+        first = self.docker_compose_cmd.split()[0]
+        return "docker" if first == "docker-compose" else first
+
+    async def build_image(self, build_context_dir: Path, tag: str, stream: Stream[StreamChunk]) -> None:
+        """Build a Docker image from a Dockerfile in build_context_dir, streaming build log lines as progress."""
+        proc = await asyncio.create_subprocess_exec(
+            self._docker_bin,
+            "build",
+            "-t",
+            tag,
+            str(build_context_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        assert proc.stdout is not None
+        async for raw_line in proc.stdout:
+            line = raw_line.decode(errors="replace").rstrip()
+            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={"log": line}))
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=self.build_timeout)
+        except TimeoutError:
+            proc.kill()
+            msg = f"docker build timed out after {self.build_timeout}s"
+            raise RuntimeError(msg) from None
+        if proc.returncode != 0:
+            msg = f"docker build failed with exit code {proc.returncode}"
+            raise RuntimeError(msg)
 
     async def is_docker_compose_healthy(self, docker_compose_file_path: Path, service_name: str) -> bool:
         """Check whether the service from given docker compose is healthy."""

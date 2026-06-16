@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 from fastapi import HTTPException
 
-from server.models.models import InstallModelIn, ListModelsFilters, ModelInfo, UninstallModelIn
+from server.models.models import AddCustomModelIn, InstallModelIn, ListModelsFilters, ModelInfo, UninstallModelIn
 from server.models.services import InstallServiceIn, UninstallServiceIn
 from server.services.base2_service import CustomModel, Instance, InstanceConfig
 from server.services.custom_service import (
@@ -292,6 +292,25 @@ def test_remove_custom_model_when_in_use_raises(svc: CustomService) -> None:
 
     with pytest.raises(HTTPException) as exc:
         svc._remove_custom_model("default", model)  # pyright: ignore[reportPrivateUsage]
+
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_update_custom_model_not_found_raises_404(svc: CustomService) -> None:
+    with pytest.raises(HTTPException) as exc:
+        await svc.update_custom_model("default", "nonexistent-id", AddCustomModelIn(spec={"name": "x"}))
+
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_custom_model_default_raises_400(svc: CustomService) -> None:
+    model = CustomModel(id="cm-1", data=_CUSTOM_MODEL_DATA)
+    svc.instances_info["default"].config.custom = [model]
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.update_custom_model("default", "cm-1", AddCustomModelIn(spec=_CUSTOM_MODEL_DATA))
 
     assert exc.value.status_code == 400
 

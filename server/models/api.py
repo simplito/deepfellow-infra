@@ -381,7 +381,7 @@ class ModelProps(BaseModel):
     prefix: str | None = None
 
 
-type ModelType = str
+type ModelType = Literal["llm", "embedding", "tts", "stt", "rerank", "txt2img", "mcp"]
 
 type ModelId = str
 type RegistrationId = str
@@ -1490,7 +1490,7 @@ class OllamaChatToolCall(BaseModel):
 
 class OllamaChatMessage(BaseModel):
     role: Literal["system", "user", "assistant", "tool"]
-    content: str
+    content: str  # Ollama native API supports list content for multimodal; str-only is a known limitation here
     images: list[str] | None = None
     tool_calls: list[OllamaChatToolCall] | None = None
 
