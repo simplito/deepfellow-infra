@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from server.models.services import GpuCardStats, GpuStats
+from server.models.services import GpuCardStats, GpuStats, SystemStats
 from server.utils.core import CommandResult2
 from server.utils.hardware import (
     CpuInfo,
@@ -128,7 +128,11 @@ async def test_get_realtime_stats_single_gpu(mock_cmd: AsyncMock):
 
     result = await _make_hardware().get_realtime_stats()
 
-    assert result == GpuStats(total_vram_gb=24.0, used_vram_gb=8.0, gpus=None)
+    assert result == GpuStats(
+        total_vram_gb=24.0,
+        used_vram_gb=8.0,
+        gpus=[GpuCardStats(name="NVIDIA GeForce RTX 4090", total_vram_gb=24.0, used_vram_gb=8.0)],
+    )
 
 
 @pytest.mark.asyncio
@@ -186,7 +190,7 @@ async def test_get_realtime_stats_malformed_lines_are_skipped(mock_cmd: AsyncMoc
 
     assert result is not None
     assert result.total_vram_gb == 24.0
-    assert result.gpus is None
+    assert result.gpus == [GpuCardStats(name="NVIDIA RTX 4090", total_vram_gb=24.0, used_vram_gb=8.0)]
 
 
 @pytest.mark.asyncio
@@ -248,9 +252,10 @@ def test_is_cpu_has_avx512(flags: dict[str, list[str]], expected: bool):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("avx512", [True, False])
 async def test_get_cpu_info_avx512(avx512: bool):
-    with patch("server.utils.hardware.is_cpu_has_avx512", return_value=avx512):
+    flags = ["avx512f"] if avx512 else ["sse4_2"]
+    with patch("server.utils.hardware.cpuinfo.get_cpu_info", return_value={"brand_raw": "Test CPU", "flags": flags}):
         result = await get_cpu_info()
-    assert result == CpuInfo(avx512=avx512)
+    assert result == CpuInfo(model="Test CPU", avx512=avx512)
 
 
 @pytest.mark.parametrize(
@@ -400,7 +405,7 @@ def test_hardware_raises_before_init():
 
 @pytest.mark.asyncio
 async def test_hardware_init_async_no_gpus():
-    cpu = CpuInfo(avx512=False)
+    cpu = CpuInfo(model="Test CPU", avx512=False)
     with (
         patch("server.utils.hardware.get_cpu_info", new_callable=AsyncMock, return_value=cpu),
         patch("server.utils.hardware.get_nvidia_gpus_info", new_callable=AsyncMock, return_value=[]),
@@ -417,7 +422,7 @@ async def test_hardware_init_async_no_gpus():
 
 @pytest.mark.asyncio
 async def test_hardware_init_async_with_nvidia_gpu():
-    cpu = CpuInfo(avx512=True)
+    cpu = CpuInfo(model="Test CPU", avx512=True)
     gpu = NvidiaGpuInfo(name="RTX 4090", vram="24 GB", id=0)
     with (
         patch("server.utils.hardware.get_cpu_info", new_callable=AsyncMock, return_value=cpu),
@@ -435,7 +440,7 @@ async def test_hardware_init_async_with_nvidia_gpu():
 
 @pytest.mark.asyncio
 async def test_hardware_init_async_with_intel_gpu():
-    cpu = CpuInfo(avx512=False)
+    cpu = CpuInfo(model="Test CPU", avx512=False)
     gpu = IntelGpuInfo(name="Intel GPU (0xe20b)", vram=None, id=0)
     with (
         patch("server.utils.hardware.get_cpu_info", new_callable=AsyncMock, return_value=cpu),
@@ -452,7 +457,7 @@ async def test_hardware_init_async_with_intel_gpu():
 
 @pytest.mark.asyncio
 async def test_hardware_total_vram_gb():
-    cpu = CpuInfo(avx512=False)
+    cpu = CpuInfo(model="Test CPU", avx512=False)
     gpu0 = NvidiaGpuInfo(name="RTX 4090", vram="24 GB", id=0)
     gpu1 = NvidiaGpuInfo(name="RTX 4090", vram="24 GB", id=1)
     with (
@@ -469,7 +474,7 @@ async def test_hardware_total_vram_gb():
 
 @pytest.mark.asyncio
 async def test_hardware_parts():
-    cpu = CpuInfo(avx512=False)
+    cpu = CpuInfo(model="Test CPU", avx512=False)
     gpu = NvidiaGpuInfo(name="RTX 4090", vram="24 GB", id=0)
     with (
         patch("server.utils.hardware.get_cpu_info", new_callable=AsyncMock, return_value=cpu),
@@ -557,3 +562,24 @@ async def test_get_realtime_stats_returns_cached_result():
     result = await hw.get_realtime_stats()
 
     assert result is cached_stats
+
+
+@pytest.mark.asyncio
+async def test_get_system_stats_returns_cpu_and_ram():
+    hw = _make_hardware()
+    hw._cpu = CpuInfo(model="Intel i9-13900K", avx512=False)  # pyright: ignore[reportPrivateUsage]
+    mem = MagicMock()
+    mem.total = 32 * 1024**3
+    mem.used = 8 * 1024**3
+
+    with (
+        patch("server.utils.hardware.psutil.virtual_memory", return_value=mem),
+        patch("server.utils.hardware.asyncio.to_thread", new=AsyncMock(return_value=25.0)),
+    ):
+        result = await hw.get_system_stats()
+
+    assert isinstance(result, SystemStats)
+    assert result.cpu_model == "Intel i9-13900K"
+    assert result.cpu_percent == 25.0
+    assert result.ram_total_gb == pytest.approx(32.0, abs=0.1)
+    assert result.ram_used_gb == pytest.approx(8.0, abs=0.1)

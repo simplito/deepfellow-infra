@@ -18,7 +18,7 @@ from starlette.testclient import TestClient
 
 from server.api.settings import router
 from server.core.dependencies import auth_admin, get_hardware, get_service_provider
-from server.models.services import GpuCardStats, GpuStats
+from server.models.services import GpuCardStats, GpuStats, SystemStats
 
 
 @pytest.fixture
@@ -129,3 +129,27 @@ def test_get_gpu_stats_returns_per_card_breakdown(hardware: MagicMock, client: T
     assert body["total_vram_gb"] == 48.0
     assert len(body["gpus"]) == 2
     assert body["gpus"][0]["name"] == "RTX 4090"
+
+
+def test_get_system_stats_returns_200(hardware: MagicMock, client: TestClient, auth_header: dict[str, str]) -> None:
+    hardware.get_system_stats = AsyncMock(
+        return_value=SystemStats(cpu_percent=12.5, cpu_model="Test CPU", ram_total_gb=16.0, ram_used_gb=4.0)
+    )
+
+    resp = client.get("/admin/settings/hardware/system-stats", headers=auth_header)
+
+    assert resp.status_code == 200
+
+
+def test_get_system_stats_returns_cpu_and_ram(hardware: MagicMock, client: TestClient, auth_header: dict[str, str]) -> None:
+    hardware.get_system_stats = AsyncMock(
+        return_value=SystemStats(cpu_percent=42.0, cpu_model="Intel i9", ram_total_gb=32.0, ram_used_gb=8.0)
+    )
+
+    resp = client.get("/admin/settings/hardware/system-stats", headers=auth_header)
+
+    body = resp.json()
+    assert body["cpu_percent"] == 42.0
+    assert body["cpu_model"] == "Intel i9"
+    assert body["ram_total_gb"] == 32.0
+    assert body["ram_used_gb"] == 8.0

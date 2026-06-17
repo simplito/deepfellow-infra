@@ -14,7 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends
 
 from server.core.dependencies import auth_admin, get_hardware, get_service_provider
-from server.models.services import GpuStats, InfraSettingsOut, UpdateInfraSettingsIn
+from server.models.services import GpuStats, InfraSettingsOut, SystemStats, UpdateInfraSettingsIn
 from server.serviceprovider import ServiceProvider
 from server.utils.hardware import Hardware
 
@@ -49,3 +49,12 @@ async def get_gpu_stats(
 ) -> GpuStats | None:
     """Get global GPU VRAM stats from nvidia-smi. Returns null if no GPU available."""
     return await hardware.get_realtime_stats()
+
+
+@router.get("/hardware/system-stats", summary="Get CPU and RAM usage.")
+async def get_system_stats(
+    hardware: Annotated[Hardware, Depends(get_hardware)],
+    _: Annotated[str, Depends(auth_admin)],
+) -> SystemStats:
+    """Get current CPU percent and RAM usage via psutil."""
+    return await hardware.get_system_stats()

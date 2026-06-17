@@ -17,6 +17,7 @@ import type { ModalProps } from "@/hooks/use-modal";
 import { useQuery } from "@tanstack/react-query";
 import type { Node } from "@xyflow/react";
 import { AlertCircle, Loader2, Server } from "lucide-react";
+import { MeshModelGroups } from "./MeshModelGroups";
 /*
 DeepFellow Software Framework.
 Copyright © 2025 Simplito sp. z o.o.
@@ -124,21 +125,7 @@ export function MeshInfoModal({ open, onOpenChange }: MeshInfoModalProps) {
                           <p className="text-sm text-muted-foreground font-medium mb-2">
                             Models ({selectedNode.models.length})
                           </p>
-                          <div className="space-y-1">
-                            {selectedNode.models.map((model) => (
-                              <div
-                                key={model.name}
-                                className="flex items-center justify-between text-sm px-2 py-1 rounded-md bg-muted/50"
-                              >
-                                <span className="truncate mr-2">
-                                  {model.name}
-                                </span>
-                                <span className="text-xs text-muted-foreground shrink-0">
-                                  {model.type}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
+                          <MeshModelGroups models={selectedNode.models} />
                         </div>
                       )}
                       {selectedNode.children.length > 0 && (

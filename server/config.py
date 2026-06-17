@@ -32,10 +32,10 @@ class AppSettings(BaseSettings):
     docker_subnet: str = ""
     storage_dir: str = ""
     storage_services_dir: str = ""
-    hugging_face_token: str = ""
-    civitai_token: str = ""
+    hugging_face_token: SecretStr = SecretStr("")
+    civitai_token: SecretStr = SecretStr("")
     adapter_registry_url: str = ""
-    adapter_registry_secret: str = ""
+    adapter_registry_secret: SecretStr = SecretStr("")
     log_payloads: str = ""
     container_name_prefix: str = ""
     compose_prefix: str = "df_"
@@ -46,7 +46,7 @@ class AppSettings(BaseSettings):
 
     # metrics are authorized by HTTPBasicAuth
     metrics_username: str = ""
-    metrics_password: str = ""
+    metrics_password: SecretStr = SecretStr("")
 
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
     otel_tracing_enabled: bool = False

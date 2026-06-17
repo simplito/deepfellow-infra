@@ -431,7 +431,7 @@ class ModelDownloader:
         self.temp_dir: Path = config.get_storage_dir() / "temp"
         self.standard_downloader = StandardModelDownloader()
         self.custom_downloaders: list[BaseDownloader] = [
-            AdapterRegistryDownloader(config.adapter_registry_url, config.adapter_registry_secret),
+            AdapterRegistryDownloader(config.adapter_registry_url, config.adapter_registry_secret.get_secret_value()),
             HuggingFaceRepoDownloader(self.get_hugging_face_token(config)),
             HuggingFaceModelDownloader(self.get_hugging_face_token(config)),
             CivitaiModelDownloader(self.get_civitai_token(config)),
@@ -454,8 +454,8 @@ class ModelDownloader:
 
     def get_hugging_face_token(self, config: AppSettings) -> str:
         """Return Hugging Face Key."""
-        return config.hugging_face_token
+        return config.hugging_face_token.get_secret_value()
 
     def get_civitai_token(self, config: AppSettings) -> str:
         """Return Civitai Face Key."""
-        return config.civitai_token
+        return config.civitai_token.get_secret_value()

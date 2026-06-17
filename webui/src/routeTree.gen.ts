@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
+import { Route as DashboardConfigRouteImport } from './routes/dashboard/config'
 import { Route as DashboardServicesServiceIdRouteImport } from './routes/dashboard/services/$serviceId'
 
 const SignInRoute = SignInRouteImport.update({
@@ -29,6 +30,11 @@ const DashboardIndexRoute = DashboardIndexRouteImport.update({
   path: '/',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardConfigRoute = DashboardConfigRouteImport.update({
+  id: '/config',
+  path: '/config',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardServicesServiceIdRoute =
   DashboardServicesServiceIdRouteImport.update({
     id: '/services/$serviceId',
@@ -39,11 +45,13 @@ const DashboardServicesServiceIdRoute =
 export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRouteWithChildren
   '/sign-in': typeof SignInRoute
+  '/dashboard/config': typeof DashboardConfigRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/dashboard/services/$serviceId': typeof DashboardServicesServiceIdRoute
 }
 export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
+  '/dashboard/config': typeof DashboardConfigRoute
   '/dashboard': typeof DashboardIndexRoute
   '/dashboard/services/$serviceId': typeof DashboardServicesServiceIdRoute
 }
@@ -51,6 +59,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/dashboard': typeof DashboardRouteWithChildren
   '/sign-in': typeof SignInRoute
+  '/dashboard/config': typeof DashboardConfigRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/dashboard/services/$serviceId': typeof DashboardServicesServiceIdRoute
 }
@@ -59,14 +68,20 @@ export interface FileRouteTypes {
   fullPaths:
     | '/dashboard'
     | '/sign-in'
+    | '/dashboard/config'
     | '/dashboard/'
     | '/dashboard/services/$serviceId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/sign-in' | '/dashboard' | '/dashboard/services/$serviceId'
+  to:
+    | '/sign-in'
+    | '/dashboard/config'
+    | '/dashboard'
+    | '/dashboard/services/$serviceId'
   id:
     | '__root__'
     | '/dashboard'
     | '/sign-in'
+    | '/dashboard/config'
     | '/dashboard/'
     | '/dashboard/services/$serviceId'
   fileRoutesById: FileRoutesById
@@ -99,6 +114,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardIndexRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/config': {
+      id: '/dashboard/config'
+      path: '/config'
+      fullPath: '/dashboard/config'
+      preLoaderRoute: typeof DashboardConfigRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/services/$serviceId': {
       id: '/dashboard/services/$serviceId'
       path: '/services/$serviceId'
@@ -110,11 +132,13 @@ declare module '@tanstack/react-router' {
 }
 
 interface DashboardRouteChildren {
+  DashboardConfigRoute: typeof DashboardConfigRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   DashboardServicesServiceIdRoute: typeof DashboardServicesServiceIdRoute
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
+  DashboardConfigRoute: DashboardConfigRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   DashboardServicesServiceIdRoute: DashboardServicesServiceIdRoute,
 }

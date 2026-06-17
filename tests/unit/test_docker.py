@@ -1497,7 +1497,7 @@ async def test_start_docker_compose_raises_docker_compose_start_error_on_nonzero
 
 
 @pytest.mark.asyncio
-async def test_ensure_compose_running_gpu_toolkit_error_sets_no_gpu_support(docker_service: DockerService, tmp_path: Path) -> None:
+async def test_ensure_compose_running_gpu_toolkit_error_raises_actionable_app_error(docker_service: DockerService, tmp_path: Path) -> None:
     gpu = NvidiaGpuInfo(name="RTX 3090", vram="24 GB", id=0)
     options = _opts(hardware=[gpu])
     compose_file = tmp_path / "compose.yaml"
@@ -1510,11 +1510,11 @@ async def test_ensure_compose_running_gpu_toolkit_error_sets_no_gpu_support(dock
             new_callable=AsyncMock,
             side_effect=DockerComposeStartError("", "could not select device driver"),
         ),
-        pytest.raises(AppError),
+        pytest.raises(AppError, match="NVIDIA container toolkit"),
     ):
         await docker_service._ensure_compose_running(compose_file, options, is_running=False, has_difference=True, port=None)  # type: ignore[reportPrivateUsage]
 
-    assert docker_service.has_gpu_support is False
+    assert docker_service.has_gpu_support is True
 
 
 @pytest.mark.asyncio
@@ -1558,7 +1558,7 @@ async def test_ensure_compose_running_non_gpu_start_error_raises_app_error(docke
 
 
 @pytest.mark.asyncio
-async def test_assert_compose_healthy_gpu_error_in_logs_sets_no_gpu_support(docker_service: DockerService, tmp_path: Path) -> None:
+async def test_assert_compose_healthy_gpu_error_in_logs_raises_actionable_app_error(docker_service: DockerService, tmp_path: Path) -> None:
     gpu = NvidiaGpuInfo(name="RTX 3090", vram="24 GB", id=0)
     options = _opts(hardware=[gpu])
     compose_file = tmp_path / "compose.yaml"
@@ -1566,11 +1566,11 @@ async def test_assert_compose_healthy_gpu_error_in_logs_sets_no_gpu_support(dock
     with (
         patch.object(docker_service, "is_docker_compose_healthy", new_callable=AsyncMock, return_value=False),
         patch.object(docker_service, "get_docker_compose_logs", new_callable=AsyncMock, return_value="could not select device driver"),
-        pytest.raises(AppError),
+        pytest.raises(AppError, match="NVIDIA container toolkit"),
     ):
         await docker_service._assert_compose_healthy(compose_file, options, start_output=None)  # type: ignore[reportPrivateUsage]
 
-    assert docker_service.has_gpu_support is False
+    assert docker_service.has_gpu_support is True
 
 
 @pytest.mark.asyncio

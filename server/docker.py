@@ -824,7 +824,6 @@ class DockerService:
             if uses_gpu:
                 gpu_msg = _diagnose_gpu_error(f"{exc.stdout}\n{exc.stderr}")
                 if gpu_msg:
-                    self.has_gpu_support = False
                     raise AppError(gpu_msg) from None
             msg = f"Failed to start {options.name}: {exc.stderr or exc.stdout}"
             raise AppError(msg) from None
@@ -835,25 +834,26 @@ class DockerService:
         is_healthy = await self.is_docker_compose_healthy(compose_path, options.service_name)
         if is_healthy:
             return
-        if bool(options.hardware):
-            logs = ""
-            with suppress(Exception):
-                logs = await self.get_docker_compose_logs(compose_path)
-            combined = "\n".join(
-                filter(
-                    None,
-                    [
-                        start_output.stdout if start_output else "",
-                        start_output.stderr if start_output else "",
-                        logs,
-                    ],
-                )
+        logs = ""
+        with suppress(Exception):
+            logs = await self.get_docker_compose_logs(compose_path)
+        combined = "\n".join(
+            filter(
+                None,
+                [
+                    start_output.stdout if start_output else "",
+                    start_output.stderr if start_output else "",
+                    logs,
+                ],
             )
+        )
+        if bool(options.hardware):
             gpu_msg = _diagnose_gpu_error(combined)
             if gpu_msg:
-                self.has_gpu_support = False
                 raise AppError(gpu_msg)
         msg = f"Container {options.name} failed to become healthy"
+        if combined:
+            msg = f"{msg}:\n{combined}"
         raise AppError(msg)
 
     async def install_and_run_docker(self, options: DockerOptions) -> int:

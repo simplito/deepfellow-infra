@@ -497,11 +497,11 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
 
     def get_hugging_face_token(self) -> str:
         """Return Hugging Face Key."""
-        return self.config.hugging_face_token
+        return self.config.hugging_face_token.get_secret_value()
 
     def get_civitai_token(self) -> str:
         """Return Civitai Face Key."""
-        return self.config.civitai_token
+        return self.config.civitai_token.get_secret_value()
 
     def _has_gpu_for_spec(self) -> str:
         return "true" if self.docker_service.has_gpu_support else "false"
