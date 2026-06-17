@@ -381,7 +381,7 @@ class ModelProps(BaseModel):
     prefix: str | None = None
 
 
-type ModelType = Literal["llm", "embedding", "tts", "stt", "rerank", "txt2img", "mcp"]
+type ModelType = Literal["llm", "embedding", "tts", "stt", "rerank", "txt2img", "mcp", "custom"]
 
 type ModelId = str
 type RegistrationId = str
