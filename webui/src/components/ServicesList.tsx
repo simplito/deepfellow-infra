@@ -36,6 +36,7 @@ import { ProgressBadge } from "./ProgressBadge";
 import { ContentModal } from "./ContentModal";
 import { WarningsModal } from "./WarningsModal";
 import { MeshInfoModal } from "./MeshInfoModal";
+import { ServiceSettingsModal } from "./ServiceSettingsModal";
 import { useModal } from "@/hooks/use-modal";
 import type { Service, InstallProgress } from "@/deepfellow/types";
 import { InstallationWarningsError } from "@/deepfellow/types";
@@ -677,14 +678,13 @@ export function ServicesList() {
               <TableHead>Service ID</TableHead>
               <TableHead className="min-w-[150px]">Status</TableHead>
               <TableHead>Resources</TableHead>
-              <TableHead>Configuration</TableHead>
               <TableHead className="text-right min-w-[165px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredServices.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
+                <TableCell colSpan={4} className="text-center text-muted-foreground">
                   {searchQuery ? "No services found matching your search" : "No services available"}
                 </TableCell>
               </TableRow>
@@ -755,26 +755,6 @@ export function ServicesList() {
                       )}
                     </TableCell>
                     <TableCell className="font-mono text-sm">{sizeInfo || "N/A"}</TableCell>
-                    <TableCell>
-                      {isInstalled &&
-                      service.installed &&
-                      typeof service.installed === "object" &&
-                      !installedIsProgress ? (
-                        <div className="space-y-1">
-                          {Object.entries(service.installed).map(([key, value]) => {
-                            const field = service.spec.fields.find((f) => f.name === key);
-                            const displayValue = field?.type === "password" ? "•••••" : ((value && typeof(value) === "object") ? JSON.stringify(value) : String(value ?? ""));
-                            return (
-                              <div key={key} className="text-xs truncate max-w-xs">
-                                <span className="font-medium">{key}:</span> {displayValue}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2" data-prevent-row-click>
                         {isInProgress || installedIsProgress ? null : !isInstalled ? (
@@ -821,7 +801,17 @@ export function ServicesList() {
                             </DropdownMenu>
                           </>
                         ) : (
-                          <DropdownMenu>
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                modal.open(ServiceSettingsModal, { service })
+                              }
+                            >
+                              Settings
+                            </Button>
+                            <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="outline" size="sm">
                                 <MoreVertical className="h-4 w-4" />
@@ -861,6 +851,7 @@ export function ServicesList() {
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
+                          </>
                         )}
                       </div>
                     </TableCell>

@@ -1,3 +1,6 @@
+import { ServiceModels } from "@/components/ServiceModels";
+import { SiteHeader } from "@/components/dashboard/site-header";
+import { useRequireAuth } from "@/hooks/use-auth";
 /*
 DeepFellow Software Framework.
 Copyright © 2025 Simplito sp. z o.o.
@@ -9,9 +12,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 import { createFileRoute } from "@tanstack/react-router";
-import { ServiceModels } from "@/components/ServiceModels";
-import { useRequireAuth } from "@/hooks/use-auth";
-import { SiteHeader } from "@/components/dashboard/site-header";
 
 export const Route = createFileRoute("/dashboard/services/$serviceId")({
   component: ServiceModelsPage,
