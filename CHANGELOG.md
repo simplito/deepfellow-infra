@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Readable, read-only view of an installed service's configuration in the WebUI: a "Settings" button on each installed service opens a dialog showing every option with its proper field label (reusing the install-form spec metadata), with password fields masked and revealable via an eye icon. This replaces the raw key/value config dump previously shown inline in the services list.
 - Admin-only **Configuration** page in the WebUI: displays all infra environment variables with copy-to-clipboard buttons; secret values (API keys, tokens) are masked by default and revealed on demand via an eye icon; filled values sort to the top of the table.
 - Cancel button for an in-progress model installation in the WebUI. Cancelling stops the underlying Docker image pull, tears down the whole install promise chain (no orphaned background tasks), closes the progress stream cleanly, and leaves the model uninstalled.
 - MCP servers can now be registered from the Infra Web Panel in three ways: running a stdio-based server in Docker via a built-in bridge (Command), proxying a remote endpoint (Remote URL), or using a pre-built Docker image (Custom Image).
