@@ -33,7 +33,10 @@ ERROR_MAPPING = {
 
 def raise_ollama_pull_error(raw_data: str) -> None:
     """Parse a failed Ollama /api/pull response and raise an appropriate HTTPException."""
-    record = json.loads(raw_data)
+    try:
+        record = json.loads(raw_data)
+    except json.JSONDecodeError:
+        raise HTTPException(400, "Model not available") from None
     ollama_error: str = record.get("error", "")
     for error_fragment, (status_code, message) in ERROR_MAPPING.items():
         if error_fragment in ollama_error:

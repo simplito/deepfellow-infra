@@ -2830,7 +2830,7 @@ async def test_mcp_sse_proxy_post_valid_session_forwards_to_upstream() -> None:
     post_request.method = "POST"
     post_request.headers = {"content-type": "application/json"}
     post_request.query_params = {"sessionId": "valid1"}
-    post_request.stream = AsyncMock()
+    post_request.stream = MagicMock()
 
     with patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, return_value=mock_upstream_post):
         result = await ep.endpoint.on_request(post_request)  # pyright: ignore[reportOptionalMemberAccess]

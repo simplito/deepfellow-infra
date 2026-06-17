@@ -108,7 +108,14 @@ export interface GpuCardStats {
 export interface GpuStats {
   total_vram_gb: number;
   used_vram_gb: number;
-  gpus?: GpuCardStats[] | null;
+  gpus: GpuCardStats[] | null;
+}
+
+export interface SystemStats {
+  cpu_percent: number;
+  cpu_model: string;
+  ram_total_gb: number;
+  ram_used_gb: number;
 }
 
 export interface ServiceModelsResponse {
@@ -143,6 +150,22 @@ export class InstallationWarningsError extends Error {
     this.name = "InstallationWarningsError";
     this.warnings = warnings;
   }
+}
+
+// Config types
+export interface ConfigEntry {
+  key: string;
+  value: string;
+  is_secret: boolean;
+}
+
+export interface ConfigOut {
+  entries: ConfigEntry[];
+}
+
+export interface ConfigRevealOut {
+  key: string;
+  value: string;
 }
 
 // Mesh types

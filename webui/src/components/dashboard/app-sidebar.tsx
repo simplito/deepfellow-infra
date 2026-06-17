@@ -1,3 +1,17 @@
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
+import { Link, useRouterState } from "@tanstack/react-router";
+import { FileText, Server, Settings } from "lucide-react";
 /*
 DeepFellow Software Framework.
 Copyright © 2025 Simplito sp. z o.o.
@@ -8,28 +22,19 @@ This software is Licensed under the DeepFellow Free License.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-import * as React from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
-import { Server, FileText } from "lucide-react";
+import type * as React from "react";
 import { NavUser } from "./nav-user";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-} from "@/components/ui/sidebar";
 
 const navigationItems = [
   {
     title: "Services",
     url: "/dashboard",
     icon: Server,
+  },
+  {
+    title: "Configuration",
+    url: "/dashboard/config",
+    icon: Settings,
   },
   {
     title: "Documentation",
@@ -58,7 +63,9 @@ export function AppSidebar({ onLogout, ...props }: AppSidebarProps) {
             >
               <Link to="/dashboard">
                 <Server className="size-5" />
-                <span className="text-base font-semibold">DeepFellow Infra</span>
+                <span className="text-base font-semibold">
+                  DeepFellow Infra
+                </span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

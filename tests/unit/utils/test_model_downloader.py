@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from multidict import CIMultiDict, CIMultiDictProxy
+from pydantic import SecretStr
 
 from server.utils.core import DownloadedPacket, HttpClientError, PreDownloadPacket, SuccessDownloadPacket
 from server.utils.model_downloader import (
@@ -38,10 +39,10 @@ def make_http_error(body: str = "error") -> HttpClientError:
 def make_mock_config(tmp_path: Path) -> MagicMock:
     config = MagicMock()
     config.get_storage_dir.return_value = tmp_path
-    config.hugging_face_token = "hf-token"
-    config.civitai_token = "civitai-token"
+    config.hugging_face_token = SecretStr("hf-token")
+    config.civitai_token = SecretStr("civitai-token")
     config.adapter_registry_url = "http://registry.local:5000"
-    config.adapter_registry_secret = "secret"
+    config.adapter_registry_secret = SecretStr("secret")
     return config
 
 

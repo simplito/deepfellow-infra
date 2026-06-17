@@ -9,14 +9,16 @@
 
 """Hardware module."""
 
+import asyncio
 import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import cpuinfo  # type: ignore
+import psutil
 
-from server.models.services import GpuCardStats, GpuStats
+from server.models.services import GpuCardStats, GpuStats, SystemStats
 from server.utils.core import Utils
 
 INTEL_VENDOR_ID = "0x8086"
@@ -30,6 +32,7 @@ class HardwarePartInfo:
 
 @dataclass
 class CpuInfo(HardwarePartInfo):
+    model: str
     avx512: bool
 
 
@@ -79,8 +82,10 @@ def is_cpu_has_avx512() -> bool:
 
 async def get_cpu_info() -> CpuInfo:
     """Get CPU info."""
-    avx512: bool = is_cpu_has_avx512()
-    return CpuInfo(avx512)
+    info = cpuinfo.get_cpu_info()
+    model: str = info.get("brand_raw", "Unknown CPU")
+    avx512: bool = any(flag.startswith("avx512") for flag in info.get("flags", []))
+    return CpuInfo(model=model, avx512=avx512)
 
 
 def convert_mib_to_gb(mib: str) -> str:
@@ -368,6 +373,18 @@ class Hardware:
 
         return cards or None
 
+    async def get_system_stats(self) -> SystemStats:
+        """Return current CPU and RAM usage via psutil."""
+        self._ensure_collected()
+        mem = psutil.virtual_memory()
+        cpu_percent = await asyncio.to_thread(psutil.cpu_percent, interval=0.1)
+        return SystemStats(
+            cpu_percent=cpu_percent,
+            cpu_model=self._cpu.model,
+            ram_total_gb=round(mem.total / 1024**3, 2),
+            ram_used_gb=round(mem.used / 1024**3, 2),
+        )
+
     async def get_realtime_stats(self) -> GpuStats | None:
         """Return live GPU stats (NVIDIA or AMD), cached for up to _REALTIME_STATS_TTL seconds."""
         if time.monotonic() - self._realtime_stats_cache_ts < _REALTIME_STATS_TTL:
@@ -379,7 +396,7 @@ class Hardware:
             GpuStats(
                 total_vram_gb=round(sum(c.total_vram_gb for c in cards), 2),
                 used_vram_gb=round(sum(c.used_vram_gb for c in cards), 2),
-                gpus=cards if len(cards) > 1 else None,
+                gpus=cards,
             )
             if cards
             else None

@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from fastapi import HTTPException
+from pydantic import SecretStr
 
 from server.docker import DockerImage
 from server.models.models import (
@@ -969,13 +970,13 @@ def test_get_instance_installed_info_returns_value_when_installed(base2_svc: _Ba
 
 
 def test_get_hugging_face_token(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
-    base2_deps["config"].hugging_face_token = "hf-abc"
+    base2_deps["config"].hugging_face_token = SecretStr("hf-abc")
 
     assert base2_svc.get_hugging_face_token() == "hf-abc"
 
 
 def test_get_civitai_token(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
-    base2_deps["config"].civitai_token = "civ-xyz"
+    base2_deps["config"].civitai_token = SecretStr("civ-xyz")
 
     assert base2_svc.get_civitai_token() == "civ-xyz"
 

@@ -844,7 +844,7 @@ def create_finetune_model(custom_service: CustomService, subnet: str | None) -> 
             hardware=hardware_parts,
             subnet=subnet,
             env_vars={
-                "HF_TOKEN": custom_service.config.hugging_face_token,
+                "HF_TOKEN": custom_service.config.hugging_face_token.get_secret_value(),
             },
             healthcheck={
                 "test": "wget -q --spider http://localhost:8333/health",

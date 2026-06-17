@@ -10,6 +10,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 import type {
+  ConfigOut,
+  ConfigRevealOut,
   GpuStats,
   InfraSettings,
   MeshTopologyNode,
@@ -18,6 +20,7 @@ import type {
   ServiceModel,
   ServiceModelsResponse,
   ShowMeshInfoOut,
+  SystemStats,
   TestResult,
 } from "./types";
 import { InstallationWarningsError } from "./types";
@@ -264,12 +267,15 @@ export class DeepFellowClient {
     );
   }
 
-  async cancelAdminServiceModelInstall(serviceId: string, modelId: string): Promise<{ status: string }> {
+  async cancelAdminServiceModelInstall(
+    serviceId: string,
+    modelId: string,
+  ): Promise<{ status: string }> {
     return this.makeRequest<{ status: string }>(
       `/admin/services/${serviceId}/models/cancel?model_id=${encodeURIComponent(modelId)}`,
       {
         method: "POST",
-      }
+      },
     );
   }
 
@@ -279,7 +285,7 @@ export class DeepFellowClient {
     spec: Record<string, unknown>,
     onProgress: (event: ProgressEvent) => void,
     ignoreWarnings = false,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     const url = `${this.baseURL}/admin/services/${serviceId}/models/_?model_id=${encodeURIComponent(modelId)}`;
     const adminApiKey = AdminApiKeyStorage.get();
@@ -472,6 +478,10 @@ export class DeepFellowClient {
     }
   }
 
+  async getSystemStats(): Promise<SystemStats> {
+    return this.makeRequest<SystemStats>("/admin/settings/hardware/system-stats");
+  }
+
   async getMeshInfo(): Promise<ShowMeshInfoOut> {
     return this.makeRequest<ShowMeshInfoOut>("/admin/mesh/info");
   }
@@ -491,6 +501,16 @@ export class DeepFellowClient {
       method: "PUT",
       body: JSON.stringify(settings),
     });
+  }
+
+  async getConfig(): Promise<ConfigOut> {
+    return this.makeRequest<ConfigOut>("/admin/config");
+  }
+
+  async revealConfigEntry(key: string): Promise<ConfigRevealOut> {
+    return this.makeRequest<ConfigRevealOut>(
+      `/admin/config/${encodeURIComponent(key)}/reveal`,
+    );
   }
 }
 
