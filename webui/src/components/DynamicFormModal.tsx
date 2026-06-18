@@ -31,6 +31,7 @@ interface DynamicFormModalProps {
   onOpenChange: (open: boolean) => void;
   title: string;
   fields: SpecField[];
+  initialData?: Record<string, unknown>;
   onSubmit: (data: Record<string, unknown>) => void;
   isSubmitting?: boolean;
   isLoading?: boolean;
@@ -44,6 +45,7 @@ export function DynamicFormModal({
   onOpenChange,
   title,
   fields,
+  initialData: initialDataProp,
   onSubmit,
   isSubmitting = false,
   isLoading = false,
@@ -70,7 +72,17 @@ export function DynamicFormModal({
     isLoading ||
     (deferRender && open && renderFields.length === 0 && fields.length > 0);
 
-  const initialData = useMemo(() => initFormData(renderFields), [renderFields]);
+  const initialData = useMemo(() => {
+    const defaults = initFormData(renderFields);
+    if (!initialDataProp) return defaults;
+    const merged = { ...defaults };
+    for (const field of renderFields) {
+      if (field.name in initialDataProp) {
+        merged[field.name] = initialDataProp[field.name];
+      }
+    }
+    return merged;
+  }, [renderFields, initialDataProp]);
   const [formData, setFormData] =
     useState<Record<string, unknown>>(initialData);
   const [errors, setErrors] = useState<Record<string, string>>({});

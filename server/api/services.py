@@ -66,6 +66,31 @@ async def install_service(
     return result_json
 
 
+@router.put(
+    "/{service_id}",
+    summary="Update the service configuration.",
+)
+@tracer.trace_request()
+async def update_service(
+    request: Request,  # noqa: ARG001 needed for tracer
+    model: Annotated[InstallServiceIn, Body()],
+    service_id: Annotated[str, Path(description="The ID of the service to update")],
+    services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
+    _: Annotated[str, Depends(auth_admin)],
+) -> Response:
+    """Update an installed service's configuration, recreating the underlying container as needed."""
+    msg = f"{service_id} service updating."
+    logger.debug(msg)
+    promise = await services_manager.update_service(service_id, model)
+    if model.stream:
+        return await convert_promise_with_progress_to_fastapi_response(promise)
+    result = await promise.wait()
+    result_json = JSONResponse(result.model_dump())
+    msg = f"{service_id} service updated."
+    logger.info(msg)
+    return result_json
+
+
 @router.delete(
     "/{service_id}",
     summary="Uninstall the service.",

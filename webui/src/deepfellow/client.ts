@@ -134,6 +134,37 @@ export class DeepFellowClient {
     onProgress: (event: ProgressEvent) => void,
     ignoreWarnings = false,
   ): Promise<void> {
+    return this.writeAdminServiceStreaming(
+      "POST",
+      serviceId,
+      spec,
+      onProgress,
+      ignoreWarnings,
+    );
+  }
+
+  async updateAdminServiceStreaming(
+    serviceId: string,
+    spec: Record<string, unknown>,
+    onProgress: (event: ProgressEvent) => void,
+    ignoreWarnings = false,
+  ): Promise<void> {
+    return this.writeAdminServiceStreaming(
+      "PUT",
+      serviceId,
+      spec,
+      onProgress,
+      ignoreWarnings,
+    );
+  }
+
+  private async writeAdminServiceStreaming(
+    method: "POST" | "PUT",
+    serviceId: string,
+    spec: Record<string, unknown>,
+    onProgress: (event: ProgressEvent) => void,
+    ignoreWarnings = false,
+  ): Promise<void> {
     const url = `${this.baseURL}/admin/services/${serviceId}`;
     const adminApiKey = AdminApiKeyStorage.get();
 
@@ -151,7 +182,7 @@ export class DeepFellowClient {
     }
 
     const response = await fetch(url, {
-      method: "POST",
+      method,
       headers,
       body: JSON.stringify(body),
     });

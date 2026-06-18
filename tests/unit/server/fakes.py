@@ -80,6 +80,9 @@ class FakeService(BaseService):
     async def install_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
         return MagicMock()
 
+    async def update_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
+        return MagicMock()
+
     async def uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
         pass
 

@@ -56,7 +56,7 @@ export function ServicesList() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [installingServiceId, setInstallingServiceId] = useState<string | null>(null);
-  const pendingInstallationRef = useRef<{ serviceId: string; spec: Record<string, unknown>; size?: string | Record<string, string> } | null>(null);
+  const pendingInstallationRef = useRef<{ serviceId: string; spec: Record<string, unknown>; size?: string | Record<string, string>; update?: boolean } | null>(null);
   const hasWarningsRef = useRef(false);
   const simulationStopFnsRef = useRef<Record<string, SimulationHandle>>({});
   const hasRealProgressRef = useRef<Record<string, boolean>>({});
@@ -231,7 +231,7 @@ export function ServicesList() {
   }, [servicesList, queryClient]);
 
   const installMutation = useMutation({
-    mutationFn: ({ serviceId, spec, size, ignoreWarnings = false }: { serviceId: string; spec: Record<string, unknown>; size?: string | Record<string, string>; ignoreWarnings?: boolean }) => {
+    mutationFn: ({ serviceId, spec, size, ignoreWarnings = false, update = false }: { serviceId: string; spec: Record<string, unknown>; size?: string | Record<string, string>; ignoreWarnings?: boolean; update?: boolean }) => {
       return new Promise<void>((resolve, reject) => {
         let currentStage: "install" | "download" = "download";
         const installStartTime = Date.now();
@@ -243,7 +243,9 @@ export function ServicesList() {
         });
         simulationStopFnsRef.current[serviceId] = sim;
 
-        apiClient.installAdminServiceStreaming(
+        const stream = update ? apiClient.updateAdminServiceStreaming : apiClient.installAdminServiceStreaming;
+        stream.call(
+          apiClient,
           serviceId,
           spec,
           (event: ProgressEvent) => {
@@ -289,7 +291,7 @@ export function ServicesList() {
       delete hasRealProgressRef.current[variables.serviceId];
       queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
       pendingInstallationRef.current = null;
-      toast.success("Service installed successfully");
+      toast.success(variables.update ? "Service updated successfully" : "Service installed successfully");
     },
     onError: (error, variables) => {
       const simStop = simulationStopFnsRef.current[variables.serviceId];
@@ -312,7 +314,7 @@ export function ServicesList() {
 
       hasWarningsRef.current = false;
       clearServiceInstallProgress(variables.serviceId);
-      toast.error(`Failed to install service: ${error.message}`);
+      toast.error(`Failed to ${variables.update ? "update" : "install"} service: ${error.message}`);
     },
     onSettled: () => {
       // Only reset if not showing warnings modal
@@ -521,6 +523,26 @@ export function ServicesList() {
     }
   };
 
+  const handleEditClick = (service: Service) => {
+    const installed = service.installed;
+    const currentValues =
+      installed && typeof installed === "object" && !("stage" in (installed as Record<string, unknown>))
+        ? (installed as Record<string, unknown>)
+        : {};
+    modal.open(DynamicFormModal, {
+      title: `Edit ${service.id}`,
+      fields: service.spec.fields,
+      initialData: currentValues,
+      submitLabel: "Save",
+      submittingLabel: "Saving...",
+      onSubmit: (spec: Record<string, unknown>) => {
+        pendingInstallationRef.current = { serviceId: service.id, spec, size: service.size, update: true };
+        installMutation.mutate({ serviceId: service.id, spec, size: service.size, update: true });
+      },
+      isSubmitting: false,
+    });
+  };
+
   const handleWarningsContinue = () => {
     if (pendingInstallationRef.current) {
       hasWarningsRef.current = false;
@@ -528,6 +550,7 @@ export function ServicesList() {
         serviceId: pendingInstallationRef.current.serviceId,
         spec: pendingInstallationRef.current.spec,
         size: pendingInstallationRef.current.size,
+        update: pendingInstallationRef.current.update,
         ignoreWarnings: true
       });
     }
@@ -806,7 +829,7 @@ export function ServicesList() {
                               variant="outline"
                               size="sm"
                               onClick={() =>
-                                modal.open(ServiceSettingsModal, { service })
+                                modal.open(ServiceSettingsModal, { service, onEdit: handleEditClick })
                               }
                             >
                               Settings

@@ -327,6 +327,38 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         self.instances_info[instance].installing = InstallingInstance(promise=next_promise)
         return next_promise
 
+    async def update_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
+        """Update an installed service by re-applying the install flow with new options.
+
+        The underlying container is recreated to pick up the new options; already-installed models are
+        preserved (their weights stay on disk) and re-registered against the recreated container.
+        """
+        info = self.get_instance_info(instance)
+        if info.installing:
+            raise HTTPException(status_code=400, detail=f"Service {self.get_id(instance)} on {instance} instance is currently installing")
+        if not info.installed:
+            raise HTTPException(status_code=400, detail=f"Service {self.get_id(instance)} on {instance} instance is not installed")
+
+        preserved_models = (self._generate_instance_config(info.installed, info.config.custom).models) or []
+
+        await self._uninstall_instance(instance, UninstallServiceIn(purge=False))
+
+        async def func(data: InstalledInfoType) -> InstallServiceOut:
+            self.instances_info[instance].installed = data
+            for model in preserved_models:
+                await self.load_model(instance, model)
+            await self._save()
+            self.instances_info[instance].installing = None
+            return InstallServiceOut(status="OK")
+
+        def on_error(_e: Exception) -> None:
+            self.instances_info[instance].installing = None
+
+        promise = await self._install_instance(instance, options)
+        next_promise = promise.next(func, on_error)
+        self.instances_info[instance].installing = InstallingInstance(promise=next_promise)
+        return next_promise
+
     @abstractmethod
     async def _install_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstalledInfoType, StreamChunk]:
         """Install service."""
