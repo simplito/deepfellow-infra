@@ -1886,7 +1886,7 @@ async def test_build_image_timeout_raises_runtime_error(docker_service: DockerSe
     """build_image kills the process and raises RuntimeError when docker build times out."""
     mock_proc = MagicMock()
     mock_proc.stdout = _AsyncLineIterator([])
-    mock_proc.wait = AsyncMock(side_effect=TimeoutError)
+    mock_proc.wait = AsyncMock(side_effect=[TimeoutError, None])
     mock_proc.kill = MagicMock()
 
     with patch("server.docker.asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
@@ -1896,3 +1896,37 @@ async def test_build_image_timeout_raises_runtime_error(docker_service: DockerSe
             await docker_service.build_image(tmp_path, "tag:latest", stream)  # type: ignore[arg-type]
 
     mock_proc.kill.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_build_image_raises_runtime_error_when_stdout_is_none(docker_service: DockerService, tmp_path: Path) -> None:
+    """build_image raises RuntimeError immediately when the subprocess has no stdout pipe."""
+    mock_proc = MagicMock()
+    mock_proc.stdout = None
+
+    with patch("server.docker.asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        stream = MagicMock()
+        with pytest.raises(RuntimeError, match="no stdout"):
+            await docker_service.build_image(tmp_path, "tag:latest", stream)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_build_image_kills_process_when_stdout_iteration_raises(docker_service: DockerService, tmp_path: Path) -> None:
+    """build_image kills the process and re-raises when an error occurs while reading stdout."""
+
+    async def _broken_stream():
+        raise RuntimeError("broken pipe")
+        yield  # makes it an async generator
+
+    mock_proc = MagicMock()
+    mock_proc.stdout = _broken_stream()
+    mock_proc.kill = MagicMock()
+    mock_proc.wait = AsyncMock()
+
+    with patch("server.docker.asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=mock_proc):
+        stream = MagicMock()
+        with pytest.raises(RuntimeError, match="broken pipe"):
+            await docker_service.build_image(tmp_path, "tag:latest", stream)  # type: ignore[arg-type]
+
+    mock_proc.kill.assert_called_once()
+    mock_proc.wait.assert_called_once()

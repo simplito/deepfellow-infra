@@ -783,3 +783,20 @@ async def test_resolve_custom_model_size_returns_none_on_exception(svc: McpServi
     result = await svc._resolve_custom_model_size({"image": "myimage:latest"})  # pyright: ignore[reportPrivateUsage]
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_uninstall_instance_logs_error_when_model_uninstall_fails(svc: McpService) -> None:
+    installed = InstalledInfo(models={}, options=InstallServiceIn(spec={}))
+    mock_model = MagicMock()
+    mock_model.id = "open-websearch"
+    installed.models["open-websearch"] = mock_model
+    svc.instances_info["default"].installed = installed
+
+    with (
+        patch.object(svc, "_uninstall_model", new=AsyncMock(side_effect=RuntimeError("teardown error"))),
+        patch.object(svc, "is_model_installed_in_other_instance", return_value=False),
+    ):
+        await svc._uninstall_instance("default", UninstallServiceIn(purge=False))  # pyright: ignore[reportPrivateUsage]
+
+    assert svc.instances_info["default"].installed is None

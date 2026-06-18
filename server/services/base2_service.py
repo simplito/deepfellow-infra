@@ -406,7 +406,8 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
             return data
 
         def on_error(_e: Exception) -> None:
-            del installing_model_progress[model_id]
+            with contextlib.suppress(KeyError):
+                del installing_model_progress[model_id]
 
         promise = await self._install_model(instance, model_id, options)
 

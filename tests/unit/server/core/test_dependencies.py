@@ -116,7 +116,9 @@ def test_auth_admin_raises_401_when_invalid() -> None:
 def metrics_request() -> MagicMock:
     request = MagicMock()
     request.app.state.config.metrics_username = "user"
-    request.app.state.config.metrics_password = "pass"
+    metrics_password_mock = MagicMock()
+    metrics_password_mock.get_secret_value.return_value = "pass"
+    request.app.state.config.metrics_password = metrics_password_mock
     return request
 
 
