@@ -104,7 +104,6 @@ export type ParsedMcpConfig =
       envs: Record<string, string>;
     };
 
-
 export interface DockerFormState {
   data: Record<string, unknown>;
   errors: Record<string, string>;
@@ -112,7 +111,12 @@ export interface DockerFormState {
   setVolumes: (v: string[]) => void;
   handleChange: (name: string, value: unknown) => void;
   validate: () => Record<string, string>;
-  populate: (parsed: { name: string; image: string; command: string; volumes: string[] }) => void;
+  populate: (parsed: {
+    name: string;
+    image: string;
+    command: string;
+    volumes: string[];
+  }) => void;
 }
 
 export function useDockerForm(
@@ -148,7 +152,12 @@ export function useDockerForm(
     return errs;
   };
 
-  const populate = (parsed: { name: string; image: string; command: string; volumes: string[] }) => {
+  const populate = (parsed: {
+    name: string;
+    image: string;
+    command: string;
+    volumes: string[];
+  }) => {
     setData((prev) => ({
       ...prev,
       id: parsed.name,
@@ -159,7 +168,15 @@ export function useDockerForm(
     setErrors({});
   };
 
-  return { data, errors, volumes, setVolumes, handleChange, validate, populate };
+  return {
+    data,
+    errors,
+    volumes,
+    setVolumes,
+    handleChange,
+    validate,
+    populate,
+  };
 }
 
 export interface UrlFormState {
@@ -262,7 +279,6 @@ export function useUrlForm(
   };
 }
 
-
 type JsonStatus =
   | { ok: true; parsedName: string }
   | { ok: false; error: string }
@@ -291,6 +307,7 @@ export interface StdioFormState {
   errors: Record<string, string | undefined>;
   commandRef: React.RefObject<HTMLTextAreaElement | null>;
   handleJsonChange: (text: string) => void;
+  convertJson: () => boolean;
   handleCommandChange: (text: string) => void;
   handleVariantChange: (v: string) => void;
   clearErrors: () => void;
@@ -319,7 +336,12 @@ export function useStdioForm(
     headers: Record<string, string>;
   }) => void,
   /** Called when JSON paste is detected as a docker config. Component switches to Custom Image mode. */
-  onDockerParsed: (parsed: { name: string; image: string; command: string; volumes: string[] }) => void,
+  onDockerParsed: (parsed: {
+    name: string;
+    image: string;
+    command: string;
+    volumes: string[];
+  }) => void,
   parseMcpJson: (text: string) => ParsedMcpConfig,
   /** Called when JSON paste is detected as a stdio config. Component switches to Command mode. */
   onStdioParsed?: () => void,
@@ -327,7 +349,7 @@ export function useStdioForm(
   const [subMode, setSubMode] = useState<"import" | "manual">(
     initialValues ? "manual" : "import",
   );
-  const [jsonText, setJsonText] = useState("");
+  const [jsonText, setJsonText] = useState<string>("");
   const [jsonStatus, setJsonStatus] = useState<JsonStatus>(null);
   const [command, setCommand] = useState(initialValues?.command ?? "");
   const [baseImage, setBaseImage] = useState<string | undefined>(
@@ -412,23 +434,30 @@ export function useStdioForm(
     setJsonText(text);
     if (!text.trim()) {
       setJsonStatus(null);
-      setCommand("");
-      setBaseImage(undefined);
-      if (!variantIsManual) setVariant("");
       return;
     }
-    if (tryApplyJson(text)) {
-      setSubMode("manual");
-      setJsonText("");
-    } else {
+    if (!text.trimStart().startsWith("{")) {
       setJsonStatus({
         ok: false,
         error: "Invalid JSON — expected mcpServers config.",
       });
-      setCommand("");
-      setBaseImage(undefined);
-      if (!variantIsManual) setVariant("");
+      return;
     }
+    try {
+      const parsed = parseMcpJson(text);
+      setJsonStatus({ ok: true, parsedName: parsed.name });
+    } catch {
+      setJsonStatus({
+        ok: false,
+        error: "Invalid JSON — expected mcpServers config.",
+      });
+    }
+  };
+
+  const convertJson = (): boolean => {
+    if (!tryApplyJson(jsonText)) return false;
+    setSubMode("manual");
+    return true;
   };
 
   const handleCommandChange = (text: string) => {
@@ -505,6 +534,7 @@ export function useStdioForm(
     errors,
     commandRef,
     handleJsonChange,
+    convertJson,
     handleCommandChange,
     handleVariantChange,
     clearErrors,
