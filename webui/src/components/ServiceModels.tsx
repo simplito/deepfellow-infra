@@ -393,6 +393,18 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
     [handleCancelInstall]
   );
 
+  // Render the progress toast from the store, so its % matches the table row.
+  const syncProgressToast = useCallback(
+    (modelId: string) => {
+      const toastId = toastIdsRef.current[modelId];
+      if (!toastId) return;
+      const progress = getSnapshot().models[`${serviceId}::${modelId}`];
+      if (!progress) return;
+      toast.loading(`${getStageLabel(progress.stage)} ${modelId}: ${(progress.value * 100).toFixed(1)}%`, progressToastOptions(modelId, toastId));
+    },
+    [serviceId, progressToastOptions]
+  );
+
   const installMutation = useMutation({
     mutationFn: async ({ modelId, spec, size, ignoreWarnings = false }: { modelId: string; spec: Record<string, unknown>; size?: string; ignoreWarnings?: boolean }) => {
       const abortController = new AbortController();
@@ -409,10 +421,7 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
                 stage: currentStage,
                 value,
               });
-              const toastId = toastIdsRef.current[modelId];
-              if (toastId && !hasRealProgressByModelRef.current[modelId]) {
-                toast.loading(`${getStageLabel(currentStage)} ${modelId}: ${(value * 100).toFixed(1)}%`, progressToastOptions(modelId, toastId));
-              }
+              syncProgressToast(modelId);
             },
           });
           simulationStopFnsRef.current[simKey] = sim;
@@ -430,12 +439,7 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
                 currentStage = stage;
                 hasRealProgressByModelRef.current[modelId] = true;
                 setModelInstallProgress(serviceId, modelId, { stage, value });
-                const toastId = toastIdsRef.current[modelId];
-                if (toastId) {
-                  const percentage = (value * 100).toFixed(1);
-                  const stageLabel = getStageLabel(stage);
-                  toast.loading(`${stageLabel} ${modelId}: ${percentage}%`, progressToastOptions(modelId, toastId));
-                }
+                syncProgressToast(modelId);
               } else if (event.type === "finish") {
                 if (event.status === "ok") {
                   sim.smoothComplete(
