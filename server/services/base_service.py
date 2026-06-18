@@ -132,6 +132,10 @@ class BaseService(ABC):
         """Install the service."""
 
     @abstractmethod
+    async def update_instance(self, instance: str, options: InstallServiceIn) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
+        """Update the installed service configuration."""
+
+    @abstractmethod
     async def uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
         """Uninstall the instance."""
 

@@ -8,10 +8,12 @@ This software is Licensed under the DeepFellow Free License.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -22,12 +24,14 @@ interface ServiceSettingsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   service: Service;
+  onEdit?: (service: Service) => void;
 }
 
 export function ServiceSettingsModal({
   open,
   onOpenChange,
   service,
+  onEdit,
 }: ServiceSettingsModalProps) {
   const installed = service.installed;
   const installedOptions =
@@ -58,6 +62,14 @@ export function ServiceSettingsModal({
             </p>
           )}
         </div>
+        {installedOptions && onEdit && (
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <p className="text-xs text-muted-foreground sm:mr-auto">
+              Saving changes restarts the service.
+            </p>
+            <Button onClick={() => onEdit(service)}>Edit</Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );

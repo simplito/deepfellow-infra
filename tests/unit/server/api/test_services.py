@@ -52,6 +52,7 @@ def services_manager() -> MagicMock:
     promise = MagicMock()
     promise.wait = AsyncMock(return_value=InstallServiceOut(status="OK"))
     manager.install_service = AsyncMock(return_value=promise)
+    manager.update_service = AsyncMock(return_value=promise)
     manager.uninstall_service = AsyncMock(return_value=None)
     manager.get_service = AsyncMock(return_value=_make_retrieve_service_out())
     manager.get_service_install_progress = AsyncMock(return_value=promise)
@@ -133,6 +134,45 @@ def test_install_service_stream_returns_streaming_response(
         new=AsyncMock(return_value=streaming),
     ):
         resp = client.post(
+            "/admin/services/ollama",
+            json={"stream": True, "ignore_warnings": False, "spec": {}},
+            headers=auth_header,
+        )
+    assert resp.status_code == 200
+
+
+def test_update_service_200(client: TestClient, auth_header: dict[str, str]) -> None:
+    resp = client.put("/admin/services/ollama", json=INSTALL_BODY, headers=auth_header)
+
+    assert resp.status_code == 200
+
+
+def test_update_service_calls_manager(services_manager: MagicMock, client: TestClient, auth_header: dict[str, str]) -> None:
+    client.put("/admin/services/my-svc", json=INSTALL_BODY, headers=auth_header)
+
+    assert services_manager.update_service.call_count == 1
+    assert services_manager.update_service.call_args.args[0] == "my-svc"
+
+
+def test_update_service_returns_ok_status(client: TestClient, auth_header: dict[str, str]) -> None:
+    resp = client.put("/admin/services/ollama", json=INSTALL_BODY, headers=auth_header)
+
+    assert resp.json()["status"] == "OK"
+
+
+def test_update_service_stream_returns_streaming_response(
+    services_manager: MagicMock, client: TestClient, auth_header: dict[str, str]
+) -> None:
+    promise = MagicMock()
+    promise.wait = AsyncMock(return_value=InstallServiceOut(status="OK"))
+    services_manager.update_service = AsyncMock(return_value=promise)
+    streaming = StreamingResponse(iter([b"data"]), media_type="text/event-stream")
+
+    with patch(
+        "server.api.services.convert_promise_with_progress_to_fastapi_response",
+        new=AsyncMock(return_value=streaming),
+    ):
+        resp = client.put(
             "/admin/services/ollama",
             json={"stream": True, "ignore_warnings": False, "spec": {}},
             headers=auth_header,

@@ -176,6 +176,19 @@ async def test_install_service(services_manager: ServicesManager):
 
 
 @pytest.mark.asyncio
+async def test_update_service(services_manager: ServicesManager):
+    svc = FakeService("ollama")
+    svc.update_instance = AsyncMock(return_value=MagicMock())
+    services_manager.register_service(svc)
+    options = InstallServiceIn(spec={})
+
+    await services_manager.update_service("ollama", options)
+
+    assert svc.update_instance.await_count == 1
+    assert svc.update_instance.await_args == call("default", options)
+
+
+@pytest.mark.asyncio
 async def test_uninstall_service(services_manager: ServicesManager):
     svc = FakeService("ollama")
     svc.uninstall_instance = AsyncMock()

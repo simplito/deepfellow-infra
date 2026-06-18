@@ -89,6 +89,9 @@ class _BaseImpl(BaseService):
     async def install_instance(self, instance: str, options: InstallServiceIn) -> Any:
         raise NotImplementedError
 
+    async def update_instance(self, instance: str, options: InstallServiceIn) -> Any:
+        raise NotImplementedError
+
     async def uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
         pass
 
@@ -1203,3 +1206,81 @@ async def test_base_service_get_loaded_model_info_returns_none(base_svc: _BaseIm
     result = await base_svc.get_loaded_model_info("default")
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_update_instance_raises_when_not_installed(base2_svc: _Base2Impl) -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        await base2_svc.update_instance("default", InstallServiceIn(spec={}))
+
+    assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_update_instance_raises_when_already_installing(base2_svc: _Base2Impl) -> None:
+    base2_svc.instances_info["default"].installed = object()
+    base2_svc.instances_info["default"].installing = MagicMock()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await base2_svc.update_instance("default", InstallServiceIn(spec={}))
+
+    assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_update_instance_tears_down_then_reinstalls(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["service_provider"].save_service_config = AsyncMock()
+    base2_svc.instances_info["default"].installed = object()
+    new_installed: dict[str, Any] = {}
+    promise: PromiseWithProgress[Any, StreamChunk] = PromiseWithProgress(value=new_installed)
+
+    with (
+        patch.object(base2_svc, "_uninstall_instance", new=AsyncMock()) as uninstall_mock,
+        patch.object(base2_svc, "_install_instance", new=AsyncMock(return_value=promise)),
+    ):
+        result_promise = await base2_svc.update_instance("default", InstallServiceIn(spec={"key": "new"}))
+        await result_promise.wait()
+
+    assert uninstall_mock.await_args is not None
+    assert uninstall_mock.await_args.args[1].purge is False
+    assert base2_svc.instances_info["default"].installed is new_installed
+    assert base2_svc.instances_info["default"].installing is None
+
+
+@pytest.mark.asyncio
+async def test_update_instance_reloads_preserved_models(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["service_provider"].save_service_config = AsyncMock()
+    base2_svc.instances_info["default"].installed = object()
+    preserved = ModelConfig(model_id="m1", options=InstallModelIn())
+    promise: PromiseWithProgress[Any, StreamChunk] = PromiseWithProgress(value={})
+
+    with (
+        patch.object(base2_svc, "_uninstall_instance", new=AsyncMock()),
+        patch.object(base2_svc, "_install_instance", new=AsyncMock(return_value=promise)),
+        patch.object(base2_svc, "_generate_instance_config", return_value=InstanceConfig(models=[preserved])),
+        patch.object(base2_svc, "load_model", new=AsyncMock()) as load_model_mock,
+    ):
+        result_promise = await base2_svc.update_instance("default", InstallServiceIn(spec={}))
+        await result_promise.wait()
+
+    load_model_mock.assert_awaited_once_with("default", preserved)
+
+
+@pytest.mark.asyncio
+async def test_update_instance_on_error_clears_installing(base2_svc: _Base2Impl) -> None:
+    base2_svc.instances_info["default"].installed = object()
+
+    async def fail_func(stream: Any) -> Any:
+        raise RuntimeError("update failed")
+
+    fail_promise: PromiseWithProgress[Any, StreamChunk] = PromiseWithProgress(func=fail_func)
+
+    with (
+        patch.object(base2_svc, "_uninstall_instance", new=AsyncMock()),
+        patch.object(base2_svc, "_install_instance", new=AsyncMock(return_value=fail_promise)),
+    ):
+        result_promise = await base2_svc.update_instance("default", InstallServiceIn(spec={}))
+        with pytest.raises(RuntimeError):
+            await result_promise.wait()
+
+    assert base2_svc.instances_info["default"].installing is None

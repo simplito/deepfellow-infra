@@ -110,6 +110,11 @@ class ServicesManager:
         service_type, instance = self.split_service_type_and_instance(service_id)
         return await self._get_service(service_type).install_instance(instance, options)
 
+    async def update_service(self, service_id: str, options: InstallServiceIn) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
+        """Update an installed service's options."""
+        service_type, instance = self.split_service_type_and_instance(service_id)
+        return await self._get_service(service_type).update_instance(instance, options)
+
     async def uninstall_service(self, service_id: str, options: UninstallServiceIn) -> None:
         """Uninstall the service."""
         service_type, instance = self.split_service_type_and_instance(service_id)
