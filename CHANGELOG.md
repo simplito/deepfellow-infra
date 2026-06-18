@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - MCP servers can now be registered from the Infra Web Panel in three ways: running a stdio-based server in Docker via a built-in bridge (Command), proxying a remote endpoint (Remote URL), or using a pre-built Docker image (Custom Image).
 
 ### Fixed
+- Installing a service/model whose Docker container name is already taken now fails with a clear `409 Conflict` ("A container named '<name>' already exists — remove it or choose a different name") instead of a generic "unknown error" that swallowed the underlying docker "is already in use by container" message.
 - Fixed metrics password authentication always rejecting valid credentials by comparing a `SecretStr` object directly instead of calling `.get_secret_value()`.
 - Fixed docker build subprocess not being killed on cancellation or exception during log streaming, leaving orphaned processes.
 - Fixed `KeyError` crash when the install-progress error callback fired after the progress entry was already removed.

@@ -24,6 +24,7 @@ from typing import Any, NotRequired, TypedDict
 
 import yaml
 from aiodocker import Docker, DockerError
+from fastapi import HTTPException
 from pydantic import BaseModel
 
 from server.config import AppSettings
@@ -77,6 +78,18 @@ def _diagnose_gpu_error(text: str) -> str | None:
             "without a reboot. Run `nvidia-smi` on the host to verify driver status."
         )
     return None
+
+
+_CONTAINER_NAME_CONFLICT_PATTERNS = (
+    "is already in use",
+    "name is already in use",
+)
+
+
+def _is_container_name_conflict(text: str) -> bool:
+    """Return True if *text* indicates a docker container name collision."""
+    lower = text.lower()
+    return any(p in lower for p in _CONTAINER_NAME_CONFLICT_PATTERNS)
 
 
 DEFAULT_VARIANTS = {
@@ -828,10 +841,14 @@ class DockerService:
                 port = await self.create_compose_file(compose_path, options)
                 start_output = await self.start_docker_compose(compose_path)
         except DockerComposeStartError as exc:
+            combined = f"{exc.stdout}\n{exc.stderr}"
             if uses_gpu:
-                gpu_msg = _diagnose_gpu_error(f"{exc.stdout}\n{exc.stderr}")
+                gpu_msg = _diagnose_gpu_error(combined)
                 if gpu_msg:
                     raise AppError(gpu_msg) from None
+            if _is_container_name_conflict(combined):
+                name = options.container_name or options.name
+                raise HTTPException(409, f"A container named '{name}' already exists — remove it or choose a different name.") from None
             msg = f"Failed to start {options.name}: {exc.stderr or exc.stdout}"
             raise AppError(msg) from None
         return start_output, port
