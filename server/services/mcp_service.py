@@ -11,6 +11,7 @@
 
 import asyncio
 import json
+import logging
 import shlex
 import shutil
 from collections.abc import Callable
@@ -238,6 +239,9 @@ class DownloadedInfo:
     image: str
 
 
+logger = logging.getLogger("uvicorn.error")
+
+
 class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
     models: dict[str, dict[str, SrvMcpModel]]
 
@@ -405,7 +409,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
     async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
         installed = self.get_instance_info(instance).installed
         if installed:
-            await asyncio.gather(
+            results = await asyncio.gather(
                 *[
                     self._uninstall_model(instance, model.id, UninstallModelIn(purge=options.purge))
                     for model in installed.models.copy().values()
@@ -413,6 +417,9 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                 ],
                 return_exceptions=True,
             )
+            for result in results:
+                if isinstance(result, BaseException):
+                    logger.exception("Error uninstalling model during service teardown", exc_info=result)
 
         self.instances_info[instance].installed = None
 

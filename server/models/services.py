@@ -120,7 +120,7 @@ class GpuCardStats(BaseModel):
 class GpuStats(BaseModel):
     total_vram_gb: float
     used_vram_gb: float
-    gpus: list[GpuCardStats] | None
+    gpus: list[GpuCardStats] | None = None
 
 
 class SystemStats(BaseModel):

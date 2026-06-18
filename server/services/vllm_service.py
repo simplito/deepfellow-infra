@@ -523,6 +523,14 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
         logger.debug(msg)
         return gpu_memory_utilization
 
+    def _release_gpu_utilization(self, utilization: float | None) -> None:
+        if utilization:
+            self.gpu_memory_utilization -= utilization
+            if self.gpu_memory_utilization < 0:
+                self.gpu_memory_utilization = 0
+            msg = f"VLLM gpu utilization = {self.gpu_memory_utilization}"
+            logger.debug(msg)
+
     async def _get_quantization(self, parsed_model_options: VllmModelOptions, model: VllmModel) -> RegistrationId | None:
         quantization = parsed_model_options.quantization or model.quantization or None
         if quantization:
@@ -697,13 +705,11 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             )
             try:
                 docker_exposed_port = await self.docker_service.install_and_run_docker(docker_options)
+            except asyncio.CancelledError:
+                self._release_gpu_utilization(gpu_memory_utilization)
+                raise
             except Exception:
-                if model.gpu_memory_utilization:
-                    self.gpu_memory_utilization -= model.gpu_memory_utilization
-                    if self.gpu_memory_utilization < 0:
-                        self.gpu_memory_utilization = 0
-                    msg = f"VLLM gpu utilization = {self.gpu_memory_utilization}"
-                    logger.debug(msg)
+                self._release_gpu_utilization(gpu_memory_utilization)
                 await self.docker_service.stop_docker(docker_options)
                 raise
             registered_name = parsed_model_options.alias if parsed_model_options.alias else model_id

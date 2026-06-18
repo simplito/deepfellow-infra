@@ -620,14 +620,21 @@ class DockerService:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
-        assert proc.stdout is not None
-        async for raw_line in proc.stdout:
-            line = raw_line.decode(errors="replace").rstrip()
-            stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={"log": line}))
+        if proc.stdout is None:
+            raise RuntimeError("docker build process has no stdout")
+        try:
+            async for raw_line in proc.stdout:
+                line = raw_line.decode(errors="replace").rstrip()
+                stream.emit(StreamChunkProgress(type="progress", stage="install", value=0, data={"log": line}))
+        except BaseException:
+            proc.kill()
+            await proc.wait()
+            raise
         try:
             await asyncio.wait_for(proc.wait(), timeout=self.build_timeout)
         except TimeoutError:
             proc.kill()
+            await proc.wait()
             msg = f"docker build timed out after {self.build_timeout}s"
             raise RuntimeError(msg) from None
         if proc.returncode != 0:

@@ -7,12 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- All service types in the Infra WebUI now show a "↺ Refresh" button on their Models page; previously the button was only available for `ollama-external` services.
 - Readable, read-only view of an installed service's configuration in the WebUI: a "Settings" button on each installed service opens a dialog showing every option with its proper field label (reusing the install-form spec metadata), with password fields masked and revealable via an eye icon. This replaces the raw key/value config dump previously shown inline in the services list.
 - Admin-only **Configuration** page in the WebUI: displays all infra environment variables with copy-to-clipboard buttons; secret values (API keys, tokens) are masked by default and revealed on demand via an eye icon; filled values sort to the top of the table.
 - Cancel button for an in-progress model installation in the WebUI. Cancelling stops the underlying Docker image pull, tears down the whole install promise chain (no orphaned background tasks), closes the progress stream cleanly, and leaves the model uninstalled.
 - MCP servers can now be registered from the Infra Web Panel in three ways: running a stdio-based server in Docker via a built-in bridge (Command), proxying a remote endpoint (Remote URL), or using a pre-built Docker image (Custom Image).
 
 ### Fixed
+- Fixed metrics password authentication always rejecting valid credentials by comparing a `SecretStr` object directly instead of calling `.get_secret_value()`.
+- Fixed docker build subprocess not being killed on cancellation or exception during log streaming, leaving orphaned processes.
+- Fixed `KeyError` crash when the install-progress error callback fired after the progress entry was already removed.
+- Fixed MCP service teardown silently swallowing errors from model uninstall; errors are now logged.
+- Fixed VLLM GPU memory utilization not being released when model installation is cancelled via `asyncio.CancelledError`.
 - Installing a GPU-dependent service (e.g. Stable Diffusion) on a host without the NVIDIA container toolkit now surfaces a clear, actionable error instead of silently appearing to succeed and then failing health checks repeatedly.
 - `push_to_github` release job no longer fails on a shallow clone; release tags are now verified to originate from `main`.
 - CI no longer fails `pyright` non-deterministically on merge pipelines: the CI uv version is bumped to `0.11.8`, which understands the relative `exclude-newer` cooldown, so `uv.lock` is honored instead of being silently ignored and re-resolved. A `required-version = ">=0.11.8"` floor prevents an older uv from reintroducing the issue.

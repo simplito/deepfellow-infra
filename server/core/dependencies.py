@@ -104,7 +104,7 @@ async def auth_metrics(
 ) -> None:
     """Authenticate using HTTP Basic Auth."""
     config: AppSettings = request.app.state.config
-    if (auth.username == config.metrics_username) and (auth.password == config.metrics_password):
+    if (auth.username == config.metrics_username) and (auth.password == config.metrics_password.get_secret_value()):
         return
 
     raise HTTPException(401, "Not Authenticated.")

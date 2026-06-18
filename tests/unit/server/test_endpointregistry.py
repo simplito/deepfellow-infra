@@ -484,6 +484,20 @@ def test_list_models_returns_registered_model_entries():
     assert items[0].name == "gpt-4"
 
 
+def test_list_models_strips_subtype_suffix_from_type():
+    # Regression: WS clients crash when a model with a composite type like "llm-v2"
+    # is sent over the mesh — the remote peer's ModelType literal rejects unknown suffixes.
+    ep = make_endpoint()
+    ep.add_model(
+        "my-model", make_props(), SimpleEndpoint(on_request=AsyncMock()), "llm-v2", RegistrationOptions(origin="local", id="rid-sub")
+    )
+
+    items = ep.list_models()
+
+    assert len(items) == 1
+    assert items[0].type == "llm"
+
+
 def test_list_models_returns_multiple_registrations_for_same_model():
     ep = make_endpoint()
     ep.add_model("gpt-4", make_props(), SimpleEndpoint(on_request=AsyncMock()), "llm", RegistrationOptions(origin="local", id="id-a"))

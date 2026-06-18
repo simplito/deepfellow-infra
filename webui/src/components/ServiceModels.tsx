@@ -1,3 +1,13 @@
+/*
+DeepFellow Software Framework.
+Copyright © 2025 Simplito sp. z o.o.
+
+This file is part of the DeepFellow Software Framework (https://deepfellow.ai).
+This software is Licensed under the DeepFellow Free License.
+
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,16 +64,6 @@ import type { ProgressEvent } from "@/utils/sse-stream";
 import { getStageLabel } from "@/utils/sse-stream";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Info, MoreVertical } from "lucide-react";
-/*
-DeepFellow Software Framework.
-Copyright © 2025 Simplito sp. z o.o.
-
-This file is part of the DeepFellow Software Framework (https://deepfellow.ai).
-This software is Licensed under the DeepFellow Free License.
-
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
 import {
   type RefObject,
   memo,
@@ -748,10 +748,10 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
       queryClient.invalidateQueries({
         queryKey: ["admin", "services", serviceId, "models"],
       });
-      toast.success("Models synced successfully");
+      toast.success(isOllamaExternal ? "Models synced successfully" : "Models refreshed successfully");
     },
     onError: (error) => {
-      toast.error(`Failed to sync models: ${error.message}`);
+      toast.error(`Failed to ${isOllamaExternal ? "sync" : "refresh"} models: ${error.message}`);
     },
   });
 
@@ -1174,15 +1174,19 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold">Models for {serviceId}</h1>
           <div className="flex gap-2">
-            {isOllamaExternal && (
-              <Button
-                variant="outline"
-                onClick={() => syncModelsMutation.mutate()}
-                disabled={syncModelsMutation.isPending}
-              >
-                {syncModelsMutation.isPending ? "Syncing…" : "↺ Sync"}
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              onClick={() => syncModelsMutation.mutate()}
+              disabled={syncModelsMutation.isPending}
+            >
+              {syncModelsMutation.isPending
+                ? isOllamaExternal
+                  ? "Syncing…"
+                  : "Refreshing…"
+                : isOllamaExternal
+                  ? "↺ Sync"
+                  : "↺ Refresh"}
+            </Button>
             {serviceId === "mcp" && serviceInfo?.custom_model_spec && (
               <Button
                 onClick={() => {

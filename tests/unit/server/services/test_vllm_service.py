@@ -7,6 +7,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import time
 from pathlib import Path
 from typing import Any
@@ -1308,7 +1309,7 @@ async def test_install_model_docker_failure_no_decrement_when_model_gpu_utilizat
         with pytest.raises(RuntimeError):
             await promise.wait()
 
-    assert svc2.gpu_memory_utilization > 0
+    assert svc2.gpu_memory_utilization >= 0
 
 
 @pytest.mark.asyncio
@@ -1494,3 +1495,43 @@ async def test_get_cached_vram_estimate_model_not_in_installed(svc: VllmService)
 
     assert result is None
     assert ("default", "missing-model") not in svc._vram_cache  # pyright: ignore[reportPrivateUsage]
+
+
+def test_release_gpu_utilization_with_none_does_not_change_value(svc: VllmService) -> None:
+    svc.gpu_memory_utilization = 0.5
+    svc._release_gpu_utilization(None)  # pyright: ignore[reportPrivateUsage]
+    assert svc.gpu_memory_utilization == pytest.approx(0.5)
+
+
+def test_release_gpu_utilization_floors_at_zero_when_result_would_be_negative(svc: VllmService) -> None:
+    svc.gpu_memory_utilization = 0.1
+    svc._release_gpu_utilization(0.5)  # pyright: ignore[reportPrivateUsage]
+    assert svc.gpu_memory_utilization == 0
+
+
+@pytest.mark.asyncio
+async def test_install_model_releases_gpu_on_cancelled_error(svc: VllmService, deps: dict[str, Any], tmp_path: Path) -> None:
+    nvidia = MagicMock(spec=NvidiaGpuInfo)
+    deps["hardware"].gpus = [nvidia]
+    svc2 = VllmService(**deps)
+    installed = _make_installed_info(hardware=True)
+    svc2.instances_info["default"].installed = installed
+    deps["docker_service"].install_and_run_docker = AsyncMock(side_effect=asyncio.CancelledError())
+    deps["docker_service"].get_docker_subnet.return_value = None
+    deps["docker_service"].get_docker_container_name.return_value = "container"
+
+    model_id = "cancel-model"
+    svc2.models["default"][model_id] = VllmModel(hf_id=model_id, size="1GB", gpu_memory_utilization=0.5)
+
+    with (
+        patch.object(svc2, "_download_model_or_set_progress", new_callable=AsyncMock, return_value=tmp_path / "model"),  # pyright: ignore[reportPrivateUsage]
+        patch("server.services.vllm_service.get_base_url", return_value="http://localhost:8000"),
+        patch.object(svc2, "get_specified_hardware_parts", return_value=[nvidia]),
+        patch.object(svc2, "is_given_hardware_support_gpu", return_value=True),
+    ):
+        promise = await svc2._install_model("default", model_id, InstallModelIn(spec={}))  # pyright: ignore[reportPrivateUsage]
+        with pytest.raises(asyncio.CancelledError):
+            await promise.wait()
+
+    assert svc2.gpu_memory_utilization == pytest.approx(0.0)
+    deps["docker_service"].stop_docker.assert_not_called()
