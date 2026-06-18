@@ -11,6 +11,16 @@ limitations under the License.
 
 import { ListInput } from "@/components/ListInput";
 import { MapInput } from "@/components/MapInput";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -298,7 +308,9 @@ export function parseMcpJsonConfig(text: string): ParsedMcpConfig {
       }
     }
     const transport: "streamable_http" | "sse" =
-      rawTransport === "sse" ? "sse" : "streamable_http";
+      rawTransport === "sse" || resolvedUrl.endsWith("/sse")
+        ? "sse"
+        : "streamable_http";
     return { kind: "proxy", name, server_url: resolvedUrl, transport, headers };
   }
 
@@ -381,6 +393,7 @@ export function AddMcpServerModal({
   const isEditMode = !!initialValues;
   const editKind = initialValues?.kind ?? "user";
   const [serverMode, setServerMode] = useState<McpServerMode>("auto-import");
+  const [autoImportWarningOpen, setAutoImportWarningOpen] = useState(false);
 
   const proxyInitial =
     editKind === "proxy"
@@ -414,8 +427,31 @@ export function AddMcpServerModal({
   const isUrlMode = isEditMode ? editKind === "proxy" : serverMode === "url";
   const isAutoImportMode = !isEditMode && serverMode === "auto-import";
 
+  const currentTabHasData = () => {
+    if (serverMode === "command") return !!stdio.command.trim();
+    if (serverMode === "url") return !!url.serverUrl.trim();
+    if (serverMode === "docker")
+      return Object.values(docker.data).some(
+        (v) => typeof v === "string" && v.trim(),
+      );
+    return false;
+  };
+
+  const handleAutoImportTabClick = () => {
+    if (currentTabHasData()) {
+      setAutoImportWarningOpen(true);
+    } else {
+      setServerMode("auto-import");
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isAutoImportMode) {
+      stdio.convertJson();
+      return;
+    }
 
     if (serverMode === "docker") {
       const errs = docker.validate();
@@ -468,427 +504,472 @@ export function AddMcpServerModal({
       : null;
 
   return (
-    <Dialog open={open} onOpenChange={isSubmitting ? undefined : onOpenChange}>
-      <DialogContent
-        className="max-w-lg"
-        onInteractOutside={(e) => {
-          if (isSubmitting) e.preventDefault();
-        }}
-        onEscapeKeyDown={(e) => {
-          if (isSubmitting) e.preventDefault();
-        }}
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={isSubmitting ? undefined : onOpenChange}
       >
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            {isEditMode
-              ? "Edit stdio MCP server settings. Reinstall required after saving."
-              : "Add a new MCP server — choose the connection type below."}
-          </DialogDescription>
-        </DialogHeader>
-
-        <form
-          id="add-mcp-server-form"
-          onSubmit={handleSubmit}
-          className="space-y-4 max-h-[70vh] overflow-y-auto pr-1"
+        <DialogContent
+          className="max-w-lg"
+          onInteractOutside={(e) => {
+            if (isSubmitting) e.preventDefault();
+          }}
+          onEscapeKeyDown={(e) => {
+            if (isSubmitting) e.preventDefault();
+          }}
         >
-          {/* Mode toggle — hidden in edit mode */}
-          {!isEditMode && (
-            <div className="flex rounded-md border overflow-hidden text-sm">
-              <button
-                type="button"
-                className={`flex-1 px-3 py-1.5 transition-colors ${serverMode === "auto-import" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
-                onClick={() => setServerMode("auto-import")}
-                disabled={isSubmitting}
-              >
-                Auto-Import
-              </button>
-              <button
-                type="button"
-                className={`flex-1 px-3 py-1.5 transition-colors border-l ${serverMode === "command" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
-                onClick={() => setServerMode("command")}
-                disabled={isSubmitting}
-              >
-                Command
-              </button>
-              <button
-                type="button"
-                className={`flex-1 px-3 py-1.5 transition-colors border-l ${serverMode === "docker" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
-                onClick={() => setServerMode("docker")}
-                disabled={isSubmitting}
-              >
-                Docker
-              </button>
-              <button
-                type="button"
-                className={`flex-1 px-3 py-1.5 transition-colors border-l ${serverMode === "url" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
-                onClick={() => setServerMode("url")}
-                disabled={isSubmitting}
-              >
-                Remote URL
-              </button>
-            </div>
-          )}
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>
+              {isEditMode
+                ? "Edit stdio MCP server settings. Reinstall required after saving."
+                : "Add a new MCP server — choose the connection type below."}
+            </DialogDescription>
+          </DialogHeader>
 
-          {/* ── Custom Image fields ──────────────────────────────────────── */}
-          {serverMode === "docker" && !isEditMode && (
-            <>
-              <DynamicFormFields
-                fields={dockerFields}
-                formData={docker.data}
-                errors={docker.errors}
-                onChange={docker.handleChange}
-              />
-              <div className="space-y-1">
-                <Label>
-                  Bind Mounts{" "}
-                  <span className="text-muted-foreground text-sm font-normal">
-                    (optional)
-                  </span>
-                </Label>
-                <ListInput
-                  value={docker.volumes}
-                  onChange={docker.setVolumes}
-                  placeholder="/host/path:/container/path"
-                />
+          <form
+            id="add-mcp-server-form"
+            onSubmit={handleSubmit}
+            className="space-y-4 max-h-[70vh] overflow-y-auto pr-1"
+          >
+            {/* Mode toggle — hidden in edit mode */}
+            {!isEditMode && (
+              <div className="flex rounded-md border overflow-hidden text-sm">
+                <button
+                  type="button"
+                  className={`flex-1 px-3 py-1.5 transition-colors ${serverMode === "auto-import" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                  onClick={handleAutoImportTabClick}
+                  disabled={isSubmitting}
+                >
+                  Auto-Import
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 px-3 py-1.5 transition-colors border-l ${serverMode === "command" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                  onClick={() => setServerMode("command")}
+                  disabled={isSubmitting}
+                >
+                  Command
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 px-3 py-1.5 transition-colors border-l ${serverMode === "docker" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                  onClick={() => setServerMode("docker")}
+                  disabled={isSubmitting}
+                >
+                  Docker
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 px-3 py-1.5 transition-colors border-l ${serverMode === "url" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                  onClick={() => setServerMode("url")}
+                  disabled={isSubmitting}
+                >
+                  Remote URL
+                </button>
               </div>
-            </>
-          )}
+            )}
 
-          {/* ── Remote URL (proxy) fields ─────────────────────────────────── */}
-          {isUrlMode && (
-            <>
-              <div className="space-y-1">
-                <Label htmlFor="url-server-url">Server URL</Label>
-                <Input
-                  id="url-server-url"
-                  placeholder="https://example.com/mcp"
-                  value={url.serverUrl}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    url.setServerUrl(v);
-                    try {
-                      const path = new URL(v.trim()).pathname;
-                      url.setTransport(
-                        path.endsWith("/sse") ? "sse" : "streamable_http",
-                      );
-                    } catch {
-                      url.setTransport("streamable_http");
-                    }
-                  }}
-                  disabled={isSubmitting}
+            {/* ── Custom Image fields ──────────────────────────────────────── */}
+            {serverMode === "docker" && !isEditMode && (
+              <>
+                <DynamicFormFields
+                  fields={dockerFields}
+                  formData={docker.data}
+                  errors={docker.errors}
+                  onChange={docker.handleChange}
                 />
-                {url.errors.server_url && (
-                  <p className="text-sm text-destructive">
-                    {url.errors.server_url}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="url-name">Name</Label>
-                <Input
-                  id="url-name"
-                  placeholder="my-remote-mcp"
-                  value={url.name}
-                  onChange={(e) => url.setName(e.target.value)}
-                  disabled={isSubmitting}
-                />
-                {url.errors.name && (
-                  <p className="text-sm text-destructive">{url.errors.name}</p>
-                )}
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="url-prefix">
-                  Endpoint prefix{" "}
-                  <span className="text-muted-foreground text-sm font-normal">
-                    (optional)
-                  </span>
-                </Label>
-                <Input
-                  id="url-prefix"
-                  placeholder="my-remote-mcp"
-                  value={url.prefix}
-                  onChange={(e) => url.setPrefix(e.target.value)}
-                  disabled={isSubmitting}
-                />
-                {url.errors.prefix && (
-                  <p className="text-sm text-destructive">
-                    {url.errors.prefix}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-1">
-                <Label>Transport</Label>
-                <div className="flex rounded-md border overflow-hidden text-sm">
-                  <button
-                    type="button"
-                    className={`flex-1 px-3 py-1.5 transition-colors ${url.transport === "streamable_http" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
-                    onClick={() => url.setTransport("streamable_http")}
-                    disabled={isSubmitting}
-                  >
-                    Streamable HTTP
-                  </button>
-                  <button
-                    type="button"
-                    className={`flex-1 px-3 py-1.5 transition-colors border-l ${url.transport === "sse" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
-                    onClick={() => url.setTransport("sse")}
-                    disabled={isSubmitting}
-                  >
-                    SSE
-                  </button>
+                <div className="space-y-1">
+                  <Label>
+                    Bind Mounts{" "}
+                    <span className="text-muted-foreground text-sm font-normal">
+                      (optional)
+                    </span>
+                  </Label>
+                  <ListInput
+                    value={docker.volumes}
+                    onChange={docker.setVolumes}
+                    placeholder="/host/path:/container/path"
+                  />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Auto-detected from URL — can be overridden
-                </p>
-              </div>
-              <div className="space-y-1">
-                <Label>
-                  Request headers{" "}
-                  <span className="text-muted-foreground text-sm font-normal">
-                    (optional)
-                  </span>
-                </Label>
-                <MapInput value={url.headers} onChange={url.setHeaders} />
-              </div>
-            </>
-          )}
+              </>
+            )}
 
-          {/* ── Auto-Import fields ───────────────────────────────────────── */}
-          {isAutoImportMode && (
-            <div className="space-y-1">
-              <Textarea
-                id="mcp-json"
-                placeholder={JSON_CONFIG_PLACEHOLDER}
-                value={stdio.jsonText}
-                onChange={(e) => stdio.handleJsonChange(e.target.value)}
-                disabled={isSubmitting}
-                rows={Math.min(
-                  25,
-                  Math.max(9, stdio.jsonText.split("\n").length),
-                )}
-                className="font-mono text-sm"
-              />
-              {stdio.jsonStatus && !stdio.jsonStatus.ok && (
-                <p className="text-sm text-destructive">
-                  {stdio.jsonStatus.error}
-                </p>
-              )}
-              {!stdio.jsonStatus && (
-                <p className="text-xs text-muted-foreground">
-                  Standard <code className="text-xs">mcpServers</code> format —
-                  fields will be filled automatically.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* ── stdio (Command) fields ────────────────────────────────────── */}
-          {isStdioMode && (
-            <>
-              <div className="space-y-1">
-                <Label htmlFor="mcp-command">Launch command</Label>
-                    <Textarea
-                      ref={stdio.commandRef}
-                      id="mcp-command"
-                      placeholder="npx -y @modelcontextprotocol/server-filesystem /data"
-                      value={stdio.command}
-                      onChange={(e) => {
-                        stdio.handleCommandChange(e.target.value);
-                        if (stdio.commandRef.current) {
-                          stdio.commandRef.current.style.height = "auto";
-                          stdio.commandRef.current.style.height = `${stdio.commandRef.current.scrollHeight}px`;
-                        }
-                      }}
-                      disabled={isSubmitting}
-                      rows={1}
-                      className="font-mono text-sm resize-none overflow-hidden"
-                    />
-                    {stdio.errors.command && (
-                      <p className="text-sm text-destructive">
-                        {stdio.errors.command}
-                      </p>
-                    )}
-                  </div>
-                  {!stdio.baseImage && (stdio.variant || detectedRuntime) && (
-                    <div className="space-y-1">
-                      <Label htmlFor="mcp-runtime-version">
-                        {(stdio.variant || detectedRuntime || "").startsWith(
-                          "python",
-                        ) || detectedRuntime === "python"
-                          ? "Python version"
-                          : "Node.js version"}
-                      </Label>
-                      <Select
-                        value={
-                          (stdio.variant || "").startsWith("python") ||
-                          detectedRuntime === "python"
-                            ? stdio.pythonVersion
-                            : stdio.nodeVersion
-                        }
-                        onValueChange={(v) => {
-                          if (
-                            (stdio.variant || "").startsWith("python") ||
-                            detectedRuntime === "python"
-                          ) {
-                            stdio.setPythonVersion(v as PythonVersion);
-                          } else {
-                            stdio.setNodeVersion(v as NodeVersion);
-                          }
-                        }}
-                        disabled={isSubmitting}
-                      >
-                        <SelectTrigger id="mcp-runtime-version">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {((stdio.variant || "").startsWith("python") ||
-                          detectedRuntime === "python"
-                            ? PYTHON_VERSIONS
-                            : NODE_VERSIONS
-                          ).map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  <div className="space-y-1">
-                    <Label htmlFor="mcp-base-image">
-                      Base image{" "}
-                      <span className="text-muted-foreground text-sm font-normal">
-                        (optional)
-                      </span>
-                    </Label>
-                    <Input
-                      id="mcp-base-image"
-                      placeholder="mcp/filesystem"
-                      value={stdio.baseImage ?? ""}
-                      onChange={(e) =>
-                        stdio.setBaseImage(e.target.value || undefined)
+            {/* ── Remote URL (proxy) fields ─────────────────────────────────── */}
+            {isUrlMode && (
+              <>
+                <div className="space-y-1">
+                  <Label htmlFor="url-server-url">Server URL</Label>
+                  <Input
+                    id="url-server-url"
+                    placeholder="https://example.com/mcp"
+                    value={url.serverUrl}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      url.setServerUrl(v);
+                      try {
+                        const path = new URL(v.trim()).pathname;
+                        url.setTransport(
+                          path.endsWith("/sse") ? "sse" : "streamable_http",
+                        );
+                      } catch {
+                        url.setTransport("streamable_http");
                       }
-                      disabled={isSubmitting}
-                      className="font-mono text-sm"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      For <code className="text-xs">docker run</code>-style
-                      configs — the runtime bridge layers on top of this image.
-                      Leave empty for standard{" "}
-                      <code className="text-xs">npx</code> /{" "}
-                      <code className="text-xs">uvx</code> commands.
+                    }}
+                    disabled={isSubmitting}
+                  />
+                  {url.errors.server_url && (
+                    <p className="text-sm text-destructive">
+                      {url.errors.server_url}
                     </p>
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label htmlFor="mcp-model-id">Model ID</Label>
-                    <Input
-                      id="mcp-model-id"
-                      placeholder="my-mcp-server"
-                      value={stdio.modelId}
-                      onChange={(e) => {
-                        stdio.setModelId(e.target.value);
-                        stdio.clearErrors();
-                      }}
-                      disabled={isSubmitting}
-                    />
-                    {stdio.errors.name && (
-                      <p className="text-sm text-destructive">
-                        {stdio.errors.name}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label htmlFor="mcp-prefix">
-                      Endpoint prefix{" "}
-                      <span className="text-muted-foreground text-sm font-normal">
-                        (optional)
-                      </span>
-                    </Label>
-                    <Input
-                      id="mcp-prefix"
-                      placeholder="my-server"
-                      value={stdio.prefix}
-                      onChange={(e) => {
-                        stdio.setPrefix(e.target.value);
-                        stdio.clearErrors();
-                      }}
-                      disabled={isSubmitting}
-                    />
-                    {stdio.errors.prefix ? (
-                      <p className="text-sm text-destructive">
-                        {stdio.errors.prefix}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        Letters, digits, hyphens and underscores only
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label htmlFor="mcp-variant">{variantLabel}</Label>
-                    <Select
-                      value={stdio.variant || undefined}
-                      onValueChange={stdio.handleVariantChange}
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="url-name">Name</Label>
+                  <Input
+                    id="url-name"
+                    placeholder="my-remote-mcp"
+                    value={url.name}
+                    onChange={(e) => url.setName(e.target.value)}
+                    disabled={isSubmitting}
+                  />
+                  {url.errors.name && (
+                    <p className="text-sm text-destructive">
+                      {url.errors.name}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="url-prefix">
+                    Endpoint prefix{" "}
+                    <span className="text-muted-foreground text-sm font-normal">
+                      (optional)
+                    </span>
+                  </Label>
+                  <Input
+                    id="url-prefix"
+                    placeholder="my-remote-mcp"
+                    value={url.prefix}
+                    onChange={(e) => url.setPrefix(e.target.value)}
+                    disabled={isSubmitting}
+                  />
+                  {url.errors.prefix && (
+                    <p className="text-sm text-destructive">
+                      {url.errors.prefix}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Label>Transport</Label>
+                  <div className="flex rounded-md border overflow-hidden text-sm">
+                    <button
+                      type="button"
+                      className={`flex-1 px-3 py-1.5 transition-colors ${url.transport === "streamable_http" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                      onClick={() => url.setTransport("streamable_http")}
                       disabled={isSubmitting}
                     >
-                      <SelectTrigger id="mcp-variant">
-                        <SelectValue placeholder="None" />
+                      Streamable HTTP
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex-1 px-3 py-1.5 transition-colors border-l ${url.transport === "sse" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                      onClick={() => url.setTransport("sse")}
+                      disabled={isSubmitting}
+                    >
+                      SSE
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Auto-detected from URL — can be overridden
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <Label>
+                    Request headers{" "}
+                    <span className="text-muted-foreground text-sm font-normal">
+                      (optional)
+                    </span>
+                  </Label>
+                  <MapInput value={url.headers} onChange={url.setHeaders} />
+                </div>
+              </>
+            )}
+
+            {/* ── Auto-Import fields ───────────────────────────────────────── */}
+            {isAutoImportMode && (
+              <div className="space-y-1">
+                <Textarea
+                  id="mcp-json"
+                  placeholder={JSON_CONFIG_PLACEHOLDER}
+                  value={stdio.jsonText}
+                  onChange={(e) => stdio.handleJsonChange(e.target.value)}
+                  disabled={isSubmitting}
+                  rows={Math.min(
+                    25,
+                    Math.max(9, stdio.jsonText.split("\n").length),
+                  )}
+                  className="font-mono text-sm"
+                />
+                {stdio.jsonStatus && !stdio.jsonStatus.ok && (
+                  <p className="text-sm text-destructive">
+                    {stdio.jsonStatus.error}
+                  </p>
+                )}
+                {stdio.jsonStatus?.ok && (
+                  <p className="text-sm text-muted-foreground">
+                    Detected:{" "}
+                    <span className="font-medium">
+                      {stdio.jsonStatus.parsedName}
+                    </span>
+                  </p>
+                )}
+                {!stdio.jsonStatus && (
+                  <p className="text-xs text-muted-foreground">
+                    Standard <code className="text-xs">mcpServers</code> format
+                    — fields will be filled automatically.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* ── stdio (Command) fields ────────────────────────────────────── */}
+            {isStdioMode && (
+              <>
+                <div className="space-y-1">
+                  <Label htmlFor="mcp-command">Launch command</Label>
+                  <Textarea
+                    ref={stdio.commandRef}
+                    id="mcp-command"
+                    placeholder="npx -y @modelcontextprotocol/server-filesystem /data"
+                    value={stdio.command}
+                    onChange={(e) => {
+                      stdio.handleCommandChange(e.target.value);
+                      if (stdio.commandRef.current) {
+                        stdio.commandRef.current.style.height = "auto";
+                        stdio.commandRef.current.style.height = `${stdio.commandRef.current.scrollHeight}px`;
+                      }
+                    }}
+                    disabled={isSubmitting}
+                    rows={1}
+                    className="font-mono text-sm resize-none overflow-hidden"
+                  />
+                  {stdio.errors.command && (
+                    <p className="text-sm text-destructive">
+                      {stdio.errors.command}
+                    </p>
+                  )}
+                </div>
+                {!stdio.baseImage && (stdio.variant || detectedRuntime) && (
+                  <div className="space-y-1">
+                    <Label htmlFor="mcp-runtime-version">
+                      {(stdio.variant || detectedRuntime || "").startsWith(
+                        "python",
+                      ) || detectedRuntime === "python"
+                        ? "Python version"
+                        : "Node.js version"}
+                    </Label>
+                    <Select
+                      value={
+                        (stdio.variant || "").startsWith("python") ||
+                        detectedRuntime === "python"
+                          ? stdio.pythonVersion
+                          : stdio.nodeVersion
+                      }
+                      onValueChange={(v) => {
+                        if (
+                          (stdio.variant || "").startsWith("python") ||
+                          detectedRuntime === "python"
+                        ) {
+                          stdio.setPythonVersion(v as PythonVersion);
+                        } else {
+                          stdio.setNodeVersion(v as NodeVersion);
+                        }
+                      }}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger id="mcp-runtime-version">
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {filteredVariants.map((v) => (
-                          <SelectItem key={v.value} value={v.value}>
-                            {detectedRuntime !== null
-                              ? v.label.replace(/^.*?—\s*/, "")
-                              : v.label}
+                        {((stdio.variant || "").startsWith("python") ||
+                        detectedRuntime === "python"
+                          ? PYTHON_VERSIONS
+                          : NODE_VERSIONS
+                        ).map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    {variantHint && (
-                      <p className="text-xs text-muted-foreground">
-                        {variantHint}
-                      </p>
-                    )}
                   </div>
+                )}
 
-                  <div className="space-y-1">
-                    <Label>
-                      Environment variables{" "}
-                      <span className="text-muted-foreground text-sm">
-                        (optional)
-                      </span>
-                    </Label>
-                    <MapInput value={stdio.envs} onChange={stdio.setEnvs} />
-                  </div>
-            </>
-          )}
+                <div className="space-y-1">
+                  <Label htmlFor="mcp-base-image">
+                    Base image{" "}
+                    <span className="text-muted-foreground text-sm font-normal">
+                      (optional)
+                    </span>
+                  </Label>
+                  <Input
+                    id="mcp-base-image"
+                    placeholder="mcp/filesystem"
+                    value={stdio.baseImage ?? ""}
+                    onChange={(e) =>
+                      stdio.setBaseImage(e.target.value || undefined)
+                    }
+                    disabled={isSubmitting}
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    For <code className="text-xs">docker run</code>-style
+                    configs — the runtime bridge layers on top of this image.
+                    Leave empty for standard{" "}
+                    <code className="text-xs">npx</code> /{" "}
+                    <code className="text-xs">uvx</code> commands.
+                  </p>
+                </div>
 
-          {apiError && <p className="text-sm text-destructive">{apiError}</p>}
-          {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
-        </form>
+                <div className="space-y-1">
+                  <Label htmlFor="mcp-model-id">Model ID</Label>
+                  <Input
+                    id="mcp-model-id"
+                    placeholder="my-mcp-server"
+                    value={stdio.modelId}
+                    onChange={(e) => {
+                      stdio.setModelId(e.target.value);
+                      stdio.clearErrors();
+                    }}
+                    disabled={isSubmitting}
+                  />
+                  {stdio.errors.name && (
+                    <p className="text-sm text-destructive">
+                      {stdio.errors.name}
+                    </p>
+                  )}
+                </div>
 
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isSubmitting}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            form="add-mcp-server-form"
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? "Saving…" : isEditMode ? "Save" : "Add"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+                <div className="space-y-1">
+                  <Label htmlFor="mcp-prefix">
+                    Endpoint prefix{" "}
+                    <span className="text-muted-foreground text-sm font-normal">
+                      (optional)
+                    </span>
+                  </Label>
+                  <Input
+                    id="mcp-prefix"
+                    placeholder="my-server"
+                    value={stdio.prefix}
+                    onChange={(e) => {
+                      stdio.setPrefix(e.target.value);
+                      stdio.clearErrors();
+                    }}
+                    disabled={isSubmitting}
+                  />
+                  {stdio.errors.prefix ? (
+                    <p className="text-sm text-destructive">
+                      {stdio.errors.prefix}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Letters, digits, hyphens and underscores only
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="mcp-variant">{variantLabel}</Label>
+                  <Select
+                    value={stdio.variant || undefined}
+                    onValueChange={stdio.handleVariantChange}
+                    disabled={isSubmitting}
+                  >
+                    <SelectTrigger id="mcp-variant">
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredVariants.map((v) => (
+                        <SelectItem key={v.value} value={v.value}>
+                          {detectedRuntime !== null
+                            ? v.label.replace(/^.*?—\s*/, "")
+                            : v.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {variantHint && (
+                    <p className="text-xs text-muted-foreground">
+                      {variantHint}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <Label>
+                    Environment variables{" "}
+                    <span className="text-muted-foreground text-sm">
+                      (optional)
+                    </span>
+                  </Label>
+                  <MapInput value={stdio.envs} onChange={stdio.setEnvs} />
+                </div>
+              </>
+            )}
+
+            {apiError && <p className="text-sm text-destructive">{apiError}</p>}
+            {notice && (
+              <p className="text-sm text-muted-foreground">{notice}</p>
+            )}
+          </form>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="add-mcp-server-form"
+              disabled={isSubmitting}
+            >
+              {isSubmitting
+                ? "Saving…"
+                : isEditMode
+                  ? "Save"
+                  : isAutoImportMode
+                    ? "Convert"
+                    : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={autoImportWarningOpen}
+        onOpenChange={setAutoImportWarningOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Switch to Auto-Import?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Auto-Import does not update based on changes you've already made
+              manually. If you convert a new config here, it will overwrite the
+              fields you've filled in.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Stay here</AlertDialogCancel>
+            <AlertDialogAction onClick={() => setServerMode("auto-import")}>
+              Switch anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
