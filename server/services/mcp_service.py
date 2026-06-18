@@ -159,6 +159,7 @@ class SrvMcpCustomModel(BaseModel):
     healthcheck_start_period: Annotated[str, Field(pattern=r"^\d+[smh]$")] | None = None
     required_envs: dict[str, str] | None = None
     required_headers: dict[str, str] | None = None
+    proxy_transport: Literal["streamable_http", "sse"] = "streamable_http"
 
 
 class SrvMcpUserModel(BaseModel):
@@ -371,6 +372,14 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                     required=False,
                 ),
                 CustomModelField(type="text", name="size", description="Model size", placeholder="1 GB", required=False),
+                CustomModelField(
+                    type="oneof",
+                    name="proxy_transport",
+                    description="MCP transport protocol",
+                    default="streamable_http",
+                    required=False,
+                    values=["streamable_http", "sse"],
+                ),
             ]
         )
 
@@ -557,6 +566,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             headers=parsed.headers,
             required_envs=required_envs,
             required_headers=required_headers,
+            proxy_transport=parsed.proxy_transport,
         )
 
     def _add_user_model(self, instance: str, model: CustomModel) -> None:
@@ -822,7 +832,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             url=parsed_options.prefix, props=model.model_props, options=proxy_options, registration_options=None
         )
 
-    async def _install_model(
+    async def _install_model(  # noqa: C901
         self, instance: str, model_id: str, options: InstallModelIn
     ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
         info = self.get_instance_installed_info(instance)
@@ -896,17 +906,30 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                 headers=parsed_model_options.headers,
                 envs=parsed_model_options.envs,
             )
-            model_info.registration_id = self.endpoint_registry.register_mcp_endpoint_as_proxy(
-                url=model_info.prefix,
-                props=model.model_props,
-                options=ProxyOptions(
-                    url=model_info.base_url,
-                    allowed_request_headers=["accept", "mcp-session-id"],
-                    allowed_response_headers=["accept", "mcp-session-id"],
-                    headers=model.headers | parsed_model_options.headers if model.headers else parsed_model_options.headers,
-                ),
-                registration_options=None,
-            )
+            if model.proxy_transport == "sse":
+                model_info.registration_id = self.endpoint_registry.register_mcp_sse_endpoint_as_proxy(
+                    url=model_info.prefix,
+                    props=model.model_props,
+                    options=ProxyOptions(
+                        url=model_info.base_url + "/sse",
+                        allowed_request_headers=["accept", "mcp-session-id"],
+                        allowed_response_headers=["accept", "mcp-session-id"],
+                        headers=model.headers | parsed_model_options.headers if model.headers else parsed_model_options.headers,
+                    ),
+                    registration_options=None,
+                )
+            else:
+                model_info.registration_id = self.endpoint_registry.register_mcp_endpoint_as_proxy(
+                    url=model_info.prefix,
+                    props=model.model_props,
+                    options=ProxyOptions(
+                        url=model_info.base_url + "/mcp",
+                        allowed_request_headers=["accept", "mcp-session-id"],
+                        allowed_response_headers=["accept", "mcp-session-id"],
+                        headers=model.headers | parsed_model_options.headers if model.headers else parsed_model_options.headers,
+                    ),
+                    registration_options=None,
+                )
             self.models_downloaded[model_id] = DownloadedInfo(docker_options.image)
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             return InstallModelOut(status="OK", details="Installed")
