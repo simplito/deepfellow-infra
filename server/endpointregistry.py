@@ -409,6 +409,20 @@ class EndpointRegistry:
         models.extend(self.mcp_endpoints.list_models())
         return models
 
+    def model_exists(self, model_id: ModelId) -> bool:
+        """Check if model exists in any endpoint."""
+        for reg in (
+            self.chat_completion_endpoints,
+            self.embeddings_endpoints,
+            self.audio_speech_endpoints,
+            self.audio_transcriptions_endpoints,
+            self.images_generations_endpoints,
+            self.rerank_endpoints,
+        ):
+            if model_id in reg.models:
+                return True
+        return False
+
     def register_chat_completion(
         self,
         model: str,
@@ -913,6 +927,8 @@ class EndpointRegistry:
         )
         on_messages = endpoint.endpoint.on_messages if endpoint else None
         if not endpoint or not on_messages:
+            if not self.model_exists(body.model):
+                raise HTTPException(404, "Model not found")
             msg = "Given model not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
@@ -949,6 +965,8 @@ class EndpointRegistry:
         )
         on_responses = endpoint.endpoint.on_responses if endpoint else None
         if not endpoint or not on_responses:
+            if not self.model_exists(body.model):
+                raise HTTPException(404, "Model not found")
             msg = "Given model not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
@@ -985,6 +1003,8 @@ class EndpointRegistry:
         )
         on_chat_completion = endpoint.endpoint.on_chat_completion if endpoint else None
         if not endpoint or not on_chat_completion:
+            if not self.model_exists(body.model):
+                raise HTTPException(404, "Model not found")
             msg = "Given model not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
@@ -1018,6 +1038,8 @@ class EndpointRegistry:
         )
         on_completion = endpoint.endpoint.on_completion if endpoint else None
         if not endpoint or not on_completion:
+            if not self.model_exists(body.model):
+                raise HTTPException(404, "Model not found")
             msg = "Given model not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
@@ -1051,6 +1073,8 @@ class EndpointRegistry:
         )
         on_ollama_chat = endpoint.endpoint.on_ollama_chat if endpoint else None
         if not endpoint or not on_ollama_chat:
+            if not self.model_exists(body.model):
+                raise HTTPException(404, "Model not found")
             msg = "Given model not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
@@ -1081,6 +1105,8 @@ class EndpointRegistry:
         """Process embeddings request."""
         endpoint = self.embeddings_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
+            if not self.model_exists(body.model):
+                raise HTTPException(404, "Model not found")
             raise HTTPException(400, "Given model is not supported")
 
         async def func() -> StarletteResponse:
@@ -1099,6 +1125,8 @@ class EndpointRegistry:
             logger.info(f"DUMP REQUEST PAYLOAD /v1/images/generations {body.model_dump_json(exclude_none=True)}")  # noqa: G004
         endpoint = self.images_generations_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
+            if not self.model_exists(body.model):
+                raise HTTPException(404, "Model not found")
             raise HTTPException(400, "Given model is not supported")
 
         async def func() -> StarletteResponse:
@@ -1117,6 +1145,8 @@ class EndpointRegistry:
             logger.info(f"DUMP REQUEST PAYLOAD /v1/audio/speech {body.model_dump_json(exclude_none=True)}")  # noqa: G004
         endpoint = self.audio_speech_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
+            if not self.model_exists(body.model):
+                raise HTTPException(404, "Model not found")
             raise HTTPException(400, "Given model is not supported")
 
         async def func() -> StarletteResponse:
@@ -1133,6 +1163,8 @@ class EndpointRegistry:
         """Process audio transcriptions request."""
         endpoint = self.audio_transcriptions_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
+            if not self.model_exists(body.model):
+                raise HTTPException(404, "Model not found")
             raise HTTPException(400, "Given model is not supported")
 
         async def func() -> StarletteResponse:
@@ -1151,6 +1183,8 @@ class EndpointRegistry:
             logger.info(f"DUMP REQUEST PAYLOAD /v1/rerank {body.model_dump_json(exclude_none=True)}")  # noqa: G004
         endpoint = self.rerank_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
+            if not self.model_exists(body.model):
+                raise HTTPException(404, "Model not found")
             raise HTTPException(400, "Given model is not supported")
 
         async def func() -> StarletteResponse:

@@ -1148,7 +1148,7 @@ async def test_execute_messages_success():
 
 
 @pytest.mark.asyncio
-async def test_execute_messages_raises_400_when_model_missing():
+async def test_execute_messages_raises_404_when_model_missing():
     reg = make_registry()
     body = MagicMock(spec=MessagesRequest)
     body.model = "unknown-model"
@@ -1157,7 +1157,8 @@ async def test_execute_messages_raises_400_when_model_missing():
     with pytest.raises(HTTPException) as exc_info:
         await reg.execute_messages(body)
 
-    assert exc_info.value.status_code == 400
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Model not found"
 
 
 @pytest.mark.asyncio
@@ -1194,7 +1195,7 @@ async def test_execute_responses_success():
 
 
 @pytest.mark.asyncio
-async def test_execute_responses_raises_400_when_not_registered():
+async def test_execute_responses_raises_404_when_not_registered():
     reg = make_registry()
     body = MagicMock(spec=ResponsesRequest)
     body.model = "unknown"
@@ -1203,7 +1204,8 @@ async def test_execute_responses_raises_400_when_not_registered():
     with pytest.raises(HTTPException) as exc_info:
         await reg.execute_responses(body)
 
-    assert exc_info.value.status_code == 400
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Model not found"
 
 
 @pytest.mark.asyncio
@@ -1240,7 +1242,7 @@ async def test_execute_chat_completion_success():
 
 
 @pytest.mark.asyncio
-async def test_execute_chat_completion_raises_400_when_not_registered():
+async def test_execute_chat_completion_raises_404_when_not_registered():
     reg = make_registry()
     body = MagicMock(spec=ChatCompletionRequest)
     body.model = "unknown"
@@ -1249,7 +1251,8 @@ async def test_execute_chat_completion_raises_400_when_not_registered():
     with pytest.raises(HTTPException) as exc_info:
         await reg.execute_chat_completion(body)
 
-    assert exc_info.value.status_code == 400
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Model not found"
 
 
 @pytest.mark.asyncio
@@ -1285,7 +1288,7 @@ async def test_execute_completion_success():
 
 
 @pytest.mark.asyncio
-async def test_execute_completion_raises_400_when_not_registered():
+async def test_execute_completion_raises_404_when_not_registered():
     reg = make_registry()
     body = MagicMock(spec=CompletionLegacyRequest)
     body.model = "unknown"
@@ -1293,7 +1296,8 @@ async def test_execute_completion_raises_400_when_not_registered():
     with pytest.raises(HTTPException) as exc_info:
         await reg.execute_completion(body)
 
-    assert exc_info.value.status_code == 400
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Model not found"
 
 
 @pytest.mark.asyncio
@@ -1328,7 +1332,7 @@ async def test_execute_ollama_chat_success():
 
 
 @pytest.mark.asyncio
-async def test_execute_ollama_chat_raises_400_when_not_registered():
+async def test_execute_ollama_chat_raises_404_when_not_registered():
     reg = make_registry()
     body = MagicMock(spec=OllamaChatRequest)
     body.model = "unknown"
@@ -1336,7 +1340,8 @@ async def test_execute_ollama_chat_raises_400_when_not_registered():
     with pytest.raises(HTTPException) as exc_info:
         await reg.execute_ollama_chat(body)
 
-    assert exc_info.value.status_code == 400
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Model not found"
 
 
 @pytest.mark.asyncio
@@ -1375,7 +1380,7 @@ async def test_execute_embeddings_success():
 
 
 @pytest.mark.asyncio
-async def test_execute_embeddings_raises_400_when_not_registered():
+async def test_execute_embeddings_raises_404_when_not_registered():
     reg = make_registry()
     body = MagicMock(spec=EmbeddingRequest)
     body.model = "unknown"
@@ -1383,7 +1388,8 @@ async def test_execute_embeddings_raises_400_when_not_registered():
     with pytest.raises(HTTPException) as exc_info:
         await reg.execute_embeddings(body)
 
-    assert exc_info.value.status_code == 400
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Model not found"
 
 
 @pytest.mark.asyncio
@@ -1408,7 +1414,7 @@ async def test_execute_images_generations_success():
 
 
 @pytest.mark.asyncio
-async def test_execute_images_generations_raises_400_when_not_registered():
+async def test_execute_images_generations_raises_404_when_not_registered():
     reg = make_registry()
     body = MagicMock(spec=ImagesRequest)
     body.model = "unknown"
@@ -1417,7 +1423,8 @@ async def test_execute_images_generations_raises_400_when_not_registered():
     with pytest.raises(HTTPException) as exc_info:
         await reg.execute_images_generations(body)
 
-    assert exc_info.value.status_code == 400
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Model not found"
 
 
 @pytest.mark.asyncio
@@ -1442,7 +1449,7 @@ async def test_execute_audio_speech_success():
 
 
 @pytest.mark.asyncio
-async def test_execute_audio_speech_raises_400_when_not_registered():
+async def test_execute_audio_speech_raises_404_when_not_registered():
     reg = make_registry()
     body = MagicMock(spec=CreateSpeechRequest)
     body.model = "unknown"
@@ -1451,7 +1458,8 @@ async def test_execute_audio_speech_raises_400_when_not_registered():
     with pytest.raises(HTTPException) as exc_info:
         await reg.execute_audio_speech(body)
 
-    assert exc_info.value.status_code == 400
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Model not found"
 
 
 @pytest.mark.asyncio
@@ -1475,7 +1483,7 @@ async def test_execute_audio_transcriptions_success():
 
 
 @pytest.mark.asyncio
-async def test_execute_audio_transcriptions_raises_400_when_not_registered():
+async def test_execute_audio_transcriptions_raises_404_when_not_registered():
     reg = make_registry()
     body = MagicMock(spec=CreateTranscriptionRequest)
     body.model = "unknown"
@@ -1483,7 +1491,8 @@ async def test_execute_audio_transcriptions_raises_400_when_not_registered():
     with pytest.raises(HTTPException) as exc_info:
         await reg.execute_audio_transcriptions(body)
 
-    assert exc_info.value.status_code == 400
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Model not found"
 
 
 @pytest.mark.asyncio
@@ -1508,7 +1517,7 @@ async def test_execute_rerank_success():
 
 
 @pytest.mark.asyncio
-async def test_execute_rerank_raises_400_when_not_registered():
+async def test_execute_rerank_raises_404_when_not_registered():
     reg = make_registry()
     body = MagicMock(spec=RerankRequest)
     body.model = "unknown"
@@ -1517,7 +1526,8 @@ async def test_execute_rerank_raises_400_when_not_registered():
     with pytest.raises(HTTPException) as exc_info:
         await reg.execute_rerank(body)
 
-    assert exc_info.value.status_code == 400
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Model not found"
 
 
 @pytest.mark.asyncio
@@ -2184,6 +2194,7 @@ async def test_execute_messages_includes_supported_endpoints_in_error():
     reg = make_registry()
     ep = make_chat_endpoint(on_chat=True, on_responses=True, on_completion=True, on_messages=False)
     fake = _make_registered_model_with_endpoint(ep)
+    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
     body = MagicMock(spec=MessagesRequest)
     body.model = "gpt-4"
     body.model_dump_json.return_value = "{}"
@@ -2199,6 +2210,7 @@ async def test_execute_responses_includes_supported_endpoints_in_error():
     reg = make_registry()
     ep = make_chat_endpoint(on_chat=True, on_messages=True, on_completion=True, on_responses=False)
     fake = _make_registered_model_with_endpoint(ep)
+    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
     body = MagicMock(spec=ResponsesRequest)
     body.model = "gpt-4"
     body.model_dump_json.return_value = "{}"
@@ -2214,6 +2226,7 @@ async def test_execute_chat_completion_includes_supported_endpoints_in_error():
     reg = make_registry()
     ep = make_chat_endpoint(on_chat=False, on_messages=True, on_responses=True, on_completion=True)
     fake = _make_registered_model_with_endpoint(ep)
+    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
     body = MagicMock(spec=ChatCompletionRequest)
     body.model = "gpt-4"
     body.model_dump_json.return_value = "{}"
@@ -2229,6 +2242,7 @@ async def test_execute_completion_includes_supported_endpoints_in_error():
     reg = make_registry()
     ep = make_chat_endpoint(on_chat=True, on_messages=True, on_responses=True, on_completion=False)
     fake = _make_registered_model_with_endpoint(ep)
+    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
     body = MagicMock(spec=CompletionLegacyRequest)
     body.model = "gpt-4"
 
@@ -2243,6 +2257,7 @@ async def test_execute_ollama_chat_includes_supported_endpoints_in_error():
     reg = make_registry()
     ep = make_chat_endpoint(on_chat=True, on_messages=True, on_responses=True, on_completion=True, on_ollama=False)
     fake = _make_registered_model_with_endpoint(ep)
+    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
     body = MagicMock(spec=OllamaChatRequest)
     body.model = "gpt-4"
 
@@ -2522,6 +2537,7 @@ async def test_execute_messages_error_with_no_supported_endpoints():
     reg = make_registry()
     ep = make_chat_endpoint(on_chat=False, on_responses=False, on_completion=False, on_messages=False)
     fake = _make_registered_model_with_endpoint(ep)
+    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
     body = MagicMock(spec=MessagesRequest)
     body.model = "gpt-4"
     body.model_dump_json.return_value = "{}"
@@ -2540,6 +2556,7 @@ async def test_execute_responses_error_with_no_supported_endpoints():
     reg = make_registry()
     ep = make_chat_endpoint(on_chat=False, on_responses=False, on_completion=False, on_messages=False)
     fake = _make_registered_model_with_endpoint(ep)
+    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
     body = MagicMock(spec=ResponsesRequest)
     body.model = "gpt-4"
     body.model_dump_json.return_value = "{}"
@@ -2558,6 +2575,7 @@ async def test_execute_chat_completion_error_with_no_supported_endpoints():
     reg = make_registry()
     ep = make_chat_endpoint(on_chat=False, on_responses=False, on_completion=False, on_messages=False)
     fake = _make_registered_model_with_endpoint(ep)
+    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
     body = MagicMock(spec=ChatCompletionRequest)
     body.model = "gpt-4"
     body.model_dump_json.return_value = "{}"
@@ -2576,6 +2594,7 @@ async def test_execute_completion_error_with_no_supported_endpoints():
     reg = make_registry()
     ep = make_chat_endpoint(on_chat=False, on_responses=False, on_completion=False, on_messages=False)
     fake = _make_registered_model_with_endpoint(ep)
+    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
     body = MagicMock(spec=CompletionLegacyRequest)
     body.model = "gpt-4"
 
@@ -2593,6 +2612,7 @@ async def test_execute_ollama_chat_error_with_no_supported_endpoints():
     reg = make_registry()
     ep = make_chat_endpoint(on_chat=False, on_responses=False, on_completion=False, on_messages=False, on_ollama=False)
     fake = _make_registered_model_with_endpoint(ep)
+    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
     body = MagicMock(spec=OllamaChatRequest)
     body.model = "gpt-4"
 
@@ -2636,6 +2656,120 @@ def test_session_store_evicts_expired(monkeypatch: pytest.MonkeyPatch) -> None:
     # Make the store think 20 seconds have passed
     monkeypatch.setattr(_er_module.time, "monotonic", lambda: real_now + 20)
     assert store.get("sid1") is None
+
+
+def test_model_exists_returns_true_when_registered():
+    reg = make_registry()
+    reg.register_embeddings("emb", make_props(), SimpleEndpoint(on_request=AsyncMock()), None)
+
+    result = reg.model_exists("emb")
+
+    assert result is True
+
+
+def test_model_exists_returns_false_when_not_registered():
+    reg = make_registry()
+
+    result = reg.model_exists("unknown")
+
+    assert result is False
+
+
+def test_model_exists_ignores_custom_and_mcp_endpoints():
+    reg = make_registry()
+    reg.register_custom_endpoint("custom/path", make_props(), CustomEndpoint(on_request=AsyncMock()), None)
+    reg.register_mcp_endpoint("mcp/url", make_props(), McpEndpoint(on_request=AsyncMock()), None)
+
+    assert reg.model_exists("custom/path") is False
+    assert reg.model_exists("mcp/url") is False
+
+
+@pytest.mark.asyncio
+async def test_execute_embeddings_raises_400_when_model_registered_for_other_endpoint():
+    reg = make_registry()
+    reg.register_chat_completion("shared", make_props(), make_chat_endpoint(), RegistrationOptions(origin="local"))
+    body = MagicMock(spec=EmbeddingRequest)
+    body.model = "shared"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.execute_embeddings(body)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Given model is not supported"
+
+
+@pytest.mark.asyncio
+async def test_execute_images_generations_raises_400_when_model_registered_for_other_endpoint():
+    reg = make_registry()
+    reg.register_embeddings("shared", make_props(), SimpleEndpoint(on_request=AsyncMock()), RegistrationOptions(origin="local"))
+    body = MagicMock(spec=ImagesRequest)
+    body.model = "shared"
+    body.model_dump_json.return_value = "{}"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.execute_images_generations(body)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Given model is not supported"
+
+
+@pytest.mark.asyncio
+async def test_execute_audio_speech_raises_400_when_model_registered_for_other_endpoint():
+    reg = make_registry()
+    reg.register_embeddings("shared", make_props(), SimpleEndpoint(on_request=AsyncMock()), RegistrationOptions(origin="local"))
+    body = MagicMock(spec=CreateSpeechRequest)
+    body.model = "shared"
+    body.model_dump_json.return_value = "{}"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.execute_audio_speech(body)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Given model is not supported"
+
+
+@pytest.mark.asyncio
+async def test_execute_audio_transcriptions_raises_400_when_model_registered_for_other_endpoint():
+    reg = make_registry()
+    reg.register_embeddings("shared", make_props(), SimpleEndpoint(on_request=AsyncMock()), RegistrationOptions(origin="local"))
+    body = MagicMock(spec=CreateTranscriptionRequest)
+    body.model = "shared"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.execute_audio_transcriptions(body)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Given model is not supported"
+
+
+@pytest.mark.asyncio
+async def test_execute_rerank_raises_400_when_model_registered_for_other_endpoint():
+    reg = make_registry()
+    reg.register_embeddings("shared", make_props(), SimpleEndpoint(on_request=AsyncMock()), RegistrationOptions(origin="local"))
+    body = MagicMock(spec=RerankRequest)
+    body.model = "shared"
+    body.model_dump_json.return_value = "{}"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.execute_rerank(body)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Given model is not supported"
+
+
+@pytest.mark.asyncio
+async def test_execute_messages_raises_400_when_model_registered_for_other_endpoint():
+    reg = make_registry()
+    reg.register_embeddings("shared", make_props(), SimpleEndpoint(on_request=AsyncMock()), RegistrationOptions(origin="local"))
+    body = MagicMock(spec=MessagesRequest)
+    body.model = "shared"
+    body.model_dump_json.return_value = "{}"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.execute_messages(body)
+
+    assert exc_info.value.status_code == 400
+    assert "Given model not support this endpoint" in exc_info.value.detail
 
 
 def test_session_store_evicts_oldest_when_at_capacity() -> None:
