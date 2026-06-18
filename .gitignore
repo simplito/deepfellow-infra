@@ -40,3 +40,5 @@ memory
 .claude/skills/fill-mr
 .claude/skills/review-and-fix
 .claude/skills/write-docs
+.claude/skills/daily-report
+.claude/skills/write-python-tests
