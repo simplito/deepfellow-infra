@@ -40,7 +40,7 @@ function RootComponent() {
   return (
     <ModalProvider>
       <Outlet />
-      <Toaster />
+      <Toaster closeButton />
     </ModalProvider>
   );
 }

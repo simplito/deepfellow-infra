@@ -17,6 +17,12 @@ code {
 	font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
 		monospace;
 }
+
+.toaster[data-sonner-toaster][dir] {
+	--toast-close-button-start: unset;
+	--toast-close-button-end: 0;
+	--toast-close-button-transform: translate(35%, -35%);
+}
 :root {
   --background: oklch(0.9751 0.0127 244.2507);
   --foreground: oklch(0.3729 0.0306 259.7328);
