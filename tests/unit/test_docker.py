@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 import yaml
 from aiodocker import DockerError
+from fastapi import HTTPException
 
 import server.docker as docker_mod
 from server.docker import (
@@ -26,6 +27,7 @@ from server.docker import (
     DockerPath,
     DockerService,
     _diagnose_gpu_error,  # type: ignore[reportPrivateUsage]
+    _is_container_name_conflict,  # type: ignore[reportPrivateUsage]
     create_docker_service,
     get_docker_auths,
     normalize_docker_platform,
@@ -1478,6 +1480,25 @@ def test_diagnose_gpu_error_no_match_returns_none() -> None:
     assert _diagnose_gpu_error("container started successfully") is None
 
 
+# _is_container_name_conflict
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ('Conflict. The container name "/ollama" is already in use by container "abc".', True),
+        ("the container name is already in use", True),
+        ("IS ALREADY IN USE", True),
+        ("container started successfully", False),
+        ("port is already allocated", False),
+    ],
+)
+def test_is_container_name_conflict_matches_collision_messages(text: str, expected: bool):
+    result = _is_container_name_conflict(text)
+
+    assert result is expected
+
+
 # start_docker_compose
 
 
@@ -1552,6 +1573,29 @@ async def test_ensure_compose_running_non_gpu_start_error_raises_app_error(docke
         pytest.raises(AppError, match="Failed to start"),
     ):
         await docker_service._ensure_compose_running(compose_file, options, is_running=False, has_difference=True, port=None)  # type: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_ensure_compose_running_name_conflict_raises_http_409(docker_service: DockerService, tmp_path: Path) -> None:
+    options = _opts(name="ollama")
+    options.container_name = "ollama"
+    compose_file = tmp_path / "compose.yaml"
+    stderr = 'Conflict. The container name "/ollama" is already in use by container "abc123".'
+
+    with (
+        patch.object(docker_service, "create_compose_file", new_callable=AsyncMock, return_value=11434),
+        patch.object(
+            docker_service,
+            "start_docker_compose",
+            new_callable=AsyncMock,
+            side_effect=DockerComposeStartError("", stderr),
+        ),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await docker_service._ensure_compose_running(compose_file, options, is_running=False, has_difference=True, port=None)  # type: ignore[reportPrivateUsage]
+
+    assert exc_info.value.status_code == 409
+    assert "ollama" in exc_info.value.detail
 
 
 # _assert_compose_healthy
