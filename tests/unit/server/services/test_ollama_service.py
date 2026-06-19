@@ -314,6 +314,24 @@ def test_get_default_context_window(svc: OllamaService, model_context: int, serv
     assert svc.get_default_context_window(model_context, service_context) == expected
 
 
+@pytest.mark.parametrize(
+    ("model_context", "service_context_length", "expected"),
+    [
+        (32768, None, 4096),
+        (32768, 4096, 4096),
+        (32768, 16384, 16384),
+        (2048, 4096, 2048),
+        (None, None, 4096),
+    ],
+)
+def test_effective_context_caps_native_window_by_runtime(
+    svc: OllamaService, model_context: int | None, service_context_length: int | None, expected: int
+) -> None:
+    parsed_options = OllamaOptions(context_length=service_context_length)
+
+    assert svc._effective_context(model_context, parsed_options) == expected  # pyright: ignore[reportPrivateUsage]
+
+
 def test_modelfile_parse_from_line() -> None:
     mf = OllamaModelFile.parse("FROM llama3\nPARAMETER num_ctx 4096")
     from_lines = [line for line in mf.lines if isinstance(line, OllamaModelFileLine) and line.instruction == "FROM"]

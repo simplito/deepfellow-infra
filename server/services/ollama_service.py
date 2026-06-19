@@ -753,6 +753,11 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         return {}
 
+    def _effective_context(self, model_context: int | None, parsed_options: OllamaOptions) -> int:
+        """Return the context Ollama runs with for an idle model: native window capped by the service context."""
+        service_context = parsed_options.context_length or self.default_context_length
+        return self.get_default_context_window(model_context, service_context)
+
     async def _resolve_vram_info(
         self,
         instance: str,
@@ -826,7 +831,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                         is_loaded, vram_estimate = await self._resolve_vram_info(
                             instance_name,
                             ollama_name,
-                            model.context,
+                            self._effective_context(model.context, info.parsed_options),
                             loaded_info,
                             sizes,
                             info.base_url,
@@ -870,7 +875,13 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         ollama_name: str = (info.models[model_id].internal_name if model_id in info.models else None) or model_id
         if loaded_info is not None:
             is_loaded, vram_estimate = await self._resolve_vram_info(
-                instance, ollama_name, model.context, loaded_info, sizes, info.base_url, info.parsed_options.num_parallel
+                instance,
+                ollama_name,
+                self._effective_context(model.context, info.parsed_options),
+                loaded_info,
+                sizes,
+                info.base_url,
+                info.parsed_options.num_parallel,
             )
         return RetrieveModelOut(
             id=model_id,
