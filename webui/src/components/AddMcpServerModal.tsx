@@ -630,7 +630,7 @@ export function AddMcpServerModal({
                     id="url-name"
                     placeholder="my-remote-mcp"
                     value={url.name}
-                    onChange={(e) => url.setName(e.target.value)}
+                    onChange={(e) => url.handleNameChange(e.target.value)}
                     disabled={isSubmitting}
                   />
                   {url.errors.name && (
@@ -650,7 +650,7 @@ export function AddMcpServerModal({
                     id="url-prefix"
                     placeholder="my-remote-mcp"
                     value={url.prefix}
-                    onChange={(e) => url.setPrefix(e.target.value)}
+                    onChange={(e) => url.handlePrefixChange(e.target.value)}
                     disabled={isSubmitting}
                   />
                   {url.errors.prefix && (
@@ -837,10 +837,7 @@ export function AddMcpServerModal({
                     id="mcp-model-id"
                     placeholder="my-mcp-server"
                     value={stdio.modelId}
-                    onChange={(e) => {
-                      stdio.setModelId(e.target.value);
-                      stdio.clearErrors();
-                    }}
+                    onChange={(e) => stdio.handleModelIdChange(e.target.value)}
                     disabled={isSubmitting}
                   />
                   {stdio.errors.name && (
@@ -861,10 +858,7 @@ export function AddMcpServerModal({
                     id="mcp-prefix"
                     placeholder="my-server"
                     value={stdio.prefix}
-                    onChange={(e) => {
-                      stdio.setPrefix(e.target.value);
-                      stdio.clearErrors();
-                    }}
+                    onChange={(e) => stdio.handlePrefixChange(e.target.value)}
                     disabled={isSubmitting}
                   />
                   {stdio.errors.prefix ? (
