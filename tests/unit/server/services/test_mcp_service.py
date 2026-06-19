@@ -800,3 +800,42 @@ async def test_uninstall_instance_logs_error_when_model_uninstall_fails(svc: Mcp
         await svc._uninstall_instance("default", UninstallServiceIn(purge=False))  # pyright: ignore[reportPrivateUsage]
 
     assert svc.instances_info["default"].installed is None
+
+
+@pytest.mark.asyncio
+async def test_install_model_sse_transport_uses_sse_proxy(svc: McpService, deps: dict[str, Any], tmp_path: Path) -> None:
+    svc.instances_info["default"].installed = InstalledInfo(models={}, options=InstallServiceIn(spec={}))
+    model_id = "my-sse-mcp"
+    svc._add_custom_model(  # pyright: ignore[reportPrivateUsage]
+        "default",
+        CustomModel(
+            id="uuid-sse",
+            data={
+                "id": model_id,
+                "default_prefix": model_id,
+                "size": "100MB",
+                "image": "company/sse-mcp:latest",
+                "image_port": 8080,
+                "proxy_transport": "sse",
+            },
+        ),
+    )
+    deps["docker_service"].install_and_run_docker = AsyncMock(return_value=12345)
+    deps["docker_service"].get_container_host.return_value = "172.20.0.2"
+    deps["docker_service"].get_container_port.return_value = 8080
+    deps["endpoint_registry"].register_mcp_sse_endpoint_as_proxy.return_value = "sse-reg-id"
+
+    with (
+        patch.object(svc, "_verify_docker_image", new=AsyncMock()),
+        patch.object(svc, "_download_image_or_set_progress", new=AsyncMock()),
+        patch.object(svc, "_get_working_dir", return_value=tmp_path),
+        patch("server.services.mcp_service.get_base_url", return_value="http://172.20.0.2:8080"),
+    ):
+        promise = await svc._install_model("default", model_id, InstallModelIn())  # pyright: ignore[reportPrivateUsage]
+        result = await promise.wait()
+
+    assert result.status == "OK"
+    deps["endpoint_registry"].register_mcp_sse_endpoint_as_proxy.assert_called_once()
+    deps["endpoint_registry"].register_mcp_endpoint_as_proxy.assert_not_called()
+    info = svc.get_instance_installed_info("default")
+    assert info.models[model_id].registration_id == "sse-reg-id"

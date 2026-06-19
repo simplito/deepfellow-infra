@@ -20,8 +20,9 @@ from fastapi import UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from starlette.datastructures import Headers
+from starlette.requests import Request
 
-from server.endpointregistry import ChatCompletionEndpoint, RegistryEntry, SimpleEndpoint
+from server.endpointregistry import ChatCompletionEndpoint, McpEndpoint, RegistryEntry, SimpleEndpoint
 from server.models.api import (
     ALL_LLM_SUFFIXES,
     ChatCompletionRequest,
@@ -94,7 +95,7 @@ class ModelTester:
             logger.exception("Error during executing model test")
             return {"error": "Internal Server Error"}
 
-    async def _perform_test(self, entry: RegistryEntry) -> JsonSerializable:
+    async def _perform_test(self, entry: RegistryEntry) -> JsonSerializable:  # noqa: C901
         if entry.registered_model.type == "llm" or entry.registered_model.type.startswith("llm-"):
             parts = set(ALL_LLM_SUFFIXES) if entry.registered_model.type == "llm" else set(entry.registered_model.type.split("-")[1:])
             for suffix, method_name in LLM_TEST_HANDLERS.items():
@@ -111,6 +112,8 @@ class ModelTester:
             return await self._test_txt2img(entry.registered_model.name, entry.registered_model.endpoint)
         if entry.registered_model.type == "rerank":
             return await self._test_rerank(entry.registered_model.name, entry.registered_model.endpoint)
+        if entry.registered_model.type == "mcp":
+            return await self._test_mcp(entry.registered_model.name, entry.registered_model.endpoint)
         if entry.registered_model.type == "custom":
             raise ModelTestError("Custom model cannot be tested")
         raise RuntimeError(f"Given model cannot be tested, unsupported type {entry.registered_model.type}")  # noqa: EM102
@@ -262,6 +265,104 @@ class ModelTester:
             }
         except Exception:
             raise ModelTestError("Cannot read image data", my_resp)  # noqa: B904
+
+    def _make_mcp_request(self, body: bytes, extra_headers: list[tuple[bytes, bytes]] | None = None) -> Request:
+        headers: list[tuple[bytes, bytes]] = [
+            (b"content-type", b"application/json"),
+            (b"accept", b"application/json, text/event-stream"),
+            *(extra_headers or []),
+        ]
+        scope: dict[str, Any] = {
+            "type": "http",
+            "method": "POST",
+            "path": "/",
+            "query_string": b"",
+            "scheme": "http",
+            "server": ("localhost", 80),
+            "headers": headers,
+            "path_params": {"full_path": "/"},
+        }
+
+        async def receive() -> dict[str, Any]:
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        return Request(scope, receive)
+
+    async def _read_mcp_response(self, response: StarletteResponse, request_id: int) -> tuple[Response, Any]:
+        my_resp = await self._read_response(response)
+        if my_resp.status_code != 200:
+            raise ModelTestError(error="Invalid status code", response=my_resp)
+        if my_resp.media_type == "application/json":
+            try:
+                data = json.loads(my_resp.content.decode("utf-8"))
+                return (my_resp, data)  # noqa: TRY300
+            except Exception:
+                raise ModelTestError(error="JSON parse error", response=my_resp)  # noqa: B904
+        if "text/event-stream" in my_resp.media_type:
+            try:
+                text = my_resp.content.decode("utf-8")
+            except Exception:
+                raise ModelTestError(error="Cannot decode SSE response", response=my_resp)  # noqa: B904
+            for line in text.splitlines():
+                if line.startswith("data: "):
+                    try:
+                        event_data = json.loads(line[6:])
+                        if isinstance(event_data, dict) and event_data.get("id") == request_id:
+                            return (my_resp, event_data)
+                    except (json.JSONDecodeError, AttributeError):
+                        continue
+            raise ModelTestError("No matching MCP response in SSE stream", my_resp)
+        raise ModelTestError(f"Unexpected content type: {my_resp.media_type}", my_resp)  # noqa: EM102
+
+    async def _test_mcp(self, model: str, endpoint: McpEndpoint) -> JsonSerializable:  # noqa: ARG002
+        init_payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "deepfellow-tester", "version": "1.0"},
+                },
+            }
+        ).encode()
+        init_response = await endpoint.on_request(self._make_mcp_request(init_payload))
+        session_id: str | None = None
+        if isinstance(init_response, StreamingResponse):
+            session_id = init_response.headers.get("mcp-session-id")
+        (init_raw, init_data) = await self._read_mcp_response(init_response, 1)
+        if "error" in init_data:
+            raise ModelTestError(f"MCP initialize error: {init_data['error']}", init_raw)  # noqa: EM102
+        if "result" not in init_data:
+            raise ModelTestError("MCP initialize returned no result", init_raw)
+        server_info: dict[str, Any] = init_data["result"].get("serverInfo", {})
+
+        extra_headers: list[tuple[bytes, bytes]] = [(b"mcp-session-id", session_id.encode())] if session_id else []
+        tools_payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/list",
+                "params": {},
+            }
+        ).encode()
+        try:
+            tools_response = await endpoint.on_request(self._make_mcp_request(tools_payload, extra_headers))
+            (_, tools_data) = await self._read_mcp_response(tools_response, 2)
+            tools: list[Any] | None = tools_data.get("result", {}).get("tools")
+        except ModelTestError as e:
+            return {
+                "result": "ok",
+                "output": {"tools": None, "tools_error": e.error, "server_info": server_info},
+                "details": {"initialize": init_data},
+            }
+        else:
+            return {
+                "result": "ok",
+                "output": {"tools": tools, "server_info": server_info},
+                "details": {"initialize": init_data, "tools_list": tools_data},
+            }
 
     async def _read_json(self, response: StarletteResponse) -> tuple[Response, Any]:
         my_resp = await self._read_response(response)
