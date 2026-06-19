@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `push_to_github` release job no longer fails on a shallow clone; release tags are now verified to originate from `main`.
 - CI no longer fails `pyright` non-deterministically on merge pipelines: the CI uv version is bumped to `0.11.8`, which understands the relative `exclude-newer` cooldown, so `uv.lock` is honored instead of being silently ignored and re-resolved. A `required-version = ">=0.11.8"` floor prevents an older uv from reintroducing the issue.
 - Requesting a model that is not installed now returns `404 Model not found` instead of the misleading `400 Given model is not supported`. The `400` response is now reserved for the case where the model exists but does not support the requested endpoint (e.g. calling `/v1/embeddings` with a chat model).
+- Remote service handling of models with aliases.
 
 ## [0.28.0] - 2026-06-03
 
