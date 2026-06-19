@@ -11,6 +11,7 @@ limitations under the License.
 
 import { initFormData, validateFields } from "@/components/DynamicFormFields";
 import type { SpecField } from "@/deepfellow/types";
+import { proposePrefix } from "@/utils/prefix";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -127,6 +128,11 @@ export function useDockerForm(
   const [data, setData] = useState<Record<string, unknown>>(initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [volumes, setVolumes] = useState<string[]>([]);
+  const [prefixIsManual, setPrefixIsManual] = useState(false);
+  const hasPrefixField = useMemo(
+    () => dockerFields.some((f) => f.name === "default_prefix"),
+    [dockerFields],
+  );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: open is the intentional reset trigger; dockerFields is stable
   useEffect(() => {
@@ -134,10 +140,22 @@ export function useDockerForm(
     setData(initFormData(dockerFields));
     setErrors({});
     setVolumes([]);
+    setPrefixIsManual(false);
   }, [open]);
 
   const handleChange = (name: string, value: unknown) => {
-    setData((prev) => ({ ...prev, [name]: value }));
+    if (name === "default_prefix") {
+      setPrefixIsManual(typeof value === "string" && value.trim() !== "");
+    }
+    setData((prev) => {
+      const next = { ...prev, [name]: value };
+      if (name === "id" && hasPrefixField && !prefixIsManual) {
+        next.default_prefix = proposePrefix(
+          typeof value === "string" ? value : "",
+        );
+      }
+      return next;
+    });
     setErrors((prev) => {
       if (!prev[name]) return prev;
       const next = { ...prev };
@@ -163,6 +181,9 @@ export function useDockerForm(
       id: parsed.name,
       image: parsed.image,
       ...(parsed.command ? { command: parsed.command } : {}),
+      ...(hasPrefixField && !prefixIsManual
+        ? { default_prefix: proposePrefix(parsed.name) }
+        : {}),
     }));
     if (parsed.volumes.length > 0) setVolumes(parsed.volumes);
     setErrors({});
@@ -184,8 +205,10 @@ export interface UrlFormState {
   setServerUrl: (v: string) => void;
   name: string;
   setName: (v: string) => void;
+  handleNameChange: (v: string) => void;
   prefix: string;
   setPrefix: (v: string) => void;
+  handlePrefixChange: (v: string) => void;
   transport: "streamable_http" | "sse";
   setTransport: (v: "streamable_http" | "sse") => void;
   headers: Record<string, string>;
@@ -217,6 +240,9 @@ export function useUrlForm(
   const [serverUrl, setServerUrl] = useState(initialValues?.server_url ?? "");
   const [name, setName] = useState(initialValues?.name ?? "");
   const [prefix, setPrefix] = useState(initialValues?.default_prefix ?? "");
+  const [prefixIsManual, setPrefixIsManual] = useState(
+    !!initialValues?.default_prefix,
+  );
   const [transport, setTransport] = useState<"streamable_http" | "sse">(
     initialValues?.transport ?? "streamable_http",
   );
@@ -231,10 +257,21 @@ export function useUrlForm(
     setServerUrl(initialValues?.server_url ?? "");
     setName(initialValues?.name ?? "");
     setPrefix(initialValues?.default_prefix ?? "");
+    setPrefixIsManual(!!initialValues?.default_prefix);
     setTransport(initialValues?.transport ?? "streamable_http");
     setHeaders(initialValues?.headers ?? {});
     setErrors({});
   }, [open]);
+
+  const handleNameChange = (v: string) => {
+    setName(v);
+    if (!prefixIsManual) setPrefix(proposePrefix(v));
+  };
+
+  const handlePrefixChange = (v: string) => {
+    setPrefix(v);
+    setPrefixIsManual(v.trim() !== "");
+  };
 
   const populate = (parsed: {
     name: string;
@@ -243,6 +280,7 @@ export function useUrlForm(
     headers: Record<string, string>;
   }) => {
     setName(parsed.name);
+    if (!prefixIsManual) setPrefix(proposePrefix(parsed.name));
     setServerUrl(parsed.server_url);
     setTransport(parsed.transport);
     setHeaders(parsed.headers);
@@ -267,8 +305,10 @@ export function useUrlForm(
     setServerUrl,
     name,
     setName,
+    handleNameChange,
     prefix,
     setPrefix,
+    handlePrefixChange,
     transport,
     setTransport,
     headers,
@@ -298,8 +338,10 @@ export interface StdioFormState {
   setNodeVersion: (v: NodeVersion) => void;
   modelId: string;
   setModelId: (v: string) => void;
+  handleModelIdChange: (v: string) => void;
   prefix: string;
   setPrefix: (v: string) => void;
+  handlePrefixChange: (v: string) => void;
   variant: McpVariant | "";
   variantIsManual: boolean;
   envs: Record<string, string>;
@@ -363,6 +405,9 @@ export function useStdioForm(
   );
   const [modelId, setModelId] = useState(initialValues?.name ?? "");
   const [prefix, setPrefix] = useState(initialValues?.default_prefix ?? "");
+  const [prefixIsManual, setPrefixIsManual] = useState(
+    !!initialValues?.default_prefix,
+  );
   const [variant, setVariant] = useState<McpVariant | "">(
     initialValues?.variant ?? "",
   );
@@ -387,6 +432,7 @@ export function useStdioForm(
     setNodeVersion(initialValues?.node_version ?? DEFAULT_NODE_VERSION);
     setModelId(initialValues?.name ?? "");
     setPrefix(initialValues?.default_prefix ?? "");
+    setPrefixIsManual(!!initialValues?.default_prefix);
     setVariant(initialValues?.variant ?? "");
     setVariantIsManual(!!initialValues?.variant);
     setEnvs(initialValues?.envs ?? {});
@@ -416,6 +462,7 @@ export function useStdioForm(
         onDockerParsed(parsed);
       } else {
         setModelId(parsed.name);
+        if (!prefixIsManual) setPrefix(proposePrefix(parsed.name));
         setCommand(parsed.command);
         setBaseImage(parsed.base_image);
         setEnvs(parsed.envs);
@@ -477,6 +524,18 @@ export function useStdioForm(
     setVariantIsManual(true);
   };
 
+  const handleModelIdChange = (v: string) => {
+    setModelId(v);
+    if (!prefixIsManual) setPrefix(proposePrefix(v));
+    clearErrors();
+  };
+
+  const handlePrefixChange = (v: string) => {
+    setPrefix(v);
+    setPrefixIsManual(v.trim() !== "");
+    clearErrors();
+  };
+
   const clearErrors = () => setErrors({});
 
   const buildPayload = () => {
@@ -525,8 +584,10 @@ export function useStdioForm(
     setNodeVersion,
     modelId,
     setModelId,
+    handleModelIdChange,
     prefix,
     setPrefix,
+    handlePrefixChange,
     variant,
     variantIsManual,
     envs,
