@@ -38,6 +38,7 @@ from server.models.api import (
     EmbeddingRequest,
     FormSerializable,
     ImagesRequest,
+    McpToolInfo,
     MessagesRequest,
     Model,
     ModelId,
@@ -91,6 +92,7 @@ class RegisteredModel[T](BaseModel):
     type: str
     endpoint: T
     usage: int
+    healthy: bool = False
 
 
 class RegistrationOptions(NamedTuple):
@@ -198,26 +200,55 @@ class Endpoint[T]:
         """Get model max context window."""
         return max([0, *list({item.props.max_context_window for item in model.values() if item.props.max_context_window})])
 
+    def get_model_prefix(self, model: dict[RegistrationId, RegisteredModel[T]]) -> str | None:
+        """Get model prefix."""
+        for item in model.values():
+            if item.props.prefix:
+                return item.props.prefix
+        return None
+
+    def get_model_transport(self, model: dict[RegistrationId, RegisteredModel[T]]) -> str | None:
+        """Get model transport."""
+        for item in model.values():
+            if item.props.transport:
+                return item.props.transport
+        return None
+
+    def get_model_tools(self, model: dict[RegistrationId, RegisteredModel[T]]) -> list[McpToolInfo]:
+        """Get model tools from first registration that has them."""
+        for item in model.values():
+            if item.props.tools:
+                return item.props.tools
+        return []
+
+    def _build_api_model(self, model_id: ModelId, model: dict[RegistrationId, RegisteredModel[T]]) -> ApiModel:
+        """Build an ApiModel from a model's registrations."""
+        return ApiModel(
+            id=model_id,
+            object="model",
+            created=0,
+            owned_by="unknown",
+            props=ModelProps(
+                private=self.is_model_private(model),
+                type=self.get_model_type(model),
+                endpoints=self.get_model_available_endpoints(model),
+                context_window=self.get_model_context_window(model),
+                max_context_window=self.get_max_context_window(model),
+                prefix=self.get_model_prefix(model),
+                transport=self.get_model_transport(model),
+                tools=self.get_model_tools(model),
+            ),
+        )
+
     def get_models(self) -> list[ApiModel]:
         """List models from registry."""
-        res = list[ApiModel]()
-        for model_id, model in self.models.items():
-            res.append(
-                ApiModel(
-                    id=model_id,
-                    object="model",
-                    created=0,
-                    owned_by="unknown",
-                    props=ModelProps(
-                        private=self.is_model_private(model),
-                        type=self.get_model_type(model),
-                        endpoints=self.get_model_available_endpoints(model),
-                        context_window=self.get_model_context_window(model),
-                        max_context_window=self.get_max_context_window(model),
-                    ),
-                )
-            )
-        return res
+        return [self._build_api_model(model_id, model) for model_id, model in self.models.items()]
+
+    def get_healthy_models(self) -> list[ApiModel]:
+        """List only models that have at least one healthy registration."""
+        return [
+            self._build_api_model(model_id, model) for model_id, model in self.models.items() if any(reg.healthy for reg in model.values())
+        ]
 
     def list_models(self) -> list[Model]:
         """List models from registry."""
@@ -385,6 +416,10 @@ class EndpointRegistry:
         for model in self.images_generations_endpoints.get_models():
             models.append(model)
         for model in self.rerank_endpoints.get_models():
+            models.append(model)
+        for model in self.mcp_endpoints.get_healthy_models():
+            models.append(model)
+        for model in self.custom_endpoints.get_models():
             models.append(model)
         return ApiModels(data=models)
 

@@ -43,6 +43,7 @@ from server.models.api import (
     CreateTranscriptionRequest,
     EmbeddingRequest,
     ImagesRequest,
+    McpToolInfo,
     MessagesRequest,
     Model,
     ModelProps,
@@ -3049,3 +3050,125 @@ async def test_mcp_sse_proxy_get_finally_no_session_id() -> None:
         chunks.append(chunk if isinstance(chunk, bytes) else chunk.encode())  # type: ignore[union-attr]
 
     mock_upstream.response.release.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# New Endpoint methods: get_model_prefix, get_model_transport, get_model_tools
+# ---------------------------------------------------------------------------
+
+
+def test_get_model_prefix_returns_prefix_when_set() -> None:
+    ep = make_endpoint()
+    props = make_props()
+    props.prefix = "my-prefix"
+    ep.add_model("model1", props, SimpleEndpoint(on_request=AsyncMock()), "mcp", RegistrationOptions(origin="local"))
+
+    result = ep.get_model_prefix(ep.models["model1"])
+
+    assert result == "my-prefix"
+
+
+def test_get_model_prefix_returns_none_when_no_prefix() -> None:
+    ep = make_endpoint()
+    ep.add_model("model1", make_props(), SimpleEndpoint(on_request=AsyncMock()), "mcp", RegistrationOptions(origin="local"))
+
+    result = ep.get_model_prefix(ep.models["model1"])
+
+    assert result is None
+
+
+def test_get_model_transport_returns_transport_when_set() -> None:
+    ep = make_endpoint()
+    props = make_props()
+    props.transport = "streamable_http"
+    ep.add_model("model1", props, SimpleEndpoint(on_request=AsyncMock()), "mcp", RegistrationOptions(origin="local"))
+
+    result = ep.get_model_transport(ep.models["model1"])
+
+    assert result == "streamable_http"
+
+
+def test_get_model_transport_returns_none_when_no_transport() -> None:
+    ep = make_endpoint()
+    ep.add_model("model1", make_props(), SimpleEndpoint(on_request=AsyncMock()), "mcp", RegistrationOptions(origin="local"))
+
+    result = ep.get_model_transport(ep.models["model1"])
+
+    assert result is None
+
+
+def test_get_model_tools_returns_tools_when_set() -> None:
+    ep = make_endpoint()
+    props = make_props()
+    props.tools = [McpToolInfo(name="search", description="web search")]
+    ep.add_model("model1", props, SimpleEndpoint(on_request=AsyncMock()), "mcp", RegistrationOptions(origin="local"))
+
+    result = ep.get_model_tools(ep.models["model1"])
+
+    assert len(result) == 1
+    assert result[0].name == "search"
+
+
+def test_get_model_tools_returns_empty_when_no_tools() -> None:
+    ep = make_endpoint()
+    ep.add_model("model1", make_props(), SimpleEndpoint(on_request=AsyncMock()), "mcp", RegistrationOptions(origin="local"))
+
+    result = ep.get_model_tools(ep.models["model1"])
+
+    assert result == []
+
+
+def test_get_healthy_models_returns_only_healthy() -> None:
+    ep = make_endpoint()
+    ep.add_model("healthy-m", make_props(), SimpleEndpoint(on_request=AsyncMock()), "mcp", RegistrationOptions(origin="local", id="r1"))
+    ep.add_model("unhealthy-m", make_props(), SimpleEndpoint(on_request=AsyncMock()), "mcp", RegistrationOptions(origin="local", id="r2"))
+
+    for reg_model in ep.models["healthy-m"].values():
+        reg_model.healthy = True
+
+    result = ep.get_healthy_models()
+
+    ids = [m.id for m in result]
+    assert "healthy-m" in ids
+    assert "unhealthy-m" not in ids
+
+
+def test_get_healthy_models_returns_empty_when_none_healthy() -> None:
+    ep = make_endpoint()
+    ep.add_model("m1", make_props(), SimpleEndpoint(on_request=AsyncMock()), "mcp", RegistrationOptions(origin="local"))
+
+    result = ep.get_healthy_models()
+
+    assert result == []
+
+
+def test_registry_get_models_includes_healthy_mcp_models() -> None:
+    reg = make_registry()
+    props = make_props(type="mcp", endpoints=["/mcp/my-mcp/mcp"])
+    reg.register_mcp_endpoint("my-mcp", props, McpEndpoint(on_request=AsyncMock()), RegistrationOptions(origin="local", id="r1"))
+
+    for reg_model in reg.mcp_endpoints.models["my-mcp"].values():
+        reg_model.healthy = True
+
+    ids = [m.id for m in reg.get_models().data]
+
+    assert "my-mcp" in ids
+
+
+def test_registry_get_models_excludes_unhealthy_mcp_models() -> None:
+    reg = make_registry()
+    props = make_props(type="mcp", endpoints=["/mcp/unhealthy/mcp"])
+    reg.register_mcp_endpoint("unhealthy", props, McpEndpoint(on_request=AsyncMock()), RegistrationOptions(origin="local"))
+
+    ids = [m.id for m in reg.get_models().data]
+
+    assert "unhealthy" not in ids
+
+
+def test_registry_get_models_includes_custom_models() -> None:
+    reg = make_registry()
+    reg.register_custom_endpoint("my-custom", make_props(type="custom"), CustomEndpoint(on_request=AsyncMock()), None)
+
+    ids = [m.id for m in reg.get_models().data]
+
+    assert "my-custom" in ids

@@ -85,6 +85,7 @@ import type {
 import { ConfirmModal } from "./ConfirmModal";
 import { ContentModal } from "./ContentModal";
 import { DynamicFormModal } from "./DynamicFormModal";
+
 import { ProgressBadge } from "./ProgressBadge";
 import { TestResultModal } from "./TestResultModal";
 import { UninstallWithPurgeModal } from "./UninstallWithPurgeModal";
@@ -108,7 +109,7 @@ export function ServiceModels({ serviceId }: ServiceModelsProps) {
     spec: AddMcpServerSpec | ProxyMcpServerSpec;
   } | null>(null);
   const [mcpApiError, setMcpApiError] = useState<string | null>(null);
-  const [showEntrySkeleton, setShowEntrySkeleton] = useState(true);
+const [showEntrySkeleton, setShowEntrySkeleton] = useState(true);
   const [installingModelId, setInstallingModelId] = useState<string | null>(
     null,
   );

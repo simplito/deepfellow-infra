@@ -17,6 +17,7 @@ export const MODEL_TYPES = {
   lora: "LORA (lora)",
   reranker: "Reranker (reranker)",
   txt2img: "Text to image (txt2img)",
+  mcp: "MCP Server",
 } as const;
 
 export type ModelType = keyof typeof MODEL_TYPES;
@@ -141,6 +142,7 @@ export interface InstallRequest {
 export interface UninstallRequest {
   purge: boolean;
 }
+
 
 export class InstallationWarningsError extends Error {
   warnings: string[];

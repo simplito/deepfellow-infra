@@ -372,6 +372,12 @@ class CreateSpeechRequest(BaseModel):
     ] = None
 
 
+class McpToolInfo(BaseModel):
+    name: str
+    description: str = ""
+    input_schema: dict[str, Any] = {}
+
+
 class ModelProps(BaseModel):
     private: bool
     type: str
@@ -379,6 +385,8 @@ class ModelProps(BaseModel):
     context_window: int | None = None
     max_context_window: int | None = None
     prefix: str | None = None
+    transport: str | None = None
+    tools: list[McpToolInfo] = []
 
 
 type ModelType = Literal["llm", "embedding", "tts", "stt", "rerank", "txt2img", "mcp", "custom"]

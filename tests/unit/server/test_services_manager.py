@@ -29,11 +29,27 @@ from server.models.services import (
     RetrieveServiceOut,
     UninstallServiceIn,
 )
+from server.services.mcp_service import McpService
 from server.services_manager import ServicesManager
 from tests.unit.server.fakes import FakeService
 
 if TYPE_CHECKING:
     from server.serviceprovider import ServiceRawConfig
+
+
+@pytest.fixture
+def mcp_svc() -> McpService:
+    docker_svc = MagicMock()
+    docker_svc.get_docker_subnet.return_value = "172.20.0.0/16"
+    docker_svc.get_docker_container_name.side_effect = lambda name: f"df-{name}"  # pyright: ignore[reportUnknownLambdaType]
+    return McpService(
+        config=MagicMock(),
+        endpoint_registry=MagicMock(),
+        service_provider=MagicMock(),
+        model_downloader=MagicMock(),
+        docker_service=docker_svc,
+        hardware=MagicMock(gpus=[], nvidia_gpus=[]),
+    )
 
 
 @pytest.mark.parametrize(

@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from server.models.api import RegistrationId
+from server.models.api import McpToolInfo, RegistrationId
 
 type InstallModelOptions = dict[str, Any]
 type CustomModelDefiniton = dict[str, Any]
@@ -135,3 +135,10 @@ class SyncModelsOut(BaseModel):
 
 class CancelModelInstallOut(BaseModel):
     status: Literal["OK"]
+
+
+class McpHealthCheckResult(BaseModel):
+    healthy: bool
+    transport: Literal["streamable_http", "sse"] | None = None
+    tools: list[McpToolInfo] = []
+    error: str | None = None

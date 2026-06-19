@@ -20,7 +20,9 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from urllib.parse import urljoin, urlparse
 
+import aiohttp
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, field_validator
 
@@ -36,6 +38,8 @@ from server.models.models import (
     InstallModelOut,
     ListModelsFilters,
     ListModelsOut,
+    McpHealthCheckResult,
+    McpToolInfo,
     ModelField,
     ModelInfo,
     ModelSpecification,
@@ -243,12 +247,240 @@ class DownloadedInfo:
 
 logger = logging.getLogger("uvicorn.error")
 
+_MCP_INIT_PAYLOAD: dict[str, Any] = {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {},
+        "clientInfo": {"name": "deepfellow-healthcheck", "version": "1.0"},
+    },
+}
+_MCP_INITIALIZED_NOTIF: dict[str, Any] = {"jsonrpc": "2.0", "method": "notifications/initialized"}
+_MCP_TOOLS_LIST_PAYLOAD: dict[str, Any] = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
+
+
+def _parse_mcp_tools(raw: list[Any]) -> list[McpToolInfo]:
+    tools = []
+    for t in raw:
+        if isinstance(t, dict):
+            tools.append(
+                McpToolInfo(
+                    name=t.get("name", ""),
+                    description=t.get("description", ""),
+                    input_schema=t.get("inputSchema") or t.get("input_schema") or {},
+                )
+            )
+    return tools
+
+
+async def _read_first_sse_json(resp: aiohttp.ClientResponse) -> dict[str, Any] | None:
+    """Read an SSE stream and return the data of the first non-empty data-only event."""
+    data_buf = ""
+    async for raw_line in resp.content:
+        try:
+            line = raw_line.decode("utf-8").rstrip("\r\n")
+        except UnicodeDecodeError:
+            continue
+        if line.startswith("data:"):
+            data_buf += line[5:].strip()
+        elif line == "" and data_buf:
+            try:
+                return json.loads(data_buf)
+            except json.JSONDecodeError:
+                pass
+            data_buf = ""
+    return None
+
+
+async def _fetch_tools_from_mcp_endpoint(mcp_url: str, extra_headers: dict[str, str]) -> McpHealthCheckResult:  # noqa: C901
+    """Probe a streamable-HTTP MCP server, run the full init handshake, and return tools."""
+    try:
+        conn_timeout = aiohttp.ClientTimeout(total=15, connect=5)
+        session_id: str | None = None
+
+        async with aiohttp.ClientSession() as client:
+
+            def _req_headers() -> dict[str, str]:
+                h: dict[str, str] = {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream",
+                    **extra_headers,
+                }
+                if session_id:
+                    h["Mcp-Session-Id"] = session_id
+                return h
+
+            async def _post(payload: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+                nonlocal session_id
+                async with client.post(mcp_url, json=payload, headers=_req_headers(), timeout=conn_timeout) as resp:
+                    if sid := resp.headers.get("Mcp-Session-Id"):
+                        session_id = sid
+                    if resp.status == 202:
+                        return None, None
+                    if resp.status != 200:
+                        return None, f"HTTP {resp.status}"
+                    ct = resp.headers.get("Content-Type", "")
+                    data = await _read_first_sse_json(resp) if "text/event-stream" in ct else await resp.json()
+                    if data is None:
+                        return None, "Empty response"
+                    if "error" in data:
+                        return None, str(data["error"].get("message", data["error"]))
+                    return data.get("result"), None
+
+            _, init_err = await _post(_MCP_INIT_PAYLOAD)
+            if init_err:
+                return McpHealthCheckResult(healthy=False, error=f"initialize: {init_err}")
+
+            await _post(_MCP_INITIALIZED_NOTIF)
+
+            tools_result, tools_err = await _post(_MCP_TOOLS_LIST_PAYLOAD)
+            if tools_err:
+                return McpHealthCheckResult(healthy=True, transport="streamable_http", error=f"tools/list: {tools_err}")
+
+            raw_tools = (tools_result or {}).get("tools", [])
+            return McpHealthCheckResult(healthy=True, transport="streamable_http", tools=_parse_mcp_tools(raw_tools))
+
+    except aiohttp.ClientConnectorError as exc:
+        return McpHealthCheckResult(healthy=False, error=f"Connection refused: {exc}")
+    except Exception as exc:
+        return McpHealthCheckResult(healthy=False, error=f"{type(exc).__name__}: {exc}")
+
+
+@dataclass
+class _SseState:
+    endpoint_ready: asyncio.Event
+    session_url_holder: list[str]
+    response_futures: dict[int, asyncio.Future[dict[str, Any]]]
+
+
+def _dispatch_sse_event(event_name: str, data_buf: str, state: _SseState) -> None:
+    if event_name == "endpoint" and data_buf:
+        state.session_url_holder.append(data_buf)
+        state.endpoint_ready.set()
+        return
+    if not data_buf:
+        return
+    try:
+        msg: dict[str, Any] = json.loads(data_buf)
+        msg_id: int | None = msg.get("id")
+        if msg_id is not None and msg_id in state.response_futures:
+            fut = state.response_futures[msg_id]
+            if not fut.done():
+                fut.set_result(msg)
+    except json.JSONDecodeError:
+        pass
+
+
+async def _run_sse_reader(sse_resp: aiohttp.ClientResponse, state: _SseState) -> None:
+    event_name = ""
+    data_buf = ""
+    async for raw_line in sse_resp.content:
+        try:
+            line = raw_line.decode("utf-8").rstrip("\r\n")
+        except UnicodeDecodeError:
+            continue
+        if line.startswith("event:"):
+            event_name = line[6:].strip()
+        elif line.startswith("data:"):
+            data_buf += line[5:].strip()
+        elif line == "":
+            _dispatch_sse_event(event_name, data_buf, state)
+            event_name = ""
+            data_buf = ""
+
+
+async def _sse_rpc(
+    client: aiohttp.ClientSession,
+    session_url: str,
+    payload: dict[str, Any],
+    state: _SseState,
+    *,
+    response_timeout: float = 10.0,
+) -> dict[str, Any] | None:
+    loop = asyncio.get_event_loop()
+    msg_id: int | None = payload.get("id")
+    fut: asyncio.Future[dict[str, Any]] | None = None
+    if msg_id is not None:
+        fut = loop.create_future()
+        state.response_futures[msg_id] = fut
+    try:
+        async with client.post(
+            session_url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=aiohttp.ClientTimeout(total=5),
+        ) as _:
+            pass
+    except Exception:
+        if fut and not fut.done():
+            fut.cancel()
+        raise
+    else:
+        if fut is not None:
+            return await asyncio.wait_for(asyncio.shield(fut), timeout=response_timeout)
+        return None
+
+
+async def _fetch_tools_from_sse_endpoint(sse_url: str, extra_headers: dict[str, str]) -> McpHealthCheckResult:  # noqa: C901
+    """Probe an SSE-transport MCP server, run the full init handshake, and return tools."""
+    try:
+        timeout = aiohttp.ClientTimeout(total=25, connect=5)
+        sse_headers = {"Accept": "text/event-stream", **extra_headers}
+        state = _SseState(asyncio.Event(), [], {})
+
+        async with aiohttp.ClientSession() as client, client.get(sse_url, headers=sse_headers, timeout=timeout) as sse_resp:
+            if sse_resp.status != 200:
+                return McpHealthCheckResult(healthy=False, error=f"SSE GET returned HTTP {sse_resp.status}")
+            ct = sse_resp.headers.get("Content-Type", "")
+            if "text/event-stream" not in ct:
+                return McpHealthCheckResult(healthy=False, error=f"Not an SSE endpoint (Content-Type: {ct})")
+
+            reader_task = asyncio.create_task(_run_sse_reader(sse_resp, state))
+            try:
+                await asyncio.wait_for(state.endpoint_ready.wait(), timeout=8.0)
+            except TimeoutError:
+                return McpHealthCheckResult(healthy=True, transport="sse", error="Timeout waiting for SSE endpoint event")
+            finally:
+                if not state.endpoint_ready.is_set():
+                    reader_task.cancel()
+
+            raw_session_url = state.session_url_holder[0]
+            if raw_session_url.startswith(("http://", "https://")):
+                session_url = raw_session_url
+            else:
+                parsed = urlparse(sse_url)
+                session_url = urljoin(f"{parsed.scheme}://{parsed.netloc}", raw_session_url)
+
+            try:
+                await _sse_rpc(client, session_url, _MCP_INIT_PAYLOAD, state)
+                await _sse_rpc(client, session_url, _MCP_INITIALIZED_NOTIF, state)
+                tools_data = await _sse_rpc(client, session_url, _MCP_TOOLS_LIST_PAYLOAD, state)
+            except TimeoutError:
+                return McpHealthCheckResult(healthy=True, transport="sse", error="Timeout waiting for MCP response")
+
+            if tools_data is None:
+                return McpHealthCheckResult(healthy=True, transport="sse", error="No response to tools/list")
+            if "error" in tools_data:
+                err = tools_data["error"].get("message", tools_data["error"])
+                return McpHealthCheckResult(healthy=True, transport="sse", error=f"tools/list: {err}")
+
+            raw_tools = tools_data.get("result", {}).get("tools", [])
+            return McpHealthCheckResult(healthy=True, transport="sse", tools=_parse_mcp_tools(raw_tools))
+
+    except aiohttp.ClientConnectorError as exc:
+        return McpHealthCheckResult(healthy=False, error=f"Connection refused: {exc}")
+    except Exception as exc:
+        return McpHealthCheckResult(healthy=False, error=f"{type(exc).__name__}: {exc}")
+
 
 class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
     models: dict[str, dict[str, SrvMcpModel]]
 
     def _after_init(self) -> None:
         self.models = {}
+        self._background_tasks: set[asyncio.Task[None]] = set()
         self.load_default_models("default")
 
     def load_default_models(self, instance: str) -> None:
@@ -500,7 +732,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
         subnet = self.docker_service.get_docker_subnet()
         required_envs = list(parsed.required_envs.keys() if parsed.required_envs else [])
         return SrvMcpModel(
-            model_props=ModelProps(private=parsed.private, type="mcp", endpoints=[f"/mcp/{prefix}/mcp"]),
+            model_props=ModelProps(private=parsed.private, type="mcp", endpoints=[f"/mcp/{prefix}/mcp"], transport="streamable_http"),
             model_spec=self.get_default_model_spec(prefix, parsed.required_envs),
             model_type="mcp",
             default_prefix=prefix,
@@ -547,7 +779,9 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
         required_envs = list(parsed.required_envs.keys() if parsed.required_envs else [])
         required_headers = list(parsed.required_headers.keys() if parsed.required_headers else [])
         self.models[instance][parsed.id] = SrvMcpModel(
-            model_props=ModelProps(private=parsed.private, type="mcp", endpoints=[f"/mcp/{parsed.default_prefix}/mcp"]),
+            model_props=ModelProps(
+                private=parsed.private, type="mcp", endpoints=[f"/mcp/{parsed.default_prefix}/mcp"], transport=parsed.proxy_transport
+            ),
             model_spec=self.get_default_model_spec(parsed.default_prefix, parsed.required_envs, parsed.required_headers),
             model_type="mcp",
             default_prefix=parsed.default_prefix,
@@ -609,7 +843,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         required_headers = list(parsed.required_headers.keys() if parsed.required_headers else [])
         self.models[instance][parsed.id] = SrvMcpModel(
-            model_props=ModelProps(private=parsed.private, type="mcp", endpoints=[f"/mcp/{prefix}/mcp"]),
+            model_props=ModelProps(private=parsed.private, type="mcp", endpoints=[f"/mcp/{prefix}/mcp"], transport=parsed.transport),
             model_spec=self.get_default_model_spec(prefix, None, parsed.required_headers),
             model_type="mcp",
             default_prefix=prefix,
@@ -798,6 +1032,66 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             custom_spec=self._get_custom_spec(model_id, model),
         )
 
+    async def _fetch_tools_background(self, instance: str, model_id: str) -> None:
+        """Background task: probe MCP server with retries until tools are fetched successfully."""
+        for delay in [3.0, 8.0, 20.0, 40.0, 60.0]:
+            await asyncio.sleep(delay)
+            try:
+                result = await self.healthcheck_model(instance, model_id)
+                if result.healthy:
+                    return
+            except Exception:
+                pass
+
+    def _apply_healthcheck_result(self, model: SrvMcpModel, prefix: str, result: McpHealthCheckResult) -> None:
+        """Persist tool list, transport, and healthy flag from a successful health check."""
+        model.model_props.tools = result.tools
+        if result.transport:
+            model.model_props.transport = result.transport
+        for reg_model in self.endpoint_registry.mcp_endpoints.models.get(prefix, {}).values():
+            reg_model.healthy = True
+            reg_model.props.tools = result.tools
+            if result.transport:
+                reg_model.props.transport = result.transport
+
+    async def healthcheck_model(self, instance: str, model_id: str) -> McpHealthCheckResult:
+        """Probe an installed MCP server: check liveness, detect transport, and fetch tool list."""
+        info = self.get_instance_installed_info(instance)
+        if model_id not in info.models:
+            raise HTTPException(status_code=400, detail="Model is not installed")
+        model_info = info.models[model_id]
+        model = (self.models.get(instance) or {}).get(model_id)
+        if model is None:
+            raise HTTPException(status_code=400, detail="Model not found in registry")
+
+        base_url = model_info.base_url
+        headers = model_info.headers or {}
+        transport = model.proxy_transport  # "streamable_http" | "sse"
+
+        if model.kind == "proxy":
+            # proxy_url is already the full endpoint URL (may end with /mcp or /sse)
+            if transport == "sse":
+                result = await _fetch_tools_from_sse_endpoint(base_url, headers)
+            else:
+                result = await _fetch_tools_from_mcp_endpoint(base_url, headers)
+        else:
+            # Docker / user model — base_url is http://host:port, transport path appended separately
+            if transport == "sse":
+                result = await _fetch_tools_from_sse_endpoint(f"{base_url}/sse", headers)
+                if not result.healthy:
+                    fallback = await _fetch_tools_from_mcp_endpoint(f"{base_url}/mcp", headers)
+                    result = fallback if fallback.healthy else result
+            else:
+                result = await _fetch_tools_from_mcp_endpoint(f"{base_url}/mcp", headers)
+                if not result.healthy:
+                    fallback = await _fetch_tools_from_sse_endpoint(f"{base_url}/sse", headers)
+                    result = fallback if fallback.healthy else result
+
+        if result.healthy:
+            self._apply_healthcheck_result(model, model_info.prefix, result)
+
+        return result
+
     def check_envs(self, required_envs: list[str] | None, envs: dict[str, str]) -> None:
         """Check enviromental variables."""
         if required_envs and envs:
@@ -879,6 +1173,9 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                 headers=parsed_model_options.headers,
                 envs={},
             )
+            task = asyncio.create_task(self._fetch_tools_background(instance, model_id))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
             return PromiseWithProgress(value=InstallModelOut(status="OK", details="Installed"))
 
         if model.options is None:
@@ -946,6 +1243,9 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                     registration_options=None,
                 )
             self.models_downloaded[model_id] = DownloadedInfo(docker_options.image)
+            task = asyncio.create_task(self._fetch_tools_background(instance, model_id))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             return InstallModelOut(status="OK", details="Installed")
 
@@ -976,7 +1276,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
 _const = McpConst(
     models={
         "open-websearch": lambda mcp_service, subnet: SrvMcpModel(
-            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/open-websearch/mcp"]),
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/open-websearch/mcp"], transport="streamable_http"),
             model_spec=mcp_service.get_default_model_spec("open-websearch"),
             model_type="mcp",
             default_prefix="open-websearch",
@@ -991,7 +1291,7 @@ _const = McpConst(
             ),
         ),
         "brave-search": lambda mcp_service, subnet: SrvMcpModel(
-            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/brave-search/mcp"]),
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/brave-search/mcp"], transport="streamable_http"),
             model_spec=mcp_service.get_default_model_spec(default_prefix="brave-search", required_envs=["BRAVE_API_KEY"]),
             model_type="mcp",
             default_prefix="brave-search",
@@ -1007,7 +1307,7 @@ _const = McpConst(
             required_envs=["BRAVE_API_KEY"],
         ),
         "web-search": lambda mcp_service, subnet: SrvMcpModel(
-            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/web-search/mcp"]),
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/web-search/mcp"], transport="streamable_http"),
             model_spec=mcp_service.get_default_model_spec("web-search"),
             model_type="mcp",
             default_prefix="web-search",
@@ -1022,7 +1322,7 @@ _const = McpConst(
             ),
         ),
         "serpapi": lambda mcp_service, subnet: SrvMcpModel(
-            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/serpapi/mcp"]),
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/serpapi/mcp"], transport="streamable_http"),
             model_spec=mcp_service.get_default_model_spec(default_prefix="serpapi", required_headers={"Authorization": "Bearer "}),
             model_type="mcp",
             default_prefix="serpapi",
@@ -1038,7 +1338,7 @@ _const = McpConst(
             required_headers=["Authorization"],
         ),
         "ollama-websearch": lambda mcp_service, subnet: SrvMcpModel(
-            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/ollama-websearch/mcp"]),
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/ollama-websearch/mcp"], transport="streamable_http"),
             model_spec=mcp_service.get_default_model_spec(default_prefix="ollama-websearch", required_envs=["OLLAMA_API_KEY"]),
             model_type="mcp",
             default_prefix="ollama-websearch",
@@ -1054,7 +1354,7 @@ _const = McpConst(
             required_envs=["OLLAMA_API_KEY"],
         ),
         "scrapling": lambda mcp_service, subnet: SrvMcpModel(
-            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/scrapling/mcp"]),
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/scrapling/mcp"], transport="streamable_http"),
             model_spec=mcp_service.get_default_model_spec(default_prefix="scrapling"),
             model_type="mcp",
             default_prefix="scrapling",
@@ -1069,7 +1369,7 @@ _const = McpConst(
             ),
         ),
         "firecrawl": lambda mcp_service, subnet: SrvMcpModel(
-            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/firecrawl/mcp"]),
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/firecrawl/mcp"], transport="streamable_http"),
             model_spec=mcp_service.get_default_model_spec(default_prefix="firecrawl", required_envs=["FIRECRAWL_API_KEY"]),
             model_type="mcp",
             default_prefix="firecrawl",
@@ -1086,7 +1386,7 @@ _const = McpConst(
             required_envs=["FIRECRAWL_API_KEY"],
         ),
         "duckduckgo": lambda mcp_service, subnet: SrvMcpModel(
-            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/duckduckgo/mcp"]),
+            model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/duckduckgo/mcp"], transport="streamable_http"),
             model_spec=mcp_service.get_default_model_spec(default_prefix="duckduckgo"),
             model_type="mcp",
             default_prefix="duckduckgo",
