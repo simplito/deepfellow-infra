@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- User-defined (Command/stdio) MCP servers now show their size in the WebUI instead of "N/A": it is resolved from the locally built Docker image on install and persisted so it survives restarts.
 - Fixed the WebUI model-install progress percentage drifting out of sync between the table row and the bottom-right toast (most visible on slow connections): the toast now reads its `%` from the install-progress store (the same source as the row) instead of computing it from a raw value, so it respects the store's monotonicity rules and no longer freezes during the final completion animation.
 - Installing a service/model whose Docker container name is already taken now fails with a clear `409 Conflict` ("A container named '<name>' already exists — remove it or choose a different name") instead of a generic "unknown error" that swallowed the underlying docker "is already in use by container" message.
 - Fixed metrics password authentication always rejecting valid credentials by comparing a `SecretStr` object directly instead of calling `.get_secret_value()`.

@@ -437,6 +437,14 @@ class DockerService:
         layers_manifest = await self.get_docker_manifest(platform_image)
         return self.calculate_total_layer_size(layers_manifest)
 
+    async def get_local_docker_image_size(self, image: str) -> int | None:
+        """Get size in bytes of a locally available image."""
+        try:
+            result = await Utils.run_command_for_success(["docker", "image", "inspect", image, "--format", "{{.Size}}"])
+            return int(result.stdout.strip())
+        except Exception:
+            return None
+
     async def get_image_platforms(self, image: str) -> list[str]:
         """Get platform of a Docker image in format 'os/architecture'.
 

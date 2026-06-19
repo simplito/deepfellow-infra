@@ -175,6 +175,7 @@ class SrvMcpUserModel(BaseModel):
     required_envs: dict[str, str] | None = None
     private: bool = True
     default_prefix: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]+$")] | None = None
+    size: str = ""
 
 
 class SrvMcpProxyModel(BaseModel):
@@ -390,6 +391,16 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
         except Exception:
             return None
 
+    async def _persist_custom_model_size(self, instance: str, model: SrvMcpModel) -> None:
+        if not model.custom:
+            return
+        config = self.get_instance_info(instance).config
+        for custom_model in config.custom or []:
+            if custom_model.id == model.custom:
+                custom_model.data["size"] = model.size
+                await self._save()
+                break
+
     def get_installed_info(self, instance: str) -> bool | InstallServiceProgress | ServiceOptions:
         """Get service installed info."""
         installed = self.get_instance_info(instance).installed
@@ -493,7 +504,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             model_spec=self.get_default_model_spec(prefix, parsed.required_envs),
             model_type="mcp",
             default_prefix=prefix,
-            size="",
+            size=parsed.size,
             options=DockerOptions(
                 image_port=8000,
                 name=name,
@@ -884,6 +895,10 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model.kind == "user":
                 dockerfile_dir = self._get_dockerfile_dir(instance, model_id)
                 await self.docker_service.build_image(dockerfile_dir, docker_options.image, stream)
+                size_bytes = await self.docker_service.get_local_docker_image_size(docker_options.image)
+                if size_bytes:
+                    model.size = fmt_size(size_bytes)
+                    await self._persist_custom_model_size(instance, model)
             else:
                 image = DockerImage(name=docker_options.image, size=model.size)
                 await self._download_image_or_set_progress(stream, image)
