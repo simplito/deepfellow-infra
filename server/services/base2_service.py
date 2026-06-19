@@ -628,9 +628,6 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         fields = fields or []
         options: list[str | OneOfOption] = []
         default: str | None = None
-        if not add_cpu_option_only_on_avx512_support or self.hardware.cpu.avx512:
-            options.append("CPU")
-            default = "CPU"
         gpus = self._supported_gpus
         if len(gpus) == 1:
             options.append(OneOfOption(value="GPU", label="Default GPU"))
@@ -639,6 +636,10 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
             options.append(OneOfOption(value="GPUs", label="All GPUs"))
             default = "GPUs"
         options.extend([f"GPU | {gpu.long_name}" for gpu in gpus])
+        if not add_cpu_option_only_on_avx512_support or self.hardware.cpu.avx512:
+            options.append("CPU")
+            if default is None:
+                default = "CPU"
 
         gpus_select_field = ServiceField(type="oneof", name="hardware", description="Choose hardware:", values=options, default=default)
         fields.append(gpus_select_field)
@@ -654,9 +655,6 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         fields = fields or []
         options: list[str | OneOfOption] = []
         default: str | None = None
-        if not add_cpu_option_only_on_avx512_support or self.hardware.cpu.avx512:
-            options.append("CPU")
-            default = "CPU"
         gpus = self._supported_gpus
         if len(gpus) == 1:
             options.append(OneOfOption(value="GPU", label="Default GPU"))
@@ -665,6 +663,10 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
             options.append(OneOfOption(value="GPUs", label="All GPUs"))
             default = "GPUs"
         options.extend([f"GPU | {gpu.long_name}" for gpu in gpus])
+        if not add_cpu_option_only_on_avx512_support or self.hardware.cpu.avx512:
+            options.append("CPU")
+            if default is None:
+                default = "CPU"
 
         gpus_select_field = ModelField(type="oneof", name="hardware", description="Choose hardware:", values=options, default=default)
         fields.append(gpus_select_field)

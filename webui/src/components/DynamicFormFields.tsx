@@ -78,7 +78,7 @@ export function DynamicFormFields({
             </div>
           ) : field.type === "oneof" ? (
             <Select
-              value={(formData[field.name] as string | undefined) || "__none__"}
+              value={(formData[field.name] as string | undefined) || (field.default as string | undefined) || "__none__"}
               onValueChange={(value) =>
                 onChange(field.name, value === "__none__" ? "" : value)
               }
@@ -87,9 +87,11 @@ export function DynamicFormFields({
                 <SelectValue placeholder="Select an option" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none__">
-                  <span className="text-muted-foreground">None</span>
-                </SelectItem>
+                {!field.values?.length && (
+                  <SelectItem value="__none__">
+                    <span className="text-muted-foreground">None</span>
+                  </SelectItem>
+                )}
                 {field.values
                   ?.filter(
                     (val) => (typeof val === "string" ? val : val.value) !== "",
@@ -181,6 +183,17 @@ export function initFormData(fields: SpecField[]): Record<string, unknown> {
       } else {
         initial[field.name] = field.default ?? {};
       }
+    } else if (field.type === "oneof") {
+      const firstVal = field.values?.[0];
+      const firstValue = firstVal
+        ? typeof firstVal === "string"
+          ? firstVal
+          : firstVal.value
+        : undefined;
+      initial[field.name] =
+        field.default !== undefined && field.default !== null
+          ? field.default
+          : (firstValue ?? "");
     } else if (field.default !== undefined && field.default !== null) {
       initial[field.name] = field.default;
     }
