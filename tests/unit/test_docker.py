@@ -1974,3 +1974,22 @@ async def test_build_image_kills_process_when_stdout_iteration_raises(docker_ser
 
     mock_proc.kill.assert_called_once()
     mock_proc.wait.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_local_docker_image_size_returns_size(docker_service: DockerService) -> None:
+    mock_result = MagicMock()
+    mock_result.stdout = "123456789\n"
+
+    with patch("server.docker.Utils.run_command_for_success", new=AsyncMock(return_value=mock_result)):
+        result = await docker_service.get_local_docker_image_size("ubuntu:latest")
+
+    assert result == 123456789
+
+
+@pytest.mark.asyncio
+async def test_get_local_docker_image_size_returns_none_on_exception(docker_service: DockerService) -> None:
+    with patch("server.docker.Utils.run_command_for_success", new=AsyncMock(side_effect=RuntimeError("not found"))):
+        result = await docker_service.get_local_docker_image_size("nonexistent:image")
+
+    assert result is None

@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- MCP servers now auto-detect their transport type (`streamable_http` or `sse`) and tool list on installation; they appear in the model list only after a successful health check.
 - Toast notifications in the WebUI now have a close (X) button in the top-right corner, so pop-ups (e.g. installation messages) can be dismissed manually. In-progress download/install toasts keep their "Cancel" action and gain the X once they finish.
 - All service types in the Infra WebUI now show a "↺ Refresh" button on their Models page; previously the button was only available for `ollama-external` services.
 - Readable, read-only view of an installed service's configuration in the WebUI: a "Settings" button on each installed service opens a dialog showing every option with its proper field label (reusing the install-form spec metadata), with password fields masked and revealable via an eye icon. This replaces the raw key/value config dump previously shown inline in the services list.
