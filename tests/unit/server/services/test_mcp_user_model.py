@@ -33,6 +33,7 @@ from server.services.mcp_service import (
     SrvMcpUserModel,
     _version_to_base_image,  # pyright: ignore[reportPrivateUsage]
 )
+from server.utils.size_fetcher import fmt_size
 
 
 @pytest.fixture
@@ -43,6 +44,7 @@ def deps() -> dict[str, Any]:
     docker_svc.remove_image = AsyncMock()
     docker_svc.build_image = AsyncMock()
     docker_svc.uninstall_docker = AsyncMock()
+    docker_svc.get_local_docker_image_size = AsyncMock(return_value=None)
     return {
         "config": MagicMock(),
         "endpoint_registry": MagicMock(),
@@ -396,6 +398,31 @@ async def test_install_user_model_calls_build_image(svc: McpService, tmp_path: P
 
     mock_verify.assert_not_called()
     deps["docker_service"].build_image.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_install_user_model_populates_size_from_built_image(svc: McpService, tmp_path: Path) -> None:
+    with patch.object(svc, "_get_working_dir", return_value=tmp_path):
+        svc._add_custom_model("default", _make_user_model())  # pyright: ignore[reportPrivateUsage]
+
+    svc.instances_info["default"].installed = InstalledInfo(models={}, options=InstallServiceIn(spec={}))
+    svc.instances_info["default"].config.custom = [_make_user_model()]
+    svc.docker_service.install_and_run_docker = AsyncMock(return_value=8000)  # type: ignore[method-assign]
+    svc.docker_service.get_local_docker_image_size = AsyncMock(return_value=512 * 1024**2)  # type: ignore[method-assign]
+    svc.service_provider.save_service_config = AsyncMock()  # type: ignore[method-assign]
+
+    with (
+        patch.object(svc, "_get_working_dir", return_value=tmp_path),
+        patch.object(svc, "_verify_docker_image", new_callable=AsyncMock),
+    ):
+        promise = await svc.install_model("default", "my-server", InstallModelIn(stream=False, spec={"prefix": "my-server"}))
+        await promise.wait()
+
+    expected = fmt_size(512 * 1024**2)
+    assert svc.models["default"]["my-server"].size == expected
+    persisted = next(cm for cm in svc.instances_info["default"].config.custom if cm.id == "uuid-user-1")
+    assert persisted.data["size"] == expected
+    assert svc.service_provider.save_service_config.await_count >= 1
 
 
 def _make_proxy_model(
