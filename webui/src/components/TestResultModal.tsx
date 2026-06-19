@@ -34,9 +34,9 @@ export function TestResultModal({ open, onOpenChange, result, isLoading = false,
       return <div className="mt-4 p-4 bg-muted rounded">{result.output}</div>;
     }
 
-    const { content_type, data } = result.output;
+    const { content_type, data } = result.output as { content_type?: string; data?: string };
 
-    if (content_type.startsWith("audio/")) {
+    if (content_type?.startsWith("audio/")) {
       return (
         <div className="mt-4">
           <audio controls className="w-full">
@@ -46,7 +46,7 @@ export function TestResultModal({ open, onOpenChange, result, isLoading = false,
       );
     }
 
-    if (content_type.startsWith("image/")) {
+    if (content_type?.startsWith("image/")) {
       return (
         <div className="mt-4">
           <img
@@ -60,7 +60,9 @@ export function TestResultModal({ open, onOpenChange, result, isLoading = false,
 
     return (
       <div className="mt-4 p-4 bg-muted rounded">
-        Content with type {content_type}
+        <pre className="text-sm overflow-auto max-h-64 whitespace-pre-wrap" style={{ lineBreak: "anywhere" }}>
+          {JSON.stringify(result.output, null, 2)}
+        </pre>
       </div>
     );
   };

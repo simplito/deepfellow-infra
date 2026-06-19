@@ -15,7 +15,7 @@ import pytest
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from server.endpointregistry import ChatCompletionEndpoint, RegisteredModel, RegistryEntry, SimpleEndpoint
+from server.endpointregistry import ChatCompletionEndpoint, McpEndpoint, RegisteredModel, RegistryEntry, SimpleEndpoint
 from server.model_tester import ModelTester, ModelTestError, Response, UnpackedResponse
 
 
@@ -671,3 +671,302 @@ async def test_test_model_binary_response_details_shown_as_binary() -> None:
     result = await tester.test_model(entry)
 
     assert result["details"]["data"] == "binary"
+
+
+# ---------------------------------------------------------------------------
+# MCP helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_mcp_json_response(data: Any, status_code: int = 200, extra_headers: dict[str, str] | None = None) -> StreamingResponse:
+    body = json.dumps(data).encode("utf-8")
+
+    async def gen():
+        yield body
+
+    headers = extra_headers or {}
+    return StreamingResponse(gen(), media_type="application/json", status_code=status_code, headers=headers)
+
+
+def _make_mcp_sse_response(events: list[Any], status_code: int = 200) -> StreamingResponse:
+    lines = "".join(f"data: {json.dumps(e)}\n\n" for e in events).encode("utf-8")
+
+    async def gen():
+        yield lines
+
+    return StreamingResponse(gen(), media_type="text/event-stream", status_code=status_code)
+
+
+def _make_mcp_registered_model() -> RegistryEntry:
+    endpoint = McpEndpoint(on_request=AsyncMock())
+    registered = MagicMock(spec=RegisteredModel)
+    registered.name = "my-mcp-server"
+    registered.type = "mcp"
+    registered.endpoint = endpoint
+    entry = MagicMock(spec=RegistryEntry)
+    entry.registered_model = registered
+    return entry
+
+
+_INIT_RESULT = {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {},
+        "serverInfo": {"name": "test-server", "version": "0.1"},
+    },
+}
+
+_TOOLS_RESULT = {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+        "tools": [{"name": "ping", "description": "Ping the server"}],
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Tests for _read_mcp_response
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_read_mcp_response_parses_json() -> None:
+    tester = ModelTester()
+    resp = _make_mcp_json_response(_INIT_RESULT)
+
+    (_, data) = await tester._read_mcp_response(resp, 1)  # pyright: ignore[reportPrivateUsage]
+
+    assert data["result"]["serverInfo"]["name"] == "test-server"
+
+
+@pytest.mark.asyncio
+async def test_read_mcp_response_parses_sse_single_event() -> None:
+    tester = ModelTester()
+    resp = _make_mcp_sse_response([_INIT_RESULT])
+
+    (_, data) = await tester._read_mcp_response(resp, 1)  # pyright: ignore[reportPrivateUsage]
+
+    assert data["id"] == 1
+    assert data["result"]["protocolVersion"] == "2024-11-05"
+
+
+@pytest.mark.asyncio
+async def test_read_mcp_response_parses_sse_multiple_events_returns_matching_id() -> None:
+    tester = ModelTester()
+    other_event = {"jsonrpc": "2.0", "id": 99, "result": {}}
+    resp = _make_mcp_sse_response([other_event, _INIT_RESULT])
+
+    (_, data) = await tester._read_mcp_response(resp, 1)  # pyright: ignore[reportPrivateUsage]
+
+    assert data["id"] == 1
+
+
+@pytest.mark.asyncio
+async def test_read_mcp_response_raises_when_no_matching_sse_event() -> None:
+    tester = ModelTester()
+    resp = _make_mcp_sse_response([{"jsonrpc": "2.0", "id": 99, "result": {}}])
+
+    with pytest.raises(ModelTestError) as exc_info:
+        await tester._read_mcp_response(resp, 1)  # pyright: ignore[reportPrivateUsage]
+
+    assert "SSE" in exc_info.value.error
+
+
+@pytest.mark.asyncio
+async def test_read_mcp_response_raises_on_unsupported_content_type() -> None:
+    tester = ModelTester()
+
+    async def gen():
+        yield b"hello"
+
+    resp = StreamingResponse(gen(), media_type="text/plain", status_code=200)
+
+    with pytest.raises(ModelTestError) as exc_info:
+        await tester._read_mcp_response(resp, 1)  # pyright: ignore[reportPrivateUsage]
+
+    assert "content type" in exc_info.value.error.lower()
+
+
+# ---------------------------------------------------------------------------
+# Tests for _test_mcp
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_test_mcp_sends_initialize_with_correct_payload() -> None:
+    tester = ModelTester()
+    on_request = AsyncMock(side_effect=[_make_mcp_json_response(_INIT_RESULT), _make_mcp_json_response(_TOOLS_RESULT)])
+    endpoint = McpEndpoint(on_request=on_request)
+
+    await tester._test_mcp("model", endpoint)  # pyright: ignore[reportPrivateUsage]
+
+    first_call_request = on_request.call_args_list[0][0][0]
+    body = await first_call_request.body()
+    payload = json.loads(body)
+    assert payload["method"] == "initialize"
+    assert payload["id"] == 1
+    assert "protocolVersion" in payload["params"]
+    assert first_call_request.headers.get("content-type") == "application/json"
+    assert "text/event-stream" in first_call_request.headers.get("accept", "")
+
+
+@pytest.mark.asyncio
+async def test_test_mcp_passes_session_id_to_tools_list() -> None:
+    tester = ModelTester()
+    init_resp = _make_mcp_json_response(_INIT_RESULT, extra_headers={"mcp-session-id": "sess-abc"})
+    on_request = AsyncMock(side_effect=[init_resp, _make_mcp_json_response(_TOOLS_RESULT)])
+    endpoint = McpEndpoint(on_request=on_request)
+
+    await tester._test_mcp("model", endpoint)  # pyright: ignore[reportPrivateUsage]
+
+    second_call_request = on_request.call_args_list[1][0][0]
+    assert second_call_request.headers.get("mcp-session-id") == "sess-abc"
+
+
+@pytest.mark.asyncio
+async def test_test_mcp_no_session_id_when_server_omits_it() -> None:
+    tester = ModelTester()
+    on_request = AsyncMock(side_effect=[_make_mcp_json_response(_INIT_RESULT), _make_mcp_json_response(_TOOLS_RESULT)])
+    endpoint = McpEndpoint(on_request=on_request)
+
+    await tester._test_mcp("model", endpoint)  # pyright: ignore[reportPrivateUsage]
+
+    second_call_request = on_request.call_args_list[1][0][0]
+    assert second_call_request.headers.get("mcp-session-id") is None
+
+
+@pytest.mark.asyncio
+async def test_test_mcp_returns_ok_with_tools_and_server_info() -> None:
+    tester = ModelTester()
+    on_request = AsyncMock(side_effect=[_make_mcp_json_response(_INIT_RESULT), _make_mcp_json_response(_TOOLS_RESULT)])
+    endpoint = McpEndpoint(on_request=on_request)
+
+    result = await tester._test_mcp("model", endpoint)  # pyright: ignore[reportPrivateUsage]
+
+    assert result["result"] == "ok"
+    assert result["output"]["tools"] == [{"name": "ping", "description": "Ping the server"}]  # type: ignore[index]
+    assert result["output"]["server_info"]["name"] == "test-server"  # type: ignore[index]
+
+
+@pytest.mark.asyncio
+async def test_test_mcp_returns_tools_error_when_tools_list_fails() -> None:
+    tester = ModelTester()
+
+    async def gen():
+        yield b"bad"
+
+    tools_fail_resp = StreamingResponse(gen(), media_type="application/json", status_code=500)
+    on_request = AsyncMock(side_effect=[_make_mcp_json_response(_INIT_RESULT), tools_fail_resp])
+    endpoint = McpEndpoint(on_request=on_request)
+
+    result = await tester._test_mcp("model", endpoint)  # pyright: ignore[reportPrivateUsage]
+
+    assert result["result"] == "ok"
+    assert result["output"]["tools"] is None  # type: ignore[index]
+    assert "tools_error" in result["output"]  # type: ignore[index]
+    assert result["output"]["server_info"]["name"] == "test-server"  # type: ignore[index]
+
+
+@pytest.mark.asyncio
+async def test_test_model_dispatches_to_test_mcp_for_mcp_type() -> None:
+    tester = ModelTester()
+    on_request = AsyncMock(side_effect=[_make_mcp_json_response(_INIT_RESULT), _make_mcp_json_response(_TOOLS_RESULT)])
+    entry = _make_mcp_registered_model()
+    entry.registered_model.endpoint = McpEndpoint(on_request=on_request)
+
+    result = await tester.test_model(entry)
+
+    assert result["result"] == "ok"
+    assert "tools" in result["output"]  # type: ignore[index]
+
+
+@pytest.mark.asyncio
+async def test_read_mcp_response_raises_json_parse_error_on_invalid_json() -> None:
+    tester = ModelTester()
+
+    async def gen():
+        yield b"not-valid-json"
+
+    resp = StreamingResponse(gen(), media_type="application/json", status_code=200)
+
+    with pytest.raises(ModelTestError) as exc_info:
+        await tester._read_mcp_response(resp, 1)  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.error == "JSON parse error"
+
+
+@pytest.mark.asyncio
+async def test_read_mcp_response_raises_on_non_utf8_sse_body() -> None:
+    tester = ModelTester()
+
+    async def gen():
+        yield b"\x80\x81\x82"
+
+    resp = StreamingResponse(gen(), media_type="text/event-stream", status_code=200)
+
+    with pytest.raises(ModelTestError) as exc_info:
+        await tester._read_mcp_response(resp, 1)  # pyright: ignore[reportPrivateUsage]
+
+    assert "SSE" in exc_info.value.error
+
+
+@pytest.mark.asyncio
+async def test_read_mcp_response_skips_malformed_sse_data_line() -> None:
+    tester = ModelTester()
+    body = b"data: not-valid-json\n\ndata: " + json.dumps(_INIT_RESULT).encode() + b"\n\n"
+
+    async def gen():
+        yield body
+
+    resp = StreamingResponse(gen(), media_type="text/event-stream", status_code=200)
+
+    (_, data) = await tester._read_mcp_response(resp, 1)  # pyright: ignore[reportPrivateUsage]
+
+    assert data["id"] == 1
+
+
+@pytest.mark.asyncio
+async def test_test_mcp_non_streaming_init_response_session_id_is_none() -> None:
+    tester = ModelTester()
+
+    class _McpModel(BaseModel):
+        payload: dict[str, Any]
+
+        def model_dump_json(self, **kwargs: Any) -> str:  # type: ignore[override]
+            return json.dumps(self.payload)
+
+    on_request = AsyncMock(side_effect=[_McpModel(payload=_INIT_RESULT), _make_mcp_json_response(_TOOLS_RESULT)])
+    endpoint = McpEndpoint(on_request=on_request)
+
+    result = await tester._test_mcp("model", endpoint)  # pyright: ignore[reportPrivateUsage]
+
+    assert result["result"] == "ok"
+    second_request = on_request.call_args_list[1][0][0]
+    assert second_request.headers.get("mcp-session-id") is None
+
+
+@pytest.mark.asyncio
+async def test_test_mcp_raises_when_initialize_returns_jsonrpc_error() -> None:
+    tester = ModelTester()
+    error_resp = _make_mcp_json_response({"jsonrpc": "2.0", "id": 1, "error": {"code": -32601, "message": "Method not found"}})
+    on_request = AsyncMock(return_value=error_resp)
+    endpoint = McpEndpoint(on_request=on_request)
+
+    result = await tester.test_model(MagicMock(registered_model=MagicMock(type="mcp", name="x", endpoint=endpoint)))
+
+    assert "error" in result
+
+
+@pytest.mark.asyncio
+async def test_test_mcp_raises_when_initialize_returns_no_result() -> None:
+    tester = ModelTester()
+    no_result_resp = _make_mcp_json_response({"jsonrpc": "2.0", "id": 1})
+    on_request = AsyncMock(return_value=no_result_resp)
+    endpoint = McpEndpoint(on_request=on_request)
+
+    result = await tester.test_model(MagicMock(registered_model=MagicMock(type="mcp", name="x", endpoint=endpoint)))
+
+    assert "error" in result
