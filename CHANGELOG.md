@@ -4,17 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.29.0] - 2026-06-19
 
 ### Added
 - MCP servers now auto-detect their transport type (`streamable_http` or `sse`) and tool list on installation; they appear in the model list only after a successful health check.
 - Toast notifications in the WebUI now have a close (X) button in the top-right corner, so pop-ups (e.g. installation messages) can be dismissed manually. In-progress download/install toasts keep their "Cancel" action and gain the X once they finish.
 - All service types in the Infra WebUI now show a "↺ Refresh" button on their Models page; previously the button was only available for `ollama-external` services.
 - Readable, read-only view of an installed service's configuration in the WebUI: a "Settings" button on each installed service opens a dialog showing every option with its proper field label (reusing the install-form spec metadata), with password fields masked and revealable via an eye icon. This replaces the raw key/value config dump previously shown inline in the services list.
+- Installed services now show an **Edit** button alongside the Settings view, allowing in-place reconfiguration of a service without uninstalling it.
 - Admin-only **Configuration** page in the WebUI: displays all infra environment variables with copy-to-clipboard buttons; secret values (API keys, tokens) are masked by default and revealed on demand via an eye icon; filled values sort to the top of the table.
 - Cancel button for an in-progress model installation in the WebUI. Cancelling stops the underlying Docker image pull, tears down the whole install promise chain (no orphaned background tasks), closes the progress stream cleanly, and leaves the model uninstalled.
 - MCP servers can now be registered from the Infra Web Panel in three ways: running a stdio-based server in Docker via a built-in bridge (Command), proxying a remote endpoint (Remote URL), or using a pre-built Docker image (Custom Image).
+- Custom MCP proxy models (Remote URL) now support SSE transport in addition to the default Streamable HTTP — a `proxy_transport` field (`streamable_http` | `sse`) can be selected when installing a Remote URL MCP server.
 - Added preferred default hardware when installing Service through UI.
+- The **default model prefix** field in MCP server forms (Command and Remote URL) is now auto-proposed based on the server name/ID as the user types; the suggestion is overridden once the user manually edits the prefix field.
 
 ### Fixed
 
@@ -32,6 +35,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - CI no longer fails `pyright` non-deterministically on merge pipelines: the CI uv version is bumped to `0.11.8`, which understands the relative `exclude-newer` cooldown, so `uv.lock` is honored instead of being silently ignored and re-resolved. A `required-version = ">=0.11.8"` floor prevents an older uv from reintroducing the issue.
 - Requesting a model that is not installed now returns `404 Model not found` instead of the misleading `400 Given model is not supported`. The `400` response is now reserved for the case where the model exists but does not support the requested endpoint (e.g. calling `/v1/embeddings` with a chat model).
 - Remote service handling of models with aliases.
+- Fixed MCP model types (`mcp`) being reported as untestable — the **Test** button now works for MCP servers and sends a `tools/list` request to validate the connection.
+- Fixed DuckDuckGo MCP server (and other SSE-based Remote URL MCP servers) not working due to being hardcoded to Streamable HTTP transport.
+- Fixed auto-import of MCP JSON config not detecting SSE transport when the server URL ends with `/sse`; also added a confirmation dialog before overwriting existing import.
+- Fixed WebSocket client crash on mesh connect when services with custom endpoints are registered — `custom` was missing from the valid model type set.
+- Model download errors during installation now return `504 Gateway Timeout` on network timeout and `507 Insufficient Storage` when disk space runs out, instead of a generic error; the installation progress stream now includes the actual error text in all cases.
+
+### Changed
+- New Python dependencies must be at least 1 week old (`exclude-newer = "1 week"` in `pyproject.toml`); new npm packages must be at least 7 days old (`min-release-age=7` in `.npmrc`) before they can be added to the project.
 
 ## [0.28.0] - 2026-06-03
 
