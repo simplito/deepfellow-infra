@@ -452,14 +452,14 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                     props=props,
                     messages=ProxyOptions(
                         url=urljoin(url_base, "messages"),
-                        rewrite_model_to=model.real_model_name,
+                        rewrite_model_to=model.real_model_name or model_id,
                         headers=headers,
                     )
                     if model.messages
                     else None,
                     responses=ProxyOptions(
                         url=urljoin(url_base, "responses"),
-                        rewrite_model_to=model.real_model_name,
+                        rewrite_model_to=model.real_model_name or model_id,
                         headers=headers,
                     )
                     if model.responses
@@ -473,7 +473,7 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                     else None,
                     completions=ProxyOptions(
                         url=urljoin(url_base, "completions"),
-                        rewrite_model_to=model.real_model_name,
+                        rewrite_model_to=model.real_model_name or model_id,
                         headers=headers,
                     )
                     if model.legacy_completions
@@ -488,7 +488,7 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                     props=props,
                     options=ProxyOptions(
                         url=url,
-                        rewrite_model_to=model.real_model_name,
+                        rewrite_model_to=model.real_model_name or model_id,
                         headers=headers,
                     ),
                     registration_options=None,
@@ -500,7 +500,7 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                     props=props,
                     options=ProxyOptions(
                         url=url,
-                        rewrite_model_to=model.real_model_name,
+                        rewrite_model_to=model.real_model_name or model_id,
                         headers=headers,
                     ),
                     registration_options=None,
@@ -512,7 +512,7 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                     props=props,
                     options=ProxyOptions(
                         url=url,
-                        rewrite_model_to=model.real_model_name,
+                        rewrite_model_to=model.real_model_name or model_id,
                         headers=headers,
                     ),
                     registration_options=None,
@@ -524,7 +524,7 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                     props=props,
                     options=ProxyOptions(
                         url=url,
-                        rewrite_model_to=model.real_model_name,
+                        rewrite_model_to=model.real_model_name or model_id,
                         headers=headers,
                     ),
                     registration_options=None,
