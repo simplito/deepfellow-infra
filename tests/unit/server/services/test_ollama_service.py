@@ -11,7 +11,7 @@ import hashlib
 import itertools
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import aiohttp
@@ -36,6 +36,9 @@ from server.services.ollama_service import (
 )
 from server.utils.core import DownloadedPacket, FetchResult, PreDownloadPacket, Stream, StreamChunkProgress
 from server.utils.hardware import IntelGpuInfo, NvidiaGpuInfo
+
+if TYPE_CHECKING:
+    from server.models.api import ModelProps
 
 
 def _make_installed_info(svc: OllamaService, instance: str = "default") -> InstalledInfo:
@@ -2305,3 +2308,66 @@ async def test_download_with_ollama_interleaved_digests_correct_total(svc: Ollam
     ]
     # There should be at least one intermediate event below 1.0 (not immediately saturated)
     assert progress_values, "progress jumped straight to 1.0 — overcounting likely"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model_type", "register_method"),
+    [
+        ("embedding", "register_embeddings_as_proxy"),
+        ("llm", "register_chat_completion_as_proxy"),
+        ("txt2img", "register_image_generations_as_proxy"),
+    ],
+)
+async def test_install_model_context_window_capped_by_model_context_when_service_exceeds_it(
+    svc: OllamaService, deps: dict[str, Any], model_type: str, register_method: str
+) -> None:
+    installed = _make_installed_info(svc)
+    installed.parsed_options = OllamaOptions(context_length=8192)
+    svc.instances_info["default"].installed = installed
+    svc.models["default"]["test-model"] = OllamaModel(id="test-model", size="100MB", type=model_type, hash="abc", context=512)
+
+    with patch("server.services.ollama_service.fetch_from", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = FetchResult(status_code=200, data="")
+        promise = await svc._install_model("default", "test-model", InstallModelIn(spec={}))  # pyright: ignore[reportPrivateUsage]
+        await promise.wait()
+
+    props: ModelProps = getattr(deps["endpoint_registry"], register_method).call_args.kwargs["props"]
+    assert props.context_window == 512
+    assert props.max_context_window == 512
+
+
+@pytest.mark.asyncio
+async def test_install_model_context_window_not_capped_when_user_explicitly_overrides_llm(svc: OllamaService, deps: dict[str, Any]) -> None:
+    installed = _make_installed_info(svc)
+    svc.instances_info["default"].installed = installed
+    svc.models["default"]["test-llm"] = OllamaModel(id="test-llm", size="4GB", type="llm", hash="abc", context=4096, modelfile=None)
+
+    with patch.object(svc, "_install_from_modelfile", new_callable=AsyncMock, return_value=None):  # pyright: ignore[reportPrivateUsage]
+        promise = await svc._install_model(  # pyright: ignore[reportPrivateUsage]
+            "default", "test-llm", InstallModelIn(spec={"context_length": 8192})
+        )
+        await promise.wait()
+
+    props: ModelProps = deps["endpoint_registry"].register_chat_completion_as_proxy.call_args.kwargs["props"]
+    assert props.context_window == 8192
+    assert props.max_context_window == 8192
+
+
+@pytest.mark.asyncio
+async def test_install_model_context_window_capped_by_service_context_when_service_is_smaller(
+    svc: OllamaService, deps: dict[str, Any]
+) -> None:
+    installed = _make_installed_info(svc)
+    installed.parsed_options = OllamaOptions(context_length=4096)
+    svc.instances_info["default"].installed = installed
+    svc.models["default"]["test-llm"] = OllamaModel(id="test-llm", size="4GB", type="llm", hash="abc", context=8192)
+
+    with patch("server.services.ollama_service.fetch_from", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = FetchResult(status_code=200, data="")
+        promise = await svc._install_model("default", "test-llm", InstallModelIn(spec={}))  # pyright: ignore[reportPrivateUsage]
+        await promise.wait()
+
+    props: ModelProps = deps["endpoint_registry"].register_chat_completion_as_proxy.call_args.kwargs["props"]
+    assert props.context_window == 4096
+    assert props.max_context_window == 8192

@@ -1207,9 +1207,10 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
             model_max_context_window = model_context
             service_max_context_window = self.default_context_length
             default_context_window = self.get_default_context_window(model_max_context_window, service_max_context_window)
-            max_context_window = model_max_context_window or service_max_context_window
+            max_context_window = model_form_context_window or model_max_context_window or service_max_context_window
 
             context_window = model_form_context_window or service_form_context_window or default_context_window
+            context_window = min(context_window, max_context_window)
             if model.type == "llm":
                 model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                     model=registered_name,
