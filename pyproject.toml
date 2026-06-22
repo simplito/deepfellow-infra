@@ -160,6 +160,7 @@ omit = [
 ]
 
 [tool.coverage.report]
+fail_under = 100
 exclude_also = [
     'if TYPE_CHECKING:',
     'if __name__ == .__main__.:',
