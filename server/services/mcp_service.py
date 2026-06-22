@@ -438,9 +438,11 @@ async def _fetch_tools_from_sse_endpoint(sse_url: str, extra_headers: dict[str, 
                 return McpHealthCheckResult(healthy=False, error=f"Not an SSE endpoint (Content-Type: {ct})")
 
             reader_task = asyncio.create_task(_run_sse_reader(sse_resp, state))
+            endpoint_wait = state.endpoint_ready.wait()
             try:
-                await asyncio.wait_for(state.endpoint_ready.wait(), timeout=8.0)
+                await asyncio.wait_for(endpoint_wait, timeout=8.0)
             except TimeoutError:
+                endpoint_wait.close()
                 return McpHealthCheckResult(healthy=True, transport="sse", error="Timeout waiting for SSE endpoint event")
             finally:
                 if not state.endpoint_ready.is_set():
