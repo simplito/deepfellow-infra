@@ -647,8 +647,8 @@ def create_doc_chunker_model(custom_service: CustomService, subnet: str | None) 
                 name="max_concurrent",
                 description="Max parallel conversion jobs",
                 required=False,
-                placeholder="1",
-                default="1",
+                placeholder="2",
+                default="2",
             ),
             ModelField(
                 type="number",
@@ -760,7 +760,7 @@ def create_doc_chunker_model(custom_service: CustomService, subnet: str | None) 
                 description="Minimum duration (seconds) of silence used to split audio into segments",
                 required=False,
                 placeholder="2",
-                default="",
+                default="2",
             ),
             ModelField(
                 type="text",
@@ -776,9 +776,9 @@ def create_doc_chunker_model(custom_service: CustomService, subnet: str | None) 
     def generate_docker_options(model_fields: InstallModelOptions) -> DockerOptions:
         hardware_parts = custom_service.get_specified_hardware_parts(model_fields.get("hardware"))
         image = (
-            "gitlab2.simplito.com:5050/df/df-docker-images/doc-chunker-gpu:v1.0.2"
+            "gitlab2.simplito.com:5050/df/df-docker-images/doc-chunker-gpu:v1.0.3"
             if any(isinstance(h, NvidiaGpuInfo) for h in hardware_parts)
-            else "gitlab2.simplito.com:5050/df/df-docker-images/doc-chunker-cpu:v1.0.2"
+            else "gitlab2.simplito.com:5050/df/df-docker-images/doc-chunker-cpu:v1.0.3"
         )
         return DockerOptions(
             image_port=8000,
@@ -792,19 +792,19 @@ def create_doc_chunker_model(custom_service: CustomService, subnet: str | None) 
             env_vars={
                 "MAX_CONCURRENT": model_fields.get("max_concurrent", 2),
                 "DOCUMENT_TIMEOUT": model_fields.get("document_timeout", 600),
-                "PICTURE_DESCRIPTION_MODE": model_fields.get("picture_description_mode", ""),
+                "PICTURE_DESCRIPTION_MODE": model_fields.get("picture_description_mode", "disabled"),
                 "PICTURE_DESCRIPTION_PRESET": model_fields.get("picture_description_preset", ""),
                 "PICTURE_DESCRIPTION_REPO": model_fields.get("picture_description_repo", ""),
-                "PICTURE_DESCRIPTION_PROMPT": model_fields.get("picture_description_prompt", ""),
+                "PICTURE_DESCRIPTION_PROMPT": model_fields.get("picture_description_prompt", "Describe this picture in detail."),
                 "PICTURE_DESCRIPTION_API_URL": model_fields.get("picture_description_api_url", ""),
                 "PICTURE_DESCRIPTION_API_KEY": model_fields.get("picture_description_api_key", ""),
                 "PICTURE_DESCRIPTION_API_MODEL": model_fields.get("picture_description_api_model", ""),
-                "PICTURE_DESCRIPTION_API_MAX_TIME": model_fields.get("picture_description_api_max_time", ""),
+                "PICTURE_DESCRIPTION_API_MAX_TIME": model_fields.get("picture_description_api_max_time", "300"),
                 "AUDIO_STT_API_URL": model_fields.get("audio_stt_api_url", ""),
                 "AUDIO_STT_API_KEY": model_fields.get("audio_stt_api_key", ""),
                 "AUDIO_STT_MODEL": model_fields.get("audio_stt_api_model", ""),
-                "AUDIO_STT_MAX_TIME": model_fields.get("audio_stt_max_time", ""),
-                "AUDIO_SILENCE_THRESHOLD": model_fields.get("audio_silence_threshold", ""),
+                "AUDIO_STT_MAX_TIME": model_fields.get("audio_stt_max_time", "600"),
+                "AUDIO_SILENCE_THRESHOLD": model_fields.get("audio_silence_threshold", "2"),
                 "HF_TOKEN": model_fields.get("hf_token", ""),
                 "DOCLING_SERVE_ENABLE_REMOTE_SERVICES": "true",
             },
