@@ -103,6 +103,8 @@ class RetrieveModelOut(BaseModel):
     command: str | None = None
     base_image: str | None = None
     custom_spec: dict[str, Any] | None = None
+    description: str | None = None
+    repository_url: str | None = None
 
 
 class ListModelsFilters(BaseModel):

@@ -98,6 +98,8 @@ export interface ServiceModel {
   command?: string | null; // For user-defined MCP servers
   base_image?: string | null; // For user-defined MCP servers
   custom_spec?: Record<string, unknown> | null;
+  description?: string | null;
+  repository_url?: string | null;
 }
 
 export interface GpuCardStats {

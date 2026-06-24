@@ -145,6 +145,8 @@ class SrvMcpModel:
     node_version: str | None = field(default=None)
     proxy_url: str | None = field(default=None)
     proxy_transport: str = field(default="streamable_http")
+    description: str = field(default="")
+    repository_url: str | None = field(default=None)
 
 
 class SrvMcpCustomModel(BaseModel):
@@ -164,6 +166,8 @@ class SrvMcpCustomModel(BaseModel):
     required_envs: dict[str, str] | None = None
     required_headers: dict[str, str] | None = None
     proxy_transport: Literal["streamable_http", "sse"] = "streamable_http"
+    description: str = ""
+    repository_url: str | None = None
 
 
 class SrvMcpUserModel(BaseModel):
@@ -180,6 +184,8 @@ class SrvMcpUserModel(BaseModel):
     private: bool = True
     default_prefix: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]+$")] | None = None
     size: str = ""
+    description: str = ""
+    repository_url: str | None = None
 
 
 class SrvMcpProxyModel(BaseModel):
@@ -194,6 +200,8 @@ class SrvMcpProxyModel(BaseModel):
     default_prefix: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]+$")] | None = None
     headers: dict[str, str] | None = None
     required_headers: dict[str, str] | None = None
+    description: str = ""
+    repository_url: str | None = None
 
 
 @dataclass
@@ -757,6 +765,8 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             python_version=parsed.python_version,
             node_version=parsed.node_version,
             envs=parsed.envs,
+            description=parsed.description,
+            repository_url=parsed.repository_url,
         )
 
     def _add_custom_model(self, instance: str, model: CustomModel) -> None:
@@ -814,6 +824,8 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             required_envs=required_envs,
             required_headers=required_headers,
             proxy_transport=parsed.proxy_transport,
+            description=parsed.description,
+            repository_url=parsed.repository_url,
         )
 
     def _add_user_model(self, instance: str, model: CustomModel) -> None:
@@ -857,6 +869,8 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             required_headers=required_headers,
             proxy_url=parsed.server_url,
             proxy_transport=parsed.transport,
+            description=parsed.description,
+            repository_url=parsed.repository_url,
         )
 
     def _check_prefix_collision(self, instance: str, prefix: str, exclude_model_id: str | None) -> None:
@@ -932,7 +946,7 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             if instance in self.models and parsed_custom.id in self.models[instance]:
                 del self.models[instance][parsed_custom.id]
 
-    def _get_custom_spec(self, model_id: str, model: SrvMcpModel) -> dict[str, Any] | None:
+    def _get_custom_spec(self, model_id: str, model: SrvMcpModel) -> dict[str, Any] | None:  # noqa: C901
         if not model.custom:
             return None
         if model.kind == "proxy":
@@ -946,6 +960,10 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             }
             if model.headers:
                 spec["headers"] = model.headers
+            if model.description:
+                spec["description"] = model.description
+            if model.repository_url:
+                spec["repository_url"] = model.repository_url
             return spec
         if model.kind == "user":
             spec = {
@@ -964,6 +982,10 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                 spec["python_version"] = model.python_version
             if model.node_version:
                 spec["node_version"] = model.node_version
+            if model.description:
+                spec["description"] = model.description
+            if model.repository_url:
+                spec["repository_url"] = model.repository_url
             return spec
         return None
 
@@ -1003,6 +1025,8 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
                             command=model.command,
                             base_image=model.base_image,
                             custom_spec=self._get_custom_spec(model_id, model),
+                            description=model.description or None,
+                            repository_url=model.repository_url,
                         )
                     )
 
@@ -1032,6 +1056,8 @@ class McpService(Base2Service[InstalledInfo, DownloadedInfo]):
             command=model.command,
             base_image=model.base_image,
             custom_spec=self._get_custom_spec(model_id, model),
+            description=model.description or None,
+            repository_url=model.repository_url,
         )
 
     async def _fetch_tools_background(self, instance: str, model_id: str) -> None:
@@ -1291,6 +1317,8 @@ _const = McpConst(
                 env_vars={},
                 subnet=subnet,
             ),
+            description="Multi-engine customizable web search with no API key required.",
+            repository_url="https://github.com/aas-ee/open-websearch",
         ),
         "brave-search": lambda mcp_service, subnet: SrvMcpModel(
             model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/brave-search/mcp"], transport="streamable_http"),
@@ -1307,6 +1335,8 @@ _const = McpConst(
                 subnet=subnet,
             ),
             required_envs=["BRAVE_API_KEY"],
+            description="Web search powered by the Brave Search API. Requires a Brave API key.",
+            repository_url="https://github.com/brave/brave-search-mcp-server",
         ),
         "web-search": lambda mcp_service, subnet: SrvMcpModel(
             model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/web-search/mcp"], transport="streamable_http"),
@@ -1322,6 +1352,8 @@ _const = McpConst(
                 env_vars={},
                 subnet=subnet,
             ),
+            description="Concurrent multi-engine web search with full-page content extraction — no API key required.",
+            repository_url="https://github.com/mrkrsl/web-search-mcp",
         ),
         "serpapi": lambda mcp_service, subnet: SrvMcpModel(
             model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/serpapi/mcp"], transport="streamable_http"),
@@ -1338,6 +1370,8 @@ _const = McpConst(
                 subnet=subnet,
             ),
             required_headers=["Authorization"],
+            description="Google websearch solution based on Serp api. Requires a SerpApi key in Authorization header.",
+            repository_url="https://github.com/serpapi/serpapi-mcp",
         ),
         "ollama-websearch": lambda mcp_service, subnet: SrvMcpModel(
             model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/ollama-websearch/mcp"], transport="streamable_http"),
@@ -1354,6 +1388,8 @@ _const = McpConst(
                 subnet=subnet,
             ),
             required_envs=["OLLAMA_API_KEY"],
+            description="Ollama easy to use web search solution. Require Ollama Api Key",
+            repository_url="https://docs.ollama.com/capabilities/web-search",
         ),
         "scrapling": lambda mcp_service, subnet: SrvMcpModel(
             model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/scrapling/mcp"], transport="streamable_http"),
@@ -1369,6 +1405,8 @@ _const = McpConst(
                 subnet=subnet,
                 command="mcp --http",
             ),
+            description="Fast, expanded, anti-bot-bypass web scraping and content extraction.",
+            repository_url="https://github.com/D4Vinci/Scrapling",
         ),
         "firecrawl": lambda mcp_service, subnet: SrvMcpModel(
             model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/firecrawl/mcp"], transport="streamable_http"),
@@ -1386,6 +1424,8 @@ _const = McpConst(
                 env_vars={"HTTP_STREAMABLE_SERVER": "true", "HOST": "0.0.0.0", "PORT": "3000"},
             ),
             required_envs=["FIRECRAWL_API_KEY"],
+            description="Web crawling and markdown extraction via the Firecrawl API. Requires a Firecrawl API key.",
+            repository_url="https://github.com/firecrawl/firecrawl-mcp-server",
         ),
         "duckduckgo": lambda mcp_service, subnet: SrvMcpModel(
             model_props=ModelProps(private=True, type="mcp", endpoints=["/mcp/duckduckgo/mcp"], transport="streamable_http"),
@@ -1401,6 +1441,8 @@ _const = McpConst(
                 subnet=subnet,
                 command="python -m duckduckgo_mcp_server.server --transport streamable-http --host 0.0.0.0 --port 8000",
             ),
+            description="DuckDuckGo web search solution — no API key required.",
+            repository_url="https://github.com/nickclyde/duckduckgo-mcp-server",
         ),
     },
 )

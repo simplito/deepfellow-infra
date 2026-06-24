@@ -70,6 +70,8 @@ class SrvCustomModel:
     size: str
     options: DockerOptionsOrCallable
     custom: CustomModelId | None = None
+    description: str = ""
+    repository_url: str | None = None
 
 
 class SrvCustomCustomModel(BaseModel):
@@ -85,6 +87,8 @@ class SrvCustomCustomModel(BaseModel):
     envs: dict[str, str] | None = None
     healthcheck_cmd: str | None = None
     healthcheck_start_period: Annotated[str, Field(pattern=r"^\d+[smh]$")] | None = None
+    description: str = ""
+    repository_url: str | None = None
 
 
 @dataclass
@@ -207,6 +211,8 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
                 ),
                 CustomModelField(type="list", name="volumes", description="Docker volumes", placeholder="/work/storage", required=False),
                 CustomModelField(type="map", name="envs", description="Docker environment variables", required=False),
+                CustomModelField(type="text", name="description", description="Short description of the service", required=False),
+                CustomModelField(type="text", name="repository_url", description="Repository URL", required=False),
             ]
         )
 
@@ -316,6 +322,8 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
                 else None,
             ),
             custom=model.id,
+            description=parsed.description,
+            repository_url=parsed.repository_url,
         )
 
     def _remove_custom_model(self, instance: str, model: CustomModel) -> None:
@@ -357,6 +365,8 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
                             custom=model.custom,
                             spec=model.model_spec,
                             has_docker=True,
+                            description=model.description or None,
+                            repository_url=model.repository_url,
                         )
                     )
 
@@ -382,6 +392,8 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
             custom=model.custom,
             spec=model.model_spec,
             has_docker=True,
+            description=model.description or None,
+            repository_url=model.repository_url,
         )
 
     async def _install_model(
@@ -455,7 +467,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
 
 
 def create_bge_m3_model(custom_service: CustomService, subnet: str | None) -> SrvCustomModel:
-    """Create lemmatizer model."""
+    """Create bge 3 model."""
     fields: list[ModelField] = custom_service.add_hardware_field_to_model_spec()
     fields.extend(
         [
@@ -530,6 +542,8 @@ def create_bge_m3_model(custom_service: CustomService, subnet: str | None) -> Sr
         default_prefix="deepfellow-bge-m3",
         size="5.00GB",
         options=generate_docker_options,
+        description="High-performance multilingual text embeddings model for sparse vectors.",
+        repository_url="https://gitlab2.simplito.com/df/deepfellow-bge-m3",
     )
 
 
@@ -610,6 +624,8 @@ def create_lemmatizer_model(custom_service: CustomService, subnet: str | None) -
         default_prefix="lemmatizer",
         size="1.89GB",
         options=generate_docker_options,
+        description="Multilingual text lemmatization API.",
+        repository_url="https://gitlab2.simplito.com/df/deepfellow-lemmatizer",
     )
 
 
@@ -808,6 +824,7 @@ def create_doc_chunker_model(custom_service: CustomService, subnet: str | None) 
         default_prefix="doc_chunker",
         size="15GB",
         options=generate_docker_options,
+        description="Converts many data types (pdf, xlxs, mp3, etc.) into text chunks suitable for vector search.",
     )
 
 
@@ -862,6 +879,8 @@ def create_finetune_model(custom_service: CustomService, subnet: str | None) -> 
         default_prefix="deepfellow-finetune",
         size="8.56GB",
         options=generate_docker_options,
+        description="LLM LoRA fine-tuning framework with an OpenAI-compatible fine-tuning job queue.",
+        repository_url="https://gitlab2.simplito.com/df/df-finetune",
     )
 
 
@@ -872,7 +891,7 @@ _const = CustomConst(
             model_spec=custom_service.get_default_model_spec("bentoml-summarize"),
             model_type="custom",
             default_prefix="bentoml-summarize",
-            size="12013.49MB",
+            size="12GB",
             options=DockerOptions(
                 image_port=3000,
                 name="bentoml",
@@ -882,13 +901,14 @@ _const = CustomConst(
                 env_vars={},
                 subnet=subnet,
             ),
+            description="BentoML example to create text summarization.",
         ),
         "easyOCR": lambda custom_service, subnet: SrvCustomModel(
             model_props=ModelProps(private=True, type="custom", endpoints=["/custom/ocr"]),
             model_spec=custom_service.get_default_model_spec("ocr"),
             model_type="custom",
             default_prefix="ocr",
-            size="10075.38MB",
+            size="10GB",
             options=DockerOptions(
                 image_port=8000,
                 name="easyocr",
@@ -899,6 +919,7 @@ _const = CustomConst(
                 volumes=[f"{custom_service.get_working_dir()}/easyocr/model:/root/.EasyOCR/model"],
                 subnet=subnet,
             ),
+            description="Optical character recognition service, to change binary data to text.",
         ),
         "lemmatizer": create_lemmatizer_model,
         "doc_chunker": create_doc_chunker_model,

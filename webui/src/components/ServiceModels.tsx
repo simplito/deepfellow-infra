@@ -63,8 +63,9 @@ import type { SimulationHandle } from "@/utils/progress-simulation";
 import type { ProgressEvent } from "@/utils/sse-stream";
 import { getStageLabel } from "@/utils/sse-stream";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Info, MoreVertical } from "lucide-react";
+import { ExternalLink, Info, MoreVertical } from "lucide-react";
 import {
+  type ReactNode,
   type RefObject,
   memo,
   startTransition,
@@ -90,6 +91,35 @@ import { ProgressBadge } from "./ProgressBadge";
 import { TestResultModal } from "./TestResultModal";
 import { UninstallWithPurgeModal } from "./UninstallWithPurgeModal";
 import { WarningsModal } from "./WarningsModal";
+
+const MARKDOWN_LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
+
+function renderMarkdownLinks(text: string): ReactNode {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(MARKDOWN_LINK_RE)) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(
+      <a
+        key={m.index}
+        href={m[2]}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline hover:text-foreground"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {m[1]}
+      </a>,
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function stripMarkdownLinks(text: string): string {
+  return text.replace(MARKDOWN_LINK_RE, "$1");
+}
 
 interface ServiceModelsProps {
   serviceId: string;
@@ -701,7 +731,11 @@ const [showEntrySkeleton, setShowEntrySkeleton] = useState(true);
     mutationFn: async (payload: AddMcpServerPayload) => {
       const spec =
         payload.kind === "docker"
-          ? payload.data
+          ? {
+              ...payload.data,
+              ...(payload.repository_url ? { repository_url: payload.repository_url } : {}),
+              ...(payload.description ? { description: payload.description } : {}),
+            }
           : (payload as unknown as Record<string, unknown>);
       return apiClient.addCustomModel(serviceId, spec);
     },
@@ -1416,8 +1450,8 @@ const ModelsTable = memo(function ModelsTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[40%]">Model ID</TableHead>
-            <TableHead>Type</TableHead>
+            <TableHead className="min-w-[160px]">Model ID</TableHead>
+            {serviceId !== "mcp" && <TableHead>Type</TableHead>}
             <TableHead className="min-w-[150px]">Status</TableHead>
             <TableHead>Size</TableHead>
             <TableHead>
@@ -1445,7 +1479,7 @@ const ModelsTable = memo(function ModelsTable({
           {models.length === 0 ? (
             <TableRow>
               <TableCell
-                colSpan={7}
+                colSpan={serviceId === "mcp" ? 6 : 7}
                 className="text-center text-muted-foreground"
               >
                 No models found
@@ -1570,11 +1604,30 @@ const ModelRow = memo(function ModelRow({
           </div>
           {model.custom && <Badge variant="secondary">Custom</Badge>}
           {model.variant && <Badge variant="outline">{model.variant}</Badge>}
+          {model.repository_url && (
+            <a
+              href={model.repository_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground"
+              title="Repository"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          )}
         </div>
+        {model.description && (
+          <div className="text-xs text-muted-foreground font-normal mt-0.5" title={stripMarkdownLinks(model.description)}>
+            {renderMarkdownLinks(model.description)}
+          </div>
+        )}
       </TableCell>
-      <TableCell className="text-sm">
-        {MODEL_TYPES[model.type] || model.type}
-      </TableCell>
+      {serviceId !== "mcp" && (
+        <TableCell className="text-sm">
+          {MODEL_TYPES[model.type] || model.type}
+        </TableCell>
+      )}
       <TableCell>
         {isInProgress || hasProgressStage ? (
           <ProgressBadge

@@ -78,6 +78,8 @@ export interface AddMcpServerSpec {
   node_version?: NodeVersion;
   envs?: Record<string, string>;
   default_prefix?: string;
+  repository_url?: string;
+  description?: string;
 }
 
 export type ParsedMcpConfig =
@@ -110,6 +112,10 @@ export interface DockerFormState {
   errors: Record<string, string>;
   volumes: string[];
   setVolumes: (v: string[]) => void;
+  repositoryUrl: string;
+  setRepositoryUrl: (v: string) => void;
+  description: string;
+  setDescription: (v: string) => void;
   handleChange: (name: string, value: unknown) => void;
   validate: () => Record<string, string>;
   populate: (parsed: {
@@ -128,6 +134,8 @@ export function useDockerForm(
   const [data, setData] = useState<Record<string, unknown>>(initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [volumes, setVolumes] = useState<string[]>([]);
+  const [repositoryUrl, setRepositoryUrl] = useState("");
+  const [description, setDescription] = useState("");
   const [prefixIsManual, setPrefixIsManual] = useState(false);
   const hasPrefixField = useMemo(
     () => dockerFields.some((f) => f.name === "default_prefix"),
@@ -140,6 +148,8 @@ export function useDockerForm(
     setData(initFormData(dockerFields));
     setErrors({});
     setVolumes([]);
+    setRepositoryUrl("");
+    setDescription("");
     setPrefixIsManual(false);
   }, [open]);
 
@@ -194,6 +204,10 @@ export function useDockerForm(
     errors,
     volumes,
     setVolumes,
+    repositoryUrl,
+    setRepositoryUrl,
+    description,
+    setDescription,
     handleChange,
     validate,
     populate,
@@ -213,6 +227,10 @@ export interface UrlFormState {
   setTransport: (v: "streamable_http" | "sse") => void;
   headers: Record<string, string>;
   setHeaders: (v: Record<string, string>) => void;
+  repositoryUrl: string;
+  setRepositoryUrl: (v: string) => void;
+  description: string;
+  setDescription: (v: string) => void;
   errors: Record<string, string | undefined>;
   populate: (parsed: {
     name: string;
@@ -231,6 +249,8 @@ export interface ProxyMcpServerSpec {
   transport: "streamable_http" | "sse";
   default_prefix?: string;
   headers?: Record<string, string>;
+  repository_url?: string;
+  description?: string;
 }
 
 export function useUrlForm(
@@ -249,6 +269,12 @@ export function useUrlForm(
   const [headers, setHeaders] = useState<Record<string, string>>(
     initialValues?.headers ?? {},
   );
+  const [repositoryUrl, setRepositoryUrl] = useState(
+    initialValues?.repository_url ?? "",
+  );
+  const [description, setDescription] = useState(
+    initialValues?.description ?? "",
+  );
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: open is the reset trigger; initialValues is read at reset time via closure
@@ -260,6 +286,8 @@ export function useUrlForm(
     setPrefixIsManual(!!initialValues?.default_prefix);
     setTransport(initialValues?.transport ?? "streamable_http");
     setHeaders(initialValues?.headers ?? {});
+    setRepositoryUrl(initialValues?.repository_url ?? "");
+    setDescription(initialValues?.description ?? "");
     setErrors({});
   }, [open]);
 
@@ -313,6 +341,10 @@ export function useUrlForm(
     setTransport,
     headers,
     setHeaders,
+    repositoryUrl,
+    setRepositoryUrl,
+    description,
+    setDescription,
     errors,
     populate,
     validate,
@@ -346,6 +378,10 @@ export interface StdioFormState {
   variantIsManual: boolean;
   envs: Record<string, string>;
   setEnvs: (v: Record<string, string>) => void;
+  repositoryUrl: string;
+  setRepositoryUrl: (v: string) => void;
+  description: string;
+  setDescription: (v: string) => void;
   errors: Record<string, string | undefined>;
   commandRef: React.RefObject<HTMLTextAreaElement | null>;
   handleJsonChange: (text: string) => void;
@@ -364,6 +400,8 @@ export interface StdioFormState {
     node_version?: NodeVersion;
     envs?: Record<string, string>;
     default_prefix?: string;
+    repository_url?: string;
+    description?: string;
   } | null;
 }
 
@@ -417,6 +455,12 @@ export function useStdioForm(
   const [envs, setEnvs] = useState<Record<string, string>>(
     initialValues?.envs ?? {},
   );
+  const [repositoryUrl, setRepositoryUrl] = useState(
+    initialValues?.repository_url ?? "",
+  );
+  const [description, setDescription] = useState(
+    initialValues?.description ?? "",
+  );
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const commandRef = useRef<HTMLTextAreaElement>(null);
 
@@ -436,6 +480,8 @@ export function useStdioForm(
     setVariant(initialValues?.variant ?? "");
     setVariantIsManual(!!initialValues?.variant);
     setEnvs(initialValues?.envs ?? {});
+    setRepositoryUrl(initialValues?.repository_url ?? "");
+    setDescription(initialValues?.description ?? "");
     setErrors({});
   }, [open]);
 
@@ -567,6 +613,8 @@ export function useStdioForm(
       node_version: !isPython ? nodeVersion : undefined,
       envs: Object.keys(envs).length > 0 ? envs : undefined,
       default_prefix: prefix.trim() || undefined,
+      repository_url: repositoryUrl.trim() || undefined,
+      description: description.trim() || undefined,
     };
   };
 
@@ -592,6 +640,10 @@ export function useStdioForm(
     variantIsManual,
     envs,
     setEnvs,
+    repositoryUrl,
+    setRepositoryUrl,
+    description,
+    setDescription,
     errors,
     commandRef,
     handleJsonChange,
