@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- MCP and custom service models now display a short description and an optional repository link below their name in the WebUI.
+- All built-in MCP servers and custom services now have descriptions and repository URLs populated in their definitions.
+- User-defined MCP servers (Command and Remote URL) support optional Description and Repository URL fields when added through the WebUI.
+
 ## [0.29.0] - 2026-06-19
 
 ### Added

@@ -98,11 +98,13 @@ export interface AddMcpServerSpec {
   node_version?: NodeVersion;
   envs?: Record<string, string>;
   default_prefix?: string;
+  repository_url?: string;
+  description?: string;
 }
 
 export type AddMcpServerPayload =
   | AddMcpServerSpec
-  | { kind: "docker"; data: Record<string, unknown> }
+  | { kind: "docker"; data: Record<string, unknown>; repository_url?: string; description?: string }
   | {
       kind: "proxy";
       id: string;
@@ -111,6 +113,8 @@ export type AddMcpServerPayload =
       transport: "streamable_http" | "sse";
       default_prefix?: string;
       headers?: Record<string, string>;
+      repository_url?: string;
+      description?: string;
     };
 
 interface AddMcpServerModalProps {
@@ -468,6 +472,8 @@ export function AddMcpServerModal({
       onSubmit({
         kind: "docker",
         data: { ...cleaned, ...(volumes.length > 0 ? { volumes } : {}) },
+        repository_url: docker.repositoryUrl.trim() || undefined,
+        description: docker.description.trim() || undefined,
       });
       return;
     }
@@ -483,6 +489,8 @@ export function AddMcpServerModal({
         transport: url.transport,
         default_prefix: url.prefix.trim() || undefined,
         headers: Object.keys(url.headers).length > 0 ? url.headers : undefined,
+        repository_url: url.repositoryUrl.trim() || undefined,
+        description: url.description.trim() || undefined,
       });
       return;
     }
@@ -592,6 +600,36 @@ export function AddMcpServerModal({
                     placeholder="/host/path:/container/path"
                   />
                 </div>
+                <div className="space-y-1">
+                  <Label htmlFor="docker-repository-url">
+                    Repository URL{" "}
+                    <span className="text-muted-foreground text-sm font-normal">
+                      (optional)
+                    </span>
+                  </Label>
+                  <Input
+                    id="docker-repository-url"
+                    placeholder="https://github.com/owner/repo"
+                    value={docker.repositoryUrl}
+                    onChange={(e) => docker.setRepositoryUrl(e.target.value)}
+                    disabled={isSubmitting}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="docker-description">
+                    Description{" "}
+                    <span className="text-muted-foreground text-sm font-normal">
+                      (optional)
+                    </span>
+                  </Label>
+                  <Input
+                    id="docker-description"
+                    placeholder="Short description of what this server does"
+                    value={docker.description}
+                    onChange={(e) => docker.setDescription(e.target.value)}
+                    disabled={isSubmitting}
+                  />
+                </div>
               </>
             )}
 
@@ -691,6 +729,36 @@ export function AddMcpServerModal({
                     </span>
                   </Label>
                   <MapInput value={url.headers} onChange={url.setHeaders} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="url-repository-url">
+                    Repository URL{" "}
+                    <span className="text-muted-foreground text-sm font-normal">
+                      (optional)
+                    </span>
+                  </Label>
+                  <Input
+                    id="url-repository-url"
+                    placeholder="https://github.com/owner/repo"
+                    value={url.repositoryUrl}
+                    onChange={(e) => url.setRepositoryUrl(e.target.value)}
+                    disabled={isSubmitting}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="url-description">
+                    Description{" "}
+                    <span className="text-muted-foreground text-sm font-normal">
+                      (optional)
+                    </span>
+                  </Label>
+                  <Input
+                    id="url-description"
+                    placeholder="Short description of what this server does"
+                    value={url.description}
+                    onChange={(e) => url.setDescription(e.target.value)}
+                    disabled={isSubmitting}
+                  />
                 </div>
               </>
             )}
@@ -907,6 +975,36 @@ export function AddMcpServerModal({
                     </span>
                   </Label>
                   <MapInput value={stdio.envs} onChange={stdio.setEnvs} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="stdio-repository-url">
+                    Repository URL{" "}
+                    <span className="text-muted-foreground text-sm font-normal">
+                      (optional)
+                    </span>
+                  </Label>
+                  <Input
+                    id="stdio-repository-url"
+                    placeholder="https://github.com/owner/repo"
+                    value={stdio.repositoryUrl}
+                    onChange={(e) => stdio.setRepositoryUrl(e.target.value)}
+                    disabled={isSubmitting}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="stdio-description">
+                    Description{" "}
+                    <span className="text-muted-foreground text-sm font-normal">
+                      (optional)
+                    </span>
+                  </Label>
+                  <Input
+                    id="stdio-description"
+                    placeholder="Short description of what this server does"
+                    value={stdio.description}
+                    onChange={(e) => stdio.setDescription(e.target.value)}
+                    disabled={isSubmitting}
+                  />
                 </div>
               </>
             )}

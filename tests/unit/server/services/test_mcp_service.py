@@ -1816,11 +1816,6 @@ async def test_healthcheck_model_docker_streamable_http_both_unhealthy_returns_m
     assert result is mcp_result
 
 
-# ---------------------------------------------------------------------------
-# Additional branch coverage for _read_first_sse_json, _run_sse_reader, _sse_rpc
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 async def test_read_first_sse_json_non_data_line_is_ignored() -> None:
     mock_resp = MagicMock()
@@ -1866,3 +1861,77 @@ async def test_sse_rpc_no_id_exception_reraises_without_cancel() -> None:
         await _sse_rpc(mock_client, "http://example.com/session", payload, state)
 
     assert not state.response_futures
+
+
+def test_get_custom_spec_proxy_with_description_includes_it(svc: McpService) -> None:
+    model = MagicMock(spec=SrvMcpModel)
+    model.custom = "uuid-proxy"
+    model.kind = "proxy"
+    model.proxy_url = "http://remote-mcp.example.com/mcp"
+    model.proxy_transport = "streamable_http"
+    model.default_prefix = "remote-mcp"
+    model.headers = None
+    model.description = "A remote MCP proxy"
+    model.repository_url = None
+
+    spec = svc._get_custom_spec("remote-mcp", model)  # pyright: ignore[reportPrivateUsage]
+
+    assert spec is not None
+    assert spec["description"] == "A remote MCP proxy"
+
+
+def test_get_custom_spec_proxy_with_repository_url_includes_it(svc: McpService) -> None:
+    model = MagicMock(spec=SrvMcpModel)
+    model.custom = "uuid-proxy"
+    model.kind = "proxy"
+    model.proxy_url = "http://remote-mcp.example.com/mcp"
+    model.proxy_transport = "streamable_http"
+    model.default_prefix = "remote-mcp"
+    model.headers = None
+    model.description = ""
+    model.repository_url = "https://github.com/example/remote-mcp"
+
+    spec = svc._get_custom_spec("remote-mcp", model)  # pyright: ignore[reportPrivateUsage]
+
+    assert spec is not None
+    assert spec["repository_url"] == "https://github.com/example/remote-mcp"
+
+
+def test_get_custom_spec_user_with_description_includes_it(svc: McpService) -> None:
+    model = MagicMock(spec=SrvMcpModel)
+    model.custom = "uuid-user"
+    model.kind = "user"
+    model.command = "python /app/main.py"
+    model.variant = "python"
+    model.default_prefix = "my-user-mcp"
+    model.envs = None
+    model.base_image = None
+    model.python_version = None
+    model.node_version = None
+    model.description = "A user-defined MCP server"
+    model.repository_url = None
+
+    spec = svc._get_custom_spec("my-user-mcp", model)  # pyright: ignore[reportPrivateUsage]
+
+    assert spec is not None
+    assert spec["description"] == "A user-defined MCP server"
+
+
+def test_get_custom_spec_user_with_repository_url_includes_it(svc: McpService) -> None:
+    model = MagicMock(spec=SrvMcpModel)
+    model.custom = "uuid-user"
+    model.kind = "user"
+    model.command = "python /app/main.py"
+    model.variant = "python"
+    model.default_prefix = "my-user-mcp"
+    model.envs = None
+    model.base_image = None
+    model.python_version = None
+    model.node_version = None
+    model.description = ""
+    model.repository_url = "https://github.com/example/user-mcp"
+
+    spec = svc._get_custom_spec("my-user-mcp", model)  # pyright: ignore[reportPrivateUsage]
+
+    assert spec is not None
+    assert spec["repository_url"] == "https://github.com/example/user-mcp"
