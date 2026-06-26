@@ -82,7 +82,6 @@ SERVICE_CLASSES = [
     "OllamaService",
     "OpenAIService",
     "RerankService",
-    "SindriService",
     "SpeachesAIService",
     "StableDiffusionService",
     "VllmService",

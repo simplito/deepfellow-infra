@@ -50,7 +50,7 @@ class ServiceProvider:
 
     def convert_v2_to_v3_config(self, data: dict[str, Any]) -> dict[str, Any]:
         """Convert v2 to v3 config - adds cloud_enabled flag."""
-        cloud_service_ids = {"claude", "googleai", "openai", "sindri"}
+        cloud_service_ids = {"claude", "googleai", "openai"}
         new_data = data.copy()
         services = new_data.get("services", {})
         has_cloud_installed = any(service_id in cloud_service_ids and bool(service_data) for service_id, service_data in services.items())
