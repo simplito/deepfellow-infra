@@ -776,9 +776,9 @@ def create_doc_chunker_model(custom_service: CustomService, subnet: str | None) 
     def generate_docker_options(model_fields: InstallModelOptions) -> DockerOptions:
         hardware_parts = custom_service.get_specified_hardware_parts(model_fields.get("hardware"))
         image = (
-            "gitlab2.simplito.com:5050/df/df-docker-images/doc-chunker-gpu:v1.0.3"
+            "hub.simplito.com/deepfellow/doc-chunker-gpu:v1.0.3"
             if any(isinstance(h, NvidiaGpuInfo) for h in hardware_parts)
-            else "gitlab2.simplito.com:5050/df/df-docker-images/doc-chunker-cpu:v1.0.3"
+            else "hub.simplito.com/deepfellow/doc-chunker-cpu:v1.0.3"
         )
         return DockerOptions(
             image_port=8000,
@@ -896,7 +896,7 @@ _const = CustomConst(
                 image_port=3000,
                 name="bentoml",
                 container_name=custom_service.docker_service.get_docker_container_name("bentoml"),
-                image="gitlab2.simplito.com:5050/df/deepfellow-infra/bentomlexample:1.0.1",
+                image="hub.simplito.com/deepfellow/bentomlexample:1.0.1",
                 command="serve",
                 env_vars={},
                 subnet=subnet,
@@ -913,7 +913,7 @@ _const = CustomConst(
                 image_port=8000,
                 name="easyocr",
                 container_name=custom_service.docker_service.get_docker_container_name("easyocr"),
-                image="gitlab2.simplito.com:5050/df/df-ocr:1.0.1",
+                image="hub.simplito.com/deepfellow/df-ocr:1.0.1",
                 env_vars={},
                 restart="unless-stopped",
                 volumes=[f"{custom_service.get_working_dir()}/easyocr/model:/root/.EasyOCR/model"],
