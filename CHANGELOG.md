@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.30.0] - 2026-06-26
 
 ### Added
 - MCP and custom service models now display a short description and an optional repository link below their name in the WebUI.
