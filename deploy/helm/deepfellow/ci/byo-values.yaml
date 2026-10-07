@@ -1,0 +1,40 @@
+# CI fixture (byo). Deterministic literal credentials so renders are reproducible;
+# never reuse these values anywhere real.
+infra:
+  image:
+    allowMutableTag: true
+  auth:
+    adminApiKey:
+      plaintext: ci-infra-admin-key-000000000000
+    serverApiKey:
+      plaintext: ci-infra-api-key-00000000000000
+modelBackends: {}
+server:
+  image:
+    allowMutableTag: true
+  mongo:
+    mode: external
+    database: deepfellow
+    username: df
+    password:
+      plaintext: ciExtMongoPass0
+    external:
+      address: mongo.example.svc:27017/?authSource=admin
+workspace:
+  enabled: false
+provisioning:
+  enabled: true
+  admin:
+    email: admin@example.com
+    password:
+      plaintext: CiAdminPassw0rd!
+networkPolicy:
+  enabled: true
+externalBackends:
+  remote:
+    enabled: true
+    apiType: openai
+    apiUrl: http://llm.example.svc:8080
+    modelId: remote-llm
+    contextLength: 2048
+    apiKey: {}

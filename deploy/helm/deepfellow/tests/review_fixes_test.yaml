@@ -1,0 +1,42 @@
+# Regressions from the first upstream review of this chart.
+suite: review fixes
+templates:
+  - infra/deployment.yaml
+  - model-backend/deployment.yaml
+  - mongo/configmap.yaml
+values:
+  - ../ci/core-values.yaml
+tests:
+  - it: accepts image pull secrets given as plain names as well as objects
+    template: infra/deployment.yaml
+    set:
+      global.imagePullSecrets: [regcred, { name: other }]
+    asserts:
+      - equal: { path: spec.template.spec.imagePullSecrets, value: [{ name: regcred }, { name: other }] }
+  - it: adds the GPU limit to the user's own resources instead of dropping it
+    template: model-backend/deployment.yaml
+    set:
+      modelBackends.demo.gpu.enabled: true
+      modelBackends.demo.resources: { limits: { memory: 4Gi }, requests: { cpu: "1" } }
+    asserts:
+      - equal: { path: 'spec.template.spec.containers[0].resources.limits["nvidia.com/gpu"]', value: 1 }
+      - equal: { path: 'spec.template.spec.containers[0].resources.limits.memory', value: 4Gi }
+      - equal: { path: 'spec.template.spec.containers[0].resources.requests.cpu', value: "1" }
+  - it: lets an explicit GPU limit in resources win over gpu.count
+    template: model-backend/deployment.yaml
+    set:
+      modelBackends.demo.gpu.enabled: true
+      modelBackends.demo.resources: { limits: { nvidia.com/gpu: 2 } }
+    asserts:
+      - equal: { path: 'spec.template.spec.containers[0].resources.limits["nvidia.com/gpu"]', value: 2 }
+  - it: re-downloads the weights when their recorded source no longer matches gguf.url / sha256
+    template: model-backend/deployment.yaml
+    asserts:
+      - matchRegex: { path: 'spec.template.spec.initContainers[0].command[2]', pattern: 'model\.gguf\.source' }
+      - matchRegex: { path: 'spec.template.spec.initContainers[0].command[2]', pattern: 'downloading again' }
+  - it: never lets the shell expand the Mongo password into the init script
+    template: mongo/configmap.yaml
+    asserts:
+      - matchRegex: { path: 'data["init-mongo.sh"]', pattern: "<<'EOF'" }
+      - matchRegex: { path: 'data["init-mongo.sh"]', pattern: 'pwd: process\.env\.DF_MONGO_PASSWORD' }
+      - notMatchRegex: { path: 'data["init-mongo.sh"]', pattern: '"\$DF_MONGO_PASSWORD"' }

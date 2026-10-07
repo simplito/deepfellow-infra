@@ -180,3 +180,17 @@ def test_ollama_num_parallel_clamps_non_positive(monkeypatch: pytest.MonkeyPatch
     s = AppSettings()  # pyright: ignore[reportCallIssue]
 
     assert s.ollama_num_parallel == 1
+
+
+def test_external_only_defaults_false(settings: AppSettings) -> None:
+    assert settings.external_only is False
+
+
+def test_external_only_parsed_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for k, v in _REQUIRED_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("DF_EXTERNAL_ONLY", "true")
+
+    settings = AppSettings()  # pyright: ignore[reportCallIssue]
+
+    assert settings.external_only is True

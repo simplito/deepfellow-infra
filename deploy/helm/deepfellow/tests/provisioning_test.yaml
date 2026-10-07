@@ -1,0 +1,26 @@
+# The provisioning Job's inputs: the Server admin it creates lives under provisioning, not server.
+suite: provisioning
+templates:
+  - provisioning/secret.yaml
+  - provisioning/job.yaml
+values:
+  - ../ci/core-values.yaml
+tests:
+  - it: keeps the Server admin password in the provisioning Job's own Secret
+    template: provisioning/secret.yaml
+    asserts:
+      - equal: { path: metadata.name, value: RELEASE-NAME-deepfellow-provisioning-creds }
+      - exists: { path: 'data["admin-password"]' }
+  - it: hands the Job the admin and project it creates
+    template: provisioning/job.yaml
+    set:
+      provisioning.project: { organization: Acme, name: Support, apiKeyName: bot }
+    asserts:
+      - contains:
+          path: 'spec.template.spec.containers[0].env'
+          content:
+            name: ADMIN_PASSWORD
+            valueFrom: { secretKeyRef: { name: RELEASE-NAME-deepfellow-provisioning-creds, key: admin-password } }
+      - contains: { path: 'spec.template.spec.containers[0].env', content: { name: PROJECT_ORG_NAME, value: Acme } }
+      - contains: { path: 'spec.template.spec.containers[0].env', content: { name: PROJECT_NAME, value: Support } }
+      - contains: { path: 'spec.template.spec.containers[0].env', content: { name: PROJECT_KEY_NAME, value: bot } }

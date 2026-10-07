@@ -12,7 +12,8 @@ import pytest
 from fastapi import FastAPI
 
 from server.config import ConfigError
-from server.lifecycle import check_subnet, lifespan
+from server.lifecycle import assert_external_only_registration, check_subnet, lifespan
+from server.services_manager import ServicesManager
 from server.utils.exceptions import AppStartError
 
 
@@ -104,10 +105,13 @@ _BASE_PATCHES = [
 ]
 
 
-def _make_config(*, docker_subnet: str = "", stop_on_shutdown: bool = False, otel_logging_enabled: bool = False) -> MagicMock:
+def _make_config(
+    *, docker_subnet: str = "", stop_on_shutdown: bool = False, otel_logging_enabled: bool = False, external_only: bool = False
+) -> MagicMock:
     cfg = MagicMock()
     cfg.docker_subnet = docker_subnet
     cfg.otel_logging_enabled = otel_logging_enabled
+    cfg.external_only = external_only
     cfg.is_stop_containers_on_shutdown_enabled.return_value = stop_on_shutdown
     return cfg
 
@@ -132,7 +136,12 @@ def _apply_base_patches(active_patches: dict[str, Mock], *, config: MagicMock | 
     parent = active_patches["server.lifecycle.ParentInfra"].return_value
     parent.run = MagicMock(return_value=MagicMock())
 
-    svc_mgr = active_patches["server.lifecycle.ServicesManager"].return_value
+    svc_mgr_cls = active_patches["server.lifecycle.ServicesManager"]
+    # Startup asserts the external-only registration matches the allowlist, so the double has to
+    # model a manager that registered what it was asked to; otherwise the check fails the boot.
+    svc_mgr_cls.EXTERNAL_ONLY_ALLOWED_SERVICE_TYPES = ServicesManager.EXTERNAL_ONLY_ALLOWED_SERVICE_TYPES
+    svc_mgr = svc_mgr_cls.return_value
+    svc_mgr.services = dict.fromkeys(ServicesManager.EXTERNAL_ONLY_ALLOWED_SERVICE_TYPES)
     svc_mgr.stop_all_services = AsyncMock()
     svc_mgr.drain_warning_tasks = AsyncMock()
 
@@ -229,6 +238,33 @@ async def test_lifespan_skips_check_subnet_when_empty(app: FastAPI, base_mocks: 
 
 
 @pytest.mark.asyncio
+async def test_lifespan_skips_check_subnet_in_external_only(app: FastAPI, base_mocks: dict[str, Mock]) -> None:
+    cfg = _make_config(docker_subnet="my-net", external_only=True)
+    _apply_base_patches(base_mocks, config=cfg)
+
+    with patch("server.lifecycle.check_subnet") as mock_check_subnet:
+        async with lifespan(app):
+            pass
+
+        assert mock_check_subnet.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_lifespan_external_only_registers_only_openai(app: FastAPI, base_mocks: dict[str, Mock]) -> None:
+    cfg = _make_config(external_only=True)
+    _apply_base_patches(base_mocks, config=cfg)
+    svc_mgr = base_mocks["server.lifecycle.ServicesManager"].return_value
+
+    async with lifespan(app):
+        pass
+
+    assert base_mocks["server.lifecycle.ServicesManager"].call_args == call(external_only=True)
+    assert svc_mgr.register_service.call_count == 1
+    registered = base_mocks["server.lifecycle.OpenAIService"].return_value
+    assert svc_mgr.register_service.call_args == call(registered)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "raised_exception",
     [
@@ -287,3 +323,27 @@ async def test_lifespan_shutdown_behavior(
         pass
 
     assert svc_mgr.stop_all_services.call_count == expected_call_count
+
+
+def _manager_with(types: set[str]) -> MagicMock:
+    mgr = MagicMock()
+    mgr.services = dict.fromkeys(types)
+    return mgr
+
+
+def test_external_only_registration_matching_the_allowlist_is_accepted() -> None:
+    mgr = _manager_with(set(ServicesManager.EXTERNAL_ONLY_ALLOWED_SERVICE_TYPES))
+    assert_external_only_registration(mgr)
+
+
+def test_external_only_registration_missing_an_allowed_type_fails_startup() -> None:
+    with pytest.raises(AppStartError) as e:
+        assert_external_only_registration(_manager_with(set()))
+    assert "does not match" in str(e.value)
+
+
+def test_external_only_registration_of_a_docker_backed_type_fails_startup() -> None:
+    types = {*ServicesManager.EXTERNAL_ONLY_ALLOWED_SERVICE_TYPES, "ollama"}
+    with pytest.raises(AppStartError) as e:
+        assert_external_only_registration(_manager_with(types))
+    assert "ollama" in str(e.value)

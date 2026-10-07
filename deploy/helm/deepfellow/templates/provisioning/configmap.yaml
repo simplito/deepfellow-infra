@@ -1,0 +1,13 @@
+{{- if .Values.provisioning.enabled }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "provisioning") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: provisioning
+{{/* The deepfellow_provision package, one key per module; the Job mounts it as a directory. */}}
+data:
+  {{- (.Files.Glob "files/deepfellow_provision/*.py").AsConfig | nindent 2 }}
+{{- end }}

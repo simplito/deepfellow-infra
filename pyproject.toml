@@ -167,7 +167,11 @@ exclude_also = [
 ]
 
 [tool.pyright]
-include = ["server", "scripts", "tests"]
+# deploy/helm/deepfellow/files/deepfellow_provision is the chart's provisioning package: it runs
+# unattended in a Job and handles a get-once credential, so it is type-checked like the rest of
+# the codebase. extraPaths lets the tests import it by its package name, as the Job does.
+include = ["server", "scripts", "tests", "deploy/helm/deepfellow/files", "deploy/helm/deepfellow/ci"]
+extraPaths = ["deploy/helm/deepfellow/files"]
 exclude = ["**/__pycache__"]
 venvPath = "."
 venv = ".venv"

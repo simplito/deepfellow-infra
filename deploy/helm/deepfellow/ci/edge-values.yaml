@@ -1,0 +1,125 @@
+# CI fixture (edge branches): external backends with api keys, Memory/existingClaim storage,
+# BYO ServiceAccount and state Secret. Deterministic literal credentials; never reuse them.
+infra:
+  image:
+    allowMutableTag: true
+  auth:
+    adminApiKey:
+      plaintext: ci-infra-admin-key-000000000000
+    serverApiKey:
+      plaintext: ci-infra-api-key-00000000000000
+  storage:
+    existingClaim: ci-infra-data
+modelBackends:
+  demo:
+    enabled: true
+    type: llamaCpp
+    modelId: demo-llm
+    image:
+      repository: ghcr.io/ggml-org/llama.cpp
+      tag: server
+      allowMutableTag: true
+    gguf:
+      url: https://example.invalid/model.gguf
+    contextLength: 2048
+    storage:
+      medium: Memory
+  second:
+    enabled: true
+    type: llamaCpp
+    modelId: demo-llm-2
+    image:
+      repository: ghcr.io/ggml-org/llama.cpp
+      tag: server
+      allowMutableTag: true
+    gguf:
+      url: https://example.invalid/model.gguf
+      hfToken:
+        plaintext: ci-hf-token-0000
+    contextLength: 2048
+    storage:
+      existingClaim: ci-weights
+server:
+  image:
+    allowMutableTag: true
+  mongo:
+    mode: embedded
+    password:
+      plaintext: ciMongoApp00000
+    embedded:
+      rootPassword:
+        plaintext: ciMongoRoot0000
+      storage:
+        existingClaim: ci-mongo-data
+  storage:
+    existingClaim: ci-server-data
+  falkordb:
+    enabled: true
+    password:
+      plaintext: ciGraphPass0000
+    storage:
+      existingClaim: ci-graph-data
+    image:
+      allowMutableTag: true
+workspace:
+  enabled: true
+  image:
+    allowMutableTag: true
+  helperModel: demo-llm
+  auth:
+    sessionSecret:
+      plaintext: ci-better-auth-secret-0000000000
+    bootstrapAdmin:
+      name: admin
+      email: admin@example.com
+      password:
+        plaintext: CiWsPassw0rd!x
+  mongo:
+    rootPassword:
+      plaintext: ciWsMongoRoot000
+    keyFile:
+      plaintext: Y2lLZXlGaWxlQ29udGVudEJhc2U2NENoYXJzZXRPbmx5MDAwMDAwMDAwMDAw
+  redis:
+    password:
+      plaintext: ciRedisPassw0rd00
+provisioning:
+  enabled: true
+  serviceAccount:
+    create: false
+    name: ci-provisioner
+  stateSecret:
+    name: ci-provisioning-state
+  admin:
+    email: admin@example.com
+    password:
+      plaintext: CiAdminPassw0rd!
+networkPolicy:
+  enabled: true
+ingress:
+  enabled: true
+  className: traefik
+  server:
+    host: api.example.com
+  workspace:
+    host: ui.example.com
+externalBackends:
+  remote-a:
+    enabled: true
+    apiType: openai
+    apiUrl: http://remote-a.example.invalid:8080
+    modelId: remote-a-llm
+    contextLength: 4096
+    apiKey:
+      plaintext: ci-remote-a-key-0000
+  remote-b:
+    enabled: true
+    apiType: openai
+    apiUrl: http://remote-b.example.invalid:8080
+    modelId: remote-b-llm
+    apiKey:
+      secretRef: ci-remote-b
+      secretKey: api-key
+  remote-off:
+    enabled: false
+    apiUrl: http://off.example.invalid
+    modelId: 'off'

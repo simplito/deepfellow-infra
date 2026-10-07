@@ -1,0 +1,21 @@
+{{- if .Values.workspace.enabled }}
+{{- $s := .Values.workspace.redis.storage }}
+{{- if and $s.enabled (not $s.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "deepfellow.componentName" (dict "context" . "component" "workspace-redis") }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: workspace-redis
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with $s.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $s.size }}
+{{- end }}
+{{- end }}

@@ -198,6 +198,44 @@ build_dashboard_variant_image:
     # image a service would ship, and reads what came out, so a break here is a break somebody has to see.
     - when: on_success
 
+# The Kubernetes chart: lint, render every fixture through kubeconform, unit tests, and generated-file
+# freshness. All of it lives in deploy/helm/deepfellow/ci/test.sh so a local run matches CI exactly.
+# Tools are pinned by version AND checksum: the job downloads binaries it then executes.
+helm-chart:
+  stage: analysis
+  image: python:3.13-slim
+  variables:
+    HELM_VERSION: "3.20.1"
+    HELM_SHA256: "0165ee4a2db012cc657381001e593e981f42aa5707acdd50658326790c9d0dc3"
+    KUBECONFORM_VERSION: "0.8.0"
+    KUBECONFORM_SHA256: "9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883"
+    HELM_DOCS_VERSION: "1.14.2"
+    HELM_DOCS_SHA256: "a8cf72ada34fad93285ba2a452b38bdc5bd52cc9a571236244ec31022928d6cc"
+    HELM_UNITTEST_VERSION: "1.1.2"
+  before_script:
+    - apt-get update -qq && apt-get install -qq -y --no-install-recommends curl ca-certificates git >/dev/null
+    - pip install --quiet PyYAML==6.0.2
+    - cd /tmp
+    - curl -fsSLo helm.tgz "https://get.helm.sh/helm-v${HELM_VERSION}-linux-amd64.tar.gz"
+    - echo "${HELM_SHA256}  helm.tgz" | sha256sum -c -
+    - curl -fsSLo kubeconform.tgz "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+    - echo "${KUBECONFORM_SHA256}  kubeconform.tgz" | sha256sum -c -
+    - curl -fsSLo helm-docs.tgz "https://github.com/norwoodj/helm-docs/releases/download/v${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION}_Linux_x86_64.tar.gz"
+    - echo "${HELM_DOCS_SHA256}  helm-docs.tgz" | sha256sum -c -
+    - tar -xzf helm.tgz linux-amd64/helm && mv linux-amd64/helm /usr/local/bin/
+    - tar -xzf kubeconform.tgz kubeconform && mv kubeconform /usr/local/bin/
+    - tar -xzf helm-docs.tgz helm-docs && mv helm-docs /usr/local/bin/
+    - helm plugin install https://github.com/helm-unittest/helm-unittest --version "v${HELM_UNITTEST_VERSION}"
+    - cd "$CI_PROJECT_DIR"
+  script:
+    - deploy/helm/deepfellow/ci/test.sh
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - changes:
+        - deploy/helm/**/*
+        - .gitlab-ci.yml
+
 # Verify that .gitignore still covers every file name the Dashboard build emits.
 # That list lives in two places that cannot read each other: `.gitignore`, which git reads and cannot compute, and the
 # installed package's own manifest. A Dashboard release that renames a file makes them disagree, and the first sign

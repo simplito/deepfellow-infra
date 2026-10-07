@@ -1,0 +1,74 @@
+{{- if .Values.workspace.enabled }}
+{{- $appMongo := include "deepfellow.componentName" (dict "context" . "component" "workspace-mongo") }}
+{{/*
+A NORMAL release resource, deliberately not a helm hook — same reason as the provisioning Job.
+`helm install --wait` waits for the release to be Ready before running post-install hooks, and the
+Workspace cannot become Ready until this replica set is initiated, so as a hook this deadlocked.
+
+The pod template is immutable and Helm patches in place, so the Job's name carries a digest of
+its rendered pod template: any change to the pod yields a new Job instead of `field is immutable`.
+*/}}
+
+{{- $pod := include "deepfellow.workspaceMongo.rsInitPod" . }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-rs-init-%s" $appMongo (sha256sum $pod | trunc 8) }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: workspace-mongo
+spec:
+  backoffLimit: 10
+  template:{{ $pod }}
+{{- end }}
+{{/* rsInitPod: the Job's pod template, rendered once to name the Job and once as its spec. */}}
+{{- define "deepfellow.workspaceMongo.rsInitPod" }}
+{{- $cred := include "deepfellow.credentials" . | fromYaml }}
+{{- $w := .Values.workspace }}
+{{- $appMongo := include "deepfellow.componentName" (dict "context" . "component" "workspace-mongo") }}
+{{- $appMongoSecret := include "deepfellow.credSecretName" (dict "context" . "component" "workspace-mongo") }}
+{{- $appMongoSel := include "deepfellow.selectorLabels" (dict "context" . "component" "workspace-mongo") }}
+    metadata:
+      {{- include "deepfellow.podMetadata" (dict "context" . "values" $w.mongo "component" "workspace-mongo" "credentials" (list $cred.workspace.mongo.rootPassword)) | nindent 6 }}
+    spec:
+      restartPolicy: OnFailure
+      {{- include "deepfellow.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "deepfellow.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "deepfellow.podSecurityContext" (dict "context" . "values" $w.mongo "base" (include "deepfellow.mongoPodSecurityContext" . | fromYaml)) | nindent 8 }}
+      {{- include "deepfellow.podPlacement" $w.mongo | nindent 6 }}
+      containers:
+        - name: rs-init
+          image: {{ include "deepfellow.image" (dict "context" . "image" $w.mongo.image) }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $w.mongo) | nindent 12 }}
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              host="{{ $appMongo }}-0.{{ $appMongo }}"
+              # Initiates ONLY a set that was never initiated. Any other rs.status() error (e.g. a
+              # member that cannot find itself) is retried and shown, never papered over by a
+              # re-initiate. Retried because a first successful ping does not mean the member's
+              # name resolves on the next connection yet.
+              initiate() {
+                out=$(mongosh --host "$host" -u "$MONGO_ROOT_USER" -p "$MONGO_ROOT_PASSWORD" --authenticationDatabase admin --quiet --eval '
+                  try { rs.status().ok } catch (e) {
+                    if (e.codeName !== "NotYetInitialized") { throw e }
+                    rs.initiate({_id: "{{ $w.mongo.replSetName }}", members: [{_id: 0, host: "'"$host"':{{ include "deepfellow.port" "workspace-mongo.mongo" }}"}]}).ok
+                  }' 2>&1) && return 0
+                printf '%s\n' "$out" | tail -n 1 >&2
+                return 1
+              }
+              {{- include "deepfellow.retry" (dict "context" $ "check" "initiate" "what" "the replica set") | nindent 14 }}
+          env:
+            - name: MONGO_ROOT_USER
+              value: {{ $w.mongo.rootUsername | quote }}
+            {{- include "deepfellow.credEnv" (dict "name" "MONGO_ROOT_PASSWORD" "cred" $cred.workspace.mongo.rootPassword "secretName" $appMongoSecret "required" true) | nindent 12 }}
+          {{- with $w.mongo.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

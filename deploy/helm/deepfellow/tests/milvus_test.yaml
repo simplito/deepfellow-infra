@@ -1,0 +1,71 @@
+# The Milvus stack: every regression below broke a real install.
+suite: milvus stack
+templates:
+  - milvus/statefulset.yaml
+  - etcd/statefulset.yaml
+  - minio/statefulset.yaml
+  - milvus/service.yaml
+  - milvus/networkpolicy.yaml
+  - etcd/networkpolicy.yaml
+  - minio/networkpolicy.yaml
+values:
+  - ../ci/milvus-values.yaml
+tests:
+  - it: joins group 0, or the image's root:root 0774 binaries cannot be executed
+    template: milvus/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.supplementalGroups
+          value: [0]
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+  - it: publishes 9091, the port the Server's init container waits on
+    template: milvus/service.yaml
+    asserts:
+      - contains:
+          path: spec.ports
+          content: { name: metrics, port: 9091, targetPort: metrics }
+  - it: waits for etcd and MinIO before starting
+    template: milvus/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: wait-for-etcd-minio
+  - it: has an allow policy for each store under default-deny
+    templates: [milvus/networkpolicy.yaml, etcd/networkpolicy.yaml, minio/networkpolicy.yaml]
+    asserts:
+      - isKind: { of: NetworkPolicy }
+  - it: renders nothing when the vector DB is disabled
+    template: milvus/statefulset.yaml
+    set:
+      server.vectorDb.enabled: false
+    asserts:
+      - hasDocuments: { count: 0 }
+  - it: sizes milvus, etcd and MinIO separately
+    asserts:
+      - template: milvus/statefulset.yaml
+        equal: { path: 'spec.volumeClaimTemplates[0].spec.resources.requests.storage', value: 20Gi }
+      - template: etcd/statefulset.yaml
+        equal: { path: 'spec.volumeClaimTemplates[0].spec.resources.requests.storage', value: 4Gi }
+      - template: minio/statefulset.yaml
+        equal: { path: 'spec.volumeClaimTemplates[0].spec.resources.requests.storage', value: 20Gi }
+  - it: mounts an existing claim per component instead of a claim template
+    set:
+      server.vectorDb.milvus.etcd.storage.existingClaim: my-etcd
+      server.vectorDb.milvus.minio.storage.existingClaim: my-minio
+    asserts:
+      - template: etcd/statefulset.yaml
+        notExists: { path: spec.volumeClaimTemplates }
+      - template: etcd/statefulset.yaml
+        contains: { path: spec.template.spec.volumes, content: { name: data, persistentVolumeClaim: { claimName: my-etcd } } }
+      - template: minio/statefulset.yaml
+        contains: { path: spec.template.spec.volumes, content: { name: data, persistentVolumeClaim: { claimName: my-minio } } }
+      - template: milvus/statefulset.yaml
+        exists: { path: spec.volumeClaimTemplates }
+  - it: has etcd advertise its Service, not the loopback a client would resolve to itself
+    template: etcd/statefulset.yaml
+    asserts:
+      - contains:
+          path: 'spec.template.spec.containers[0].command'
+          content: "-advertise-client-urls=http://RELEASE-NAME-deepfellow-etcd:2379"

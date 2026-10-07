@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- New native-Kubernetes Helm chart at `deploy/helm/deepfellow` that deploys the whole suite — Infra, Server, Workspace, their MongoDBs, and optionally a vector database (Qdrant or the Milvus stack) and the FalkorDB knowledge graph — without Docker-in-Docker. Model backends (llama.cpp) run as ordinary Kubernetes Deployments and are registered into Infra as external `openai` service instances, one instance per backend, so Infra never needs access to a Docker socket. A provisioning Job reconciles the rest: it creates the admin user, organization and project, mints the project API key into a Kubernetes Secret (the key is returned only once, so the Secret is written before anything else and preserved on uninstall), registers each backend's service and custom model, waits for the model to become available, and only then grants the project access to it. The chart is deliberately fail-closed: it refuses to render until image digests (or an explicit mutable-tag acknowledgement) and credential sources are supplied, rather than silently deploying with defaults.
+- New `DF_EXTERNAL_ONLY` mode for running Infra where no Docker daemon exists (e.g. as a plain Kubernetes pod). When enabled, startup performs no Docker work at all — no `docker` CLI lookup, no `docker compose version`, no GPU probe, no rootless check and no network subnet inspection — and only service types that talk to an already-running backend over HTTP are registered (currently `openai`). Docker-backed service and model operations return a deterministic `409` stating they are disabled by `DF_EXTERNAL_ONLY`, instead of failing later with an obscure error. Normal mode is unchanged.
+
 ## [0.34.0] - 2026-09-16
 
 ### Fixed

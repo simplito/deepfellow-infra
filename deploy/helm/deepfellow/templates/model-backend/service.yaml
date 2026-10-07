@@ -1,0 +1,26 @@
+{{- range $name, $bRaw := .Values.modelBackends }}
+{{- if include "deepfellow.backendEnabled" (dict "b" $bRaw) }}
+{{- $b := include "deepfellow.normalizedBackend" (dict "context" $ "raw" $bRaw "name" $name) | fromYaml }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" $ "component" (printf "mb-%s" $name)) }}
+{{- $component := printf "mb-%s" $name }}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" $ "component" $component) }}
+{{- $port := int $b.service.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ $port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- $selector | nindent 4 }}
+{{- end }}
+{{- end }}

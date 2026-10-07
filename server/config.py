@@ -37,6 +37,7 @@ class AppSettings(BaseSettings):
     storage_services_dir: str = ""
     container_name_prefix: str = ""
     compose_prefix: str = "df_"
+    external_only: bool = False
 
     # --- Everything below is dynamic: populated from config.json, mutable at runtime. ---
 

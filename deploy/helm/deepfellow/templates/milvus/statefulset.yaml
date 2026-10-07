@@ -1,0 +1,75 @@
+{{- if include "deepfellow.milvus.inChart" . }}
+{{- $cred := include "deepfellow.credentials" . | fromYaml }}
+{{/*
+Milvus standalone stack (etcd + minio + milvus). MinIO exists ONLY here.
+Rendered as a compact standalone; tune resources/storage via values before production.
+*/}}
+{{- $v := .Values.server.vectorDb }}
+{{- $milvus := include "deepfellow.componentName" (dict "context" . "component" "milvus") }}
+{{- $milvusSel := include "deepfellow.selectorLabels" (dict "context" . "component" "milvus") }}
+{{- $minioSecret := include "deepfellow.credSecretName" (dict "context" . "component" "minio") }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $milvus }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: milvus
+spec:
+  serviceName: {{ $milvus }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $milvusSel | nindent 6 }}
+  template:
+    metadata:
+      {{- include "deepfellow.podMetadata" (dict "context" . "values" $v.milvus "component" "milvus" "credentials" (list $cred.server.vectorDb.milvus.minio.rootUser $cred.server.vectorDb.milvus.minio.rootPassword)) | nindent 6 }}
+    spec:
+      {{- include "deepfellow.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "deepfellow.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{/* The published image ships bin/ and lib/ as root:root 0774 — "other" cannot execute
+             them, so under the chart's non-root uid milvus dies at exec with "Permission
+             denied". Membership of group 0 grants the group bits without running as root. */}}
+        {{- include "deepfellow.podSecurityContext" (dict "context" . "values" $v.milvus "base" (dict "supplementalGroups" (list 0))) | nindent 8 }}
+      {{- include "deepfellow.podPlacement" $v.milvus | nindent 6 }}
+      initContainers:
+        {{- include "deepfellow.waitFor" (dict "context" $ "values" $v.milvus "name" "wait-for-etcd-minio" "urls" (list (printf "http://%s/health" (include "deepfellow.address" (dict "context" . "port" "etcd.client"))) (printf "http://%s/minio/health/live" (include "deepfellow.address" (dict "context" . "port" "minio.api")))) "resources" $v.milvus.resources) | nindent 8 }}
+      containers:
+        - name: milvus
+          image: {{ include "deepfellow.image" (dict "context" . "image" $v.milvus.image) }}
+          imagePullPolicy: {{ $v.milvus.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $v.milvus) | nindent 12 }}
+          {{- with $v.milvus.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          args: ["milvus", "run", "standalone"]
+          env:
+            - name: ETCD_ENDPOINTS
+              value: {{ include "deepfellow.address" (dict "context" . "port" "etcd.client") | quote }}
+            - name: MINIO_ADDRESS
+              value: {{ include "deepfellow.address" (dict "context" . "port" "minio.api") | quote }}
+            - name: MQ_TYPE
+              value: woodpecker
+            {{- include "deepfellow.credEnv" (dict "name" "MINIO_ACCESS_KEY_ID" "cred" $cred.server.vectorDb.milvus.minio.rootUser "secretName" $minioSecret "required" true) | nindent 12 }}
+            {{- include "deepfellow.credEnv" (dict "name" "MINIO_SECRET_ACCESS_KEY" "cred" $cred.server.vectorDb.milvus.minio.rootPassword "secretName" $minioSecret "required" true) | nindent 12 }}
+          ports:
+            - name: grpc
+              containerPort: {{ include "deepfellow.port" "milvus.grpc" }}
+            - name: metrics
+              containerPort: {{ include "deepfellow.port" "milvus.metrics" }}
+          {{/* Without this the pod reads Ready seconds after start, while Milvus is still connecting
+               to etcd/MinIO — so `helm --wait` gated on nothing. /healthz answers only once it is up. */}}
+          {{- include "deepfellow.probes" (dict "defaults" (include "deepfellow.probeDefaults.milvus" . | fromYaml) "values" $v.milvus) | nindent 10 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/milvus
+      {{- with $v.milvus.storage.existingClaim }}
+      volumes:
+        {{- include "deepfellow.existingDataVolume" (dict "claim" .) | nindent 8 }}
+      {{- end }}
+  {{- include "deepfellow.dataVolumeClaimTemplate" (dict "storage" $v.milvus.storage) | nindent 2 }}
+{{- end }}

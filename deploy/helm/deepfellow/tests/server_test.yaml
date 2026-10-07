@@ -1,0 +1,63 @@
+suite: server
+templates:
+  - server/deployment.yaml
+values:
+  - ../ci/qdrant-graph-values.yaml
+tests:
+  - it: waits for an in-chart qdrant before starting
+    asserts:
+      - equal: { path: 'spec.template.spec.initContainers[0].name', value: wait-for-vector-db }
+  - it: does not wait for an external qdrant (it is not ours to wait for)
+    set:
+      server.vectorDb.qdrant: { mode: external, external: { url: http://qdrant.example:6333 } }
+    asserts:
+      - notExists: { path: spec.template.spec.initContainers }
+  - it: keeps the plugins dir on the PVC, never the root-owned /app/plugins
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: DF_PLUGINS_PATH, value: /app/storage/plugins }
+  - it: runs without a ServiceAccount token
+    asserts:
+      - equal: { path: spec.template.spec.automountServiceAccountToken, value: false }
+  - it: rolls when an inline credential it reads changes
+    set:
+      server.falkordb.password.plaintext: AnotherGraphPass1
+    asserts:
+      - notEqual:
+          path: spec.template.metadata.annotations["checksum/credentials"]
+          value: ""
+  - it: points at the in-chart Qdrant through its Service and port
+    asserts:
+      - contains:
+          path: 'spec.template.spec.containers[0].env'
+          content: { name: DF_VECTOR_DATABASE__PROVIDER__URL, value: "http://RELEASE-NAME-deepfellow-qdrant:6333" }
+  - it: points at an external Qdrant when one is given
+    set:
+      server.vectorDb.qdrant: { mode: external, external: { url: http://qdrant.example:6333 } }
+    asserts:
+      - contains:
+          path: 'spec.template.spec.containers[0].env'
+          content: { name: DF_VECTOR_DATABASE__PROVIDER__URL, value: "http://qdrant.example:6333" }
+  - it: gives env ports as strings, which Kubernetes requires
+    asserts:
+      - contains:
+          path: 'spec.template.spec.containers[0].env'
+          content: { name: DF_GRAPH__PORT, value: "6379" }
+  - it: waits for Milvus on its metrics port, the one its Service publishes
+    set:
+      server.vectorDb: { type: milvus, milvus: { minio: { rootUser: { generate: true }, rootPassword: { generate: true } } } }
+    asserts:
+      - matchRegex:
+          path: 'spec.template.spec.initContainers[0].command[2]'
+          pattern: "http://RELEASE-NAME-deepfellow-milvus:9091/healthz"
+      - contains:
+          path: 'spec.template.spec.containers[0].env'
+          content: { name: DF_VECTOR_DATABASE__PROVIDER__URL, value: "http://RELEASE-NAME-deepfellow-milvus:19530" }
+  - it: builds every wait from one loop whose budget is dependencyWait
+    set:
+      dependencyWait: { attempts: 7, delaySeconds: 2 }
+    asserts:
+      - matchRegex:
+          path: 'spec.template.spec.initContainers[0].command[2]'
+          pattern: 'if \[ "\$i" -ge 7 \].*\n.*\n *sleep 2'

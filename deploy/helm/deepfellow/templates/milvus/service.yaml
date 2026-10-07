@@ -1,0 +1,24 @@
+{{- if include "deepfellow.milvus.inChart" . }}
+{{- $milvus := include "deepfellow.componentName" (dict "context" . "component" "milvus") }}
+{{- $milvusSel := include "deepfellow.selectorLabels" (dict "context" . "component" "milvus") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $milvus }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: milvus
+spec:
+  type: ClusterIP
+  ports:
+    - name: grpc
+      port: {{ include "deepfellow.port" "milvus.grpc" }}
+      targetPort: grpc
+    # Health lives on its own port. Without publishing it here, anything waiting on Milvus through
+    # the Service (the Server's init container) can never see it come up.
+    - name: metrics
+      port: {{ include "deepfellow.port" "milvus.metrics" }}
+      targetPort: metrics
+  selector:
+    {{- $milvusSel | nindent 4 }}
+{{- end }}

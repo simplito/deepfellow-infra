@@ -37,6 +37,7 @@ def config() -> MagicMock:
     mock.infra_api_key = SecretStr("api-secret")
     mock.connect_to_mesh_key = SecretStr("")
     mock.docker_subnet = ""
+    mock.external_only = False
     mock.storage_dir = ""
     mock.storage_services_dir = ""
     mock.hugging_face_token = SecretStr("")

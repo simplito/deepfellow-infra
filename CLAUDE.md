@@ -66,6 +66,15 @@ WebUI (from `webui/` directory):
 - Watch mode: `npx vitest` (from `webui/`) — reruns on save
 - Tests cover pure utilities and store logic (`src/utils/`, `src/state/`)
 
+## Kubernetes Helm chart
+
+`deploy/helm/deepfellow/` is the Kubernetes distribution of the whole Suite (Infra, Server,
+Workspace and their stores), socket-free via `DF_EXTERNAL_ONLY`. Before changing it read
+`deploy/helm/deepfellow/STYLEGUIDE.md`: file layout, the helpers every pod is built from, and
+rules that each exist because breaking them broke an install. `just helm-test` runs every check
+CI runs (`deploy/helm/deepfellow/ci/test.sh`). Its `README.md` is generated: edit
+`README.md.gotmpl` and the `# --` comments in `values.yaml`, then run helm-docs.
+
 ## Required Environment Variables
 
 Must be set before running:

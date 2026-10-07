@@ -79,7 +79,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         if config.otel_logging_enabled:
             otlp_logging.setup(config)
 
-        if app.state.config.docker_subnet:
+        if not config.external_only and app.state.config.docker_subnet:
             check_subnet(app.state.config.docker_subnet)
 
         app.state.hardware = hardware = Hardware()
@@ -92,7 +92,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         app.state.service_provider = service_provider = ServiceProvider(config)
         parents = [ParentInfra(config, task_manager, config.connect_to_mesh_url)] if config.connect_to_mesh_url else []
         app.state.parent_infra = parent_infra = ParentInfraGroup(parents)
-        app.state.services_manager = services_manager = ServicesManager()
+        app.state.services_manager = services_manager = ServicesManager(external_only=config.external_only)
         app.state.model_tester = model_tester = ModelTester()
         app.state.endpoint_registry = endpoint_registry = EndpointRegistry(config, parent_infra, model_tester, metrics_registry)
         app.state.infra_websocket_server = infra_websocket_server = InfraWebsocketServer(config, parent_infra, endpoint_registry)
@@ -107,24 +107,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         model_input = (config, endpoint_registry, service_provider, model_downloader, docker_service, hardware)
 
         # Register services
-        services_manager.register_service(ClaudeService(*model_input))
-        services_manager.register_service(CoquiService(*model_input))
-        services_manager.register_service(CustomService(*model_input))
-        services_manager.register_service(DeepSeekService(*model_input))
-        services_manager.register_service(DockerModelRunnerService(*model_input))
-        services_manager.register_service(GoogleAIService(*model_input))
-        services_manager.register_service(KimiService(*model_input))
-        services_manager.register_service(LLamacppService(*model_input))
-        services_manager.register_service(McpService(*model_input))
-        services_manager.register_service(OllamaCloudService(*model_input))
-        services_manager.register_service(OllamaExternalService(*model_input))
-        services_manager.register_service(OllamaService(*model_input))
-        services_manager.register_service(OpenAIService(*model_input))
-        services_manager.register_service(RerankService(*model_input))
-        services_manager.register_service(SglangService(*model_input))
-        services_manager.register_service(SpeachesAIService(*model_input))
-        services_manager.register_service(StableDiffusionService(*model_input))
-        services_manager.register_service(VllmService(*model_input))
+        if config.external_only:
+            # Only socket-free services may run here.
+            services_manager.register_service(OpenAIService(*model_input))
+            assert_external_only_registration(services_manager)
+        else:
+            services_manager.register_service(ClaudeService(*model_input))
+            services_manager.register_service(CoquiService(*model_input))
+            services_manager.register_service(CustomService(*model_input))
+            services_manager.register_service(DeepSeekService(*model_input))
+            services_manager.register_service(DockerModelRunnerService(*model_input))
+            services_manager.register_service(GoogleAIService(*model_input))
+            services_manager.register_service(KimiService(*model_input))
+            services_manager.register_service(LLamacppService(*model_input))
+            services_manager.register_service(McpService(*model_input))
+            services_manager.register_service(OllamaCloudService(*model_input))
+            services_manager.register_service(OllamaExternalService(*model_input))
+            services_manager.register_service(OllamaService(*model_input))
+            services_manager.register_service(OpenAIService(*model_input))
+            services_manager.register_service(RerankService(*model_input))
+            services_manager.register_service(SglangService(*model_input))
+            services_manager.register_service(SpeachesAIService(*model_input))
+            services_manager.register_service(StableDiffusionService(*model_input))
+            services_manager.register_service(VllmService(*model_input))
 
         # Load functions
         await context.load_services()
@@ -140,6 +145,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         await services_manager.stop_all_services()
     await tracer.shutdown()
     await otlp_logging.teardown()
+
+
+def assert_external_only_registration(services_manager: ServicesManager) -> None:
+    """Fail startup if the external-only registration and its allowlist disagree.
+
+    `ServicesManager.EXTERNAL_ONLY_ALLOWED_SERVICE_TYPES` is the single declaration of which
+    service types may run without Docker, but the registration above is a separate list. If a
+    type were added to one and not the other the mismatch would surface only as confusing HTTP
+    semantics — a 404 for a type that is supposed to answer a deterministic 409, or the reverse.
+
+    Raises:
+        AppStartError: If the registered types differ from the allowlist.
+    """
+    registered = frozenset(services_manager.services)
+    allowed = ServicesManager.EXTERNAL_ONLY_ALLOWED_SERVICE_TYPES
+    if registered != allowed:
+        msg = (
+            "external-only registration does not match EXTERNAL_ONLY_ALLOWED_SERVICE_TYPES: "
+            f"registered={sorted(registered)}, allowed={sorted(allowed)}"
+        )
+        raise AppStartError(msg)
 
 
 def check_subnet(subnet: str) -> None:

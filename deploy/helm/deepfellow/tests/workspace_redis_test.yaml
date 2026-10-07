@@ -1,0 +1,87 @@
+# The Workspace's Redis: Workspace v0.5+ does not become Ready without it.
+suite: workspace redis
+templates:
+  - workspace-redis/deployment.yaml
+  - workspace-redis/pvc.yaml
+  - workspace-redis/service.yaml
+  - workspace-redis/networkpolicy.yaml
+  - workspace/deployment.yaml
+  - validation.yaml
+values:
+  - ../ci/full-values.yaml
+tests:
+  - it: requires a password and reads it only from a Secret
+    template: workspace-redis/deployment.yaml
+    asserts:
+      - equal: { path: 'spec.template.spec.containers[0].args[1]', value: "$(REDIS_PASSWORD)" }
+      - equal:
+          path: 'spec.template.spec.containers[0].env[0].valueFrom.secretKeyRef'
+          value: { name: RELEASE-NAME-deepfellow-workspace-redis-creds, key: workspace-redis-password }
+  - it: keeps its data on a PVC as an append-only file by default
+    template: workspace-redis/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content: { name: data, persistentVolumeClaim: { claimName: RELEASE-NAME-deepfellow-workspace-redis } }
+      - contains: { path: 'spec.template.spec.containers[0].args', content: "--appendonly" }
+      - contains: { path: 'spec.template.spec.containers[0].args', content: "yes" }
+      - equal: { path: spec.strategy.type, value: Recreate }
+  - it: creates that PVC with the size and class asked for
+    template: workspace-redis/pvc.yaml
+    set:
+      workspace.redis.storage: { size: 2Gi, storageClass: fast-ssd }
+    asserts:
+      - equal: { path: spec.resources.requests.storage, value: 2Gi }
+      - equal: { path: spec.storageClassName, value: fast-ssd }
+  - it: uses an existing claim instead of creating one
+    set:
+      workspace.redis.storage.existingClaim: my-redis
+    asserts:
+      - template: workspace-redis/pvc.yaml
+        hasDocuments: { count: 0 }
+      - template: workspace-redis/deployment.yaml
+        contains:
+          path: spec.template.spec.volumes
+          content: { name: data, persistentVolumeClaim: { claimName: my-redis } }
+  - it: keeps nothing on disk when storage is off
+    set:
+      workspace.redis.storage.enabled: false
+    asserts:
+      - template: workspace-redis/pvc.yaml
+        hasDocuments: { count: 0 }
+      - template: workspace-redis/deployment.yaml
+        contains: { path: spec.template.spec.volumes, content: { name: data, emptyDir: {} } }
+      - template: workspace-redis/deployment.yaml
+        contains: { path: 'spec.template.spec.containers[0].args', content: "no" }
+  - it: gives the Workspace a REDIS_URL whose password the kubelet substitutes
+    template: workspace/deployment.yaml
+    asserts:
+      - contains:
+          path: 'spec.template.spec.containers[0].env'
+          content: { name: REDIS_URL, value: "redis://:$(REDIS_PASSWORD)@RELEASE-NAME-deepfellow-workspace-redis:6379" }
+  - it: runs the pinned Workspace release
+    template: workspace/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: 'spec.template.spec.containers[0].image'
+          pattern: 'deepfellow-workspace@sha256:5b12c434'
+  - it: lets only the Workspace reach Redis
+    template: workspace-redis/networkpolicy.yaml
+    asserts:
+      - equal:
+          path: 'spec.ingress[0].from'
+          value:
+            - podSelector: { matchLabels: { app.kubernetes.io/instance: RELEASE-NAME, app.kubernetes.io/component: workspace } }
+  - it: refuses a Workspace without a Redis password
+    template: workspace/deployment.yaml
+    set:
+      workspace.redis.password.plaintext: null
+    asserts:
+      - failedTemplate:
+          errorPattern: "workspace.redis.password is required"
+  - it: renders no Redis when the Workspace is off
+    template: workspace-redis/deployment.yaml
+    set:
+      workspace.enabled: false
+    asserts:
+      - hasDocuments: { count: 0 }

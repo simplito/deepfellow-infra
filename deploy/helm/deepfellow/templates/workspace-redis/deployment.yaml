@@ -1,0 +1,69 @@
+{{- if .Values.workspace.enabled }}
+{{- $cred := include "deepfellow.credentials" . | fromYaml }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "workspace-redis") }}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" . "component" "workspace-redis") }}
+{{- $secretName := include "deepfellow.credSecretName" (dict "context" . "component" "workspace-redis") }}
+{{- $r := .Values.workspace.redis }}
+{{/*
+The Workspace's Redis (Workspace v0.5 and later will not become Ready without one). With
+storage.enabled it writes an append-only file to its PVC, fsynced every second, so its data
+survives a restart (at most the last second is lost). Without it nothing reaches disk. Recreate,
+because the PVC is ReadWriteOnce and two Redis on one AOF would corrupt it.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: workspace-redis
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      {{- include "deepfellow.podMetadata" (dict "context" . "values" $r "component" "workspace-redis" "credentials" (list $cred.workspace.redis.password)) | nindent 6 }}
+    spec:
+      {{- include "deepfellow.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "deepfellow.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "deepfellow.podSecurityContext" (dict "context" . "values" $r) | nindent 8 }}
+      {{- include "deepfellow.podPlacement" $r | nindent 6 }}
+      containers:
+        - name: redis
+          image: {{ include "deepfellow.image" (dict "context" . "image" $r.image) }}
+          imagePullPolicy: {{ $r.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $r) | nindent 12 }}
+          {{- if $r.storage.enabled }}
+          args: ["--requirepass", "$(REDIS_PASSWORD)", "--save", "", "--appendonly", "yes", "--appendfsync", "everysec"]
+          {{- else }}
+          args: ["--requirepass", "$(REDIS_PASSWORD)", "--save", "", "--appendonly", "no"]
+          {{- end }}
+          env:
+            {{- include "deepfellow.credEnv" (dict "name" "REDIS_PASSWORD" "cred" $cred.workspace.redis.password "secretName" $secretName "required" true) | nindent 12 }}
+          ports:
+            - name: redis
+              containerPort: {{ include "deepfellow.port" "workspace-redis.redis" }}
+          {{- include "deepfellow.probes" (dict "defaults" (include "deepfellow.probeDefaults.workspaceRedis" . | fromYaml) "values" $r) | nindent 10 }}
+          {{- with $r.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          {{- if $r.storage.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ $r.storage.existingClaim | default $fullname }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

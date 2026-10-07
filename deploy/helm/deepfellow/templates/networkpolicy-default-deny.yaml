@@ -1,0 +1,26 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $inst := .Release.Name }}
+{{/*
+Per-flow ingress isolation. Egress is left to the cluster default, for portability; add egress
+rules for your environment (including any bring-your-own endpoints) separately. All selectors
+are scoped by instance so a co-located release in the same namespace is not accidentally matched.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "deepfellow.componentName" (dict "context" . "component" "default-deny") }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+spec:
+  {{/* Must match the POD labels (deepfellow.selectorLabels = name/instance/component).
+       app.kubernetes.io/part-of is only on resource metadata, so selecting on it here
+       matched zero pods and silently made this default-deny a no-op. Do NOT fix this by
+       adding part-of to selectorLabels: those feed the immutable .spec.selector of the
+       Deployments/StatefulSets. */}}
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "deepfellow.name" . }}
+      app.kubernetes.io/instance: {{ $inst }}
+  policyTypes:
+    - Ingress
+{{- end }}

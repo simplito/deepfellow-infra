@@ -1,0 +1,19 @@
+{{- if .Values.server.falkordb.enabled }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "falkordb") }}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" . "component" "falkordb") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: falkordb
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: {{ include "deepfellow.port" "falkordb.redis" }}
+      targetPort: redis
+  selector:
+    {{- $selector | nindent 4 }}
+{{- end }}

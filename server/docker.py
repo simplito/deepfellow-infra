@@ -263,6 +263,18 @@ class DockerNotInstalledError(Exception):
     pass
 
 
+class DockerDisabledError(Exception):
+    """Raised when a Docker operation is attempted while DF_EXTERNAL_ONLY is set.
+
+    External-only mode has no Docker daemon by design, so reaching Docker here is a
+    programming error rather than an environment problem: it means a code path that
+    should be unreachable in this mode was taken.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("Docker is disabled by DF_EXTERNAL_ONLY")
+
+
 class DockerComposeDevice(TypedDict):
     driver: str
     count: NotRequired[int]
@@ -575,16 +587,20 @@ class DockerService:
         architecture: str,
         is_rootless: bool,
         host_platform: str,
+        external_only: bool = False,
     ):
         self.config = config
         self.port_service = port_service
+        self.external_only = external_only
         self.docker_compose_cmd = docker_compose_cmd
         self.has_gpu_support = has_gpu_support
         self.is_rootless = is_rootless
         self.os = os
         self.architecture = architecture
         self.host_platform = host_platform
-        self.auths = get_docker_auths()
+        # Reading ~/.docker/config.json is itself a Docker interaction; external-only mode
+        # promises none at construction.
+        self.auths = {} if external_only else get_docker_auths()
 
     def calculate_total_layer_size(self, manifest: dict[str, Any]) -> int:
         """Parse an docker image manifest and calculates the total size.
@@ -932,6 +948,10 @@ class DockerService:
         "docker compose" → "docker"; "docker-compose" → "docker"
         (create_docker_service guarantees the docker binary is in PATH when docker-compose is used).
         """
+        if self.external_only:
+            # Without this the empty compose command would surface as an IndexError from
+            # somewhere unrelated, which is a much worse way to learn the mode is wrong.
+            raise DockerDisabledError
         first = self.docker_compose_cmd.split()[0]
         return "docker" if first == "docker-compose" else first
 
@@ -1520,7 +1540,24 @@ class DockerService:
 
 
 async def create_docker_service(port_service: PortService, config: AppSettings) -> DockerService:
-    """Create docker service."""
+    """Create docker service (external-only mode returns an unprobed service, no Docker calls)."""
+    if config.external_only:
+
+        def get_host_platform_external_only() -> str:
+            arch = platform.machine().lower()
+            return normalize_docker_platform(f"linux/{arch}")
+
+        return DockerService(
+            config,
+            port_service,
+            "",
+            False,
+            get_os(),
+            get_cpu_architecture(),
+            False,
+            get_host_platform_external_only(),
+            external_only=True,
+        )
 
     async def get_docker_compose_cmd() -> str:
         """Return docker compose command."""

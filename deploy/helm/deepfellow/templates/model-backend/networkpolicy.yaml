@@ -1,0 +1,29 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $inst := .Release.Name }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "deepfellow.componentName" (dict "context" . "component" "model-backends") }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $inst }}
+      deepfellow.ai/tier: model-backend
+  policyTypes:
+    - Ingress
+  {{/* No ports: here on purpose — each backend sets its own port, so one shared policy
+       cannot pin a single number. The restriction that matters is the source. */}}
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ $inst }}
+              app.kubernetes.io/component: infra
+        {{/* The provisioning Job waits on each backend's /health before registering it. */}}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ $inst }}
+              app.kubernetes.io/component: provisioning
+{{- end }}

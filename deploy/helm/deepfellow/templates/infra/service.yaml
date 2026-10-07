@@ -1,0 +1,18 @@
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "infra") -}}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" . "component" "infra") -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: infra
+spec:
+  type: {{ .Values.infra.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.infra.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- $selector | nindent 4 }}

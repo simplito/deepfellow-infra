@@ -1,0 +1,27 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $inst := .Release.Name }}
+{{- if include "deepfellow.milvus.inChart" . }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "deepfellow.componentName" (dict "context" . "component" "etcd") }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $inst }}
+      app.kubernetes.io/component: etcd
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ $inst }}
+              app.kubernetes.io/component: milvus
+      ports:
+        - port: {{ include "deepfellow.port" "etcd.client" }}
+          protocol: TCP
+{{- end }}
+{{- end }}

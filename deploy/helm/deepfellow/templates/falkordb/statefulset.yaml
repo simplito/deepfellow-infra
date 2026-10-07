@@ -1,0 +1,56 @@
+{{- if .Values.server.falkordb.enabled }}
+{{- $cred := include "deepfellow.credentials" . | fromYaml }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "falkordb") }}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" . "component" "falkordb") }}
+{{- $serverSecret := include "deepfellow.credSecretName" (dict "context" . "component" "server") }}
+{{- $g := .Values.server.falkordb }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: falkordb
+spec:
+  serviceName: {{ $fullname }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      {{- include "deepfellow.podMetadata" (dict "context" . "values" $g "component" "falkordb" "credentials" (list $cred.server.falkordb.password)) | nindent 6 }}
+    spec:
+      {{- include "deepfellow.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "deepfellow.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "deepfellow.podSecurityContext" (dict "context" . "values" $g) | nindent 8 }}
+      {{- include "deepfellow.podPlacement" $g | nindent 6 }}
+      containers:
+        - name: falkordb
+          image: {{ include "deepfellow.image" (dict "context" . "image" $g.image) }}
+          imagePullPolicy: {{ $g.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $g) | nindent 12 }}
+          {{- with $g.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: redis
+              containerPort: {{ include "deepfellow.port" "falkordb.redis" }}
+          {{- include "deepfellow.probes" (dict "defaults" (include "deepfellow.probeDefaults.falkordb" . | fromYaml) "values" $g) | nindent 10 }}
+          env:
+            {{- include "deepfellow.credEnv" (dict "name" "DF_GRAPH__PASSWORD" "cred" $cred.server.falkordb.password "secretName" $serverSecret "required" true) | nindent 12 }}
+            - name: REDIS_ARGS
+              value: "--requirepass $(DF_GRAPH__PASSWORD)"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/falkordb/data
+      {{- with $g.storage.existingClaim }}
+      volumes:
+        {{- include "deepfellow.existingDataVolume" (dict "claim" .) | nindent 8 }}
+      {{- end }}
+  {{- include "deepfellow.dataVolumeClaimTemplate" (dict "storage" $g.storage) | nindent 2 }}
+{{- end }}

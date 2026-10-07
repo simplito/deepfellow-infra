@@ -1,0 +1,5 @@
+{{/*
+Runs every render-time check in _validate.tpl. Renders nothing when they pass; otherwise the
+first failing check stops helm install / template / lint with its message.
+*/}}
+{{- include "deepfellow.validate" . -}}

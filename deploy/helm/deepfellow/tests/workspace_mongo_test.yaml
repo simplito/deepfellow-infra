@@ -1,0 +1,73 @@
+suite: workspace mongo
+templates:
+  - workspace-mongo/secret.yaml
+  - workspace-mongo/keyfile-secret.yaml
+  - workspace-mongo/service.yaml
+  - workspace-mongo/statefulset.yaml
+  - workspace-mongo/rs-init-job.yaml
+values:
+  - ../ci/full-values.yaml
+tests:
+  - it: emits the app-mongo Secret exactly once (a split once duplicated it into four files)
+    template: workspace-mongo/secret.yaml
+    asserts:
+      - hasDocuments: { count: 1 }
+  - it: emits nothing but the keyFile Secret from keyfile-secret.yaml
+    template: workspace-mongo/keyfile-secret.yaml
+    asserts:
+      - hasDocuments: { count: 1 }
+      - isKind: { of: Secret }
+  - it: publishes not-ready addresses, or rs.initiate cannot resolve its own member
+    template: workspace-mongo/service.yaml
+    asserts:
+      - equal: { path: spec.publishNotReadyAddresses, value: true }
+  - it: runs rs-init as the Mongo uid, not the image's root
+    template: workspace-mongo/rs-init-job.yaml
+    asserts:
+      - equal: { path: spec.template.spec.securityContext.runAsUser, value: 999 }
+      - equal: { path: spec.template.spec.securityContext.runAsNonRoot, value: true }
+      - equal: { path: spec.template.spec.automountServiceAccountToken, value: false }
+  - it: retries rs.initiate instead of failing on the first DNS miss
+    template: workspace-mongo/rs-init-job.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "until initiate; do"
+  - it: names the Job after a digest, so a changed pod template never meets an immutable one
+    template: workspace-mongo/rs-init-job.yaml
+    asserts:
+      - matchRegex:
+          path: metadata.name
+          pattern: -rs-init-[0-9a-f]{8}$
+  - it: starts mongod only once its own member name resolves (a restart otherwise loses the primary for good)
+    template: workspace-mongo/statefulset.yaml
+    asserts:
+      - equal: { path: 'spec.template.spec.initContainers[0].name', value: wait-for-own-dns }
+      - matchRegex:
+          path: 'spec.template.spec.initContainers[0].command[2]'
+          pattern: getent hosts
+  - it: re-initiates only a set that was never initiated
+    template: workspace-mongo/rs-init-job.yaml
+    asserts:
+      - matchRegex:
+          path: 'spec.template.spec.containers[0].command[2]'
+          pattern: NotYetInitialized
+  - it: waits for its name to resolve to THIS pod's IP, not merely to resolve (a stale record points at the old pod)
+    template: workspace-mongo/statefulset.yaml
+    asserts:
+      - matchRegex:
+          path: 'spec.template.spec.initContainers[0].command[2]'
+          pattern: hostname -i
+  - it: mounts a keyFile given by secretRef from that Secret (it used to mount the chart's, which then does not exist)
+    template: workspace-mongo/statefulset.yaml
+    set:
+      workspace.mongo.keyFile: { plaintext: null, secretRef: my-keyfile }
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: keyfile-src
+            secret:
+              secretName: my-keyfile
+              defaultMode: 0440
+              items: [{ key: workspace-mongo-keyfile, path: keyfile }]

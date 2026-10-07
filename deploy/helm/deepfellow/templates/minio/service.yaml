@@ -1,0 +1,19 @@
+{{- if include "deepfellow.milvus.inChart" . }}
+{{- $minio := include "deepfellow.componentName" (dict "context" . "component" "minio") }}
+{{- $minioSel := include "deepfellow.selectorLabels" (dict "context" . "component" "minio") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $minio }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  type: ClusterIP
+  ports:
+    - name: api
+      port: {{ include "deepfellow.port" "minio.api" }}
+      targetPort: api
+  selector:
+    {{- $minioSel | nindent 4 }}
+{{- end }}

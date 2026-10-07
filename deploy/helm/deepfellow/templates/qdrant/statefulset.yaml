@@ -1,0 +1,52 @@
+{{- if include "deepfellow.qdrant.inChart" . }}
+{{- $q := .Values.server.vectorDb.qdrant.embedded }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "qdrant") }}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" . "component" "qdrant") }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+spec:
+  serviceName: {{ $fullname }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      {{- include "deepfellow.podMetadata" (dict "context" . "values" $q "component" "qdrant") | nindent 6 }}
+    spec:
+      {{- include "deepfellow.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "deepfellow.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "deepfellow.podSecurityContext" (dict "context" . "values" $q) | nindent 8 }}
+      {{- include "deepfellow.podPlacement" $q | nindent 6 }}
+      containers:
+        - name: qdrant
+          image: {{ include "deepfellow.image" (dict "context" . "image" $q.image) }}
+          imagePullPolicy: {{ $q.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $q) | nindent 12 }}
+          {{- with $q.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ include "deepfellow.port" "qdrant.http" }}
+            - name: grpc
+              containerPort: {{ include "deepfellow.port" "qdrant.grpc" }}
+          {{- include "deepfellow.probes" (dict "defaults" (include "deepfellow.probeDefaults.qdrant" . | fromYaml) "values" $q) | nindent 10 }}
+          volumeMounts:
+            - name: data
+              mountPath: /qdrant/storage
+      {{- with $q.storage.existingClaim }}
+      volumes:
+        {{- include "deepfellow.existingDataVolume" (dict "claim" .) | nindent 8 }}
+      {{- end }}
+  {{- include "deepfellow.dataVolumeClaimTemplate" (dict "storage" $q.storage) | nindent 2 }}
+{{- end }}
