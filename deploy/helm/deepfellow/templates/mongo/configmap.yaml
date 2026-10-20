@@ -1,0 +1,24 @@
+{{- if include "deepfellow.mongo.inChart" . }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "mongo") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-init
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongo
+data:
+  init-mongo.sh: |
+    #!/bin/bash
+    # Quoted heredoc: the shell expands nothing, and mongosh reads the values from its own
+    # environment, so a password with " \ or $ in it cannot break the script. It runs once,
+    # on an empty volume, so a broken run would mean wiping the volume to retry.
+    mongosh -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin <<'EOF'
+    db = db.getSiblingDB("admin");
+    db.createUser({
+      user: process.env.DF_MONGO_USER,
+      pwd: process.env.DF_MONGO_PASSWORD,
+      roles: [{ role: "readWrite", db: process.env.DF_MONGO_DB }],
+    });
+    EOF
+{{- end }}

@@ -1,0 +1,59 @@
+{{- if include "deepfellow.milvus.inChart" . }}
+{{- $v := .Values.server.vectorDb }}
+{{- $etcd := include "deepfellow.componentName" (dict "context" . "component" "etcd") }}
+{{- $etcdSel := include "deepfellow.selectorLabels" (dict "context" . "component" "etcd") }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $etcd }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: etcd
+spec:
+  serviceName: {{ $etcd }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $etcdSel | nindent 6 }}
+  template:
+    metadata:
+      {{- include "deepfellow.podMetadata" (dict "context" . "values" (dig "etcd" dict $v.milvus) "component" "etcd") | nindent 6 }}
+    spec:
+      {{- include "deepfellow.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "deepfellow.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "deepfellow.podSecurityContext" (dict "context" . "values" $v.milvus) | nindent 8 }}
+      {{- include "deepfellow.podPlacement" $v.milvus | nindent 6 }}
+      containers:
+        - name: etcd
+          image: {{ include "deepfellow.image" (dict "context" . "image" $v.milvus.etcd.image) }}
+          imagePullPolicy: {{ $v.milvus.etcd.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $v.milvus) | nindent 12 }}
+          {{- with $v.milvus.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- $port := include "deepfellow.port" "etcd.client" }}
+          command: ["etcd", "-advertise-client-urls=http://{{ include "deepfellow.address" (dict "context" $ "port" "etcd.client") }}", "-listen-client-urls", "http://0.0.0.0:{{ $port }}", "--data-dir", "/etcd"]
+          env:
+            - name: ETCD_AUTO_COMPACTION_MODE
+              value: revision
+            - name: ETCD_AUTO_COMPACTION_RETENTION
+              value: "1000"
+            - name: ETCD_QUOTA_BACKEND_BYTES
+              value: "4294967296"
+          ports:
+            - name: client
+              containerPort: {{ include "deepfellow.port" "etcd.client" }}
+          {{- include "deepfellow.probes" (dict "defaults" (include "deepfellow.probeDefaults.etcd" . | fromYaml) "values" (dig "etcd" dict $v.milvus)) | nindent 10 }}
+          volumeMounts:
+            - name: data
+              mountPath: /etcd
+      {{- with $v.milvus.etcd.storage.existingClaim }}
+      volumes:
+        {{- include "deepfellow.existingDataVolume" (dict "claim" .) | nindent 8 }}
+      {{- end }}
+  {{- include "deepfellow.dataVolumeClaimTemplate" (dict "storage" $v.milvus.etcd.storage) | nindent 2 }}
+{{- end }}

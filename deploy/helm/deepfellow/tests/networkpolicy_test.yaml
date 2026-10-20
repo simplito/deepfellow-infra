@@ -1,0 +1,20 @@
+# Who may reach Infra when NetworkPolicies are on.
+suite: network policies
+templates:
+  - infra/networkpolicy.yaml
+values:
+  - ../ci/core-values.yaml
+tests:
+  - it: admits only this release's Server and provisioning Job by default
+    asserts:
+      - lengthEqual: { path: spec.ingress, count: 1 }
+  - it: also admits the child Infras listed in infra.mesh.allowChildrenFrom
+    set:
+      infra.mesh.childKey: { secretRef: my-mesh }
+      infra.mesh.allowChildrenFrom: [{ namespaceSelector: { matchLabels: { team: edge } } }]
+    asserts:
+      - lengthEqual: { path: spec.ingress, count: 2 }
+      - equal:
+          path: 'spec.ingress[1].from[0]'
+          value: { namespaceSelector: { matchLabels: { team: edge } } }
+      - equal: { path: 'spec.ingress[1].ports[0].port', value: 8086 }

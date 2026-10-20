@@ -1,0 +1,42 @@
+# CI fixture (core). Deterministic literal credentials so renders are reproducible;
+# never reuse these values anywhere real.
+infra:
+  image:
+    allowMutableTag: true
+  auth:
+    adminApiKey:
+      plaintext: ci-infra-admin-key-000000000000
+    serverApiKey:
+      plaintext: ci-infra-api-key-00000000000000
+modelBackends:
+  demo:
+    enabled: true
+    type: llamaCpp
+    modelId: demo-llm
+    image:
+      repository: ghcr.io/ggml-org/llama.cpp
+      tag: server
+      allowMutableTag: true
+    gguf:
+      url: https://example.invalid/model.gguf
+    contextLength: 2048
+server:
+  image:
+    allowMutableTag: true
+  mongo:
+    mode: embedded
+    password:
+      plaintext: ciMongoApp00000
+    embedded:
+      rootPassword:
+        plaintext: ciMongoRoot0000
+workspace:
+  enabled: false
+provisioning:
+  enabled: true
+  admin:
+    email: admin@example.com
+    password:
+      plaintext: CiAdminPassw0rd!
+networkPolicy:
+  enabled: true

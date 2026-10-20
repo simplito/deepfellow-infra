@@ -166,8 +166,8 @@ async def update_dynamic_config(
     """Apply a partial update to the dynamic settings backed by `config.json`.
 
     Only fields defined on `DynamicSettings` may be changed here — bootstrap-only fields
-    (`docker_subnet`, `storage_dir`, `storage_services_dir`, the legacy `container_name_prefix`,
-    `compose_prefix`, `infra_admin_api_key`) are immutable at runtime. Validated, persisted
+    (`docker_subnet`, `external_only`, `storage_dir`, `storage_services_dir`, the legacy
+    `container_name_prefix`, `compose_prefix`, `infra_admin_api_key`) are immutable at runtime. Validated, persisted
     atomically, applied in-memory, and any required side effects (mesh reconnect, OTEL and Sentry
     reconfigure, model downloader token refresh) are triggered — all without a process restart.
 

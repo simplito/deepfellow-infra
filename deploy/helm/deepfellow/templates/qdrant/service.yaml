@@ -1,0 +1,22 @@
+{{- if include "deepfellow.qdrant.inChart" . }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "qdrant") }}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" . "component" "qdrant") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ include "deepfellow.port" "qdrant.http" }}
+      targetPort: http
+    - name: grpc
+      port: {{ include "deepfellow.port" "qdrant.grpc" }}
+      targetPort: grpc
+  selector:
+    {{- $selector | nindent 4 }}
+{{- end }}

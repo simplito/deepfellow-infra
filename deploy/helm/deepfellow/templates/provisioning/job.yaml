@@ -1,0 +1,122 @@
+{{- if .Values.provisioning.enabled }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "provisioning") }}
+{{/*
+A NORMAL release resource, deliberately not a helm hook.
+
+As a post-install hook this deadlocked `helm install --wait`: Helm waits for the release's
+resources to become Ready before it runs post-install hooks, while the Workspace waits in an
+initContainer for this Job to publish the project credentials. Neither side could move. Applied
+with everything else the two simply converge in parallel.
+
+`--wait` covers this Job only on an install WITH the Workspace: the Workspace cannot go Ready
+until the Job has written the state Secret its initContainer waits for. Without the Workspace
+nothing waits on the Job, and on UPGRADE the Workspace is already Running with that Secret
+present, so in both cases helm can report `deployed` before this Job has finished or failed.
+Pass `--wait-for-jobs`, or check the Job afterwards.
+
+A Job's pod template is immutable and Helm patches in place, so the Job's NAME carries a digest
+of its rendered pod template plus the provisioning package it runs: whatever changes the pod or
+the package yields a new Job, and Helm removes the superseded one. A changed plaintext credential
+reaches the pod through its checksum/credentials annotation. Anything else leaves the Job alone rather than
+re-running provisioning for nothing. `provisioning.revision` is the explicit "re-run it anyway"
+lever.
+*/}}
+
+{{- $pod := include "deepfellow.provisioning.jobPod" . }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-%s-%s" $fullname (toString .Values.provisioning.revision) (sha256sum (printf "%s|%s" $pod (.Files.Glob "files/deepfellow_provision/*.py").AsConfig) | trunc 8) }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: provisioning
+spec:
+  backoffLimit: 6
+  template:{{ $pod }}
+{{- end }}
+{{/* jobPod: the Job's pod template, rendered once to name the Job and once as its spec. */}}
+{{- define "deepfellow.provisioning.jobPod" }}
+{{- $cred := include "deepfellow.credentials" . | fromYaml }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "provisioning") }}
+{{- $sa := include "deepfellow.provisioning.serviceAccountName" . }}
+{{- $stateSecret := include "deepfellow.provisioning.stateSecretName" . }}
+{{- $infraFullname := include "deepfellow.componentName" (dict "context" . "component" "infra") }}
+{{- $infraSecret := include "deepfellow.credSecretName" (dict "context" . "component" "infra") }}
+{{- $serverFullname := include "deepfellow.componentName" (dict "context" . "component" "server") }}
+{{- $serverSecret := include "deepfellow.credSecretName" (dict "context" . "component" "server") }}
+{{- $provSecret := include "deepfellow.credSecretName" (dict "context" . "component" "provisioning") }}
+{{- $p := .Values.provisioning }}
+{{- $mongoSecret := include "deepfellow.credSecretName" (dict "context" . "component" "mongo") }}
+{{- $s := .Values.server }}
+{{- $provImage := ternary $s.image .Values.provisioning.image (empty .Values.provisioning.image.repository) }}
+{{- $plan := include "deepfellow.provisioning.plan" . | fromJson }}
+{{- $backends := $plan.backends }}
+{{- $extEnvs := $plan.extEnvs }}
+    metadata:
+      {{- $creds := list $cred.infra.auth.adminApiKey $cred.infra.auth.serverApiKey $cred.provisioning.admin.password $cred.server.mongo.password }}
+      {{- range $e := $extEnvs }}{{- $creds = append $creds $e.cred }}{{- end }}
+      {{- include "deepfellow.podMetadata" (dict "context" . "values" .Values.provisioning "component" "provisioning" "credentials" $creds) | nindent 6 }}
+    spec:
+      serviceAccountName: {{ $sa }}
+      restartPolicy: OnFailure
+      {{- include "deepfellow.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "deepfellow.podSecurityContext" (dict "context" . "values" .Values.provisioning) | nindent 8 }}
+      containers:
+        - name: provision
+          image: {{ include "deepfellow.image" (dict "context" . "image" $provImage) }}
+          imagePullPolicy: {{ $provImage.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" .Values.provisioning) | nindent 12 }}
+          command: ["python", "-m", "deepfellow_provision", "reconcile"]
+          env:
+            {{/* The package is mounted under /scripts. Keep the image's own working directory:
+                 create_admin imports the Server package from it. */}}
+            - name: PYTHONPATH
+              value: /scripts
+            {{/* The mount is read-only; do not try to write bytecode next to it. */}}
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: STATE_SECRET_NAME
+              value: {{ $stateSecret | quote }}
+            - name: DF_INFRA_URL
+              value: {{ printf "http://%s:%v" $infraFullname .Values.infra.service.port | quote }}
+            {{- include "deepfellow.credEnv" (dict "name" "DF_INFRA_ADMIN_API_KEY" "cred" $cred.infra.auth.adminApiKey "secretName" $infraSecret "required" true) | nindent 12 }}
+            {{/* /admin/* takes the admin key; /v1/* (the model-readiness poll) takes this one. */}}
+            {{- include "deepfellow.credEnv" (dict "name" "DF_INFRA_API_KEY" "cred" $cred.infra.auth.serverApiKey "secretName" $infraSecret "required" true) | nindent 12 }}
+            - name: DF_SERVER_URL
+              value: {{ printf "http://%s:%v" $serverFullname .Values.server.service.port | quote }}
+            - name: ADMIN_NAME
+              value: {{ $p.admin.name | quote }}
+            - name: ADMIN_EMAIL
+              value: {{ $p.admin.email | quote }}
+            {{- include "deepfellow.credEnv" (dict "name" "ADMIN_PASSWORD" "cred" $cred.provisioning.admin.password "secretName" $provSecret "required" true) | nindent 12 }}
+            - name: PROJECT_ORG_NAME
+              value: {{ $p.project.organization | quote }}
+            - name: PROJECT_NAME
+              value: {{ $p.project.name | quote }}
+            - name: PROJECT_KEY_NAME
+              value: {{ $p.project.apiKeyName | quote }}
+            {{- include "deepfellow.mongoEnv" (dict "context" . "mongoSecret" $mongoSecret "serverSecret" $serverSecret) | nindent 12 }}
+            {{- range $e := $extEnvs }}
+            {{- include "deepfellow.credEnv" (dict "name" $e.name "cred" $e.cred "secretName" $e.secretName "required" true) | nindent 12 }}
+            {{- end }}
+            - name: BACKENDS_JSON
+              value: {{ toJson $backends | quote }}
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts/deepfellow_provision
+          {{- with .Values.provisioning.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ $fullname }}
+      {{- include "deepfellow.podPlacement" .Values.provisioning | nindent 6 }}
+{{- end }}

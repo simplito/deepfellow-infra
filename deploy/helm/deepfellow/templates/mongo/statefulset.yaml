@@ -1,0 +1,68 @@
+{{- if include "deepfellow.mongo.inChart" . }}
+{{- $cred := include "deepfellow.credentials" . | fromYaml }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "mongo") }}
+{{- $secretName := include "deepfellow.credSecretName" (dict "context" . "component" "mongo") }}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" . "component" "mongo") }}
+{{- $mongo := .Values.server.mongo }}
+{{- $m := $mongo.embedded }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongo
+spec:
+  serviceName: {{ $fullname }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      {{- include "deepfellow.podMetadata" (dict "context" . "values" $m "component" "mongo" "credentials" (list $cred.server.mongo.embedded.rootPassword $cred.server.mongo.password)) | nindent 6 }}
+    spec:
+      {{- include "deepfellow.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "deepfellow.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "deepfellow.podSecurityContext" (dict "context" . "values" $m "base" (include "deepfellow.mongoPodSecurityContext" . | fromYaml)) | nindent 8 }}
+      containers:
+        - name: mongo
+          image: {{ include "deepfellow.image" (dict "context" . "image" $m.image) }}
+          imagePullPolicy: {{ $m.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $m) | nindent 12 }}
+          ports:
+            - name: mongo
+              containerPort: {{ include "deepfellow.port" "mongo.mongo" }}
+              protocol: TCP
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              value: {{ $m.rootUsername | quote }}
+            {{- include "deepfellow.credEnv" (dict "name" "MONGO_INITDB_ROOT_PASSWORD" "cred" $cred.server.mongo.embedded.rootPassword "secretName" $secretName "required" true) | nindent 12 }}
+            - name: DF_MONGO_USER
+              value: {{ $mongo.username | quote }}
+            {{- include "deepfellow.credEnv" (dict "name" "DF_MONGO_PASSWORD" "cred" $cred.server.mongo.password "secretName" $secretName "required" true) | nindent 12 }}
+            - name: DF_MONGO_DB
+              value: {{ $mongo.database | quote }}
+            {{- include "deepfellow.mongoImageEnv" . | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+          {{- include "deepfellow.probes" (dict "defaults" (include "deepfellow.probeDefaults.mongo" . | fromYaml) "values" $m) | nindent 10 }}
+          {{- with $m.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        {{- include "deepfellow.existingDataVolume" (dict "claim" $m.storage.existingClaim) | nindent 8 }}
+        - name: init
+          configMap:
+            name: {{ $fullname }}-init
+            defaultMode: 0755
+      {{- include "deepfellow.podPlacement" $m | nindent 6 }}
+  {{- include "deepfellow.dataVolumeClaimTemplate" (dict "storage" $m.storage) | nindent 2 }}
+{{- end }}

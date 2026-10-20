@@ -1,0 +1,30 @@
+# Patterns to ignore when building packages.
+.DS_Store
+.git/
+.gitignore
+.bzr/
+.hg/
+.hgignore
+.svn/
+*.tmpl.bak
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.project
+.idea/
+*.tmproj
+.vscode/
+# Local overlays and CI scaffolding — never ship in the packaged chart. values-quickstart.yaml
+# DOES ship: the README installs with it.
+values-homelab*.yaml
+values-local*.yaml
+ci/
+tests/
+*.tgz
+# Python bytecode from running the provisioning package's tests locally.
+*.pyc
+__pycache__
+README.md.gotmpl
+STYLEGUIDE.md

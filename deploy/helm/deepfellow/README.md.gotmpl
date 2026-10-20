@@ -1,0 +1,262 @@
+# deepfellow
+
+Helm chart for the DeepFellow Suite: Infra, Server and Workspace, with their databases and
+model backends. It needs no Docker socket. Model backends run as llama.cpp Deployments and are
+registered into Infra as external `openai` services. Only the components you enable are rendered.
+
+{{ template "chart.versionBadge" . }}{{ template "chart.typeBadge" . }}{{ template "chart.appVersionBadge" . }}
+
+## Quickstart
+
+```bash
+helm install deepfellow ./deepfellow -f ./deepfellow/values-quickstart.yaml
+```
+
+This runs Infra, the Server, the Workspace with its MongoDB and Redis, the Server's MongoDB and
+one ~400MB model. The chart generates
+every credential and accepts the model backend's image tag. When the provisioning Job finishes,
+read the project
+key it created:
+
+```bash
+kubectl logs -l app.kubernetes.io/component=provisioning --tail=-1
+kubectl get secret deepfellow-deepfellow-provisioning-state \
+  -o jsonpath='{.data.project-api-key}' | base64 -d
+```
+
+MongoDB advises against NFS, and it failed on NFS in testing. If your default StorageClass is
+NFS, add:
+
+```bash
+--set server.mongo.embedded.storage.storageClass=local-path \
+--set workspace.mongo.storage.storageClass=local-path
+```
+
+The quickstart file is for trying the chart. For anything else, start from `values.yaml`.
+
+## Defaults fail closed
+
+With plain `values.yaml` the chart refuses to render. You have to choose, for every credential,
+where it comes from, and for every image without a digest, `allowMutableTag: true`. A valid
+minimum is in [`ci/minimal-values.yaml`](./ci/minimal-values.yaml).
+
+Each credential says where its value comes from, with one of `secretRef`, `plaintext` or
+`generate`. `secretKey` is the key inside the Secret that holds it:
+
+```yaml
+infra:
+  auth:
+    adminApiKey:
+      secretRef: df-infra             # an existing Secret you manage (ESO, sops, by hand)
+      secretKey: admin-key            # the key inside it; default infra-admin-api-key
+    apiKey:
+      plaintext: s3cr3t               # the raw value, typed into your values file
+server:
+  admin:
+    password:
+      generate: true                  # generated on install, kept on uninstall
+```
+
+`values.yaml` shows every credential's default `secretKey`. With `plaintext` or `generate` the
+chart stores the value in its own Secret, under that same `secretKey`.
+
+You never have to put a sensitive value into a values file: every credential, including the mesh
+key, takes a `secretRef`; `plaintext` exists for trials and tests. Values that are not credentials
+(names, hosts, model ids) are never secret, and credentials reach pods only through Secret
+references, never as a literal in a pod spec or ConfigMap.
+
+`generate` reads the value back with `lookup` on later upgrades, so it needs a live `helm`
+command. `helm template` and GitOps renderers such as Argo CD cannot read it back and produce a
+new value on every render, which would rotate every password on each sync. Use `secretRef` there.
+
+Values files merge, so an overlay that switches a credential to another source has to unset
+the old one, e.g. `plaintext: null` next to the new `secretRef`. Otherwise the chart stops with
+"set only one of secretRef, plaintext or generate".
+
+Images:
+
+```yaml
+image:
+  repository: ...
+  tag: latest
+  digest: sha256:...       # pin it; used instead of the tag
+  # or
+  allowMutableTag: true    # accept the tag as it is
+  pullPolicy: IfNotPresent # optional
+```
+
+Infra, the Server and the Workspace default to pinned releases (tag and digest): Infra v0.34.0,
+Server v0.34.1, Workspace v0.5.2. Avoid `latest`: it moves and has lagged far behind the release
+tags (Infra's `latest` was v0.29.0 in September 2026).
+
+## How requests flow
+
+```
+client -> Server (:8000, project key)
+            -> Infra (:8086)
+                 -> llama.cpp Deployment   (modelBackends)
+                 -> or your own endpoint   (externalBackends)
+Workspace (:3000) -> Server
+```
+
+Infra gets no Docker socket: the chart always sets `DF_EXTERNAL_ONLY=true`, so it serves only the
+backends registered from outside. Upstream images up to v0.34 ignore that variable but boot
+without Docker anyway; an image built with the patch in this repository honours it.
+
+## Model backends
+
+```yaml
+modelBackends:            # llama.cpp Deployments run by this chart
+  llama:
+    modelId: my-llm       # defaults to the key
+    gguf: { url: "https://.../model.gguf" }
+    image:
+      allowMutableTag: true
+
+externalBackends:         # endpoints you run elsewhere
+  remote:
+    apiUrl: http://host:8080   # the root URL; Infra appends v1/
+    modelId: my-model
+```
+
+Both are maps, so an overlay can add or disable one backend without repeating the others. Each
+key becomes its own Infra service instance (`openai|<key>`), so keys must be unique across both
+maps. An external endpoint must not list its `modelId` in `GET /v1/models`: Infra would then seed
+the model with `type=None` and the custom-model install fails.
+
+## Requirements
+
+- Kubernetes {{ template "chart.kubeVersion" . }}, Helm 3.8+
+- A StorageClass that honours `fsGroup`. MongoDB advises against NFS, and on NFS it failed in
+  testing with `Operation not permitted`; give `server.mongo` and `workspace.mongo` block or node-local storage
+  and pin them with `nodeSelector` if that storage is node-local.
+- GGUF weights reachable over HTTP. Each backend downloads its file in an init container.
+
+The Workspace exits at startup without `workspace.helperModel` (a model id you serve, used for
+session titles, suggestions and message verification) and the `workspace.auth.bootstrapAdmin`
+name, email and password, so the chart refuses to render without them.
+
+## Validation
+
+Every `helm install`, `template` and `lint` runs two checks:
+
+- `values.schema.json` checks types, enums and formats. It rejects unknown keys, so a typo such as
+  `workspace.helpModel` is an error, not a silently ignored setting.
+- `templates/_validate.tpl` checks rules that span several fields, with messages that name the
+  values path. For example: a `plaintext` `provisioning.admin.password` needs 10+ characters with lower,
+  upper, digit and special; a `plaintext` `workspace.mongo.rootPassword` must be URL-safe because
+  it goes into a connection string unencoded; `server.mongo.external.address` must be `host:port`, not
+  a `mongodb://` URI; provisioning with no enabled backend fails unless `allowNoModels: true`.
+
+## Upgrading
+
+```bash
+helm upgrade deepfellow ./deepfellow -f my-values.yaml --wait --wait-for-jobs
+```
+
+Use `--wait-for-jobs`, on install too when the Workspace is disabled. `--wait` alone covers the
+provisioning Job only on an install with the Workspace, which waits for the Job's output. Without
+the Workspace, or on upgrade, helm can report success before the Job has finished or failed.
+
+Both Jobs (provisioning and the Workspace replica-set init) are named after a digest of their pod
+template. A change to what they run creates a new Job. Anything else leaves them alone. Both are
+safe to re-run.
+
+If an upgrade replaces the Workspace together with the Server or the Workspace's MongoDB, the
+Workspace may restart once or twice: its dependency checks can pass against the old pods just
+before they are replaced. It recovers by itself and `--wait` still succeeds.
+
+Changing `provisioning.admin.email` later creates a second admin rather than renaming the first.
+
+Infra (v0.33 and later, so the default v0.34.0) reads `DF_INFRA_API_KEY`, the mesh settings, the
+Hugging Face token, `DF_NAME` and `DF_INFRA_URL` from the environment only on its first start, then
+keeps them in `config.json` on its PVC. Changing those values in the chart later does not reach
+Infra: change them through Infra's `/admin/config` API as well. (Infra v0.29 read them on every
+start.)
+
+## Storage
+
+Every stateful component can use a PVC you created, through `existingClaim`, and any
+StorageClass through `storageClass`: `infra.storage`, `server.storage`,
+`modelBackends.<name>.storage`, `server.mongo.embedded.storage`, `workspace.mongo.storage`,
+`workspace.redis.storage`, `server.vectorDb.qdrant.embedded.storage`,
+`server.vectorDb.milvus.storage`, `.milvus.etcd.storage`, `.milvus.minio.storage` and
+`server.falkordb.storage`. The chart does not create, delete or check that claim. On StatefulSets it
+replaces the claim template with a plain volume, which is fine because each runs one replica.
+A StatefulSet's claim template cannot change after install, so switching an installed
+StatefulSet to or from `existingClaim` needs `kubectl delete statefulset <name> --cascade=orphan`
+before `helm upgrade` (the pod keeps running and the upgrade recreates the StatefulSet).
+
+The Workspace's Redis (Workspace v0.5 and later need one) keeps its data on a PVC as an
+append-only file, so it survives a restart. `workspace.redis.storage.enabled: false` runs it in
+memory only; what the Workspace keeps there is then lost when the Redis pod restarts.
+
+`helm uninstall` removes the PVCs of Infra, the Server, the Workspace's Redis and the model
+backends. It keeps:
+
+- the provisioning state Secret, on purpose. The Server returns the project API key once, and it
+  cannot be read again.
+- the PVCs of the StatefulSets (both MongoDBs, Qdrant, FalkorDB, Milvus). Kubernetes never deletes
+  them.
+
+A reinstall into the same namespace therefore finds old data and an old project key. For a clean
+start delete the namespace, or:
+
+```bash
+kubectl -n <ns> delete secret <release>-deepfellow-provisioning-state
+kubectl -n <ns> delete pvc -l app.kubernetes.io/instance=<release>
+```
+
+To bring your own state Secret instead, set `provisioning.stateSecret.name`. That Secret must
+exist before the install; the chart does not create it.
+
+## External MongoDB
+
+```yaml
+server:
+  mongo:
+    mode: external
+    database: deepfellow
+    username: dfuser
+    password:
+      secretRef: my-mongo
+      secretKey: password
+    external:
+      address: "mongo.data.svc:27017/?authSource=admin"
+```
+
+`database`, `username` and `password` apply in both modes; everything under `embedded` is ignored
+here. An external Qdrant works the same way: `server.vectorDb.qdrant.mode: external` and
+`external.url`.
+
+The Server builds `mongodb://<username>:<password>@<url>` itself, so `url` is host and port plus
+options. The user must already exist with read and write access to `database`.
+
+## Pods
+
+Pods run as non-root with a `RuntimeDefault` seccomp profile and all capabilities dropped. Only
+the provisioning Job mounts a ServiceAccount token; its Role can touch nothing but the state
+Secret. The MongoDB pods run as the image's uid 999, and Milvus gets supplementary group 0 because
+its binaries are `root:root 0774`.
+
+Each workload block (`infra`, `server`, `workspace`, `provisioning`, `server.mongo.embedded`,
+`workspace.mongo`, `server.vectorDb.qdrant.embedded`, `server.vectorDb.milvus` with its `etcd` and `minio`
+blocks, `server.falkordb`, and each `modelBackends.<name>`) also accepts:
+
+| Key | Behaviour |
+| --- | --- |
+| `podSecurityContext`, `containerSecurityContext` | Applied over the chart-wide values of the same name. Top-level keys replace, so `runAsNonRoot: false` works. |
+| `readinessProbe`, `livenessProbe`, `startupProbe` | Applied over the default probe. A new handler (`httpGet`, `exec`, ...) replaces the default one; `enabled: false` removes the probe. |
+| `podLabels`, `podAnnotations` | Added to the chart-wide ones. Selector labels cannot be overridden. |
+| `resources`, `nodeSelector`, `tolerations`, `affinity` | The usual. |
+
+Changing a `plaintext` credential restarts the pods that read it. A rotated Secret behind a
+`secretRef` reaches the pods on their next restart.
+
+## Values
+
+{{ template "chart.valuesTable" . }}
+
+## Developing the chart
+
+See [STYLEGUIDE.md](./STYLEGUIDE.md). CI runs `ci/test.sh`; run it locally before pushing.

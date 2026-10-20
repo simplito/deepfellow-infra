@@ -1,0 +1,145 @@
+{{- range $name, $bRaw := .Values.modelBackends }}
+{{- if include "deepfellow.backendEnabled" (dict "b" $bRaw) }}
+{{- $b := include "deepfellow.normalizedBackend" (dict "context" $ "raw" $bRaw "name" $name) | fromYaml }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" $ "component" (printf "mb-%s" $name)) }}
+{{- $component := printf "mb-%s" $name }}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" $ "component" $component) }}
+{{- $secretName := include "deepfellow.credSecretName" (dict "context" $ "component" $component) }}
+{{- $port := int $b.service.port }}
+{{- $medium := $b.storage.medium }}
+{{- $hfToken := $b.gguf.hfToken }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      {{- include "deepfellow.podMetadata" (dict "context" $ "values" $b "component" $component "extraLabels" (dict "deepfellow.ai/tier" "model-backend") "credentials" (list $hfToken)) | nindent 6 }}
+    spec:
+      {{- include "deepfellow.imagePullSecrets" $ | nindent 6 }}
+      serviceAccountName: {{ include "deepfellow.serviceAccountName" $ }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "deepfellow.podSecurityContext" (dict "context" $ "values" $b) | nindent 8 }}
+      initContainers:
+        - name: fetch-gguf
+          image: {{ include "deepfellow.image" (dict "context" $ "image" $b.downloadImage) }}
+          imagePullPolicy: {{ $b.downloadImage.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" $ "values" $b) | nindent 12 }}
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              target="/models/model.gguf"
+              tmp="/models/.model.gguf.part"
+              # Where the weights came from, so a changed gguf.url or sha256 is noticed on a PVC
+              # that still holds the old file.
+              source="/models/model.gguf.source"
+              want="$GGUF_URL ${GGUF_SHA256:-}"
+              if [ -f "$target" ]; then
+                if [ -f "$source" ] && [ "$(cat "$source")" = "$want" ]; then echo "weights present, skipping"; exit 0; fi
+                if [ ! -f "$source" ] && [ -n "${GGUF_SHA256:-}" ] && echo "${GGUF_SHA256}  ${target}" | sha256sum -c - >/dev/null 2>&1; then
+                  printf '%s' "$want" > "$source"; echo "weights present and verified, skipping"; exit 0
+                fi
+                echo "gguf.url or gguf.sha256 changed, or the weights' source is unknown: downloading again"
+              fi
+              rm -f "$tmp"
+              if [ -n "${HF_TOKEN:-}" ]; then
+                umask 077
+                printf 'header = "Authorization: Bearer %s"\n' "$HF_TOKEN" > /tmp/curlrc
+                curl -fSL --config /tmp/curlrc -o "$tmp" "$GGUF_URL"
+                rm -f /tmp/curlrc
+              else
+                curl -fSL -o "$tmp" "$GGUF_URL"
+              fi
+              if [ -n "${GGUF_SHA256:-}" ]; then
+                echo "${GGUF_SHA256}  ${tmp}" | sha256sum -c -
+              fi
+              mv "$tmp" "$target"
+              printf '%s' "$want" > "$source"
+          env:
+            - name: GGUF_URL
+              value: {{ $b.gguf.url | quote }}
+            {{- with $b.gguf.sha256 }}
+            - name: GGUF_SHA256
+              value: {{ . | quote }}
+            {{- end }}
+            {{- include "deepfellow.credEnv" (dict "name" "HF_TOKEN" "cred" $hfToken "secretName" $secretName) | nindent 12 }}
+          volumeMounts:
+            - name: models
+              mountPath: /models
+          {{- with $b.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      containers:
+        - name: llama-cpp
+          image: {{ include "deepfellow.image" (dict "context" $ "image" $b.image) }}
+          imagePullPolicy: {{ $b.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" $ "values" $b) | nindent 12 }}
+          args:
+            - --model
+            - /models/model.gguf
+            - --host
+            - 0.0.0.0
+            - --port
+            - {{ $port | quote }}
+            - --parallel
+            - {{ $b.parallel | quote }}
+            - --threads
+            - {{ $b.threads | quote }}
+            - --ctx-size
+            - {{ $b.contextLength | quote }}
+            {{- if $b.gpu.enabled }}
+            - --n-gpu-layers
+            - "999"
+            {{- end }}
+            {{- range $b.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $port }}
+              protocol: TCP
+          volumeMounts:
+            - name: models
+              mountPath: /models
+          {{- include "deepfellow.probes" (dict "defaults" (include "deepfellow.probeDefaults.modelBackend" $ | fromYaml) "values" $b) | nindent 10 }}
+          {{- if $b.gpu.enabled }}
+          {{- /* The GPU limit joins the user's limits; a GPU count set there explicitly wins. */}}
+          {{- $res := deepCopy (dig "resources" (dict) $b) }}
+          {{- $_ := set $res "limits" (merge (deepCopy (dig "limits" (dict) $res)) (dict "nvidia.com/gpu" $b.gpu.count)) }}
+          resources:
+            {{- toYaml $res | nindent 12 }}
+          {{- else }}
+          {{- with (dig "resources" (dict) $b) }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- end }}
+      volumes:
+        - name: models
+          {{- if eq $medium "Memory" }}
+          emptyDir:
+            medium: Memory
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ default $fullname $b.storage.existingClaim }}
+          {{- end }}
+      {{- include "deepfellow.podPlacement" $b | nindent 6 }}
+{{- end }}
+{{- end }}

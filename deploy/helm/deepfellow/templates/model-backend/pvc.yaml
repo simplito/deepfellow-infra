@@ -1,0 +1,29 @@
+{{- range $name, $bRaw := .Values.modelBackends }}
+{{- if include "deepfellow.backendEnabled" (dict "b" $bRaw) }}
+{{- $b := include "deepfellow.normalizedBackend" (dict "context" $ "raw" $bRaw "name" $name) | fromYaml }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" $ "component" (printf "mb-%s" $name)) }}
+{{- $component := printf "mb-%s" $name }}
+{{- $medium := $b.storage.medium }}
+{{- $size := $b.storage.size }}
+{{- $storageClass := $b.storage.storageClass }}
+---
+{{- if and (ne $medium "Memory") (not $b.storage.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with $storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $size }}
+{{- end }}
+{{- end }}
+{{- end }}

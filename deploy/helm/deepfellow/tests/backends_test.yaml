@@ -1,0 +1,27 @@
+suite: model and external backends
+templates:
+  - model-backend/deployment.yaml
+  - model-backend/pvc.yaml
+  - provisioning/external-backend-secrets.yaml
+values:
+  - ../ci/edge-values.yaml
+tests:
+  - it: serves Memory-medium weights from an emptyDir
+    template: model-backend/deployment.yaml
+    documentSelector: { path: metadata.name, value: RELEASE-NAME-deepfellow-mb-demo }
+    asserts:
+      - exists: { path: 'spec.template.spec.volumes[0].emptyDir' }
+  - it: mounts an existingClaim instead of creating a PVC
+    template: model-backend/deployment.yaml
+    documentSelector: { path: metadata.name, value: RELEASE-NAME-deepfellow-mb-second }
+    asserts:
+      - equal: { path: 'spec.template.spec.volumes[0].persistentVolumeClaim.claimName', value: ci-weights }
+  - it: creates no PVC for Memory or existingClaim backends
+    template: model-backend/pvc.yaml
+    asserts:
+      - hasDocuments: { count: 0 }
+  - it: accepts an apiKey on a map entry, which gets no defaults from values.yaml (was a nil-pointer crash)
+    template: provisioning/external-backend-secrets.yaml
+    asserts:
+      - hasDocuments: { count: 1 }
+      - exists: { path: 'data["api-key"]' }

@@ -1,0 +1,20 @@
+{{- if include "deepfellow.mongo.inChart" . }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "mongo") }}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" . "component" "mongo") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongo
+spec:
+  type: ClusterIP
+  ports:
+    - name: mongo
+      port: {{ include "deepfellow.port" "mongo.mongo" }}
+      targetPort: mongo
+      protocol: TCP
+  selector:
+    {{- $selector | nindent 4 }}
+{{- end }}

@@ -14,10 +14,10 @@ test-live *FLAGS:
     DF_TEST_LIVE_REGISTRIES=1 uv run pytest tests/integration -v --no-cov {{FLAGS}}
 
 ruff *FLAGS:
-    uv run ruff check server/ scripts/ tests/ {{FLAGS}}
+    uv run ruff check server/ scripts/ tests/ deploy/helm/deepfellow/files/ deploy/helm/deepfellow/ci/ {{FLAGS}}
 
 ruff-format *FLAGS:
-    uv run ruff format server/ scripts/ tests/ {{FLAGS}}
+    uv run ruff format server/ scripts/ tests/ deploy/helm/deepfellow/files/ deploy/helm/deepfellow/ci/ {{FLAGS}}
 
 auth-static:
     uv run python -m server.scripts.check_auth static ./server/ -v
@@ -27,6 +27,10 @@ auth-runtime:
 
 pyright:
     uv run pyright
+
+# Every check CI runs on the Kubernetes chart (needs helm + helm-unittest, kubeconform, helm-docs).
+helm-test:
+    deploy/helm/deepfellow/ci/test.sh
 
 mypy *FLAGS:
     uv run mypy server/ tests/ {{FLAGS}}

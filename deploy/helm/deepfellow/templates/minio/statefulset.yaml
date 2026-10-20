@@ -1,0 +1,56 @@
+{{- if include "deepfellow.milvus.inChart" . }}
+{{- $cred := include "deepfellow.credentials" . | fromYaml }}
+{{- $v := .Values.server.vectorDb }}
+{{- $minio := include "deepfellow.componentName" (dict "context" . "component" "minio") }}
+{{- $minioSel := include "deepfellow.selectorLabels" (dict "context" . "component" "minio") }}
+{{- $minioSecret := include "deepfellow.credSecretName" (dict "context" . "component" "minio") }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $minio }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  serviceName: {{ $minio }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $minioSel | nindent 6 }}
+  template:
+    metadata:
+      {{- include "deepfellow.podMetadata" (dict "context" . "values" $v.milvus.minio "component" "minio" "credentials" (list $cred.server.vectorDb.milvus.minio.rootUser $cred.server.vectorDb.milvus.minio.rootPassword)) | nindent 6 }}
+    spec:
+      {{- include "deepfellow.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "deepfellow.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "deepfellow.podSecurityContext" (dict "context" . "values" $v.milvus) | nindent 8 }}
+      {{- include "deepfellow.podPlacement" $v.milvus | nindent 6 }}
+      containers:
+        - name: minio
+          image: {{ include "deepfellow.image" (dict "context" . "image" $v.milvus.minio.image) }}
+          imagePullPolicy: {{ $v.milvus.minio.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $v.milvus) | nindent 12 }}
+          {{- with $v.milvus.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command: ["minio", "server", "/minio_data", "--console-address", ":{{ include "deepfellow.port" "minio.console" }}"]
+          env:
+            {{- include "deepfellow.credEnv" (dict "name" "MINIO_ACCESS_KEY" "cred" $cred.server.vectorDb.milvus.minio.rootUser "secretName" $minioSecret "required" true) | nindent 12 }}
+            {{- include "deepfellow.credEnv" (dict "name" "MINIO_SECRET_KEY" "cred" $cred.server.vectorDb.milvus.minio.rootPassword "secretName" $minioSecret "required" true) | nindent 12 }}
+          ports:
+            - name: api
+              containerPort: {{ include "deepfellow.port" "minio.api" }}
+          {{- include "deepfellow.probes" (dict "defaults" (include "deepfellow.probeDefaults.minio" . | fromYaml) "values" $v.milvus.minio) | nindent 10 }}
+          volumeMounts:
+            - name: data
+              mountPath: /minio_data
+      {{- with $v.milvus.minio.storage.existingClaim }}
+      volumes:
+        {{- include "deepfellow.existingDataVolume" (dict "claim" .) | nindent 8 }}
+      {{- end }}
+  {{- include "deepfellow.dataVolumeClaimTemplate" (dict "storage" $v.milvus.minio.storage) | nindent 2 }}
+{{- end }}

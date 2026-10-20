@@ -1,0 +1,24 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $inst := .Release.Name }}
+{{- if include "deepfellow.qdrant.inChart" . }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "deepfellow.componentName" (dict "context" . "component" "qdrant") }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $inst }}
+      app.kubernetes.io/component: qdrant
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ $inst }}
+              app.kubernetes.io/component: server
+{{- end }}
+{{- end }}

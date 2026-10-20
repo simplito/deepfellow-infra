@@ -1,0 +1,130 @@
+# The fail-closed contract: what must refuse to render, and say why.
+suite: validation
+templates:
+  - validation.yaml
+values:
+  - ../ci/core-values.yaml
+tests:
+  - it: renders the core fixture
+    asserts:
+      - hasDocuments: { count: 0 }
+  - it: refuses a mutable tag nobody acknowledged
+    set:
+      infra.image.allowMutableTag: false
+      infra.image.digest: null
+    asserts:
+      - failedTemplate:
+          errorPattern: "infra.image: set an image digest"
+  - it: refuses a Workspace without a helperModel (the image exits at startup)
+    values:
+      - ../ci/full-values.yaml
+    set:
+      workspace.helperModel: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "workspace.helperModel is required"
+  - it: rejects an unknown key instead of ignoring the typo
+    set:
+      workspace.helpModel: demo-llm
+    asserts:
+      - failedTemplate: {}
+  - it: rejects a value outside an enum
+    set:
+      server.mongo.mode: Embedded
+    asserts:
+      - failedTemplate: {}
+  - it: refuses metrics basic auth without a username (DF_METRICS_USERNAME would be empty)
+    set:
+      server.metrics.basicAuth: { enabled: true, password: { generate: true } }
+    asserts:
+      - failedTemplate:
+          errorPattern: "server.metrics.basicAuth.username is required"
+  - it: refuses a release name that makes a Job name longer than Kubernetes allows
+    values:
+      - ../ci/full-values.yaml
+    release:
+      name: acme-ai-staging-west
+    asserts:
+      - failedTemplate:
+          errorPattern: 'the Job "acme-ai-staging-west-deepfellow-workspace-mongo-rs-init-00000000" 64 characters long'
+  - it: accepts the longest release name that fits
+    values:
+      - ../ci/full-values.yaml
+    release:
+      name: acme-ai-staging-wes
+    asserts:
+      - hasDocuments: { count: 0 }
+  - it: accepts a long release name once fullnameOverride shortens the names
+    values:
+      - ../ci/full-values.yaml
+    release:
+      name: acme-ai-platform-production-westeu
+    set:
+      fullnameOverride: acme-df
+    asserts:
+      - hasDocuments: { count: 0 }
+  - it: requires the admin password only when provisioning creates the admin
+    set:
+      provisioning.enabled: false
+      provisioning.admin.password.plaintext: null
+      provisioning.allowNoModels: true
+    asserts:
+      - hasDocuments: { count: 0 }
+  - it: refuses provisioning without an admin password
+    set:
+      provisioning.admin.password.plaintext: null
+    asserts:
+      - failedTemplate:
+          errorPattern: "provisioning.admin.password is required"
+  - it: refuses an external MongoDB without its address
+    set:
+      server.mongo: { mode: external, external: { address: "" } }
+    asserts:
+      - failedTemplate:
+          errorPattern: "server.mongo.external.address is required when server.mongo.mode=external"
+  - it: refuses an external Qdrant without its url
+    values:
+      - ../ci/qdrant-graph-values.yaml
+    set:
+      server.vectorDb.qdrant.mode: external
+    asserts:
+      - failedTemplate:
+          errorPattern: "server.vectorDb.qdrant.external.url is required"
+  - it: refuses a generated password for an external MongoDB (it has to match the real account)
+    values:
+      - ../ci/byo-values.yaml
+    set:
+      server.mongo.password: { plaintext: null, generate: true }
+    asserts:
+      - failedTemplate:
+          errorPattern: "server.mongo.password cannot use generate: it has to match the user's password in your MongoDB"
+  - it: refuses a generated key for the parent mesh
+    set:
+      infra.mesh.parent.key.generate: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "infra.mesh.parent.key cannot use generate"
+  - it: refuses a generated Hugging Face token
+    set:
+      modelBackends.demo.gguf.hfToken.generate: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "modelBackends.demo.gguf.hfToken cannot use generate"
+  - it: refuses a generated key for an external endpoint
+    values:
+      - ../ci/byo-values.yaml
+    set:
+      externalBackends.remote.apiKey.generate: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "externalBackends.remote.apiKey cannot use generate"
+  - it: still generates a password for the in-chart MongoDB
+    set:
+      server.mongo.password: { plaintext: null, generate: true }
+    asserts:
+      - hasDocuments: { count: 0 }
+  - it: rejects a typo under global too (an ignored imageRegistry would pull from the wrong place)
+    set:
+      global.imageRegsitry: registry.example.com
+    asserts:
+      - failedTemplate: {}

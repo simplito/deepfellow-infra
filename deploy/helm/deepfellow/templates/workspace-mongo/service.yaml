@@ -1,0 +1,24 @@
+{{- if .Values.workspace.enabled }}
+{{/* The Workspace's own MongoDB replica set; see statefulset.yaml in this directory. */}}
+{{- $appMongo := include "deepfellow.componentName" (dict "context" . "component" "workspace-mongo") }}
+{{- $appMongoSel := include "deepfellow.selectorLabels" (dict "context" . "component" "workspace-mongo") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $appMongo }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: workspace-mongo
+spec:
+  type: ClusterIP
+  clusterIP: None
+  # A replica-set member has to be resolvable by its stable name BEFORE it is Ready — rs.initiate
+  # names it — so the headless Service publishes it regardless of readiness.
+  publishNotReadyAddresses: true
+  ports:
+    - name: mongo
+      port: {{ include "deepfellow.port" "workspace-mongo.mongo" }}
+      targetPort: mongo
+  selector:
+    {{- $appMongoSel | nindent 4 }}
+{{- end }}

@@ -1,0 +1,154 @@
+{{- if .Values.workspace.enabled }}
+{{- $cred := include "deepfellow.credentials" . | fromYaml }}
+{{/* The Workspace app itself. Its MongoDB lives in templates/workspace-mongo/. */}}
+{{- $w := .Values.workspace }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "workspace") }}
+{{- $secretName := include "deepfellow.credSecretName" (dict "context" . "component" "workspace") }}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" . "component" "workspace") }}
+{{- $appMongo := include "deepfellow.componentName" (dict "context" . "component" "workspace-mongo") }}
+{{- $appMongoSecret := include "deepfellow.credSecretName" (dict "context" . "component" "workspace-mongo") }}
+{{- $redisSecret := include "deepfellow.credSecretName" (dict "context" . "component" "workspace-redis") }}
+{{- $serverFullname := include "deepfellow.componentName" (dict "context" . "component" "server") }}
+{{- $stateSecret := include "deepfellow.provisioning.stateSecretName" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: workspace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      {{- include "deepfellow.podMetadata" (dict "context" . "values" $w "component" "workspace" "credentials" (list $cred.workspace.auth.sessionSecret $cred.workspace.auth.bootstrapAdmin.password $cred.workspace.mongo.rootPassword $cred.workspace.redis.password)) | nindent 6 }}
+    spec:
+      {{- include "deepfellow.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "deepfellow.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "deepfellow.podSecurityContext" (dict "context" . "values" $w) | nindent 8 }}
+      initContainers:
+        {{/* The provisioning Job fills the state Secret AFTER this Deployment is applied, so on a
+             fresh install the keys the container below reads do not exist yet. Without this gate the
+             pod enters CreateContainerConfigError and kubelet's retry backoff grows towards ~5
+             minutes, so it can stay broken for minutes after provisioning has already succeeded.
+             Waiting here surfaces honestly as Init:0/1 instead. */}}
+        - name: wait-for-provisioning
+          image: {{ include "deepfellow.image" (dict "context" . "image" $w.image) }}
+          imagePullPolicy: {{ $w.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $w) | nindent 12 }}
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              {{- include "deepfellow.retry" (dict "context" $ "check" `[ -s /state/project-api-key ] && [ -s /state/organization-id ] && [ -s /state/project-id ]` "what" "the provisioning state") | nindent 14 }}
+          volumeMounts:
+            - name: provisioning-state
+              mountPath: /state
+              readOnly: true
+          {{- with $w.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{/* The Workspace exits at startup when its database has no primary or the Server does not
+             answer its health check. On a fresh install the provisioning wait above outlasts both;
+             when everything restarts at once (a node reboot) it does not, and the Workspace would
+             crash-loop with a growing backoff. So wait for both explicitly. `hello` needs no
+             credentials. An upgrade that replaces the Server or this MongoDB in the same rollout can
+             still restart the Workspace once or twice: these waits can pass against the old pods a
+             moment before they go (see README, Upgrading). */}}
+        - name: wait-for-mongo-primary
+          image: {{ include "deepfellow.image" (dict "context" . "image" $w.mongo.image) }}
+          imagePullPolicy: {{ $w.mongo.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $w) | nindent 12 }}
+          env:
+            {{/* mongosh writes to $HOME, which the chart's uid has no entry (and no directory) for. */}}
+            - name: HOME
+              value: /tmp
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              host="{{ $appMongo }}-0.{{ $appMongo }}:{{ include "deepfellow.port" "workspace-mongo.mongo" }}"
+              {{- include "deepfellow.retry" (dict "context" $ "check" `[ "$(mongosh --host "$host" --quiet --eval 'db.hello().isWritablePrimary' 2>/dev/null)" = "true" ]` "what" "a writable MongoDB primary at $host") | nindent 14 }}
+          {{- with $w.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- include "deepfellow.waitFor" (dict "context" $ "values" $w "name" "wait-for-server" "urls" (list (printf "http://%s:%v/health" $serverFullname .Values.server.service.port)) "resources" $w.resources) | nindent 8 }}
+      containers:
+        - name: workspace
+          image: {{ include "deepfellow.image" (dict "context" . "image" $w.image) }}
+          imagePullPolicy: {{ $w.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $w) | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ include "deepfellow.port" "workspace.http" }}
+          env:
+            - name: DF_SERVER_URL
+              value: {{ printf "http://%s:%v" $serverFullname .Values.server.service.port | quote }}
+            - name: DF_SERVER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $stateSecret }}
+                  key: project-api-key
+            - name: DF_SERVER_ORGANIZATION_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $stateSecret }}
+                  key: organization-id
+            - name: DF_SERVER_PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $stateSecret }}
+                  key: project-id
+            {{- include "deepfellow.credEnv" (dict "name" "BETTER_AUTH_SECRET" "cred" $cred.workspace.auth.sessionSecret "secretName" $secretName "required" true) | nindent 12 }}
+            - name: BOOTSTRAP_ADMIN_NAME
+              value: {{ $w.auth.bootstrapAdmin.name | quote }}
+            - name: BOOTSTRAP_ADMIN_EMAIL
+              value: {{ $w.auth.bootstrapAdmin.email | quote }}
+            {{- include "deepfellow.credEnv" (dict "name" "BOOTSTRAP_ADMIN_PASSWORD" "cred" $cred.workspace.auth.bootstrapAdmin.password "secretName" $secretName "required" true) | nindent 12 }}
+            - name: MONGO_ROOT_USER
+              value: {{ $w.mongo.rootUsername | quote }}
+            {{- include "deepfellow.credEnv" (dict "name" "MONGO_ROOT_PASSWORD" "cred" $cred.workspace.mongo.rootPassword "secretName" $appMongoSecret "required" true) | nindent 12 }}
+            {{/* The image reads MONGO_DB_URL + MONGO_DB_NAME (not MONGO_URL); with the wrong
+                 name it silently falls back to mongodb://localhost:27017. */}}
+            - name: MONGO_DB_URL
+              value: {{ printf "mongodb://$(MONGO_ROOT_USER):$(MONGO_ROOT_PASSWORD)@%s-0.%s:%s/?replicaSet=%s&authSource=admin" $appMongo $appMongo (include "deepfellow.port" "workspace-mongo.mongo") $w.mongo.replSetName | quote }}
+            - name: MONGO_DB_NAME
+              value: {{ $w.mongo.database | quote }}
+            {{- include "deepfellow.credEnv" (dict "name" "REDIS_PASSWORD" "cred" $cred.workspace.redis.password "secretName" $redisSecret "required" true) | nindent 12 }}
+            {{/* The password is substituted by the kubelet from the Secret, never written here. */}}
+            - name: REDIS_URL
+              value: {{ printf "redis://:$(REDIS_PASSWORD)@%s" (include "deepfellow.address" (dict "context" . "port" "workspace-redis.redis")) | quote }}
+            {{/* The model for background tasks (session titles, suggestions, message verification,
+                 compaction); chat uses the model the user picks. Required by the image's config schema. */}}
+            - name: SMALL_MODEL
+              value: {{ $w.helperModel | quote }}
+            {{/* The app otherwise binds to localhost, so the Service and probe cannot reach it. */}}
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: {{ include "deepfellow.port" "workspace.http" | quote }}
+          {{- include "deepfellow.probes" (dict "defaults" (include "deepfellow.probeDefaults.workspace" . | fromYaml) "values" $w) | nindent 10 }}
+          {{- with $w.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        {{/* optional: the keys only appear once the provisioning Job has run */}}
+        - name: provisioning-state
+          secret:
+            secretName: {{ $stateSecret }}
+            optional: true
+      {{- include "deepfellow.podPlacement" $w | nindent 6 }}
+{{- end }}

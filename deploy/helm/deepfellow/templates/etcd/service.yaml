@@ -1,0 +1,19 @@
+{{- if include "deepfellow.milvus.inChart" . }}
+{{- $etcd := include "deepfellow.componentName" (dict "context" . "component" "etcd") }}
+{{- $etcdSel := include "deepfellow.selectorLabels" (dict "context" . "component" "etcd") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $etcd }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: etcd
+spec:
+  type: ClusterIP
+  ports:
+    - name: client
+      port: {{ include "deepfellow.port" "etcd.client" }}
+      targetPort: client
+  selector:
+    {{- $etcdSel | nindent 4 }}
+{{- end }}

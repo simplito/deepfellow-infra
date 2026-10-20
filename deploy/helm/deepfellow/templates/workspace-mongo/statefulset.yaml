@@ -1,0 +1,126 @@
+{{- if .Values.workspace.enabled }}
+{{- $cred := include "deepfellow.credentials" . | fromYaml }}
+{{/*
+The Workspace's OWN MongoDB — separate from the Server's. It is a single-node replica set
+(the app needs transactions) with authentication enforced via an internal --keyFile plus a
+root user, and a Job that runs rs.initiate once the member is up.
+*/}}
+{{- $w := .Values.workspace }}
+{{- $appMongo := include "deepfellow.componentName" (dict "context" . "component" "workspace-mongo") }}
+{{- $appMongoSecret := include "deepfellow.credSecretName" (dict "context" . "component" "workspace-mongo") }}
+{{- $appMongoSel := include "deepfellow.selectorLabels" (dict "context" . "component" "workspace-mongo") }}
+{{- $appMongoKeySecret := include "deepfellow.credSecretName" (dict "context" . "component" "workspace-mongo-keyfile") }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $appMongo }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: workspace-mongo
+spec:
+  serviceName: {{ $appMongo }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- $appMongoSel | nindent 6 }}
+  template:
+    metadata:
+      {{- include "deepfellow.podMetadata" (dict "context" . "values" $w.mongo "component" "workspace-mongo" "credentials" (list $cred.workspace.mongo.rootPassword $cred.workspace.mongo.keyFile)) | nindent 6 }}
+    spec:
+      {{- include "deepfellow.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "deepfellow.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "deepfellow.podSecurityContext" (dict "context" . "values" $w.mongo "base" (include "deepfellow.mongoPodSecurityContext" . | fromYaml)) | nindent 8 }}
+      initContainers:
+        {{/* mongod checks which replica-set member it is only once, at startup, by resolving the
+             member's host name. On a restarted pod that name can briefly be missing or still
+             point at the previous pod's IP; mongod then decides it is "not a member of the
+             config" and never re-checks, so the single-node set stays without a primary for good.
+             Start it only once its own name resolves to this pod's IP. */}}
+        - name: wait-for-own-dns
+          image: {{ include "deepfellow.image" (dict "context" . "image" $w.mongo.image) }}
+          imagePullPolicy: {{ $w.mongo.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $w.mongo) | nindent 12 }}
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              host="$(hostname).{{ $appMongo }}"
+              self="$(hostname -i | awk '{print $1}')"
+              {{- include "deepfellow.retry" (dict "context" $ "check" `getent hosts "$host" | awk '{print $1}' | grep -qxF "$self"` "what" "DNS $host -> $self") | nindent 14 }}
+          {{- with $w.mongo.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        - name: copy-keyfile
+          image: {{ include "deepfellow.image" (dict "context" . "image" $w.mongo.image) }}
+          imagePullPolicy: {{ $w.mongo.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $w.mongo) | nindent 12 }}
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              cp /etc/mongo-keyfile-src/keyfile /etc/mongo-keyfile/keyfile
+              chmod 400 /etc/mongo-keyfile/keyfile
+          volumeMounts:
+            - name: keyfile-src
+              mountPath: /etc/mongo-keyfile-src
+              readOnly: true
+            - name: keyfile
+              mountPath: /etc/mongo-keyfile
+          {{- with $w.mongo.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      containers:
+        - name: mongo
+          image: {{ include "deepfellow.image" (dict "context" . "image" $w.mongo.image) }}
+          imagePullPolicy: {{ $w.mongo.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $w.mongo) | nindent 12 }}
+          args:
+            - --replSet
+            - {{ $w.mongo.replSetName | quote }}
+            - --keyFile
+            - /etc/mongo-keyfile/keyfile
+            - --bind_ip_all
+          ports:
+            - name: mongo
+              containerPort: {{ include "deepfellow.port" "workspace-mongo.mongo" }}
+          {{- include "deepfellow.probes" (dict "defaults" (include "deepfellow.probeDefaults.workspaceMongo" . | fromYaml) "values" $w.mongo) | nindent 10 }}
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              value: {{ $w.mongo.rootUsername | quote }}
+            {{- include "deepfellow.credEnv" (dict "name" "MONGO_INITDB_ROOT_PASSWORD" "cred" $cred.workspace.mongo.rootPassword "secretName" $appMongoSecret "required" true) | nindent 12 }}
+            {{- include "deepfellow.mongoImageEnv" . | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+            - name: keyfile
+              mountPath: /etc/mongo-keyfile
+              readOnly: true
+          {{- with $w.mongo.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        {{- include "deepfellow.existingDataVolume" (dict "claim" $w.mongo.storage.existingClaim) | nindent 8 }}
+        - name: keyfile-src
+          secret:
+            {{/* A keyFile from secretRef lives in the user's Secret; the chart's own keyFile Secret
+                 is not rendered then, and pointing at it left the pod Pending for good. */}}
+            secretName: {{ ternary $cred.workspace.mongo.keyFile.secretRef $appMongoKeySecret (eq $cred.workspace.mongo.keyFile.source "secretRef") }}
+            defaultMode: 0440
+            items:
+              - key: {{ $cred.workspace.mongo.keyFile.secretKey | quote }}
+                path: keyfile
+        - name: keyfile
+          emptyDir: {}
+      {{- include "deepfellow.podPlacement" $w.mongo | nindent 6 }}
+  {{- include "deepfellow.dataVolumeClaimTemplate" (dict "storage" $w.mongo.storage) | nindent 2 }}
+{{- end }}

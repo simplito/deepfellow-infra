@@ -1,0 +1,20 @@
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "server") -}}
+{{- $s := .Values.server -}}
+{{- if not $s.storage.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with $s.storage.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $s.storage.size }}
+{{- end }}

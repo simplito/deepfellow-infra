@@ -1,0 +1,50 @@
+DeepFellow Suite — release {{ .Release.Name }} (namespace {{ .Release.Namespace }})
+
+Components:
+  Infra      {{ include "deepfellow.componentName" (dict "context" . "component" "infra") }}:{{ .Values.infra.service.port }}
+  Server     {{ include "deepfellow.componentName" (dict "context" . "component" "server") }}:{{ .Values.server.service.port }}
+{{- if .Values.workspace.enabled }}
+  Workspace  {{ include "deepfellow.componentName" (dict "context" . "component" "workspace") }}:{{ .Values.workspace.service.port }}
+{{- end }}
+{{- $n := 0 }}{{- range $k, $v := .Values.modelBackends }}{{- if include "deepfellow.backendEnabled" (dict "b" $v) }}{{- $n = add1 $n }}{{- end }}{{- end }}
+  Native model backends (llama.cpp): {{ $n }}
+{{- $e := 0 }}{{- range $k, $v := .Values.externalBackends }}{{- if include "deepfellow.backendEnabled" (dict "b" $v) }}{{- $e = add1 $e }}{{- end }}{{- end }}
+  External backends (BYO): {{ $e }}
+
+{{- if .Values.provisioning.enabled }}
+
+Provisioning runs as a Job alongside the rest of the release. Follow it with:
+  kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/component=provisioning --tail=-1
+(The Job's name carries a digest of its pod template, so select it by label rather than by name.)
+
+Use `--wait --wait-for-jobs` on upgrade, and on install when the Workspace is disabled: plain
+`--wait` only covers this Job while a new Workspace is waiting for it, so the release can report
+success while the Job is still running or failing.
+
+The project API key (GET-ONCE) is stored in Secret {{ include "deepfellow.provisioning.stateSecretName" . }}
+(keys: organization-id, project-id, project-api-key). It is preserved across uninstall.
+{{- else }}
+
+Provisioning is DISABLED. No admin/org/project/key is created and no backend is
+registered into Infra. Set provisioning.enabled=true (with at least one enabled
+backend) to provision, or manage the state Secret
+{{ include "deepfellow.provisioning.stateSecretName" . }} yourself.
+{{- end }}
+
+Reach the Server API (from inside the cluster):
+  curl -H "Authorization: Bearer <project-api-key>" \
+    http://{{ include "deepfellow.componentName" (dict "context" . "component" "server") }}:{{ .Values.server.service.port }}/v1/models
+{{- if .Values.ingress.enabled }}
+
+{{- $scheme := ternary "https" "http" (not (empty .Values.ingress.tls)) }}
+Ingress is enabled:
+{{- with .Values.ingress.server.host }}
+  Server:    {{ $scheme }}://{{ . }}{{ $.Values.ingress.server.path }}
+{{- end }}
+{{- if and .Values.workspace.enabled .Values.ingress.workspace.host }}
+  Workspace: {{ $scheme }}://{{ .Values.ingress.workspace.host }}
+{{- end }}
+{{- end }}
+
+Reminder: this chart is fail-closed. Images need a digest or allowMutableTag=true,
+and each required credential needs one of secretRef, plaintext or generate.

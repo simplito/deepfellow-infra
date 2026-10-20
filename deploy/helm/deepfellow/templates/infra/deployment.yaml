@@ -1,0 +1,77 @@
+{{- $cred := include "deepfellow.credentials" . | fromYaml -}}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "infra") -}}
+{{- $secretName := include "deepfellow.credSecretName" (dict "context" . "component" "infra") -}}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" . "component" "infra") -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: infra
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      {{- include "deepfellow.podMetadata" (dict "context" . "values" .Values.infra "component" "infra" "credentials" (list $cred.infra.auth.adminApiKey $cred.infra.auth.serverApiKey $cred.infra.huggingFaceToken $cred.infra.mesh.childKey $cred.infra.mesh.parent.key)) | nindent 6 }}
+    spec:
+      {{- include "deepfellow.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "deepfellow.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "deepfellow.podSecurityContext" (dict "context" . "values" .Values.infra) | nindent 8 }}
+      containers:
+        - name: infra
+          image: {{ include "deepfellow.image" (dict "context" . "image" .Values.infra.image) }}
+          imagePullPolicy: {{ .Values.infra.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" .Values.infra) | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ include "deepfellow.port" "infra.http" }}
+              protocol: TCP
+          env:
+            - name: DF_NAME
+              value: {{ .Release.Name | quote }}
+            - name: DF_INFRA_URL
+              value: {{ printf "http://%s:%v" $fullname .Values.infra.service.port | quote }}
+            - name: DF_STORAGE_DIR
+              value: {{ .Values.infra.storage.mountPath | quote }}
+            {{/* DF_MESH_KEY is what other Infras must present to connect to this one. Infra v0.29
+                 refused to start without it, so an unset key becomes a fixed placeholder. */}}
+            {{- if eq $cred.infra.mesh.childKey.source "none" }}
+            - name: DF_MESH_KEY
+              value: "unused-change-to-join-a-mesh"
+            {{- else }}
+            {{- include "deepfellow.credEnv" (dict "name" "DF_MESH_KEY" "cred" $cred.infra.mesh.childKey "secretName" $secretName "required" true) | nindent 12 }}
+            {{- end }}
+            {{- if .Values.infra.mesh.parent.enabled }}
+            - name: DF_CONNECT_TO_MESH_URL
+              value: {{ .Values.infra.mesh.parent.url | quote }}
+            {{- include "deepfellow.credEnv" (dict "name" "DF_CONNECT_TO_MESH_KEY" "cred" $cred.infra.mesh.parent.key "secretName" $secretName "required" true) | nindent 12 }}
+            {{- end }}
+            {{/* Infra never gets a Docker socket here: it only serves backends registered from outside.
+                 Upstream images up to v0.34 ignore the variable and boot without Docker anyway. */}}
+            - name: DF_EXTERNAL_ONLY
+              value: "true"
+            {{- include "deepfellow.credEnv" (dict "name" "DF_INFRA_ADMIN_API_KEY" "cred" $cred.infra.auth.adminApiKey "secretName" $secretName "required" true) | nindent 12 }}
+            {{- include "deepfellow.credEnv" (dict "name" "DF_INFRA_API_KEY" "cred" $cred.infra.auth.serverApiKey "secretName" $secretName "required" true) | nindent 12 }}
+            {{- include "deepfellow.credEnv" (dict "name" "DF_HUGGING_FACE_TOKEN" "cred" $cred.infra.huggingFaceToken "secretName" $secretName) | nindent 12 }}
+          volumeMounts:
+            - name: storage
+              mountPath: {{ .Values.infra.storage.mountPath }}
+          {{- include "deepfellow.probes" (dict "defaults" (include "deepfellow.probeDefaults.infra" . | fromYaml) "values" .Values.infra) | nindent 10 }}
+          {{- with .Values.infra.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: {{ .Values.infra.storage.existingClaim | default $fullname }}
+      {{- include "deepfellow.podPlacement" .Values.infra | nindent 6 }}

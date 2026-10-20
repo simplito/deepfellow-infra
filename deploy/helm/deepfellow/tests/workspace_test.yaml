@@ -1,0 +1,17 @@
+suite: workspace
+templates:
+  - workspace/deployment.yaml
+values:
+  - ../ci/full-values.yaml
+tests:
+  - it: waits for the provisioning state, a writable MongoDB primary and the Server (it exits if either is missing)
+    asserts:
+      - equal: { path: 'spec.template.spec.initContainers[2].name', value: wait-for-server }
+      - equal: { path: 'spec.template.spec.initContainers[0].name', value: wait-for-provisioning }
+      - equal: { path: 'spec.template.spec.initContainers[1].name', value: wait-for-mongo-primary }
+      - matchRegex:
+          path: 'spec.template.spec.initContainers[1].command[2]'
+          pattern: isWritablePrimary
+  - it: probes /health, not / (which is 404 on this image)
+    asserts:
+      - equal: { path: 'spec.template.spec.containers[0].readinessProbe.httpGet.path', value: /health }

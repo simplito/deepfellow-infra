@@ -1,0 +1,45 @@
+# Security contexts, probes and pod metadata are layered; these pin the layering rules.
+suite: layered overrides
+templates:
+  - server/deployment.yaml
+  - mongo/statefulset.yaml
+  - workspace/deployment.yaml
+values:
+  - ../ci/full-values.yaml
+tests:
+  - it: lets a component set runAsNonRoot=false (a deep merge would drop false)
+    template: server/deployment.yaml
+    set:
+      server.podSecurityContext.runAsNonRoot: false
+    asserts:
+      - equal: { path: spec.template.spec.securityContext.runAsNonRoot, value: false }
+      - equal: { path: spec.template.spec.securityContext.runAsUser, value: 1000 }
+  - it: keeps Mongo on uid 999 whatever the chart-wide uid is
+    template: mongo/statefulset.yaml
+    set:
+      podSecurityContext.runAsUser: 2000
+    asserts:
+      - equal: { path: spec.template.spec.securityContext.runAsUser, value: 999 }
+  - it: swaps the probe handler instead of adding a second one
+    template: server/deployment.yaml
+    set:
+      server.readinessProbe.httpGet: { path: /health, port: http }
+    asserts:
+      - notExists: { path: 'spec.template.spec.containers[0].readinessProbe.exec' }
+      - equal: { path: 'spec.template.spec.containers[0].readinessProbe.httpGet.path', value: /health }
+      - equal: { path: 'spec.template.spec.containers[0].readinessProbe.periodSeconds', value: 10 }
+  - it: drops a probe with enabled=false
+    template: workspace/deployment.yaml
+    set:
+      workspace.readinessProbe.enabled: false
+    asserts:
+      - notExists: { path: 'spec.template.spec.containers[0].readinessProbe' }
+  - it: never lets a podLabel override a selector label
+    template: server/deployment.yaml
+    set:
+      podLabels:
+        app.kubernetes.io/instance: hijack
+        team: ml
+    asserts:
+      - equal: { path: 'spec.template.metadata.labels["app.kubernetes.io/instance"]', value: RELEASE-NAME }
+      - equal: { path: spec.template.metadata.labels.team, value: ml }

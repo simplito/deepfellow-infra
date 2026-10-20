@@ -178,3 +178,17 @@ def test_app_settings_ignores_sentry_environment_variables(monkeypatch: pytest.M
     assert s.sentry_enabled is False
     assert s.sentry_dsn.get_secret_value() == ""
     assert s.sentry_environment == ""
+
+
+def test_external_only_defaults_false(settings: AppSettings) -> None:
+    assert settings.external_only is False
+
+
+def test_external_only_parsed_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for k, v in _REQUIRED_ENV.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("DF_EXTERNAL_ONLY", "true")
+
+    settings = AppSettings()  # pyright: ignore[reportCallIssue]
+
+    assert settings.external_only is True

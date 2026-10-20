@@ -1,0 +1,43 @@
+# Minimal values that satisfy the fail-closed contract, for `helm lint`/`helm template`
+# smoke tests. Excluded from the packaged chart by .helmignore (ci/).
+infra:
+  image:
+    allowMutableTag: true
+  auth:
+    adminApiKey:
+      secretRef: df-secrets
+    serverApiKey:
+      secretRef: df-secrets
+server:
+  image:
+    allowMutableTag: true
+  mongo:
+    password:
+      secretRef: df-secrets
+    embedded:
+      rootPassword:
+        secretRef: df-secrets
+provisioning:
+  stateSecret:
+    name: df-provstate
+  admin:
+    password:
+      secretRef: df-secrets
+workspace:
+  helperModel: demo-llm
+  image:
+    allowMutableTag: true
+  auth:
+    sessionSecret:
+      secretRef: df-secrets
+    bootstrapAdmin:
+      password:
+        secretRef: df-secrets
+  mongo:
+    rootPassword:
+      secretRef: df-secrets
+    keyFile:
+      secretRef: df-secrets
+  redis:
+    password:
+      plaintext: ciRedisPassw0rd00

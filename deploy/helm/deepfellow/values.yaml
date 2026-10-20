@@ -1,0 +1,587 @@
+# Values for the DeepFellow Suite chart. `helm-docs` builds the README table from the `# --`
+# comments. Commented-out keys are unset by default; uncomment one to set it. A few are required
+# once you enable what they belong to; their comment says so.
+#
+# The defaults do not render on purpose: pick a source for every required credential and
+# either pin or accept every image first. `values-quickstart.yaml` does both for a trial.
+#
+# Credentials. Each says where its value comes from, with ONE of:
+#   secretRef: my-secret          # an existing Secret you manage (nothing sensitive in this file)
+#   plaintext: s3cr3t             # the raw value, written into your values file
+#   generate: true                # generated on install, kept on uninstall (not for GitOps)
+# and `secretKey`, the key inside that Secret (yours, or the one the chart creates). Every
+# credential below shows its default secretKey; change it if your Secret uses another key.
+#
+# Images: `repository` and `tag`, plus one of
+#     digest: sha256:...            # pin it; the chart then deploys repository@digest
+#     allowMutableTag: true         # or accept the tag as is
+# and optionally `pullPolicy` (default IfNotPresent).
+
+# nameOverride: ""        # replaces the chart name in resource names
+# fullnameOverride: ""    # replaces the release fullname in resource names
+
+global:
+  # imageRegistry: myregistry.local   # prefixed to every image repository
+  # -- Image pull secrets for all pods. The default images pull anonymously.
+  imagePullSecrets: []
+
+# Every wait in the chart: init containers that hold a pod until what it depends on is ready (so
+# on a cold install each app container starts once instead of crash-looping), and the Workspace
+# replica-set init. Each gives up after about attempts x delaySeconds and fails, so a stuck
+# dependency is visible.
+dependencyWait:
+  # -- Image for the HTTP health checks. The chart chose it, so it is pinned.
+  image:
+    repository: curlimages/curl
+    tag: "8.11.1"
+    digest: sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69
+  # -- Checks before giving up.
+  attempts: 100
+  # -- Seconds between checks.
+  delaySeconds: 3
+
+# -- Pod securityContext for every workload. A component's own `podSecurityContext` replaces
+# individual top-level keys. MongoDB keeps uid/gid 999 and Milvus adds group 0.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container securityContext for every container, init containers included. A component's
+# own `containerSecurityContext` replaces individual top-level keys.
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# -- Labels for every pod. A component's own `podLabels` adds to these. Selector labels win.
+podLabels: {}
+# -- Annotations for every pod, Jobs included. A component's own `podAnnotations` adds to these.
+podAnnotations: {}
+
+# ServiceAccount for every workload except the provisioning Job, which has its own. None of
+# them calls the Kubernetes API, so no token is mounted.
+serviceAccount:
+  # -- Create it. With `create: false` pods run as `name`, or as the namespace's `default`.
+  create: true
+  # name: my-sa             # default: the release fullname
+  # -- Annotations for the ServiceAccount, e.g. a cloud workload-identity binding.
+  annotations: {}
+
+# ============================================================================
+# Infra: the OpenAI-compatible proxy (:8086). It runs without a Docker socket and only serves
+# backends registered from outside (`DF_EXTERNAL_ONLY=true`, always set).
+# ============================================================================
+infra:
+  # -- Infra image, pinned to a release. The digest decides what runs; the tag only names the
+  # release. Upgrade by changing both, so they keep matching.
+  image:
+    repository: hub.simplito.com/deepfellow/deepfellow-infra
+    tag: v0.34.0
+    digest: sha256:a44b95741d0ee042b05df13c6bdc47c3f73c1152471396a34df1d56de23970de
+  auth:
+    # -- Admin API key (`DF_INFRA_ADMIN_API_KEY`). Required.
+    adminApiKey:
+      # secretRef: my-secret
+      secretKey: infra-admin-api-key
+    # -- API key the Server uses to call Infra (`DF_INFRA_API_KEY`). Required. Infra reads it (like
+    # the mesh settings and the Hugging Face token) from env only on its first start; see README,
+    # Upgrading.
+    serverApiKey:
+      # secretRef: my-secret
+      secretKey: infra-api-key
+  mesh:
+    # This Infra joining a parent Infra's mesh.
+    parent:
+      # -- Connect to a parent Infra.
+      enabled: false
+      # url: https://...          # the parent Infra (DF_CONNECT_TO_MESH_URL), required when enabled
+      # -- Key this Infra presents to the parent (`DF_CONNECT_TO_MESH_KEY`). Required when enabled.
+      key:
+        # secretRef: my-secret
+        secretKey: mesh-parent-key
+    # -- Key child Infras must present to connect to THIS one (`DF_MESH_KEY`). Optional. Unset,
+    # Infra gets a fixed placeholder (Infra v0.29 would not start without a value), so anything
+    # that can reach Infra's port could connect as a child Infra: set a key, or keep
+    # `networkPolicy.enabled`, before exposing Infra.
+    childKey:
+      # secretRef: my-secret
+      secretKey: mesh-child-key
+    # -- With `networkPolicy.enabled`, only this release's Server and provisioning Job reach Infra.
+    # List NetworkPolicy peers (`namespaceSelector`, `podSelector`, `ipBlock`) that child Infras
+    # connect from. Requires `childKey`. Children outside the cluster also need a reachable
+    # Service (`infra.service.type`).
+    allowChildrenFrom: []
+    #   - namespaceSelector:
+    #       matchLabels: {kubernetes.io/metadata.name: deepfellow-edge}
+  # -- Hugging Face token for gated downloads (`DF_HUGGING_FACE_TOKEN`). Optional.
+  huggingFaceToken:
+    # secretRef: my-secret
+    secretKey: hf-token
+  storage:
+    # -- PVC for Infra's state (config and endpoint registry, no model weights).
+    size: 1Gi
+    # storageClass: fast-ssd    # default: the cluster default
+    # existingClaim: my-pvc     # use your own PVC instead of creating one
+    # -- Mount path (`DF_STORAGE_DIR`).
+    mountPath: /app/storage
+  service:
+    # -- Infra Service type.
+    type: ClusterIP
+    # -- Port of the Infra Service. The container always listens on 8086.
+    port: 8086
+  # -- Container resources for Infra.
+  resources: {}
+  # -- Node selector for Infra.
+  nodeSelector: {}
+  # -- Tolerations for Infra.
+  tolerations: []
+  # -- Affinity for Infra.
+  affinity: {}
+
+# ============================================================================
+# Model backends: llama.cpp Deployments run by this chart, each registered into Infra as its
+# own `openai` service instance. A map, so an overlay can add or disable one backend.
+# ============================================================================
+# -- llama.cpp backends, keyed by name. The key names the Deployment and is the default model id.
+modelBackends: {}
+#  llama:
+#    enabled: true
+#    modelId: my-llm                    # default: the key
+#    image:
+#      repository: ghcr.io/ggml-org/llama.cpp
+#      tag: server
+#      allowMutableTag: true
+#    gguf:
+#      url: https://.../model.gguf      # downloaded by an init container
+#      sha256: ...                      # optional; the download is verified against it
+#      hfToken:                         # optional, for gated models
+#        secretRef: my-hf-token
+#        secretKey: hf-token
+#    parallel: 1                        # llama.cpp --parallel; use 2+ when plugins call the model
+#    threads: 4                         # llama.cpp --threads: CPU threads for generation
+#    contextLength: 8192                # llama.cpp --ctx-size, in tokens
+#    extraArgs: []                      # appended to the llama-server command line
+#    downloadImage:                     # the init container that fetches the GGUF (curl, pinned)
+#      repository: curlimages/curl
+#    gpu:
+#      enabled: false
+#      count: 1
+#    storage:
+#      size: 20Gi
+#      medium: Memory                   # optional: tmpfs, re-downloaded on every start
+#      storageClass: fast-ssd
+#      existingClaim: my-weights
+#    service:
+#      port: 8080
+
+# ============================================================================
+# External backends: endpoints you run elsewhere, registered into Infra the same way.
+# ============================================================================
+# -- Bring-your-own OpenAI-compatible endpoints, keyed by name.
+externalBackends: {}
+#  remote:
+#    enabled: true
+#    apiType: openai                    # the API Infra speaks to it; only openai today
+#    apiUrl: http://host:8080           # the root URL; Infra appends v1/
+#    modelId: my-model                  # must NOT appear in the endpoint's GET /v1/models
+#    contextLength: 8192                # in tokens
+#    apiKey:                            # optional
+#      secretRef: my-endpoint-key
+#      secretKey: api-key
+
+# ============================================================================
+# Server: the OpenAI-compatible entrypoint (:8000).
+# ============================================================================
+server:
+  # -- Server image, pinned to a release. The digest decides what runs; the tag only names the
+  # release. Upgrade by changing both, so they keep matching.
+  image:
+    repository: hub.simplito.com/deepfellow/deepfellow-server
+    tag: v0.34.1
+    digest: sha256:0d8795192a37ed65deadb2ed24460d18791028a61102c42cea068386ed5849fc
+  service:
+    # -- Service type for the Server.
+    type: ClusterIP
+    # -- Port of the Server Service. The container always listens on 8000.
+    port: 8000
+  storage:
+    # -- PVC for uploaded files and the plugins directory.
+    size: 5Gi
+    # storageClass: fast-ssd
+    # existingClaim: my-pvc
+  # -- Server log level (`DF_LOG_LEVEL`).
+  logLevel: INFO
+  mongo:
+    # -- `embedded`: the chart runs MongoDB, configured under `embedded`. `external`: the Server
+    # uses your MongoDB at `external.address`.
+    mode: embedded
+    # -- Database the Server uses (`DF_MONGO_DB`).
+    database: deepfellow
+    # -- User the Server connects as (`DF_MONGO_USER`). Embedded: the chart creates it. External:
+    # it must exist, with read/write on `database`.
+    username: deepfellow
+    # -- That user's password. Required.
+    password:
+      # secretRef: my-secret
+      secretKey: mongo-password
+    # The in-chart MongoDB, for `mode: embedded`.
+    embedded:
+      # -- MongoDB image.
+      image:
+        repository: mongo
+        tag: "8.2.7"
+        digest: sha256:7abfba0d07c9330373f8173981ea4d09cd8a82cdf0e86ccaf7008848d1d24f62
+      # -- Root user (`MONGO_INITDB_ROOT_USERNAME`).
+      rootUsername: root
+      # -- Root password. Required.
+      rootPassword:
+        # secretRef: my-secret
+        secretKey: mongo-root-password
+      storage:
+        # -- PVC size. Avoid NFS: MongoDB advises against it, and it failed on NFS in testing.
+        size: 8Gi
+        # storageClass: local-path
+        # existingClaim: my-pvc
+      # -- Container resources for the Server's MongoDB.
+      resources: {}
+      # -- Node selector for the Server's MongoDB. Pin it when its storage is node-local.
+      nodeSelector: {}
+      # -- Tolerations for the Server's MongoDB.
+      tolerations: []
+      # -- Affinity for the Server's MongoDB.
+      affinity: {}
+    # Your MongoDB, for `mode: external`.
+    external: {}
+    #   address: mongo.data.svc:27017/?authSource=admin   # host:port and options, NOT a mongodb:// URI
+  vectorDb:
+    # -- Enable the vector store for RAG (`DF_VECTOR_DATABASE__PROVIDER__ACTIVE`).
+    enabled: false
+    # -- `qdrant` or `milvus`.
+    type: qdrant
+    embedding:
+      # -- Infra service that serves the embedding model (`DF_VECTOR_DATABASE__EMBEDDING__ENDPOINT`).
+      # A service name, not a URL.
+      service: openai
+      # -- Embedding model id.
+      model: mxbai-embed-large
+      # -- Length of the embedding vectors; must match the model.
+      dimensions: 1024
+    qdrant:
+      # -- `embedded`: the chart runs Qdrant, configured under `embedded`. `external`: the Server
+      # uses your Qdrant at `external.url`.
+      mode: embedded
+      # The in-chart Qdrant, for `mode: embedded`.
+      embedded:
+        # -- Qdrant image. Use an `-unprivileged` tag: the plain one expects root and panics
+        # creating `./snapshots/tmp` under the chart's uid.
+        image:
+          repository: qdrant/qdrant
+          tag: v1.15-unprivileged
+          digest: sha256:48c12634a17d8d54f4e3fb95c2b081668039e6e4517ebba57be1882109199ae7
+        storage:
+          # -- PVC size for Qdrant.
+          size: 10Gi
+          # storageClass: fast-ssd
+          # existingClaim: my-pvc
+        # -- Container resources for Qdrant.
+        resources: {}
+        # -- Node selector for Qdrant.
+        nodeSelector: {}
+        # -- Tolerations for Qdrant.
+        tolerations: []
+        # -- Affinity for Qdrant.
+        affinity: {}
+      # Your Qdrant, for `mode: external`.
+      external: {}
+      #   url: http://qdrant.example:6333
+    milvus:
+      # -- Milvus image.
+      image:
+        repository: milvusdb/milvus
+        tag: v2.6.2
+        digest: sha256:215400dc74c03393e4c28d808c1efbbbd7f1f46e94ba73b4e583df3ccd81105e
+      storage:
+        # -- PVC size for Milvus itself (its local write-ahead log and cache).
+        size: 20Gi
+        # storageClass: fast-ssd
+        # existingClaim: my-pvc
+      etcd:
+        # -- etcd image for the Milvus stack.
+        image:
+          repository: quay.io/coreos/etcd
+          tag: v3.5.18
+          digest: sha256:d0a641d5fbcc89678c931a61b7de7b8a1cf097149f135c9c73bc81d076a1494b
+        storage:
+          # -- PVC size for etcd (Milvus metadata). etcd caps its database at 2GiB by default.
+          size: 4Gi
+          # storageClass: fast-ssd
+          # existingClaim: my-pvc
+      minio:
+        # -- MinIO image. Docker Hub no longer serves `minio/minio`; Quay has the same release.
+        image:
+          repository: quay.io/minio/minio
+          tag: RELEASE.2024-12-18T13-15-44Z
+          digest: sha256:1dce27c494a16bae114774f1cec295493f3613142713130c2d22dd5696be6ad3
+        # -- MinIO root user; Milvus logs in with it. Required with Milvus.
+        rootUser:
+          # secretRef: my-secret
+          secretKey: minio-root-user
+        # -- MinIO root password. Required with Milvus.
+        rootPassword:
+          # secretRef: my-secret
+          secretKey: minio-root-password
+        storage:
+          # -- PVC size for MinIO, which holds the vectors and index files.
+          size: 20Gi
+          # storageClass: fast-ssd
+          # existingClaim: my-pvc
+      # -- Container resources for each of milvus, etcd and MinIO.
+      resources: {}
+      # -- Node selector for the Milvus stack.
+      nodeSelector: {}
+      # -- Tolerations for the Milvus stack.
+      tolerations: []
+      # -- Affinity for the Milvus stack.
+      affinity: {}
+  falkordb:
+    # -- Deploy the FalkorDB graph store.
+    enabled: false
+    # -- FalkorDB image.
+    image:
+      repository: falkordb/falkordb
+      tag: v4.12.4
+      digest: sha256:22fbac7f4f985a54f3d84368c75df6d8f31cf47bbc590690484f5eb357deb8d1
+    # -- FalkorDB password. Required when enabled.
+    password:
+      # secretRef: my-secret
+      secretKey: falkordb-password
+    storage:
+      # -- PVC size for FalkorDB.
+      size: 5Gi
+      # storageClass: fast-ssd
+      # existingClaim: my-pvc
+    # -- Container resources for FalkorDB.
+    resources: {}
+    # -- Node selector for FalkorDB.
+    nodeSelector: {}
+    # -- Tolerations for FalkorDB.
+    tolerations: []
+    # -- Affinity for FalkorDB.
+    affinity: {}
+  # Plugin setup as a JSON string, passed as `DF_PLUGINS_SETUP`. Unset = no plugins. The anonymize
+  # plugin blocks every request unless it has a model, and a plugin calls its model inside the
+  # request it guards, so give that backend `parallel: 2` or more or the two deadlock.
+  # pluginsSetupJson: '{"df_abuse_model": "my-llm", "df_anonymize_models": "my-llm"}'
+  otel:
+    # -- Export OpenTelemetry.
+    enabled: false
+    # endpoint: http://otel-collector:4317   # required when enabled
+  metrics:
+    # The metrics endpoint is always served; this only puts basic auth in front of it.
+    basicAuth:
+      # -- Protect the metrics endpoint with basic auth.
+      enabled: false
+      # username: metrics
+      # -- Metrics password. Required when enabled.
+      password:
+        # secretRef: my-secret
+        secretKey: metrics-password
+  # -- Container resources for the Server.
+  resources: {}
+  # -- Node selector for the Server.
+  nodeSelector: {}
+  # -- Tolerations for the Server.
+  tolerations: []
+  # -- Affinity for the Server.
+  affinity: {}
+
+# ============================================================================
+# Workspace: the web UI (:3000).
+# ============================================================================
+workspace:
+  # -- Deploy the Workspace.
+  enabled: true
+  # -- Workspace image, pinned to a release. The digest decides what runs; the tag only names the
+  # release. Upgrade by changing both, so they keep matching.
+  image:
+    repository: hub.simplito.com/deepfellow/deepfellow-workspace
+    tag: v0.5.2
+    digest: sha256:5b12c43416e77a6fdd38574287fa43be1952d3472c9e68b1debb5c2febc3373c
+  service:
+    # -- Service type for the Workspace.
+    type: ClusterIP
+    # -- Port of the Workspace Service. The container always listens on 3000.
+    port: 3000
+  # Required when enabled: a model id this release serves (`SMALL_MODEL`), used for background
+  # tasks such as session titles, suggestions and message verification. Chat uses the model the
+  # user picks. The image exits at startup without it.
+  # helperModel: my-llm
+  auth:
+    # -- Signing secret for sessions (`BETTER_AUTH_SECRET`). Required.
+    sessionSecret:
+      # secretRef: my-secret
+      secretKey: workspace-session-secret
+    bootstrapAdmin:
+      # -- First admin's name. The image needs name, email and password together.
+      name: admin
+      # -- First admin's email.
+      email: admin@deepfellow.local
+      # -- First admin's password. Required.
+      password:
+        # secretRef: my-secret
+        secretKey: workspace-admin-password
+  mongo:
+    # -- Database name (`MONGO_DB_NAME`).
+    database: workspace_db
+    # -- Image for the Workspace's own MongoDB (a single-node replica set).
+    image:
+      repository: mongo
+      tag: "8.2.7"
+      digest: sha256:7abfba0d07c9330373f8173981ea4d09cd8a82cdf0e86ccaf7008848d1d24f62
+    # -- Replica-set name. The Workspace needs transactions, hence a replica set.
+    replSetName: rs0
+    # -- Root user; the Workspace connects as it.
+    rootUsername: root
+    # -- Root password. Required. It goes into a connection string unencoded, so it must be
+    # URL-safe whatever its source; the chart can check only a `plaintext` value.
+    rootPassword:
+      # secretRef: my-secret
+      secretKey: workspace-mongo-root-password
+    # -- Replica-set keyFile (internal authentication between members): 6 to 1024 characters from
+    # the base64 alphabet (a plain secret, not base64-encoded data). Required. A changed keyFile
+    # takes effect when the pod restarts.
+    keyFile:
+      # secretRef: my-secret
+      secretKey: workspace-mongo-keyfile
+    storage:
+      # -- PVC size. Avoid NFS: MongoDB advises against it, and it failed on NFS in testing.
+      size: 4Gi
+      # storageClass: local-path
+      # existingClaim: my-pvc
+    # -- Container resources for the Workspace's MongoDB.
+    resources: {}
+    # -- Node selector for the Workspace's MongoDB. Pin it when its storage is node-local.
+    nodeSelector: {}
+    # -- Tolerations for the Workspace's MongoDB.
+    tolerations: []
+    # -- Affinity for the Workspace's MongoDB.
+    affinity: {}
+  # The Workspace's Redis (`REDIS_URL`).
+  redis:
+    # -- Redis image for the Workspace.
+    image:
+      repository: redis
+      tag: 8.10.2-alpine
+      digest: sha256:72cedd9603038893af961e90ac5e1a1a0d8377d5e338dbdad8fe284ea25de18f
+    # -- Redis password. Required. It goes into `REDIS_URL` unencoded, so it must be URL-safe
+    # whatever its source; the chart can check only a `plaintext` value.
+    password:
+      # secretRef: my-secret
+      secretKey: workspace-redis-password
+    storage:
+      # -- Keep Redis data on a PVC (append-only file, fsynced every second). Off: it lives in
+      # memory only and is lost when the Redis pod restarts.
+      enabled: true
+      # -- PVC size.
+      size: 1Gi
+      # storageClass: fast-ssd
+      # existingClaim: my-pvc
+    # -- Container resources for the Workspace's Redis.
+    resources: {}
+    # -- Node selector for the Workspace's Redis.
+    nodeSelector: {}
+    # -- Tolerations for the Workspace's Redis.
+    tolerations: []
+    # -- Affinity for the Workspace's Redis.
+    affinity: {}
+  # -- Container resources for the Workspace.
+  resources: {}
+  # -- Node selector for the Workspace.
+  nodeSelector: {}
+  # -- Tolerations for the Workspace.
+  tolerations: []
+  # -- Affinity for the Workspace.
+  affinity: {}
+
+# ============================================================================
+# Provisioning: a Job that creates the admin, organisation and project, stores the project key
+# in a Secret, registers the backends in Infra and grants them to the project.
+# ============================================================================
+provisioning:
+  # -- Run the provisioning Job.
+  enabled: false
+  # -- Increment to force the provisioning Job to run again. Not needed after a change to what it
+  # runs or reads (backends, credentials, the package): that already starts a new Job.
+  revision: "1"
+  # -- Allow provisioning with no enabled backend (the project would have no model).
+  allowNoModels: false
+  # The Server admin account the Job creates.
+  admin:
+    # -- Admin display name.
+    name: admin
+    # -- Admin email (the login).
+    email: admin@deepfellow.local
+    # -- Admin password. Required. A `plaintext` value needs 10+
+    # characters with a lowercase letter, an uppercase letter, a digit and a special character.
+    password:
+      # secretRef: my-secret
+      secretKey: admin-password
+  # The organisation, project and project API key the Job creates.
+  project:
+    # -- Organisation name.
+    organization: Workspace
+    # -- Project name, in that organisation.
+    name: Default
+    # -- Name of the project API key, minted into the state Secret.
+    apiKeyName: app
+  # Image for the Job. Unset = the Server image: the Job runs the Server's create_admin, and gets
+  # its own code from a ConfigMap.
+  image: {}
+  #   repository: ...
+  #   tag: ...
+  # Secret holding the project identity and API key. Unset = the chart creates it and keeps it on
+  # uninstall (the Server returns the key only once). A name you set must already exist.
+  stateSecret: {}
+  #   name: my-state-secret
+  serviceAccount:
+    # -- Create the Job's ServiceAccount, with a Role limited to the state Secret.
+    create: true
+    # name: my-sa             # default: derived from the release; must be able to update the state Secret
+  # -- Container resources for the provisioning Job.
+  resources: {}
+  # -- Node selector for the provisioning Job.
+  nodeSelector: {}
+  # -- Tolerations for the provisioning Job.
+  tolerations: []
+  # -- Affinity for the provisioning Job.
+  affinity: {}
+
+# ============================================================================
+# Ingress for the Server API and the Workspace UI.
+# ============================================================================
+ingress:
+  # -- Create the Ingress.
+  enabled: false
+  # className: traefik        # default: the cluster default
+  # -- Annotations for the Ingress (e.g. cert-manager).
+  annotations: {}
+  server:
+    # host: api.example.com   # host for the Server API
+    # -- Path prefix routed to the Server.
+    path: /v1
+  workspace: {}
+  #   host: ui.example.com    # host for the Workspace; unset = no Workspace rule
+  # -- TLS blocks (`hosts` + `secretName`), passed through as-is.
+  tls: []
+
+# ============================================================================
+# NetworkPolicy: default-deny for every pod of the release, plus one allow per flow the suite uses.
+# ============================================================================
+networkPolicy:
+  # -- Create the NetworkPolicies.
+  enabled: false

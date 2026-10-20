@@ -24,6 +24,7 @@ runner = CliRunner()
 BOOTSTRAP_FIELD_NAMES = {
     "infra_admin_api_key",
     "docker_subnet",
+    "external_only",
     "storage_dir",
     "storage_services_dir",
     "container_name_prefix",
@@ -106,6 +107,7 @@ def test_get_expected_env_names_against_real_app_settings() -> None:
     expected_bootstrap_names = {
         "DF_INFRA_ADMIN_API_KEY",
         "DF_DOCKER_SUBNET",
+        "DF_EXTERNAL_ONLY",
         "DF_STORAGE_DIR",
         "DF_STORAGE_SERVICES_DIR",
         "DF_CONTAINER_NAME_PREFIX",

@@ -1,0 +1,74 @@
+# CI fixture (qdrant-graph). Deterministic literal credentials so renders are reproducible;
+# never reuse these values anywhere real.
+infra:
+  image:
+    allowMutableTag: true
+  auth:
+    adminApiKey:
+      plaintext: ci-infra-admin-key-000000000000
+    serverApiKey:
+      plaintext: ci-infra-api-key-00000000000000
+modelBackends:
+  demo:
+    enabled: true
+    type: llamaCpp
+    modelId: demo-llm
+    image:
+      repository: ghcr.io/ggml-org/llama.cpp
+      tag: server
+      allowMutableTag: true
+    gguf:
+      url: https://example.invalid/model.gguf
+    contextLength: 2048
+server:
+  image:
+    allowMutableTag: true
+  mongo:
+    mode: embedded
+    password:
+      plaintext: ciMongoApp00000
+    embedded:
+      rootPassword:
+        plaintext: ciMongoRoot0000
+  vectorDb:
+    enabled: true
+    type: qdrant
+    qdrant:
+      embedded:
+        image:
+          allowMutableTag: true
+  falkordb:
+    enabled: true
+    image:
+      allowMutableTag: true
+    password:
+      plaintext: ciGraphPassw0rd
+workspace:
+  enabled: true
+  image:
+    allowMutableTag: true
+  helperModel: demo-llm
+  auth:
+    sessionSecret:
+      plaintext: ci-better-auth-secret-0000000000
+    bootstrapAdmin:
+      name: admin
+      email: admin@example.com
+      password:
+        plaintext: CiWsPassw0rd!x
+  mongo:
+    rootPassword:
+      plaintext: ciWsMongoRoot000
+    keyFile:
+      plaintext: Y2lLZXlGaWxlQ29udGVudEJhc2U2NENoYXJzZXRPbmx5MDAwMDAwMDAwMDAw
+  redis:
+    password:
+      plaintext: ciRedisPassw0rd00
+provisioning:
+  enabled: true
+  admin:
+    email: admin@example.com
+    password:
+      plaintext: CiAdminPassw0rd!
+networkPolicy:
+  enabled: true

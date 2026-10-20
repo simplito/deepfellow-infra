@@ -1,0 +1,20 @@
+{{- if .Values.workspace.enabled }}
+{{- $w := .Values.workspace }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "workspace") }}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" . "component" "workspace") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: workspace
+spec:
+  type: {{ $w.service.type }}
+  ports:
+    - name: http
+      port: {{ $w.service.port }}
+      targetPort: http
+  selector:
+    {{- $selector | nindent 4 }}
+{{- end }}

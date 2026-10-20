@@ -1,0 +1,19 @@
+{{- if .Values.workspace.enabled }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "workspace-redis") }}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" . "component" "workspace-redis") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: workspace-redis
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: {{ include "deepfellow.port" "workspace-redis.redis" }}
+      targetPort: redis
+  selector:
+    {{- $selector | nindent 4 }}
+{{- end }}

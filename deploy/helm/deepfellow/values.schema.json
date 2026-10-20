@@ -1,0 +1,1582 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DeepFellow Suite chart values",
+  "description": "Strict: an unknown key is an error, so a typo cannot be silently ignored. Shapes, enums and single-field formats live here; rules that compare fields, gate image digests or check password complexity live in templates/_validate.tpl, which can explain them in words.",
+  "type": "object",
+  "additionalProperties": false,
+  "definitions": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^(sha256:[a-f0-9]{64})?$"
+        },
+        "allowMutableTag": {
+          "type": "boolean"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        }
+      }
+    },
+    "credential": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Where the value comes from: one of secretRef, plaintext or generate (none = not set). secretKey is the key inside the Secret that holds it. null unsets a key set by an earlier values file.",
+      "properties": {
+        "secretRef": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Name of an existing Secret you manage to take the value from."
+        },
+        "secretKey": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "description": "Key inside the Secret that holds the value: yours for secretRef, the chart's otherwise."
+        },
+        "plaintext": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The raw value, written into values; the chart copies it into its own Secret."
+        },
+        "generate": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Generate on install, read back with lookup, keep on uninstall."
+        }
+      }
+    },
+    "modelBackend": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "llamaCpp"
+          ]
+        },
+        "modelId": {
+          "type": "string"
+        },
+        "image": {
+          "$ref": "#/definitions/image"
+        },
+        "gguf": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^([a-f0-9]{64})?$"
+            },
+            "hfToken": {
+              "$ref": "#/definitions/credential"
+            }
+          }
+        },
+        "downloadImage": {
+          "$ref": "#/definitions/image"
+        },
+        "parallel": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "threads": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contextLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "extraArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "gpu": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "size": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$"
+            },
+            "medium": {
+              "type": "string",
+              "enum": [
+                "",
+                "Memory"
+              ]
+            },
+            "storageClass": {
+              "type": "string"
+            },
+            "existingClaim": {
+              "type": "string"
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
+        },
+        "resources": {
+          "type": "object"
+        },
+        "nodeSelector": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "affinity": {
+          "type": "object"
+        },
+        "tolerations": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "podSecurityContext": {
+          "type": "object"
+        },
+        "containerSecurityContext": {
+          "type": "object"
+        },
+        "podLabels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "podAnnotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "readinessProbe": {
+          "type": "object"
+        },
+        "livenessProbe": {
+          "type": "object"
+        },
+        "startupProbe": {
+          "type": "object"
+        }
+      }
+    },
+    "externalBackend": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "apiType": {
+          "type": "string",
+          "enum": [
+            "openai"
+          ]
+        },
+        "apiUrl": {
+          "type": "string",
+          "pattern": "^(https?://.+)?$"
+        },
+        "modelId": {
+          "type": "string"
+        },
+        "contextLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "apiKey": {
+          "$ref": "#/definitions/credential"
+        }
+      }
+    },
+    "modelBackends": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+        "maxLength": 63
+      },
+      "additionalProperties": {
+        "$ref": "#/definitions/modelBackend"
+      }
+    },
+    "externalBackends": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+        "maxLength": 63
+      },
+      "additionalProperties": {
+        "$ref": "#/definitions/externalBackend"
+      }
+    }
+  },
+  "properties": {
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
+    "global": {
+      "type": "object",
+      "properties": {
+        "imageRegistry": {
+          "type": "string"
+        },
+        "imagePullSecrets": {
+          "type": "array",
+          "items": {
+            "type": [
+              "object",
+              "string"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "dependencyWait": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "$ref": "#/definitions/image"
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "delaySeconds": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "podSecurityContext": {
+      "type": "object"
+    },
+    "containerSecurityContext": {
+      "type": "object"
+    },
+    "podLabels": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "podAnnotations": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "infra": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "$ref": "#/definitions/image"
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "adminApiKey": {
+              "$ref": "#/definitions/credential"
+            },
+            "serverApiKey": {
+              "$ref": "#/definitions/credential"
+            }
+          }
+        },
+        "mesh": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "parent": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "key": {
+                  "$ref": "#/definitions/credential"
+                }
+              }
+            },
+            "childKey": {
+              "$ref": "#/definitions/credential"
+            },
+            "allowChildrenFrom": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "huggingFaceToken": {
+          "$ref": "#/definitions/credential"
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "size": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$"
+            },
+            "storageClass": {
+              "type": "string"
+            },
+            "existingClaim": {
+              "type": "string"
+            },
+            "mountPath": {
+              "type": "string"
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ]
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
+        },
+        "resources": {
+          "type": "object"
+        },
+        "nodeSelector": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "tolerations": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "affinity": {
+          "type": "object"
+        },
+        "podSecurityContext": {
+          "type": "object"
+        },
+        "containerSecurityContext": {
+          "type": "object"
+        },
+        "podLabels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "podAnnotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "readinessProbe": {
+          "type": "object"
+        },
+        "livenessProbe": {
+          "type": "object"
+        },
+        "startupProbe": {
+          "type": "object"
+        }
+      }
+    },
+    "modelBackends": {
+      "$ref": "#/definitions/modelBackends"
+    },
+    "externalBackends": {
+      "$ref": "#/definitions/externalBackends"
+    },
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "$ref": "#/definitions/image"
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ]
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "size": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$"
+            },
+            "storageClass": {
+              "type": "string"
+            },
+            "existingClaim": {
+              "type": "string"
+            }
+          }
+        },
+        "logLevel": {
+          "type": "string"
+        },
+        "mongo": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "embedded",
+                "external"
+              ]
+            },
+            "database": {
+              "type": "string"
+            },
+            "username": {
+              "type": "string"
+            },
+            "password": {
+              "$ref": "#/definitions/credential"
+            },
+            "embedded": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "image": {
+                  "$ref": "#/definitions/image"
+                },
+                "rootUsername": {
+                  "type": "string"
+                },
+                "rootPassword": {
+                  "$ref": "#/definitions/credential"
+                },
+                "storage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "size": {
+                      "type": "string",
+                      "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$"
+                    },
+                    "storageClass": {
+                      "type": "string"
+                    },
+                    "existingClaim": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "resources": {
+                  "type": "object"
+                },
+                "nodeSelector": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "tolerations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "affinity": {
+                  "type": "object"
+                },
+                "podSecurityContext": {
+                  "type": "object"
+                },
+                "containerSecurityContext": {
+                  "type": "object"
+                },
+                "podLabels": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "podAnnotations": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "readinessProbe": {
+                  "type": "object"
+                },
+                "livenessProbe": {
+                  "type": "object"
+                },
+                "startupProbe": {
+                  "type": "object"
+                }
+              }
+            },
+            "external": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "address": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "vectorDb": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "qdrant",
+                "milvus"
+              ]
+            },
+            "embedding": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "service": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "dimensions": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "qdrant": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "embedded",
+                    "external"
+                  ]
+                },
+                "embedded": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "image": {
+                      "$ref": "#/definitions/image"
+                    },
+                    "storage": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "size": {
+                          "type": "string",
+                          "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$"
+                        },
+                        "storageClass": {
+                          "type": "string"
+                        },
+                        "existingClaim": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "resources": {
+                      "type": "object"
+                    },
+                    "nodeSelector": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "tolerations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "affinity": {
+                      "type": "object"
+                    },
+                    "podSecurityContext": {
+                      "type": "object"
+                    },
+                    "containerSecurityContext": {
+                      "type": "object"
+                    },
+                    "podLabels": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "podAnnotations": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "readinessProbe": {
+                      "type": "object"
+                    },
+                    "livenessProbe": {
+                      "type": "object"
+                    },
+                    "startupProbe": {
+                      "type": "object"
+                    }
+                  }
+                },
+                "external": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "milvus": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "image": {
+                  "$ref": "#/definitions/image"
+                },
+                "storage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "size": {
+                      "type": "string",
+                      "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$"
+                    },
+                    "storageClass": {
+                      "type": "string"
+                    },
+                    "existingClaim": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "minio": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "image": {
+                      "$ref": "#/definitions/image"
+                    },
+                    "storage": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "size": {
+                          "type": "string",
+                          "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$"
+                        },
+                        "storageClass": {
+                          "type": "string"
+                        },
+                        "existingClaim": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "rootUser": {
+                      "$ref": "#/definitions/credential"
+                    },
+                    "rootPassword": {
+                      "$ref": "#/definitions/credential"
+                    },
+                    "resources": {
+                      "type": "object"
+                    },
+                    "nodeSelector": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "affinity": {
+                      "type": "object"
+                    },
+                    "tolerations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "podSecurityContext": {
+                      "type": "object"
+                    },
+                    "containerSecurityContext": {
+                      "type": "object"
+                    },
+                    "podLabels": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "podAnnotations": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "readinessProbe": {
+                      "type": "object"
+                    },
+                    "livenessProbe": {
+                      "type": "object"
+                    },
+                    "startupProbe": {
+                      "type": "object"
+                    }
+                  }
+                },
+                "resources": {
+                  "type": "object"
+                },
+                "nodeSelector": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "tolerations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "affinity": {
+                  "type": "object"
+                },
+                "podSecurityContext": {
+                  "type": "object"
+                },
+                "containerSecurityContext": {
+                  "type": "object"
+                },
+                "podLabels": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "podAnnotations": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "readinessProbe": {
+                  "type": "object"
+                },
+                "livenessProbe": {
+                  "type": "object"
+                },
+                "startupProbe": {
+                  "type": "object"
+                },
+                "etcd": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "image": {
+                      "$ref": "#/definitions/image"
+                    },
+                    "storage": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "size": {
+                          "type": "string",
+                          "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$"
+                        },
+                        "storageClass": {
+                          "type": "string"
+                        },
+                        "existingClaim": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "resources": {
+                      "type": "object"
+                    },
+                    "nodeSelector": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "affinity": {
+                      "type": "object"
+                    },
+                    "tolerations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "podSecurityContext": {
+                      "type": "object"
+                    },
+                    "containerSecurityContext": {
+                      "type": "object"
+                    },
+                    "podLabels": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "podAnnotations": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "readinessProbe": {
+                      "type": "object"
+                    },
+                    "livenessProbe": {
+                      "type": "object"
+                    },
+                    "startupProbe": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "falkordb": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "image": {
+              "$ref": "#/definitions/image"
+            },
+            "password": {
+              "$ref": "#/definitions/credential"
+            },
+            "storage": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "size": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$"
+                },
+                "storageClass": {
+                  "type": "string"
+                },
+                "existingClaim": {
+                  "type": "string"
+                }
+              }
+            },
+            "resources": {
+              "type": "object"
+            },
+            "nodeSelector": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "tolerations": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "affinity": {
+              "type": "object"
+            },
+            "podSecurityContext": {
+              "type": "object"
+            },
+            "containerSecurityContext": {
+              "type": "object"
+            },
+            "podLabels": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "podAnnotations": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "readinessProbe": {
+              "type": "object"
+            },
+            "livenessProbe": {
+              "type": "object"
+            },
+            "startupProbe": {
+              "type": "object"
+            }
+          }
+        },
+        "pluginsSetupJson": {
+          "type": "string"
+        },
+        "otel": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "endpoint": {
+              "type": "string"
+            }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "basicAuth": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "username": {
+                  "type": "string"
+                },
+                "password": {
+                  "$ref": "#/definitions/credential"
+                }
+              }
+            }
+          }
+        },
+        "resources": {
+          "type": "object"
+        },
+        "nodeSelector": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "tolerations": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "affinity": {
+          "type": "object"
+        },
+        "podSecurityContext": {
+          "type": "object"
+        },
+        "containerSecurityContext": {
+          "type": "object"
+        },
+        "podLabels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "podAnnotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "readinessProbe": {
+          "type": "object"
+        },
+        "livenessProbe": {
+          "type": "object"
+        },
+        "startupProbe": {
+          "type": "object"
+        }
+      }
+    },
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "$ref": "#/definitions/image"
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ]
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sessionSecret": {
+              "$ref": "#/definitions/credential"
+            },
+            "bootstrapAdmin": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string",
+                  "minLength": 3
+                },
+                "password": {
+                  "$ref": "#/definitions/credential"
+                }
+              }
+            }
+          }
+        },
+        "helperModel": {
+          "type": "string"
+        },
+        "mongo": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "database": {
+              "type": "string"
+            },
+            "image": {
+              "$ref": "#/definitions/image"
+            },
+            "replSetName": {
+              "type": "string"
+            },
+            "rootUsername": {
+              "type": "string"
+            },
+            "rootPassword": {
+              "$ref": "#/definitions/credential"
+            },
+            "keyFile": {
+              "$ref": "#/definitions/credential"
+            },
+            "storage": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "size": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$"
+                },
+                "storageClass": {
+                  "type": "string"
+                },
+                "existingClaim": {
+                  "type": "string"
+                }
+              }
+            },
+            "resources": {
+              "type": "object"
+            },
+            "nodeSelector": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "tolerations": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "affinity": {
+              "type": "object"
+            },
+            "podSecurityContext": {
+              "type": "object"
+            },
+            "containerSecurityContext": {
+              "type": "object"
+            },
+            "podLabels": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "podAnnotations": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "readinessProbe": {
+              "type": "object"
+            },
+            "livenessProbe": {
+              "type": "object"
+            },
+            "startupProbe": {
+              "type": "object"
+            }
+          }
+        },
+        "resources": {
+          "type": "object"
+        },
+        "nodeSelector": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "tolerations": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "affinity": {
+          "type": "object"
+        },
+        "podSecurityContext": {
+          "type": "object"
+        },
+        "containerSecurityContext": {
+          "type": "object"
+        },
+        "podLabels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "podAnnotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "readinessProbe": {
+          "type": "object"
+        },
+        "livenessProbe": {
+          "type": "object"
+        },
+        "startupProbe": {
+          "type": "object"
+        },
+        "redis": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "image": {
+              "$ref": "#/definitions/image"
+            },
+            "password": {
+              "$ref": "#/definitions/credential"
+            },
+            "storage": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "size": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$"
+                },
+                "storageClass": {
+                  "type": "string"
+                },
+                "existingClaim": {
+                  "type": "string"
+                }
+              }
+            },
+            "resources": {
+              "type": "object"
+            },
+            "nodeSelector": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "tolerations": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "affinity": {
+              "type": "object"
+            },
+            "podSecurityContext": {
+              "type": "object"
+            },
+            "containerSecurityContext": {
+              "type": "object"
+            },
+            "podLabels": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "podAnnotations": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "readinessProbe": {
+              "type": "object"
+            },
+            "livenessProbe": {
+              "type": "object"
+            },
+            "startupProbe": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "provisioning": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "revision": {
+          "type": [
+            "string",
+            "integer"
+          ],
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+        },
+        "allowNoModels": {
+          "type": "boolean"
+        },
+        "admin": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string",
+              "minLength": 3
+            },
+            "password": {
+              "$ref": "#/definitions/credential"
+            }
+          }
+        },
+        "project": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "organization": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "apiKeyName": {
+              "type": "string"
+            }
+          }
+        },
+        "image": {
+          "$ref": "#/definitions/image"
+        },
+        "stateSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "serviceAccount": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "create": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "resources": {
+          "type": "object"
+        },
+        "nodeSelector": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "tolerations": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "affinity": {
+          "type": "object"
+        },
+        "podSecurityContext": {
+          "type": "object"
+        },
+        "containerSecurityContext": {
+          "type": "object"
+        },
+        "podLabels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "podAnnotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "readinessProbe": {
+          "type": "object"
+        },
+        "livenessProbe": {
+          "type": "object"
+        },
+        "startupProbe": {
+          "type": "object"
+        }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "className": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "server": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "host": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          }
+        },
+        "workspace": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "host": {
+              "type": "string"
+            }
+          }
+        },
+        "tls": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

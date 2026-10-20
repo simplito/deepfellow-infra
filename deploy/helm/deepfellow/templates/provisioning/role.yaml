@@ -1,0 +1,18 @@
+{{- if .Values.provisioning.enabled }}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "provisioning") }}
+{{- $stateSecret := include "deepfellow.provisioning.stateSecretName" . }}
+{{- if .Values.provisioning.serviceAccount.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: provisioning
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["{{ $stateSecret }}"]
+    verbs: ["get", "update", "patch"]
+{{- end }}
+{{- end }}

@@ -1,0 +1,130 @@
+{{- $cred := include "deepfellow.credentials" . | fromYaml -}}
+{{- $fullname := include "deepfellow.componentName" (dict "context" . "component" "server") -}}
+{{- $secretName := include "deepfellow.credSecretName" (dict "context" . "component" "server") -}}
+{{- $selector := include "deepfellow.selectorLabels" (dict "context" . "component" "server") -}}
+{{- $infraFullname := include "deepfellow.componentName" (dict "context" . "component" "infra") -}}
+{{- $infraSecret := include "deepfellow.credSecretName" (dict "context" . "component" "infra") -}}
+{{- $mongoSecret := include "deepfellow.credSecretName" (dict "context" . "component" "mongo") -}}
+{{- $s := .Values.server -}}
+{{/* The Server resolves filestorage and the plugins dir relative to its CWD (/app), so the
+     PVC mount point is part of its contract, not a free choice. Declared once, used by the
+     volumeMount and by DF_PLUGINS_PATH in this file. */}}
+{{- $storageMount := "/app/storage" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "deepfellow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- $selector | nindent 6 }}
+  template:
+    metadata:
+      {{- include "deepfellow.podMetadata" (dict "context" . "values" $s "component" "server" "credentials" (list $cred.infra.auth.serverApiKey $cred.server.mongo.password $cred.server.falkordb.password $cred.server.metrics.basicAuth.password)) | nindent 6 }}
+    spec:
+      {{- include "deepfellow.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "deepfellow.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "deepfellow.podSecurityContext" (dict "context" . "values" $s) | nindent 8 }}
+      {{/* Hold the Server until an in-chart vector store is up: it connects at startup and exits if it
+           cannot, which on a cold install otherwise costs a restart. An external store is not ours
+           to wait for. */}}
+      {{- $waitUrls := list }}
+      {{- if include "deepfellow.qdrant.inChart" . }}
+      {{- $waitUrls = append $waitUrls (printf "http://%s/readyz" (include "deepfellow.address" (dict "context" . "port" "qdrant.http"))) }}
+      {{- else if include "deepfellow.milvus.inChart" . }}
+      {{- $waitUrls = append $waitUrls (printf "http://%s/healthz" (include "deepfellow.address" (dict "context" . "port" "milvus.metrics"))) }}
+      {{- end }}
+      {{- with $waitUrls }}
+      initContainers:
+        {{- include "deepfellow.waitFor" (dict "context" $ "values" $s "name" "wait-for-vector-db" "urls" . "resources" $s.resources) | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: server
+          image: {{ include "deepfellow.image" (dict "context" . "image" $s.image) }}
+          imagePullPolicy: {{ $s.image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "deepfellow.containerSecurityContext" (dict "context" . "values" $s) | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ include "deepfellow.port" "server.http" }}
+              protocol: TCP
+          env:
+            - name: DF_LOG_LEVEL
+              value: {{ $s.logLevel | quote }}
+            # --- Infra link (double-underscore keys: nested settings in the Server's config) ---
+            - name: DF_INFRA__URL
+              value: {{ printf "http://%s:%v" $infraFullname .Values.infra.service.port | quote }}
+            {{- include "deepfellow.credEnv" (dict "name" "DF_INFRA__API_KEY" "cred" $cred.infra.auth.serverApiKey "secretName" $infraSecret "required" true) | nindent 12 }}
+            # --- Mongo ---
+            {{- include "deepfellow.mongoEnv" (dict "context" . "mongoSecret" $mongoSecret "serverSecret" $secretName) | nindent 12 }}
+            # --- Plugins ---
+            {{/* Unconditional: the plugin manager resolves this directory at startup whatever
+                 pluginsSetupJson says. It defaults to the CWD-relative "plugins" => /app/plugins,
+                 which is root-owned and unwritable for the non-root runtime user, so the Server
+                 crashes with PermissionError. Keep it on the mounted PVC. */}}
+            - name: DF_PLUGINS_PATH
+              value: {{ printf "%s/plugins" $storageMount | quote }}
+            {{- with $s.pluginsSetupJson }}
+            - name: DF_PLUGINS_SETUP
+              value: {{ . | quote }}
+            {{- end }}
+            # --- Vector DB ---
+            - name: DF_VECTOR_DATABASE__PROVIDER__ACTIVE
+              value: {{ ternary "1" "0" $s.vectorDb.enabled | quote }}
+            {{- if $s.vectorDb.enabled }}
+            - name: DF_VECTOR_DATABASE__PROVIDER__TYPE
+              value: {{ $s.vectorDb.type | quote }}
+            - name: DF_VECTOR_DATABASE__PROVIDER__URL
+              {{- if include "deepfellow.qdrant.inChart" . }}
+              value: {{ printf "http://%s" (include "deepfellow.address" (dict "context" . "port" "qdrant.http")) | quote }}
+              {{- else if eq $s.vectorDb.type "qdrant" }}
+              value: {{ $s.vectorDb.qdrant.external.url | quote }}
+              {{- else }}
+              value: {{ printf "http://%s" (include "deepfellow.address" (dict "context" . "port" "milvus.grpc")) | quote }}
+              {{- end }}
+            - name: DF_VECTOR_DATABASE__EMBEDDING__ACTIVE
+              value: "1"
+            - name: DF_VECTOR_DATABASE__EMBEDDING__ENDPOINT
+              value: {{ $s.vectorDb.embedding.service | quote }}
+            - name: DF_VECTOR_DATABASE__EMBEDDING__MODEL
+              value: {{ $s.vectorDb.embedding.model | quote }}
+            - name: DF_VECTOR_DATABASE__EMBEDDING__SIZE
+              value: {{ $s.vectorDb.embedding.dimensions | quote }}
+            {{- end }}
+            # --- Graph ---
+            {{- if $s.falkordb.enabled }}
+            - name: DF_GRAPH__ENABLED
+              value: "1"
+            - name: DF_GRAPH__HOST
+              value: {{ include "deepfellow.componentName" (dict "context" . "component" "falkordb") | quote }}
+            - name: DF_GRAPH__PORT
+              value: {{ include "deepfellow.port" "falkordb.redis" | quote }}
+            {{- include "deepfellow.credEnv" (dict "name" "DF_GRAPH__PASSWORD" "cred" $cred.server.falkordb.password "secretName" $secretName "required" true) | nindent 12 }}
+            {{- end }}
+            # --- Metrics ---
+            {{- if $s.metrics.basicAuth.enabled }}
+            - name: DF_METRICS_USERNAME
+              value: {{ $s.metrics.basicAuth.username | quote }}
+            {{- include "deepfellow.credEnv" (dict "name" "DF_METRICS_PASSWORD" "cred" $cred.server.metrics.basicAuth.password "secretName" $secretName "required" true) | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: storage
+              mountPath: {{ $storageMount }}
+          {{- include "deepfellow.probes" (dict "defaults" (include "deepfellow.probeDefaults.server" . | fromYaml) "values" $s) | nindent 10 }}
+          {{- with $s.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: {{ $s.storage.existingClaim | default $fullname }}
+      {{- include "deepfellow.podPlacement" $s | nindent 6 }}
