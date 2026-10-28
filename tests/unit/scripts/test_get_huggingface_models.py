@@ -1800,6 +1800,89 @@ async def test_collect_stt_models_ranks_families_globally_and_cuts_to_limit() ->
 
 
 @pytest.mark.asyncio
+async def test_collect_stt_models_keeps_gguf_tagged_repo_with_native_weights() -> None:
+    multi_format = {"id": "audarai/Audar-ASR-V1-Turbo", "tags": ["gguf"], "downloads": 100, "trendingScore": 100}
+    detail = {**multi_format, "siblings": [{"rfilename": "model.safetensors"}, {"rfilename": "gguf/model-Q4_K_M.gguf"}]}
+
+    async def fake_fetch(session: Mock, tag: str, sort: str, limit: int, extra_filter: str | None = None) -> list[dict[str, Any]]:
+        return [multi_format, {"id": "openai/whisper-small", "downloads": 10, "trendingScore": 10}]
+
+    with (
+        patch("scripts.get_huggingface_models.fetch_popular_models", side_effect=fake_fetch),
+        patch("scripts.get_huggingface_models.get_model_detail_cached", return_value=detail) as detail_mock,
+    ):
+        result = await collect_stt_models(MagicMock(), {"downloads": 1, "trendingScore": 1})
+
+    assert [m["id"] for m in result] == ["audarai/Audar-ASR-V1-Turbo"]
+    assert detail_mock.await_count == 1  # fetched once per unique candidate, not per sort key/family
+
+
+@pytest.mark.asyncio
+async def test_collect_stt_models_drops_gguf_only_tagged_repo() -> None:
+    gguf_only = {"id": "org/whisper-large", "tags": ["gguf"]}
+    detail = {**gguf_only, "siblings": [{"rfilename": "whisper-large.Q4_K_M.gguf"}]}
+
+    async def fake_fetch(session: Mock, tag: str, sort: str, limit: int, extra_filter: str | None = None) -> list[dict[str, Any]]:
+        return [gguf_only, {"id": "openai/whisper-small"}]
+
+    log = MagicMock()
+    with (
+        patch("scripts.get_huggingface_models.fetch_popular_models", side_effect=fake_fetch),
+        patch("scripts.get_huggingface_models.get_model_detail_cached", return_value=detail),
+    ):
+        result = await collect_stt_models(MagicMock(), {"downloads": 10}, log)
+
+    assert [m["id"] for m in result] == ["openai/whisper-small"]
+    assert log.call_args_list == [call("Dropped 1 STT candidate(s) as gguf/mlx/ONNX/CoreML/aligner/test repos before ranking.")]
+
+
+@pytest.mark.asyncio
+async def test_collect_stt_models_drops_gguf_only_repo_before_cutting_to_limit() -> None:
+    gguf_only = {"id": "org/whisper-large", "tags": ["gguf"], "downloads": 100}
+    detail = {**gguf_only, "siblings": [{"rfilename": "whisper-large.Q4_K_M.gguf"}]}
+
+    async def fake_fetch(session: Mock, tag: str, sort: str, limit: int, extra_filter: str | None = None) -> list[dict[str, Any]]:
+        return [gguf_only, {"id": "openai/whisper-small", "downloads": 10}]
+
+    with (
+        patch("scripts.get_huggingface_models.fetch_popular_models", side_effect=fake_fetch),
+        patch("scripts.get_huggingface_models.get_model_detail_cached", return_value=detail),
+    ):
+        result = await collect_stt_models(MagicMock(), {"downloads": 1})
+
+    assert [m["id"] for m in result] == ["openai/whisper-small"]
+
+
+@pytest.mark.asyncio
+async def test_collect_stt_models_drops_gguf_tagged_repo_when_detail_fetch_fails() -> None:
+    async def fake_fetch(session: Mock, tag: str, sort: str, limit: int, extra_filter: str | None = None) -> list[dict[str, Any]]:
+        return [{"id": "org/whisper-large", "tags": ["gguf"]}, {"id": "openai/whisper-small"}]
+
+    with (
+        patch("scripts.get_huggingface_models.fetch_popular_models", side_effect=fake_fetch),
+        patch("scripts.get_huggingface_models.get_model_detail_cached", side_effect=aiohttp.ClientError("boom")),
+    ):
+        result = await collect_stt_models(MagicMock(), {"downloads": 10})
+
+    assert [m["id"] for m in result] == ["openai/whisper-small"]
+
+
+@pytest.mark.asyncio
+async def test_collect_stt_models_skips_detail_fetch_for_prefiltered_repos() -> None:
+    async def fake_fetch(session: Mock, tag: str, sort: str, limit: int, extra_filter: str | None = None) -> list[dict[str, Any]]:
+        return [{"id": "mlx-community/whisper-tiny", "tags": ["gguf"]}, {"id": "onnx-community/whisper-tiny", "tags": ["gguf"]}]
+
+    with (
+        patch("scripts.get_huggingface_models.fetch_popular_models", side_effect=fake_fetch),
+        patch("scripts.get_huggingface_models.get_model_detail_cached") as detail_mock,
+    ):
+        result = await collect_stt_models(MagicMock(), {"downloads": 10})
+
+    assert result == []
+    detail_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_main_stt_drops_unsupported_architectures(capsys: pytest.CaptureFixture[str]) -> None:
     models = [{"id": "openai/whisper-small"}, {"id": "facebook/wav2vec2-base"}, {"id": "org/unfetched"}]
     architectures: dict[str, list[str] | None] = {
