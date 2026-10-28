@@ -35,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Installing an Ollama instance on rootful Docker no longer fails with `Permission denied` when its model store was created as root by an earlier install.
 - 5xx responses from local models and streams broken off by the model count as errors in `deepfellow_requests_total` and `deepfellow_request_errors_total` (5xx as `error_type="http_5xx"`), so the error rate on dashboards goes up.
 - Custom vLLM models whose HuggingFace repo also ships a GGUF variant (e.g. `mixedbread-ai/mxbai-embed-large-v1`) are no longer rejected as GGUF, and are no longer dropped from the model catalog.
+- vLLM speech-to-text catalog now includes models whose HuggingFace repo has GGUF files next to the regular weights.
 
 ## [0.36.0] - 2026-10-21
 

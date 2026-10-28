@@ -541,15 +541,22 @@ async def collect_stt_models(
         for family in STT_FAMILY_FILTERS
     ]
     results = iter(await asyncio.gather(*fetch_tasks))
+    fetched_by_sort = {sort: {m["id"]: m for _ in STT_TAGS for _ in STT_FAMILY_FILTERS for m in next(results)} for sort in active}
+    servable = {
+        mid: m
+        for fetched in fetched_by_sort.values()
+        for mid, m in fetched.items()
+        if not is_test_fixture(m) and not is_mlx(m) and not is_non_servable_stt_repo(m)
+    }
+    non_gguf = {m["id"] for m in await _drop_gguf_models(session, list(servable.values()))}
+
     seen: set[str] = set()
     prefiltered: set[str] = set()
     models: list[dict[str, Any]] = []
     for sort, limit in active.items():
-        batches = [next(results) for _ in STT_TAGS for _ in STT_FAMILY_FILTERS]
-        fetched = {m["id"]: m for batch in batches for m in batch}.values()
-        candidates = [m for m in fetched if not is_gguf(m) and not is_test_fixture(m) and not is_mlx(m) and not is_non_servable_stt_repo(m)]
-        kept = {m["id"] for m in candidates}
-        prefiltered.update(m["id"] for m in fetched if m["id"] not in kept)
+        fetched = fetched_by_sort[sort].values()
+        candidates = [m for m in fetched if m["id"] in non_gguf]
+        prefiltered.update(m["id"] for m in fetched if m["id"] not in non_gguf)
         candidates.sort(key=lambda m: m.get(sort) or 0, reverse=True)
         for m in candidates[:limit]:
             if m["id"] not in seen:
