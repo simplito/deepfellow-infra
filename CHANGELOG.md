@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+
+- `/opsx:sync` command and `openspec-sync-specs` skill, from OpenSpec 1.15.0.
+- `THIRD_PARTY.md` with the MIT license notice for the OpenSpec-generated commands and skills.
+
+### Changed
+
+- OpenSpec `/opsx:*` commands and `openspec-*` skills regenerated with OpenSpec 1.15.0 (from 1.3.1).
+
+
 ## [0.37.0] - 2026-10-28
 
 ### Added
@@ -18,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - vLLM catalog now lists 50 speech-to-text models, and the catalog refresh fetches them from HuggingFace.
 - `just test-unit`, `just test-e2e` and `just test-smoke` commands.
 - Model and provider failures are reported to Sentry.
+
 
 ### Changed
 
