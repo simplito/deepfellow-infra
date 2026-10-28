@@ -8,8 +8,10 @@ import json
 import time
 
 import aiohttp
+from fastapi import HTTPException
 
-from server.models.models import InstallModelIn, InstallModelOut, ListModelsFilters, ListModelsOut
+from server.models.models import CustomModelSpecification, InstallModelIn, InstallModelOut, ListModelsFilters, ListModelsOut
+from server.services.base2_service import CustomModel, InstanceConfig
 from server.services.remote_service import DefaultRemoteServiceOptions, RemoteConst, RemoteModel, RemoteService
 from server.utils.core import PromiseWithProgress, StreamChunk
 
@@ -37,12 +39,27 @@ class OllamaCloudService(RemoteService):
         """Return the default API URL."""
         return "https://ollama.com"
 
+    def get_custom_model_spec(self) -> CustomModelSpecification | None:
+        """Return None — custom models are not supported, only models listed by ollama.com /api/tags are available."""
+        return None
+
+    def _add_custom_model(self, instance: str, model: CustomModel) -> None:  # noqa: ARG002
+        """Reject custom models."""
+        raise HTTPException(400, "This service does not support custom models.")
+
+    async def load_instance(self, instance: str, instance_data: InstanceConfig) -> None:
+        """Load instance, dropping custom models left in the config from before they were unsupported."""
+        await super().load_instance(instance, instance_data.model_copy(update={"custom": None}))
+
     def get_models_registry(self) -> RemoteConst:
         """Return empty registry — models are fetched dynamically."""
         return RemoteConst(models={})
 
     async def _fetch_models_from_api(self, instance: str) -> dict[str, RemoteModel] | None:
-        """Fetch available models from ollama.com /api/tags. Returns None on error or empty list."""
+        """Fetch available models from ollama.com /api/tags, typing those with the `decision` capability as decision models.
+
+        Returns None on error or empty list.
+        """
         info = self.get_instance_installed_info(instance)
         api_url = info.parsed_options.api_url
         api_key = info.parsed_options.api_key
@@ -56,7 +73,11 @@ class OllamaCloudService(RemoteService):
                 models_raw = body.get("models", [])
                 if not models_raw:
                     return None
-                return {m["name"]: RemoteModel(type="llm") for m in models_raw if m.get("name")}
+                return {
+                    m["name"]: RemoteModel(type="decision" if "decision" in (m.get("capabilities") or []) else "llm")
+                    for m in models_raw
+                    if m.get("name")
+                }
         except Exception:
             return None
 
@@ -75,6 +96,8 @@ class OllamaCloudService(RemoteService):
                 self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
             elif model.type == "embedding":
                 self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
+            elif model.type == "decision":
+                self.endpoint_registry.unregister_systemone(model.registered_name, model.registration_id)
             del info.models[model.id]
 
     async def _refresh_models(self, instance: str, *, force: bool = False) -> None:

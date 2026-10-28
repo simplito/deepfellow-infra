@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Ollama `mode` option: in `offline` mode Infra downloads Ollama registry models itself, so the container does not need to reach the registry.
 - `POST /v1/systemone` serves Ollama decision models (new model type `decision`); needs Ollama 0.35.0 or newer.
+- `POST /v1/systemone` also serves Ollama Cloud decision models (e.g. `clef:27b`); custom models of remote services such as OpenAI can have type `decision`.
 - Chat completions accept `thinking_token_budget`, `chat_template_kwargs`, `repetition_detection`, `top_k`, `min_p`, `repetition_penalty`, `presence_penalty`, `frequency_penalty`, `logprobs` and `parallel_tool_calls`, passed to self-hosted backends and mesh peers only.
 - Legacy completions (`/v1/completions`) accept `thinking_token_budget`, `repetition_detection`, `top_k`, `min_p` and `repetition_penalty`, passed to self-hosted backends and mesh peers only.
 - `/admin/config` limits `max_generated_tokens`, `max_context_tokens`, `max_choices`, `max_top_k`.
@@ -20,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 
 - Installed Ollama decision models move from the chat endpoints to `/v1/systemone` on restart.
+- Ollama Cloud lists decision models as `decision` instead of `llm`; an installed one moves to `/v1/systemone` on restart.
 - Mesh: upgrade every node before any of them has a decision model; older nodes reject peers that report one.
 - Default Ollama image is now `0.40.8`; unpinned instances switch on next start and keep their models.
 - LLM requests above the `/admin/config` generation limits get a 422 instead of reaching the model.
@@ -30,6 +32,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ollama `/api/chat` without a positive `num_predict` stops at `max_generated_tokens`.
 - `just test-live` renamed to `just test-integration`; `DF_TEST_LIVE_REGISTRIES` to `DF_TEST_INTEGRATION_REGISTRIES`.
 - Bruno smoke tests moved to `tests/smoke`.
+
+### Removed
+
+- Adding custom models to Ollama Cloud; they never worked there.
 
 ### Fixed
 
