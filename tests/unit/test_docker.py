@@ -644,6 +644,16 @@ async def test_get_container_status_exited(docker_service: DockerService) -> Non
 
 
 @pytest.mark.asyncio
+async def test_get_container_status_exited_with_exit_code_and_oom_kill(docker_service: DockerService) -> None:
+    cm, _ = _mock_container_show({"State": {"Status": "exited", "ExitCode": 137, "OOMKilled": True}, "RestartCount": 1})
+
+    with patch("server.docker.Docker", return_value=cm):
+        result = await docker_service.get_container_status("mymodel")
+
+    assert result == ContainerStatus(exists=True, state="exited", health="", restart_count=1, exit_code=137, oom_killed=True)
+
+
+@pytest.mark.asyncio
 async def test_get_container_status_restarting(docker_service: DockerService) -> None:
     cm, _ = _mock_container_show({"State": {"Status": "restarting"}, "RestartCount": 5})
 

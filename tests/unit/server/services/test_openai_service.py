@@ -234,3 +234,31 @@ async def test_load_instance_preserves_persisted_model_missing_from_live_listing
     out = await svc.list_models("default", ListModelsFilters())
     by_id = {model.id: model for model in out.list}
     assert by_id["gpt-4o"].stale is True
+
+
+def test_get_secret_values_returns_installed_and_configured_api_keys(svc: OpenAIService) -> None:
+    svc.instances_info["default"].installed = _make_installed(api_key="sk-live")
+    svc.instances_info["default"].config = InstanceConfig(options=InstallServiceIn(spec={"api_key": "sk-saved"}))
+
+    result = svc.get_secret_values()
+
+    assert sorted(result) == ["sk-live", "sk-saved"]
+
+
+def test_get_secret_values_follows_updated_api_key(svc: OpenAIService) -> None:
+    svc.instances_info["default"].installed = _make_installed(api_key="sk-old")
+    svc.get_secret_values()
+
+    svc.instances_info["default"].installed = _make_installed(api_key="sk-new")
+
+    assert svc.get_secret_values() == ["sk-new"]
+
+
+def test_get_secret_values_skips_empty_key_and_non_password_options(svc: OpenAIService) -> None:
+    svc.instances_info["default"].installed = _make_installed(api_key="")
+
+    assert svc.get_secret_values() == []
+
+
+def test_get_secret_values_empty_when_not_installed(svc: OpenAIService) -> None:
+    assert svc.get_secret_values() == []

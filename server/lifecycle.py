@@ -99,6 +99,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             parents, configured_mesh_url=config.connect_to_mesh_url, configured_mesh_key=config.connect_to_mesh_key
         )
         app.state.services_manager = services_manager = ServicesManager()
+        sentry.register_secret_source(services_manager.secret_values)
         app.state.model_tester = model_tester = ModelTester()
         app.state.endpoint_registry = endpoint_registry = EndpointRegistry(config, parent_infra, model_tester, metrics_registry)
         app.state.infra_websocket_server = infra_websocket_server = InfraWebsocketServer(config, parent_infra, endpoint_registry)

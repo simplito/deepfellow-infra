@@ -12,8 +12,9 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import aiohttp
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response, StreamingResponse
+from fastapi.testclient import TestClient
 from prometheus_client import CollectorRegistry
 from pydantic import BaseModel, ValidationError
 
@@ -40,6 +41,7 @@ from server.endpointregistry import (
     post_json_rerank_sglang,
     post_json_responses,
 )
+from server.error_handlers import register_exception_handlers
 from server.metrics_registry import MetricsRegistry
 from server.models.api import (
     ChatCompletionRequest,
@@ -60,6 +62,7 @@ from server.models.api import (
     SystemOneRequest,
 )
 from server.utils.core import HttpClientError
+from server.utils.sentry import UpstreamError, attached_tags, is_reported
 from server.websockets.models import UsageChangeRequest
 
 
@@ -3170,6 +3173,365 @@ async def test_with_usage_counts_exception_before_response_as_error(
     assert request_metrics(metrics_registry, local_model) == ERROR
     assert request_errors(metrics_registry, local_model) == {"connection_error": 1.0}
     assert local_model.usage == 0
+
+
+@pytest.fixture
+def vllm_model(metered_registry: EndpointRegistry) -> RegisteredModel[Any]:
+    rid = metered_registry.register_chat_completion(
+        "qwen3", make_props(), make_chat_endpoint(), RegistrationOptions(origin="local", owned_by="vllm")
+    )
+    return metered_registry.registry[rid].registered_model
+
+
+VLLM_TAGS = {"service": "vllm", "model": "qwen3", "model_type": "llm"}
+
+
+@pytest.mark.parametrize("status_code", [500, 502, 503, 504])
+@pytest.mark.asyncio
+@patch("server.endpointregistry.logger")
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_reports_non_streamed_5xx_once(
+    mock_capture_exception: MagicMock,
+    mock_logger: MagicMock,
+    metered_registry: EndpointRegistry,
+    vllm_model: RegisteredModel[Any],
+    status_code: int,
+):
+    response = Response(content=b"prompt: tell me a secret", status_code=status_code, headers={"x-upstream": "1"})
+
+    result = await metered_registry.with_usage(vllm_model, AsyncMock(return_value=response))
+
+    assert result is response
+    assert result.body == b"prompt: tell me a secret"
+    assert result.headers["x-upstream"] == "1"
+    assert mock_capture_exception.call_count == 1
+    exc = mock_capture_exception.call_args.args[0]
+    assert isinstance(exc, UpstreamError)
+    assert str(exc) == f"vllm upstream returned HTTP {status_code}"
+    error_id = mock_capture_exception.call_args.kwargs["error_id"]
+    assert mock_capture_exception.call_args == call(
+        exc,
+        error_id=error_id,
+        tags={**VLLM_TAGS, "error_type": "http_5xx", "upstream_status": str(status_code)},
+        fingerprint=["upstream-http", "vllm", str(status_code)],
+    )
+    assert mock_logger.warning.call_args == call(
+        "Request to model %r of service %s failed: HTTP %s (error_id=%s)", "qwen3", "vllm", str(status_code), error_id
+    )
+
+
+@pytest.mark.asyncio
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_reports_streamed_5xx_once_and_keeps_stream(
+    mock_capture_exception: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any]
+):
+    response = StreamingResponse(stream_chunks(b"model ", b"overloaded"), status_code=503, headers={"x-upstream": "1"})
+
+    result = await metered_registry.with_usage(vllm_model, AsyncMock(return_value=response))
+    reported_before_body = mock_capture_exception.call_count
+    chunks = await read_stream(result)
+
+    assert reported_before_body == 1
+    assert mock_capture_exception.call_count == 1
+    assert result.status_code == 503
+    assert result.headers["x-upstream"] == "1"
+    assert chunks == [b"model ", b"overloaded"]
+    assert mock_capture_exception.call_args.kwargs["tags"] == {**VLLM_TAGS, "error_type": "http_5xx", "upstream_status": "503"}
+
+
+@pytest.mark.asyncio
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_reports_broken_5xx_stream_once_and_marks_exception_reported(
+    mock_capture_exception: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any]
+):
+    error = aiohttp.ClientPayloadError("broken")
+    response = StreamingResponse(stream_chunks(b"partial", error=error), status_code=502)
+    result = await metered_registry.with_usage(vllm_model, AsyncMock(return_value=response))
+
+    with pytest.raises(aiohttp.ClientPayloadError):
+        await read_stream(result)
+
+    assert mock_capture_exception.call_count == 1
+    assert is_reported(error) is True
+    assert attached_tags(error) == {**VLLM_TAGS, "error_type": "connection_error"}
+
+
+@pytest.mark.parametrize("status_code", [200, 201, 400, 401, 404, 422, 429, 499])
+@pytest.mark.asyncio
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_does_not_report_non_5xx_response(
+    mock_capture_exception: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any], status_code: int
+):
+    response = Response(content=b"body", status_code=status_code)
+
+    result = await metered_registry.with_usage(vllm_model, AsyncMock(return_value=response))
+
+    assert result is response
+    assert mock_capture_exception.call_count == 0
+
+
+@pytest.mark.parametrize("status_code", [200, 429])
+@pytest.mark.asyncio
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_does_not_report_non_5xx_stream(
+    mock_capture_exception: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any], status_code: int
+):
+    response = StreamingResponse(stream_chunks(b"hello ", b"world"), status_code=status_code)
+
+    result = await metered_registry.with_usage(vllm_model, AsyncMock(return_value=response))
+    chunks = await read_stream(result)
+
+    assert chunks == [b"hello ", b"world"]
+    assert mock_capture_exception.call_count == 0
+
+
+@pytest.mark.asyncio
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_does_not_report_non_response_result(
+    mock_capture_exception: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any]
+):
+    result = await metered_registry.with_usage(vllm_model, AsyncMock(return_value={"status_code": 500}))
+
+    assert result == {"status_code": 500}
+    assert mock_capture_exception.call_count == 0
+
+
+@pytest.mark.parametrize("status_code", [500, 503])
+@pytest.mark.asyncio
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_reports_5xx_http_exception_from_service(
+    mock_capture_exception: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any], status_code: int
+):
+    error = HTTPException(status_code, "Something went wrong")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await metered_registry.with_usage(vllm_model, AsyncMock(side_effect=error))
+
+    assert exc_info.value is error
+    assert mock_capture_exception.call_count == 1
+    assert mock_capture_exception.call_args == call(
+        error,
+        error_id=mock_capture_exception.call_args.kwargs["error_id"],
+        tags={**VLLM_TAGS, "error_type": "model_error", "upstream_status": str(status_code)},
+        fingerprint=None,
+    )
+    assert is_reported(error) is True
+
+
+@pytest.mark.parametrize("status_code", [400, 404, 429])
+@pytest.mark.asyncio
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_does_not_report_4xx_http_exception_from_service(
+    mock_capture_exception: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any], status_code: int
+):
+    error = HTTPException(status_code, "Bad request")
+
+    with pytest.raises(HTTPException):
+        await metered_registry.with_usage(vllm_model, AsyncMock(side_effect=error))
+
+    assert mock_capture_exception.call_count == 0
+    assert is_reported(error) is False
+    assert attached_tags(error) == {**VLLM_TAGS, "error_type": "model_error"}
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_error_type"),
+    [
+        (aiohttp.ClientConnectionError("refused"), "connection_error"),
+        (TimeoutError(), "timeout"),
+        (RuntimeError("boom"), "model_error"),
+    ],
+)
+@pytest.mark.asyncio
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_tags_exception_before_response_for_global_handler(
+    mock_capture_exception: MagicMock,
+    metered_registry: EndpointRegistry,
+    vllm_model: RegisteredModel[Any],
+    error: Exception,
+    expected_error_type: str,
+):
+    with pytest.raises(type(error)):
+        await metered_registry.with_usage(vllm_model, AsyncMock(side_effect=error))
+
+    assert mock_capture_exception.call_count == 0
+    assert attached_tags(error) == {**VLLM_TAGS, "error_type": expected_error_type}
+    assert is_reported(error) is False
+
+
+@pytest.mark.asyncio
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_tags_exception_breaking_successful_stream(
+    mock_capture_exception: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any]
+):
+    error = aiohttp.ClientPayloadError("broken")
+    response = StreamingResponse(stream_chunks(b"partial", error=error), status_code=200)
+    result = await metered_registry.with_usage(vllm_model, AsyncMock(return_value=response))
+
+    with pytest.raises(aiohttp.ClientPayloadError):
+        await read_stream(result)
+
+    assert mock_capture_exception.call_count == 0
+    assert attached_tags(error) == {**VLLM_TAGS, "error_type": "connection_error"}
+    assert is_reported(error) is False
+
+
+@pytest.mark.asyncio
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_does_not_report_or_tag_cancelled_stream(
+    mock_capture_exception: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any]
+):
+    error = asyncio.CancelledError()
+    response = StreamingResponse(stream_chunks(b"partial", error=error), status_code=200)
+    result = await metered_registry.with_usage(vllm_model, AsyncMock(return_value=response))
+
+    with pytest.raises(asyncio.CancelledError):
+        await read_stream(result)
+
+    assert mock_capture_exception.call_count == 0
+    assert attached_tags(error) == {}
+
+
+@pytest.mark.asyncio
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_reports_5xx_stream_closed_by_client_once(
+    mock_capture_exception: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any]
+):
+    response = StreamingResponse(stream_chunks(b"first", b"second"), status_code=500)
+    result = await metered_registry.with_usage(vllm_model, AsyncMock(return_value=response))
+    body_iterator = cast("AsyncGenerator[bytes]", result.body_iterator)
+
+    await anext(body_iterator)
+    await body_iterator.aclose()
+
+    assert mock_capture_exception.call_count == 1
+
+
+@pytest.mark.asyncio
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_does_not_report_or_tag_mesh_model(mock_capture_exception: MagicMock, metered_registry: EndpointRegistry):
+    rid = metered_registry.register_chat_completion("gpt-4", make_props(), make_chat_endpoint(), RegistrationOptions(origin="http://peer"))
+    model = metered_registry.registry[rid].registered_model
+    error = aiohttp.ClientConnectionError("refused")
+
+    result = await metered_registry.with_usage(model, AsyncMock(return_value=Response(status_code=500)))
+    with pytest.raises(aiohttp.ClientConnectionError):
+        await metered_registry.with_usage(model, AsyncMock(side_effect=error))
+
+    assert result.status_code == 500
+    assert mock_capture_exception.call_count == 0
+    assert attached_tags(error) == {}
+
+
+def _app_proxying(registry: EndpointRegistry, model: RegisteredModel[Any], func: AsyncMock) -> TestClient:
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    async def proxied() -> Any:
+        return await registry.with_usage(model, func)
+
+    app.add_api_route("/proxied", proxied, methods=["GET"])
+    return TestClient(app, raise_server_exceptions=False)
+
+
+@patch("server.error_handlers.capture_exception")
+@patch("server.endpointregistry.capture_exception")
+def test_with_usage_connection_error_is_reported_once_by_global_handler_with_tags(
+    mock_registry_capture: MagicMock, mock_handler_capture: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any]
+):
+    client = _app_proxying(metered_registry, vllm_model, AsyncMock(side_effect=aiohttp.ClientConnectionError("refused")))
+
+    resp = client.get("/proxied")
+
+    assert resp.status_code == 500
+    assert mock_registry_capture.call_count == 0
+    assert mock_handler_capture.call_count == 1
+    assert mock_handler_capture.call_args.kwargs["error_id"] == resp.headers["X-Error-Id"]
+    assert mock_handler_capture.call_args.kwargs["handled"] is False
+    assert mock_handler_capture.call_args.kwargs["tags"] == {**VLLM_TAGS, "error_type": "connection_error"}
+
+
+@patch("server.error_handlers.capture_exception")
+@patch("server.endpointregistry.capture_exception")
+def test_with_usage_broken_2xx_stream_is_reported_once_by_global_handler_with_tags(
+    mock_registry_capture: MagicMock, mock_handler_capture: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any]
+):
+    response = StreamingResponse(stream_chunks(b"partial", error=aiohttp.ClientPayloadError("broken")), status_code=200)
+    client = _app_proxying(metered_registry, vllm_model, AsyncMock(return_value=response))
+
+    resp = client.get("/proxied")
+
+    assert resp.status_code == 200
+    assert mock_registry_capture.call_count == 0
+    assert mock_handler_capture.call_count == 1
+    assert mock_handler_capture.call_args.kwargs["handled"] is False
+    assert mock_handler_capture.call_args.kwargs["tags"] == {**VLLM_TAGS, "error_type": "connection_error"}
+
+
+@pytest.mark.parametrize("status_code", [200, 503])
+@patch("server.error_handlers.capture_exception")
+@patch("server.endpointregistry.capture_exception")
+def test_with_usage_5xx_http_exception_mid_stream_is_reported_once_end_to_end(
+    mock_registry_capture: MagicMock,
+    mock_handler_capture: MagicMock,
+    metered_registry: EndpointRegistry,
+    vllm_model: RegisteredModel[Any],
+    status_code: int,
+):
+    response = StreamingResponse(stream_chunks(b"partial", error=HTTPException(502, "Upstream gone")), status_code=status_code)
+    client = _app_proxying(metered_registry, vllm_model, AsyncMock(return_value=response))
+
+    resp = client.get("/proxied")
+
+    assert resp.status_code == status_code
+    assert mock_registry_capture.call_count == 1
+    assert mock_handler_capture.call_count == 0
+
+
+@patch("server.error_handlers.capture_exception")
+@patch("server.endpointregistry.capture_exception")
+def test_with_usage_4xx_http_exception_mid_stream_is_reported_by_global_handler_with_tags(
+    mock_registry_capture: MagicMock, mock_handler_capture: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any]
+):
+    response = StreamingResponse(stream_chunks(b"partial", error=HTTPException(400, "Bad chunk")), status_code=200)
+    client = _app_proxying(metered_registry, vllm_model, AsyncMock(return_value=response))
+
+    client.get("/proxied")
+
+    assert mock_registry_capture.call_count == 0
+    assert mock_handler_capture.call_count == 1
+    assert mock_handler_capture.call_args.kwargs["tags"] == {**VLLM_TAGS, "error_type": "model_error"}
+
+
+@patch("server.error_handlers.capture_exception")
+@patch("server.endpointregistry.capture_exception")
+def test_with_usage_broken_5xx_stream_is_reported_once_end_to_end(
+    mock_registry_capture: MagicMock, mock_handler_capture: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any]
+):
+    response = StreamingResponse(stream_chunks(b"partial", error=aiohttp.ClientPayloadError("broken")), status_code=500)
+    client = _app_proxying(metered_registry, vllm_model, AsyncMock(return_value=response))
+
+    resp = client.get("/proxied")
+
+    assert resp.status_code == 500
+    assert mock_registry_capture.call_count == 1
+    assert mock_handler_capture.call_count == 0
+
+
+@patch("server.error_handlers.capture_exception")
+@patch("server.endpointregistry.capture_exception")
+def test_with_usage_5xx_http_exception_is_reported_once_end_to_end(
+    mock_registry_capture: MagicMock, mock_handler_capture: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any]
+):
+    client = _app_proxying(metered_registry, vllm_model, AsyncMock(side_effect=HTTPException(503, "Model unavailable")))
+
+    resp = client.get("/proxied")
+
+    assert resp.status_code == 503
+    assert resp.json()["error"]["message"] == "Model unavailable"
+    assert "X-Error-Id" not in resp.headers
+    assert mock_registry_capture.call_count == 1
+    assert mock_handler_capture.call_count == 0
 
 
 def test_add_usage_increments_and_notifies():

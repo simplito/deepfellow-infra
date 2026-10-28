@@ -735,3 +735,20 @@ async def test_refresh_catalog_raises_405_for_non_ollama(services_manager: Servi
         await services_manager.refresh_catalog("vllm")
 
     assert exc_info.value.status_code == 405
+
+
+def test_secret_values_collects_from_every_base2_service() -> None:
+    manager = ServicesManager()
+    first = MagicMock(spec=Base2Service)
+    first.get_type.return_value = "openai"
+    first.get_secret_values.return_value = ["sk-openai"]
+    second = MagicMock(spec=Base2Service)
+    second.get_type.return_value = "claude"
+    second.get_secret_values.return_value = ["sk-ant", "sk-ant-2"]
+    manager.register_service(first)
+    manager.register_service(second)
+    manager.register_service(FakeService("fake"))
+
+    result = manager.secret_values()
+
+    assert result == ["sk-openai", "sk-ant", "sk-ant-2"]

@@ -198,6 +198,8 @@ class ContainerStatus:
     state: str
     health: str
     restart_count: int
+    exit_code: int = 0
+    oom_killed: bool = False
 
 
 @dataclass(frozen=True)
@@ -1138,7 +1140,7 @@ class DockerService:
             raise
 
     async def get_container_status(self, container_name: str) -> ContainerStatus:
-        """Return a container's real state (process status, healthcheck status, restart count) for reconciliation checks after install."""
+        """Return a container's real state for reconciliation checks after install."""
         try:
             info = await self._inspect_container(container_name)
         except DockerError as e:
@@ -1153,6 +1155,8 @@ class DockerService:
             state=state.get("Status", ""),
             health=health.get("Status", ""),
             restart_count=info.get("RestartCount", 0),
+            exit_code=state.get("ExitCode", 0),
+            oom_killed=state.get("OOMKilled", False),
         )
 
     async def generate_docker_compose_content(self, options: DockerOptions, port: int | None) -> DockerComposeContent:  # noqa: C901

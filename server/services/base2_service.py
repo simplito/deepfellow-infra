@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from server.config import AppSettings
 from server.docker import (
+    ContainerStatus,
     DockerImage,
     DockerOptions,
     DockerService,
@@ -58,6 +59,7 @@ from server.utils.exceptions import DockerImageAuthorizationError, DockerImageDo
 from server.utils.hardware import GpuInfo, Hardware, HardwarePartInfo, NvidiaGpuInfo
 from server.utils.logger import logger
 from server.utils.model_downloader import ModelDownloader
+from server.utils.sentry import UpstreamError, capture_exception
 from server.utils.spec_defaults import fill_spec_defaults
 
 if TYPE_CHECKING:
@@ -123,6 +125,12 @@ class _HasModels(Protocol):
     """Structural view of every service's ``InstalledInfo``: it always carries a ``models`` mapping."""
 
     models: dict[str, Any]
+
+
+class _HasOptions(Protocol):
+    """Structural view of every service's ``InstalledInfo`` options."""
+
+    options: InstallServiceIn
 
 
 class InstallingModel:
@@ -434,6 +442,17 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         self._reconciliation_tasks = {}
         self._crash_poll_state = {}
 
+    def get_secret_values(self) -> list[str]:
+        """Return the values of this service's `password` options, to scrub from Sentry events."""
+        names = [field.name for field in self.get_spec().fields if field.type == "password"]
+        values: list[str] = []
+        for instance in self.instances_info.values():
+            option_sets = [instance.config.options] if instance.config.options is not None else []
+            if instance.installed is not None:
+                option_sets.append(cast("_HasOptions", instance.installed).options)
+            values += [str(options.spec[name]) for options in option_sets for name in names if options.spec.get(name)]
+        return values
+
     def _start_reconciliation_task(self, instance: str) -> None:
         """Start (or restart) the background task that detects crashed/stopped model containers and releases their bookkeeping."""
         if instance in self._reconciliation_tasks:
@@ -460,8 +479,7 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     def _reconcile_container_name(self, instance: str, info: InstalledInfoType, model_info: Any) -> str | None:  # noqa: ANN401
         """Return the container name to inspect for a given model (None => skip this model).
 
-        Per-model-container services (vLLM, llama.cpp) return the model's own container; Ollama returns the
-        single shared instance container so a dead server releases every model loaded into it. Services that
+        Per-model-container services (vLLM, llama.cpp, SGLang) return the model's own container. Services that
         never call ``_start_reconciliation_task`` inherit this default, which is not reached in practice.
         """
         raise NotImplementedError
@@ -504,6 +522,9 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
                 self._crash_poll_state.pop(key, None)
                 continue  # uninstalled or reinstalled while we were polling
 
+            if bad_count == _RECONCILE_DEAD_THRESHOLD:
+                self._report_dead_container(instance, model_id, status)
+
             try:
                 await self._release_dead_model(instance, info, model_id, model_info)
             except Exception:
@@ -514,6 +535,21 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
 
             self._crash_poll_state.pop(key, None)
             logger.warning(f"{self.get_id(instance)} model {model_id} container is dead, released VRAM bookkeeping")
+
+    def _report_dead_container(self, instance: str, model_id: str, status: ContainerStatus) -> None:
+        """Log and report to Sentry a model container found dead for good."""
+        error_id = str(uuid.uuid4())
+        logger.warning(f"{self.get_id(instance)} model {model_id} container is dead (error_id={error_id})")
+        tags = {"service": self.get_type(), "model": model_id, "container_state": status.state if status.exists else "missing"}
+        if status.exists:
+            tags |= {
+                "container_health": status.health,
+                "restart_count": str(status.restart_count),
+                "exit_code": str(status.exit_code),
+                "oom_killed": str(status.oom_killed).lower(),
+            }
+        failure = UpstreamError(f"{self.get_type()} model container died")
+        capture_exception(failure, error_id=error_id, tags=tags, fingerprint=["container-died", self.get_type()])
 
     async def _get_docker_logs(self, container_name: str) -> str:
         """Return raw docker logs output, with TTL caching per container.

@@ -18,6 +18,7 @@ from aiohttp import ClientTimeout, JsonPayload
 from fastapi import HTTPException, Request
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, TypeAdapter, ValidationError, field_validator
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from server.config import AppSettings
 from server.metrics_registry import MetricsRegistry
@@ -51,6 +52,7 @@ from server.models.api import (
 )
 from server.models.common import JsonSerializable, StarletteResponse
 from server.utils.core import HttpClientError, HttpResponse, Utils, make_http_request
+from server.utils.sentry import UpstreamError, attach_tags, capture_exception, mark_reported
 from server.websockets.models import RegistrationId, UsageChangeRequest, WarmChangeRequest
 from server.websockets.parent_infra_group import ParentInfraGroup
 
@@ -1836,10 +1838,14 @@ class EndpointRegistry:
             resp = await func()
         except Exception as e:
             self._record_request_metrics(model, start_time, _classify_error(e))
+            self._report_upstream_exception(model, e)
             raise
 
         # A 5xx from the model is passed through to the client unchanged, so it has to be counted from its status.
-        error_type = "http_5xx" if isinstance(resp, Response) and resp.status_code >= 500 else None
+        status_code = resp.status_code if isinstance(resp, Response) else None
+        error_type = "http_5xx" if status_code is not None and status_code >= 500 else None
+        if status_code is not None and error_type is not None:
+            self._report_upstream_response(model, status_code)
 
         if isinstance(resp, StreamingResponse):
 
@@ -1855,6 +1861,7 @@ class EndpointRegistry:
                 except Exception as e:
                     # A client disconnect arrives as CancelledError/GeneratorExit (not Exception) and stays a success.
                     stream_error_type = stream_error_type or _classify_error(e)
+                    self._report_upstream_exception(model, e, already_reported=error_type is not None)
                     raise
                 finally:
                     if log_payload:
@@ -1875,6 +1882,45 @@ class EndpointRegistry:
             self.metrics_registry.request_errors.labels(model_name=model.name, error_type=error_type).inc()
         self.metrics_registry.requests_in_flight.labels(model_type=model.type).dec()
         self._remove_usage(model)
+
+    @staticmethod
+    def _upstream_tags(model: RegisteredModel[Any], error_type: str, status_code: int | None = None) -> dict[str, str]:
+        """Sentry tags of a failed local model request."""
+        tags = {"service": model.owned_by, "model": model.name, "model_type": model.props.type, "error_type": error_type}
+        if status_code is not None:
+            tags["upstream_status"] = str(status_code)
+        return tags
+
+    @staticmethod
+    def _capture_upstream_failure(
+        model: RegisteredModel[Any], exc: BaseException, tags: dict[str, str], fingerprint: list[str] | None = None
+    ) -> None:
+        """Log and report a failed local model request under a new error ID."""
+        error_id = str(uuid.uuid4())
+        logger.warning(
+            "Request to model %r of service %s failed: HTTP %s (error_id=%s)",
+            model.name,
+            model.owned_by,
+            tags.get("upstream_status"),
+            error_id,
+        )
+        capture_exception(exc, error_id=error_id, tags=tags, fingerprint=fingerprint)
+
+    def _report_upstream_response(self, model: RegisteredModel[Any], status_code: int) -> None:
+        """Report an upstream 5xx status to Sentry, without the response body."""
+        failure = UpstreamError(f"{model.owned_by} upstream returned HTTP {status_code}")
+        tags = self._upstream_tags(model, "http_5xx", status_code)
+        self._capture_upstream_failure(model, failure, tags, fingerprint=["upstream-http", model.owned_by, str(status_code)])
+
+    def _report_upstream_exception(self, model: RegisteredModel[Any], exc: Exception, *, already_reported: bool = False) -> None:
+        """Report a new 5xx `HTTPException`; otherwise tag `exc` for the catch-all handler and mark it if `already_reported`."""
+        if isinstance(exc, StarletteHTTPException) and exc.status_code >= 500 and not already_reported:
+            self._capture_upstream_failure(model, exc, self._upstream_tags(model, _classify_error(exc), exc.status_code))
+            mark_reported(exc)
+            return
+        attach_tags(exc, self._upstream_tags(model, _classify_error(exc)))
+        if already_reported:
+            mark_reported(exc)
 
     def _add_usage(self, model: RegisteredModel[Any]) -> None:
         model.usage += 1

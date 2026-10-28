@@ -2283,3 +2283,52 @@ async def test_install_model_registration_failure_skips_rollback_when_already_re
     installed = svc.instances_info["default"].installed
     assert installed is not None
     assert "lemmatizer" not in installed.models
+
+
+def _model_with_password_field(svc: CustomService) -> str:
+    return next(
+        model_id for model_id, model in svc.models["default"].items() if any(field.type == "password" for field in model.model_spec.fields)
+    )
+
+
+def _installed_model(model_id: str, spec: dict[str, Any]) -> ModelInstalledInfo:
+    return ModelInstalledInfo(
+        id=model_id,
+        options=InstallModelIn(spec=spec),
+        docker_options=MagicMock(),
+        container_host="127.0.0.1",
+        container_port=8080,
+        docker_exposed_port=8080,
+        registration_id="reg-1",
+        prefix="p",
+        base_url="http://127.0.0.1:8080",
+    )
+
+
+def test_get_secret_values_includes_installed_model_password_option(svc: CustomService) -> None:
+    model_id = _model_with_password_field(svc)
+    model = svc.models["default"][model_id]
+    password_field = next(field.name for field in model.model_spec.fields if field.type == "password")
+    installed = InstalledInfo(models={}, options=InstallServiceIn(spec={}))
+    installed.models[model_id] = _installed_model(model_id, {password_field: "gateway-key", "prefix": "p"})
+    svc.instances_info["default"].installed = installed
+
+    assert svc.get_secret_values() == ["gateway-key"]
+
+
+def test_get_secret_values_skips_model_missing_from_catalog_and_options_without_spec(svc: CustomService) -> None:
+    installed = InstalledInfo(models={}, options=InstallServiceIn(spec={}))
+    installed.models["retired"] = _installed_model("retired", {"infra_api_key": "orphan-key"})
+    model_id = _model_with_password_field(svc)
+    no_spec = _installed_model(model_id, {})
+    no_spec.options = InstallModelIn(spec=None)
+    installed.models[model_id] = no_spec
+    svc.instances_info["default"].installed = installed
+
+    assert svc.get_secret_values() == []
+
+
+def test_get_secret_values_empty_when_not_installed_custom(svc: CustomService) -> None:
+    svc.instances_info["default"].installed = None
+
+    assert svc.get_secret_values() == []
