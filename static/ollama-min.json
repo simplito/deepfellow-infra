@@ -86,19 +86,19 @@
         },
         {
             "name": "embeddinggemma-2:270m",
-            "size": "",
+            "size": "304MB",
             "hash": "ff630aa67948",
             "context": 262144
         },
         {
             "name": "embeddinggemma-2:440m",
-            "size": "",
+            "size": "671MB",
             "hash": "b750e83c282e",
             "context": 262144
         },
         {
             "name": "embeddinggemma-2:570m",
-            "size": "",
+            "size": "918MB",
             "hash": "74f652944b2b",
             "context": 262144
         },
@@ -131,48 +131,6 @@
             "size": "63MB",
             "hash": "eb4c533ba6f7",
             "context": 512
-        },
-        {
-            "name": "laya",
-            "size": "",
-            "hash": "0175aca9f021",
-            "context": 8192
-        },
-        {
-            "name": "laya:322m-multilingual-bf16",
-            "size": "658MB",
-            "hash": "c1242e4a83f0",
-            "context": 8192
-        },
-        {
-            "name": "laya:322m-multilingual-mlx-fp16",
-            "size": "678MB",
-            "hash": "63b6e37ecedb",
-            "context": 1024
-        },
-        {
-            "name": "laya:421m-english-bf16",
-            "size": "844MB",
-            "hash": "1f196b378202",
-            "context": 8192
-        },
-        {
-            "name": "laya:421m-english-mlx-fp16",
-            "size": "846MB",
-            "hash": "aaba5574a1e1",
-            "context": 512
-        },
-        {
-            "name": "laya:421m-typed-decisions-bf16",
-            "size": "844MB",
-            "hash": "84a7be5dd978",
-            "context": 8192
-        },
-        {
-            "name": "laya:421m-typed-decisions-mlx-fp16",
-            "size": "846MB",
-            "hash": "c62bc110244c",
-            "context": 1024
         },
         {
             "name": "mxbai-embed-large",
@@ -675,30 +633,6 @@
             "context": 131072
         },
         {
-            "name": "d1",
-            "size": "3.7GB",
-            "hash": "8c2d9ddae441",
-            "context": 32768
-        },
-        {
-            "name": "d1-omni",
-            "size": "850MB",
-            "hash": "1ba59f63e836",
-            "context": 128000
-        },
-        {
-            "name": "d1-omni:600m",
-            "size": "850MB",
-            "hash": "1ba59f63e836",
-            "context": 128000
-        },
-        {
-            "name": "d1:3b",
-            "size": "3.7GB",
-            "hash": "8c2d9ddae441",
-            "context": 32768
-        },
-        {
             "name": "dbrx",
             "size": "74GB",
             "hash": "36800d8d3a28",
@@ -1191,6 +1125,18 @@
             "context": 8192
         },
         {
+            "name": "flint",
+            "size": "23GB",
+            "hash": "2a087bdb088a",
+            "context": 262144
+        },
+        {
+            "name": "flint:40b",
+            "size": "23GB",
+            "hash": "2a087bdb088a",
+            "context": 262144
+        },
+        {
             "name": "functiongemma",
             "size": "301MB",
             "hash": "7c19b650567a",
@@ -1288,13 +1234,13 @@
         },
         {
             "name": "gemma4",
-            "size": "",
+            "size": "6.6GB",
             "hash": "009acb0d7fe1",
             "context": 131072
         },
         {
             "name": "gemma4:12b",
-            "size": "",
+            "size": "8.0GB",
             "hash": "312246b09fab",
             "context": 262144
         },
@@ -1306,7 +1252,7 @@
         },
         {
             "name": "gemma4:26b",
-            "size": "",
+            "size": "19GB",
             "hash": "ed3c4359df98",
             "context": 262144
         },
@@ -1318,7 +1264,7 @@
         },
         {
             "name": "gemma4:31b",
-            "size": "",
+            "size": "20GB",
             "hash": "70d0e663aeb9",
             "context": 262144
         },
@@ -1330,7 +1276,7 @@
         },
         {
             "name": "gemma4:e2b",
-            "size": "",
+            "size": "4.6GB",
             "hash": "862c9e801351",
             "context": 131072
         },
@@ -1342,7 +1288,7 @@
         },
         {
             "name": "gemma4:e4b",
-            "size": "",
+            "size": "6.6GB",
             "hash": "009acb0d7fe1",
             "context": 131072
         },
@@ -1761,102 +1707,6 @@
             "context": 32768
         },
         {
-            "name": "kev",
-            "size": "",
-            "hash": "079f29347a00",
-            "context": 262144
-        },
-        {
-            "name": "kev:0.8b-bf16",
-            "size": "1.5GB",
-            "hash": "5ee097410a63",
-            "context": 262144
-        },
-        {
-            "name": "kev:0.8b-mlx-bf16",
-            "size": "1.5GB",
-            "hash": "f8bb3dfed81d",
-            "context": 262144
-        },
-        {
-            "name": "kev:0.8b-mxfp8",
-            "size": "1.0GB",
-            "hash": "e414a229c2b8",
-            "context": 262144
-        },
-        {
-            "name": "kev:0.8b-q8_0",
-            "size": "812MB",
-            "hash": "a2f47e09befb",
-            "context": 262144
-        },
-        {
-            "name": "kev:27b-mlx-bf16",
-            "size": "51GB",
-            "hash": "b397feb9fd33",
-            "context": 262144
-        },
-        {
-            "name": "kev:27b-nvfp4",
-            "size": "19GB",
-            "hash": "4f5575ee2df2",
-            "context": 262144
-        },
-        {
-            "name": "kev:4b-bf16",
-            "size": "8.4GB",
-            "hash": "8406d8a74261",
-            "context": 262144
-        },
-        {
-            "name": "kev:4b-mlx-bf16",
-            "size": "8.4GB",
-            "hash": "458360f7747d",
-            "context": 262144
-        },
-        {
-            "name": "kev:4b-q4_K_M",
-            "size": "2.7GB",
-            "hash": "818b6cdb957c",
-            "context": 262144
-        },
-        {
-            "name": "kev:4b-q8_0",
-            "size": "4.5GB",
-            "hash": "46203beabf65",
-            "context": 262144
-        },
-        {
-            "name": "kev:9b-bf16",
-            "size": "18GB",
-            "hash": "925e229ef61d",
-            "context": 262144
-        },
-        {
-            "name": "kev:9b-mlx-bf16",
-            "size": "16GB",
-            "hash": "7044de0996a2",
-            "context": 262144
-        },
-        {
-            "name": "kev:9b-nvfp4",
-            "size": "6.7GB",
-            "hash": "d31165461ae8",
-            "context": 262144
-        },
-        {
-            "name": "kev:9b-q4_K_M",
-            "size": "5.6GB",
-            "hash": "96375189a97f",
-            "context": 262144
-        },
-        {
-            "name": "kev:9b-q8_0",
-            "size": "9.5GB",
-            "hash": "446718ead956",
-            "context": 262144
-        },
-        {
             "name": "laguna-s-2.1",
             "size": "96GB",
             "hash": "1adabf138c90",
@@ -2029,6 +1879,54 @@
             "size": "14GB",
             "hash": "d6c816d74887",
             "context": 32768
+        },
+        {
+            "name": "lfm3",
+            "size": "1.7GB",
+            "hash": "2012d88e202f",
+            "context": 262144
+        },
+        {
+            "name": "lfm3-audio",
+            "size": "2.1GB",
+            "hash": "ecfcfb300186",
+            "context": null
+        },
+        {
+            "name": "lfm3-audio:2b",
+            "size": "2.1GB",
+            "hash": "ecfcfb300186",
+            "context": null
+        },
+        {
+            "name": "lfm3-omni",
+            "size": "2.4GB",
+            "hash": "8c2f5a2d126d",
+            "context": 128000
+        },
+        {
+            "name": "lfm3-omni:2b",
+            "size": "2.4GB",
+            "hash": "8c2f5a2d126d",
+            "context": 128000
+        },
+        {
+            "name": "lfm3-vl",
+            "size": "1.7GB",
+            "hash": "280791ff33bb",
+            "context": 128000
+        },
+        {
+            "name": "lfm3-vl:2b",
+            "size": "1.7GB",
+            "hash": "280791ff33bb",
+            "context": 128000
+        },
+        {
+            "name": "lfm3:1.7b",
+            "size": "1.7GB",
+            "hash": "2012d88e202f",
+            "context": 262144
         },
         {
             "name": "llama-guard3",
@@ -2724,13 +2622,13 @@
         },
         {
             "name": "nemotron-3-nano",
-            "size": "",
+            "size": "24GB",
             "hash": "373f79c3ce94",
             "context": 1048576
         },
         {
             "name": "nemotron-3-nano:30b",
-            "size": "",
+            "size": "24GB",
             "hash": "373f79c3ce94",
             "context": 1048576
         },
@@ -2742,7 +2640,7 @@
         },
         {
             "name": "nemotron-3-nano:4b",
-            "size": "",
+            "size": "2.8GB",
             "hash": "28e2e9e36b77",
             "context": 262144
         },
@@ -2771,20 +2669,20 @@
             "context": 262144
         },
         {
-            "name": "nemotron-3.5-bolt:74b-a9b",
-            "size": "25GB",
-            "hash": "d6d3deeca271",
-            "context": 262144
+            "name": "nemotron-3.5-bolt:e4b",
+            "size": "7.9GB",
+            "hash": "4354fecbfc04",
+            "context": 131072
         },
         {
             "name": "nemotron-3.5-lightning",
-            "size": "",
+            "size": "25GB",
             "hash": "14b60fc91804",
             "context": 1048576
         },
         {
             "name": "nemotron-3.5-lightning:30b",
-            "size": "",
+            "size": "25GB",
             "hash": "14b60fc91804",
             "context": 1048576
         },
@@ -2796,25 +2694,25 @@
         },
         {
             "name": "nemotron-3.5-super",
-            "size": "",
+            "size": "90GB",
             "hash": "d84f81c512c4",
             "context": 1048576
         },
         {
             "name": "nemotron-3.5-super:120b",
-            "size": "",
+            "size": "90GB",
             "hash": "d84f81c512c4",
             "context": 1048576
         },
         {
             "name": "nemotron-cascade-2",
-            "size": "",
+            "size": "24GB",
             "hash": "54e93b9643c7",
             "context": 262144
         },
         {
             "name": "nemotron-cascade-2:30b",
-            "size": "",
+            "size": "24GB",
             "hash": "54e93b9643c7",
             "context": 262144
         },
@@ -2838,13 +2736,13 @@
         },
         {
             "name": "nemotron3",
-            "size": "",
+            "size": "28GB",
             "hash": "24f5f4a5b3ea",
             "context": 131072
         },
         {
             "name": "nemotron3:33b",
-            "size": "",
+            "size": "28GB",
             "hash": "24f5f4a5b3ea",
             "context": 131072
         },
@@ -3210,7 +3108,7 @@
         },
         {
             "name": "ornith-1.5:122b",
-            "size": "",
+            "size": "77GB",
             "hash": "ea3e29aebeb8",
             "context": 262144
         },
@@ -3347,6 +3245,84 @@
             "context": 16384
         },
         {
+            "name": "phonon",
+            "size": "113MB",
+            "hash": "58f58601e4e8",
+            "context": 8192
+        },
+        {
+            "name": "phonon:40m-de",
+            "size": "126MB",
+            "hash": "024449ea0a54",
+            "context": 8192
+        },
+        {
+            "name": "phonon:40m-en",
+            "size": "132MB",
+            "hash": "b74a4edf2fe2",
+            "context": 8192
+        },
+        {
+            "name": "phonon:40m-es",
+            "size": "129MB",
+            "hash": "446893b2a1fd",
+            "context": 8192
+        },
+        {
+            "name": "phonon:40m-fr",
+            "size": "126MB",
+            "hash": "eef1ed69574a",
+            "context": 8192
+        },
+        {
+            "name": "phonon:40m-multilingual",
+            "size": "148MB",
+            "hash": "4b69007b5c79",
+            "context": 8192
+        },
+        {
+            "name": "phonon:40m-pt",
+            "size": "125MB",
+            "hash": "c640b8b12b63",
+            "context": 8192
+        },
+        {
+            "name": "phonon:de",
+            "size": "123MB",
+            "hash": "6ef2680491eb",
+            "context": 8192
+        },
+        {
+            "name": "phonon:en",
+            "size": "104MB",
+            "hash": "6667dd188d2e",
+            "context": 8192
+        },
+        {
+            "name": "phonon:es",
+            "size": "123MB",
+            "hash": "d5df2ae8bc2d",
+            "context": 8192
+        },
+        {
+            "name": "phonon:fr",
+            "size": "123MB",
+            "hash": "da29147f2cba",
+            "context": 8192
+        },
+        {
+            "name": "phonon:multilingual",
+            "size": "123MB",
+            "hash": "eda44c0f4703",
+            "context": 8192
+        },
+        {
+            "name": "phonon:pt",
+            "size": "123MB",
+            "hash": "e8fb87dea0cd",
+            "context": 8192
+        },
+        {
             "name": "PLLuM-12B-instruct-Q4_K_M",
             "size": "7GB",
             "modelfile": "FROM https://huggingface.co/mradermacher/PLLuM-12B-instruct-GGUF/resolve/main/PLLuM-12B-instruct.Q4_K_M.gguf",
@@ -3371,18 +3347,6 @@
             "size": "93GB",
             "hash": "",
             "context": 32768
-        },
-        {
-            "name": "pplx-decider",
-            "size": "17GB",
-            "hash": "733585a9ebb6",
-            "context": 262144
-        },
-        {
-            "name": "pplx-decider:27b",
-            "size": "17GB",
-            "hash": "733585a9ebb6",
-            "context": 262144
         },
         {
             "name": "qwen",
@@ -3668,13 +3632,13 @@
         },
         {
             "name": "qwen3.5",
-            "size": "",
+            "size": "6.6GB",
             "hash": "fdf5fd4cd409",
             "context": 262144
         },
         {
             "name": "qwen3.5:0.8b",
-            "size": "",
+            "size": "1.3GB",
             "hash": "6a061203ed02",
             "context": 262144
         },
@@ -3692,7 +3656,7 @@
         },
         {
             "name": "qwen3.5:27b",
-            "size": "",
+            "size": "17GB",
             "hash": "1476e7035481",
             "context": 262144
         },
@@ -3704,7 +3668,7 @@
         },
         {
             "name": "qwen3.5:2b",
-            "size": "",
+            "size": "2.7GB",
             "hash": "0b28bbb3449d",
             "context": 262144
         },
@@ -3728,7 +3692,7 @@
         },
         {
             "name": "qwen3.5:4b",
-            "size": "",
+            "size": "3.3GB",
             "hash": "492e37dc6907",
             "context": 262144
         },
@@ -3740,7 +3704,7 @@
         },
         {
             "name": "qwen3.5:9b",
-            "size": "",
+            "size": "6.6GB",
             "hash": "fdf5fd4cd409",
             "context": 262144
         },
@@ -3752,13 +3716,13 @@
         },
         {
             "name": "qwen3.6",
-            "size": "",
+            "size": "23GB",
             "hash": "8a43277aac50",
             "context": 262144
         },
         {
             "name": "qwen3.6:27b",
-            "size": "",
+            "size": "18GB",
             "hash": "1e2b3d172b7c",
             "context": 262144
         },
@@ -3770,7 +3734,7 @@
         },
         {
             "name": "qwen3.6:35b",
-            "size": "",
+            "size": "23GB",
             "hash": "8a43277aac50",
             "context": 262144
         },
@@ -4357,18 +4321,6 @@
             "context": 8192
         },
         {
-            "name": "strands-decider",
-            "size": "2.0GB",
-            "hash": "fd88a2b3ab3f",
-            "context": 4096
-        },
-        {
-            "name": "strands-decider:2b",
-            "size": "2.0GB",
-            "hash": "fd88a2b3ab3f",
-            "context": 4096
-        },
-        {
             "name": "tinydolphin",
             "size": "637MB",
             "hash": "0f9dd11f824c",
@@ -4740,67 +4692,295 @@
     "decision": [
         {
             "name": "clef",
-            "size": "",
+            "size": "20GB",
             "hash": "fdd5939e1bd9",
             "context": 262144
         },
         {
             "name": "clef-flash",
-            "size": "",
+            "size": "11GB",
             "hash": "8f7e6863135c",
             "context": 262144
         },
         {
             "name": "clef-flash:9b",
-            "size": "",
+            "size": "11GB",
             "hash": "8f7e6863135c",
             "context": 262144
         },
         {
             "name": "clef:27b",
-            "size": "",
+            "size": "20GB",
             "hash": "fdd5939e1bd9",
             "context": 262144
         },
         {
+            "name": "d1",
+            "size": "3.7GB",
+            "hash": "8c2d9ddae441",
+            "context": 32768
+        },
+        {
+            "name": "d1-omni",
+            "size": "850MB",
+            "hash": "1ba59f63e836",
+            "context": 128000
+        },
+        {
+            "name": "d1-omni:2b",
+            "size": "4.4GB",
+            "hash": "5f8373a90ed1",
+            "context": 128000
+        },
+        {
+            "name": "d1-omni:600m",
+            "size": "850MB",
+            "hash": "1ba59f63e836",
+            "context": 128000
+        },
+        {
+            "name": "d1:2b",
+            "size": "3.9GB",
+            "hash": "a3b89e90e6a3",
+            "context": 128000
+        },
+        {
+            "name": "d1:3b",
+            "size": "3.7GB",
+            "hash": "8c2d9ddae441",
+            "context": 32768
+        },
+        {
+            "name": "d3",
+            "size": "5.8GB",
+            "hash": "50e469b6b0e6",
+            "context": 262144
+        },
+        {
+            "name": "d3:27b",
+            "size": "30GB",
+            "hash": "bc873824c9ed",
+            "context": 262144
+        },
+        {
+            "name": "d3:2b",
+            "size": "3.2GB",
+            "hash": "b31336d5e0cc",
+            "context": 262144
+        },
+        {
+            "name": "d3:4b",
+            "size": "5.8GB",
+            "hash": "50e469b6b0e6",
+            "context": 262144
+        },
+        {
+            "name": "d3:9b",
+            "size": "10GB",
+            "hash": "6e6c5ab6ce3a",
+            "context": 262144
+        },
+        {
+            "name": "kev",
+            "size": "5.6GB",
+            "hash": "079f29347a00",
+            "context": 262144
+        },
+        {
+            "name": "kev:0.8b-bf16",
+            "size": "1.5GB",
+            "hash": "5ee097410a63",
+            "context": 262144
+        },
+        {
+            "name": "kev:0.8b-mlx-bf16",
+            "size": "1.5GB",
+            "hash": "f8bb3dfed81d",
+            "context": 262144
+        },
+        {
+            "name": "kev:0.8b-mxfp8",
+            "size": "1.0GB",
+            "hash": "e414a229c2b8",
+            "context": 262144
+        },
+        {
+            "name": "kev:0.8b-q8_0",
+            "size": "812MB",
+            "hash": "a2f47e09befb",
+            "context": 262144
+        },
+        {
+            "name": "kev:27b-mlx-bf16",
+            "size": "51GB",
+            "hash": "b397feb9fd33",
+            "context": 262144
+        },
+        {
+            "name": "kev:27b-nvfp4",
+            "size": "19GB",
+            "hash": "4f5575ee2df2",
+            "context": 262144
+        },
+        {
+            "name": "kev:4b-bf16",
+            "size": "8.4GB",
+            "hash": "8406d8a74261",
+            "context": 262144
+        },
+        {
+            "name": "kev:4b-mlx-bf16",
+            "size": "8.4GB",
+            "hash": "458360f7747d",
+            "context": 262144
+        },
+        {
+            "name": "kev:4b-q4_K_M",
+            "size": "2.7GB",
+            "hash": "818b6cdb957c",
+            "context": 262144
+        },
+        {
+            "name": "kev:4b-q8_0",
+            "size": "4.5GB",
+            "hash": "46203beabf65",
+            "context": 262144
+        },
+        {
+            "name": "kev:9b-bf16",
+            "size": "18GB",
+            "hash": "925e229ef61d",
+            "context": 262144
+        },
+        {
+            "name": "kev:9b-mlx-bf16",
+            "size": "16GB",
+            "hash": "7044de0996a2",
+            "context": 262144
+        },
+        {
+            "name": "kev:9b-nvfp4",
+            "size": "6.7GB",
+            "hash": "d31165461ae8",
+            "context": 262144
+        },
+        {
+            "name": "kev:9b-q4_K_M",
+            "size": "5.6GB",
+            "hash": "96375189a97f",
+            "context": 262144
+        },
+        {
+            "name": "kev:9b-q8_0",
+            "size": "9.5GB",
+            "hash": "446718ead956",
+            "context": 262144
+        },
+        {
+            "name": "laya",
+            "size": "844MB",
+            "hash": "0175aca9f021",
+            "context": 8192
+        },
+        {
+            "name": "laya:322m-multilingual-bf16",
+            "size": "658MB",
+            "hash": "c1242e4a83f0",
+            "context": 8192
+        },
+        {
+            "name": "laya:322m-multilingual-mlx-fp16",
+            "size": "678MB",
+            "hash": "63b6e37ecedb",
+            "context": 1024
+        },
+        {
+            "name": "laya:421m-english-bf16",
+            "size": "844MB",
+            "hash": "1f196b378202",
+            "context": 8192
+        },
+        {
+            "name": "laya:421m-english-mlx-fp16",
+            "size": "846MB",
+            "hash": "aaba5574a1e1",
+            "context": 512
+        },
+        {
+            "name": "laya:421m-typed-decisions-bf16",
+            "size": "844MB",
+            "hash": "84a7be5dd978",
+            "context": 8192
+        },
+        {
+            "name": "laya:421m-typed-decisions-mlx-fp16",
+            "size": "846MB",
+            "hash": "c62bc110244c",
+            "context": 1024
+        },
+        {
             "name": "nimble",
-            "size": "",
+            "size": "9.5GB",
             "hash": "5745f025fbe6",
             "context": 262144
         },
         {
             "name": "nimble-v3",
-            "size": "",
+            "size": "9.5GB",
             "hash": "4f30b1db22d3",
             "context": 32768
         },
         {
             "name": "nimble-v3:9b",
-            "size": "",
+            "size": "9.5GB",
             "hash": "4f30b1db22d3",
             "context": 32768
         },
         {
             "name": "nimble:9b",
-            "size": "",
+            "size": "9.5GB",
             "hash": "5745f025fbe6",
             "context": 262144
         },
         {
+            "name": "pplx-decider",
+            "size": "17GB",
+            "hash": "733585a9ebb6",
+            "context": 262144
+        },
+        {
+            "name": "pplx-decider:27b",
+            "size": "17GB",
+            "hash": "733585a9ebb6",
+            "context": 262144
+        },
+        {
+            "name": "strands-decider",
+            "size": "2.0GB",
+            "hash": "fd88a2b3ab3f",
+            "context": 4096
+        },
+        {
+            "name": "strands-decider:2b",
+            "size": "2.0GB",
+            "hash": "fd88a2b3ab3f",
+            "context": 4096
+        },
+        {
             "name": "tev1",
-            "size": "",
+            "size": "4.6GB",
             "hash": "3ea3be2f2026",
             "context": 262144
         },
         {
             "name": "tev1:0.8b",
-            "size": "",
+            "size": "834MB",
             "hash": "cb16f3186b07",
             "context": 262144
         },
         {
             "name": "tev1:4b",
-            "size": "",
+            "size": "4.6GB",
             "hash": "3ea3be2f2026",
             "context": 262144
         }

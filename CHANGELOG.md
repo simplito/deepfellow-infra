@@ -24,7 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Installed Ollama decision models move from the chat endpoints to `/v1/systemone` on restart.
 - Ollama Cloud lists decision models as `decision` instead of `llm`; an installed one moves to `/v1/systemone` on restart.
 - Mesh: upgrade every node before any of them has a decision model; older nodes reject peers that report one.
-- Default Ollama image is now `0.40.8`; unpinned instances switch on next start and keep their models.
+- Default Ollama image is now `0.40.12`; unpinned instances switch on next start and keep their models.
+- New installs default to llama.cpp `b11946`; model catalogs refreshed.
 - LLM requests above the `/admin/config` generation limits get a 422 instead of reaching the model.
 - `n` above `max_choices` (default 16) gets a 422; the previous fixed cap was 128.
 - `max_tokens`, `max_completion_tokens` and `max_output_tokens` of 0 get a 400 (except `/v1/completions`).

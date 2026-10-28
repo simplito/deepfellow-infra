@@ -929,6 +929,62 @@
             "has_mmproj": true
         },
         {
+            "name": "abenzerps/Nanbeige4.3-33B-GSQ-RCO-GGUF-iq2-m",
+            "url": "https://huggingface.co/abenzerps/Nanbeige4.3-33B-GSQ-RCO-GGUF/resolve/main/Nanbeige4.3-33B-GSQ-RCO-IQ2_M.gguf",
+            "size": "12.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "abenzerps/Nanbeige4.3-33B-GSQ-RCO-GGUF-iq2-xs",
+            "url": "https://huggingface.co/abenzerps/Nanbeige4.3-33B-GSQ-RCO-GGUF/resolve/main/Nanbeige4.3-33B-GSQ-RCO-IQ2_XS.gguf",
+            "size": "10.9GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "abenzerps/Nanbeige4.3-33B-GSQ-RCO-GGUF-iq2-xxs",
+            "url": "https://huggingface.co/abenzerps/Nanbeige4.3-33B-GSQ-RCO-GGUF/resolve/main/Nanbeige4.3-33B-GSQ-RCO-IQ2_XXS.gguf",
+            "size": "9.9GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "abenzerps/Nanbeige4.3-33B-GSQ-RCO-GGUF-iq3-m",
+            "url": "https://huggingface.co/abenzerps/Nanbeige4.3-33B-GSQ-RCO-GGUF/resolve/main/Nanbeige4.3-33B-GSQ-RCO-IQ3_M.gguf",
+            "size": "16.1GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "abenzerps/Nanbeige4.3-33B-GSQ-RCO-GGUF-iq3-xs",
+            "url": "https://huggingface.co/abenzerps/Nanbeige4.3-33B-GSQ-RCO-GGUF/resolve/main/Nanbeige4.3-33B-GSQ-RCO-IQ3_XS.gguf",
+            "size": "14.8GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "abenzerps/Nanbeige4.3-33B-GSQ-RCO-GGUF-iq4-xs",
+            "url": "https://huggingface.co/abenzerps/Nanbeige4.3-33B-GSQ-RCO-GGUF/resolve/main/Nanbeige4.3-33B-GSQ-RCO-IQ4_XS.gguf",
+            "size": "18.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "abenzerps/Nanbeige4.3-33B-GSQ-RCO-GGUF-q5-k-m",
+            "url": "https://huggingface.co/abenzerps/Nanbeige4.3-33B-GSQ-RCO-GGUF/resolve/main/Nanbeige4.3-33B-GSQ-RCO-Q5_K_M.gguf",
+            "size": "23.8GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
             "name": "abenzerps/Spark-X2.5-4B-GGUF-q4-0",
             "url": "https://huggingface.co/abenzerps/Spark-X2.5-4B-GGUF/resolve/main/Spark-X2.5-4B-Q4_0.gguf",
             "size": "2.4GB",
@@ -1289,6 +1345,54 @@
             "has_mmproj": true
         },
         {
+            "name": "agentionai/Qwen3.8-Flash-Next-Gyro-abliterated-Huihui-GGUF-mtp-qwen3-8-flash-next-draft",
+            "url": "https://huggingface.co/agentionai/Qwen3.8-Flash-Next-Gyro-abliterated-Huihui-GGUF/resolve/main/mtp-Qwen3.8-Flash-Next-draft.gguf",
+            "size": "2.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "agentionai/Qwen3.8-Flash-Next-Gyro-abliterated-Huihui-GGUF-qwen3-8-flash-next-gyro-m-abliterated-tq2-0",
+            "url": "https://huggingface.co/agentionai/Qwen3.8-Flash-Next-Gyro-abliterated-Huihui-GGUF/resolve/main/Qwen3.8-Flash-Next-Gyro-M-abliterated-TQ2_0.gguf",
+            "size": "92.0GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "agentionai/Qwen3.8-Flash-Next-Gyro-abliterated-Huihui-GGUF-qwen3-8-flash-next-gyro-s-abliterated-tq1-0",
+            "url": "https://huggingface.co/agentionai/Qwen3.8-Flash-Next-Gyro-abliterated-Huihui-GGUF/resolve/main/Qwen3.8-Flash-Next-Gyro-S-abliterated-TQ1_0.gguf",
+            "size": "58.5GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "agentionai/Qwen3.8-Flash-Next-Gyro-Coder-GGUF-qwen3-8-flash-next-gyro-coder-l-tq3-0",
+            "url": "https://huggingface.co/agentionai/Qwen3.8-Flash-Next-Gyro-Coder-GGUF/resolve/main/Qwen3.8-Flash-Next-Gyro-Coder-L-TQ3_0.gguf",
+            "size": "84.0GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "agentionai/Qwen3.8-Flash-Next-Gyro-Coder-GGUF-qwen3-8-flash-next-gyro-coder-l-tq3-0-v1-1",
+            "url": "https://huggingface.co/agentionai/Qwen3.8-Flash-Next-Gyro-Coder-GGUF/resolve/main/Qwen3.8-Flash-Next-Gyro-Coder-L-TQ3_0-v1.1.gguf",
+            "size": "84.0GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "agentionai/Qwen3.8-Flash-Next-Gyro-Coder-GGUF-qwen3-8-flash-next-gyro-coder-tq2-0",
+            "url": "https://huggingface.co/agentionai/Qwen3.8-Flash-Next-Gyro-Coder-GGUF/resolve/main/Qwen3.8-Flash-Next-Gyro-Coder-TQ2_0.gguf",
+            "size": "75.8GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
             "name": "agentionai/Qwen3.8-Flash-Next-Gyro-GGUF-mtp-qwen3-8-flash-next-draft",
             "url": "https://huggingface.co/agentionai/Qwen3.8-Flash-Next-Gyro-GGUF/resolve/main/mtp-Qwen3.8-Flash-Next-draft.gguf",
             "size": "2.7GB",
@@ -1537,49 +1641,105 @@
             "has_mmproj": null
         },
         {
-            "name": "AtomicChat/LFM2.5-24B-A2B-Uncensored-GGUF-iq3-m",
-            "url": "https://huggingface.co/AtomicChat/LFM2.5-24B-A2B-Uncensored-GGUF/resolve/main/LFM2.5-24B-A2B-Uncensored-AD-IQ3_M.gguf",
-            "size": "12.1GB",
+            "name": "AtomicChat/LFM3-1.7B-Uncensored-GGUF-q4-k-m",
+            "url": "https://huggingface.co/AtomicChat/LFM3-1.7B-Uncensored-GGUF/resolve/main/LFM3-1.7B-Uncensored-AD-Q4_K_M.gguf",
+            "size": "1.1GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "AtomicChat/LFM2.5-24B-A2B-Uncensored-GGUF-iq4-xs",
-            "url": "https://huggingface.co/AtomicChat/LFM2.5-24B-A2B-Uncensored-GGUF/resolve/main/LFM2.5-24B-A2B-Uncensored-AD-IQ4_XS.gguf",
-            "size": "14.5GB",
+            "name": "AtomicChat/LFM3-1.7B-Uncensored-GGUF-q6-k",
+            "url": "https://huggingface.co/AtomicChat/LFM3-1.7B-Uncensored-GGUF/resolve/main/LFM3-1.7B-Uncensored-AD-Q6_K.gguf",
+            "size": "1.6GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "AtomicChat/LFM2.5-24B-A2B-Uncensored-GGUF-q4-k-m",
-            "url": "https://huggingface.co/AtomicChat/LFM2.5-24B-A2B-Uncensored-GGUF/resolve/main/LFM2.5-24B-A2B-Uncensored-AD-Q4_K_M.gguf",
-            "size": "15.4GB",
+            "name": "AtomicChat/Nanbeige4.3-33B-GGUF-iq2-s",
+            "url": "https://huggingface.co/AtomicChat/Nanbeige4.3-33B-GGUF/resolve/main/Nanbeige4.3-33B-AD-IQ2_S.gguf",
+            "size": "13.7GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "AtomicChat/LFM2.5-24B-A2B-Uncensored-GGUF-q5-k-m",
-            "url": "https://huggingface.co/AtomicChat/LFM2.5-24B-A2B-Uncensored-GGUF/resolve/main/LFM2.5-24B-A2B-Uncensored-AD-Q5_K_M.gguf",
-            "size": "17.3GB",
+            "name": "AtomicChat/Nanbeige4.3-33B-GGUF-iq3-s",
+            "url": "https://huggingface.co/AtomicChat/Nanbeige4.3-33B-GGUF/resolve/main/Nanbeige4.3-33B-AD-IQ3_S.gguf",
+            "size": "17.1GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "AtomicChat/LFM2.5-24B-A2B-Uncensored-GGUF-q6-k",
-            "url": "https://huggingface.co/AtomicChat/LFM2.5-24B-A2B-Uncensored-GGUF/resolve/main/LFM2.5-24B-A2B-Uncensored-AD-Q6_K.gguf",
-            "size": "20.9GB",
+            "name": "AtomicChat/Nanbeige4.3-33B-GGUF-iq3-xxs",
+            "url": "https://huggingface.co/AtomicChat/Nanbeige4.3-33B-GGUF/resolve/main/Nanbeige4.3-33B-AD-IQ3_XXS.gguf",
+            "size": "14.9GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "AtomicChat/LFM2.5-24B-A2B-Uncensored-GGUF-q8-0",
-            "url": "https://huggingface.co/AtomicChat/LFM2.5-24B-A2B-Uncensored-GGUF/resolve/main/LFM2.5-24B-A2B-Uncensored-AD-Q8_0.gguf",
-            "size": "25.7GB",
+            "name": "AtomicChat/Nanbeige4.3-33B-GGUF-iq4-xs",
+            "url": "https://huggingface.co/AtomicChat/Nanbeige4.3-33B-GGUF/resolve/main/Nanbeige4.3-33B-AD-IQ4_XS.gguf",
+            "size": "20.3GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "AtomicChat/Nanbeige4.3-33B-GGUF-nanbeige4-3-33b-ad-q4-k-m",
+            "url": "https://huggingface.co/AtomicChat/Nanbeige4.3-33B-GGUF/resolve/main/Nanbeige4.3-33B-AD-Q4_K_M.gguf",
+            "size": "21.2GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "AtomicChat/Nanbeige4.3-33B-GGUF-nanbeige4-3-33b-ad-q5-k-m",
+            "url": "https://huggingface.co/AtomicChat/Nanbeige4.3-33B-GGUF/resolve/main/Nanbeige4.3-33B-AD-Q5_K_M.gguf",
+            "size": "24.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "AtomicChat/Nanbeige4.3-33B-GGUF-nanbeige4-3-33b-ad-q5-k-m-q4-k-m",
+            "url": "https://huggingface.co/AtomicChat/Nanbeige4.3-33B-GGUF/resolve/main/Nanbeige4.3-33B-AD-Q5_K_M-Q4_K_M.gguf",
+            "size": "22.6GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "AtomicChat/Nanbeige4.3-33B-GGUF-nanbeige4-3-33b-q5-k-m",
+            "url": "https://huggingface.co/AtomicChat/Nanbeige4.3-33B-GGUF/resolve/main/Nanbeige4.3-33B-Q5_K_M.gguf",
+            "size": "23.5GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "AtomicChat/Nanbeige4.3-33B-GGUF-q5-k",
+            "url": "https://huggingface.co/AtomicChat/Nanbeige4.3-33B-GGUF/resolve/main/Nanbeige4.3-33B-AD-Q6_K-Q5_K.gguf",
+            "size": "27.9GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "AtomicChat/Nanbeige4.3-33B-GGUF-q6-k",
+            "url": "https://huggingface.co/AtomicChat/Nanbeige4.3-33B-GGUF/resolve/main/Nanbeige4.3-33B-AD-Q6_K.gguf",
+            "size": "30.1GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "AtomicChat/Nanbeige4.3-33B-GGUF-q8-0",
+            "url": "https://huggingface.co/AtomicChat/Nanbeige4.3-33B-GGUF/resolve/main/Nanbeige4.3-33B-Q8_0.gguf",
+            "size": "35.2GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
@@ -1804,198 +1964,6 @@
             "name": "bartowski/endless-frontier_BigBang-v1-GGUF-q8-0",
             "url": "https://huggingface.co/bartowski/endless-frontier_BigBang-v1-GGUF/resolve/main/endless-frontier_BigBang-v1-Q8_0.gguf",
             "size": "37.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-bf16",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-bf16.gguf",
-            "size": "9.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-google-gemma-4-e2b-it-imatrix",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-imatrix.gguf",
-            "size": "2.8MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-iq2-m",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-IQ2_M.gguf",
-            "size": "2.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-iq3-m",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-IQ3_M.gguf",
-            "size": "3.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-iq3-xs",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-IQ3_XS.gguf",
-            "size": "3.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-iq4-nl",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-IQ4_NL.gguf",
-            "size": "3.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-iq4-xs",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-IQ4_XS.gguf",
-            "size": "3.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q2-k",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q2_K.gguf",
-            "size": "3.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q2-k-l",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q2_K_L.gguf",
-            "size": "3.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q3-k-l",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q3_K_L.gguf",
-            "size": "3.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q3-k-m",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q3_K_M.gguf",
-            "size": "3.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q3-k-s",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q3_K_S.gguf",
-            "size": "3.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q3-k-xl",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q3_K_XL.gguf",
-            "size": "4.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q4-0",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_0.gguf",
-            "size": "3.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q4-1",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_1.gguf",
-            "size": "3.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q4-k-l",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_K_L.gguf",
-            "size": "4.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q4-k-m",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_K_M.gguf",
-            "size": "3.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q4-k-s",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_K_S.gguf",
-            "size": "3.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q5-k-l",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q5_K_L.gguf",
-            "size": "4.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q5-k-m",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q5_K_M.gguf",
-            "size": "3.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q5-k-s",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q5_K_S.gguf",
-            "size": "3.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q6-k",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q6_K.gguf",
-            "size": "3.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q6-k-l",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q6_K_L.gguf",
-            "size": "4.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "bartowski/google_gemma-4-E2B-it-GGUF-q8-0",
-            "url": "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q8_0.gguf",
-            "size": "5.0GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
@@ -3025,198 +2993,6 @@
             "has_mmproj": true
         },
         {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-bf16",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-bf16.gguf",
-            "size": "8.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-iq2-m",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-IQ2_M.gguf",
-            "size": "1.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-iq3-m",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-IQ3_M.gguf",
-            "size": "2.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-iq3-xs",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-IQ3_XS.gguf",
-            "size": "1.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-iq3-xxs",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-IQ3_XXS.gguf",
-            "size": "1.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-iq4-nl",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-IQ4_NL.gguf",
-            "size": "2.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-iq4-xs",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-IQ4_XS.gguf",
-            "size": "2.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q2-k",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q2_K.gguf",
-            "size": "1.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q2-k-l",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q2_K_L.gguf",
-            "size": "1.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q3-k-l",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q3_K_L.gguf",
-            "size": "2.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q3-k-m",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q3_K_M.gguf",
-            "size": "2.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q3-k-s",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q3_K_S.gguf",
-            "size": "1.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q3-k-xl",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q3_K_XL.gguf",
-            "size": "2.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q4-0",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q4_0.gguf",
-            "size": "2.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q4-1",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q4_1.gguf",
-            "size": "2.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q4-k-l",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q4_K_L.gguf",
-            "size": "2.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q4-k-m",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q4_K_M.gguf",
-            "size": "2.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q4-k-s",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q4_K_S.gguf",
-            "size": "2.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q5-k-l",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q5_K_L.gguf",
-            "size": "3.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q5-k-m",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q5_K_M.gguf",
-            "size": "2.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q5-k-s",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q5_K_S.gguf",
-            "size": "2.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q6-k",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q6_K.gguf",
-            "size": "3.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q6-k-l",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q6_K_L.gguf",
-            "size": "3.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bartowski/Qwen_Qwen3-4B-GGUF-q8-0",
-            "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q8_0.gguf",
-            "size": "4.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
             "name": "bartowski/thomsonreuters_Thomson-1.0-Small-GGUF-iq2-m",
             "url": "https://huggingface.co/bartowski/thomsonreuters_Thomson-1.0-Small-GGUF/resolve/main/thomsonreuters_Thomson-1.0-Small-IQ2_M.gguf",
             "size": "12.1GB",
@@ -3431,230 +3207,6 @@
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-bf16",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-BF16.gguf",
-            "size": "15.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-f16",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-f16.gguf",
-            "size": "15.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-iq1-m",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-IQ1_M.gguf",
-            "size": "1.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-iq1-s",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-IQ1_S.gguf",
-            "size": "1.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-iq2-m",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-IQ2_M.gguf",
-            "size": "2.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-iq2-s",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-IQ2_S.gguf",
-            "size": "2.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-iq2-xs",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-IQ2_XS.gguf",
-            "size": "2.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-iq2-xxs",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-IQ2_XXS.gguf",
-            "size": "2.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-iq3-s",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-IQ3_S.gguf",
-            "size": "3.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-iq3-xxs",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-IQ3_XXS.gguf",
-            "size": "3.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-iq4-xs",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-IQ4_XS.gguf",
-            "size": "4.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-ling-3-0-tiny-imatrix",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-imatrix.gguf",
-            "size": "44.0MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-ling-3-0-tiny-mxfp4-moe",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-MXFP4_MOE.gguf",
-            "size": "4.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q1-0",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-Q1_0.gguf",
-            "size": "1.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q2-k",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-Q2_K.gguf",
-            "size": "3.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q3-k-m",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-Q3_K_M.gguf",
-            "size": "3.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q3-k-s",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-Q3_K_S.gguf",
-            "size": "3.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q4-0",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-Q4_0.gguf",
-            "size": "4.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q4-k-m",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-Q4_K_M.gguf",
-            "size": "4.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q4-k-s",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-Q4_K_S.gguf",
-            "size": "4.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q4-k-xl",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-UD-Q4_K_XL.gguf",
-            "size": "5.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q5-0",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-Q5_0.gguf",
-            "size": "5.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q5-k-m",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-Q5_K_M.gguf",
-            "size": "5.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q5-k-s",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-Q5_K_S.gguf",
-            "size": "5.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q6-k",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-Q6_K.gguf",
-            "size": "6.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q6-k-xl",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-UD-Q6_K_XL.gguf",
-            "size": "7.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q8-0",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-Q8_0.gguf",
-            "size": "8.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "bloomer010/Ling-3.0-tiny-GGUF-q8-k-xl",
-            "url": "https://huggingface.co/bloomer010/Ling-3.0-tiny-GGUF/resolve/main/Ling-3.0-tiny-UD-Q8_K_XL.gguf",
-            "size": "11.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
         },
         {
             "name": "bottlecapai/ThinkingCap-Qwen3.8-27B-GGUF-f16",
@@ -5033,62 +4585,6 @@
             "has_mmproj": true
         },
         {
-            "name": "DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF-iq2-m",
-            "url": "https://huggingface.co/DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF/resolve/main/Qwen3.8-27B-Jumbo-FIQ-747-900-T-Brill-50X-NEO-MTP-IQ2_M.gguf",
-            "size": "10.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF-iq3-m",
-            "url": "https://huggingface.co/DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF/resolve/main/Qwen3.8-27B-Jumbo-FIQ-747-900-T-Brill-50X-NEO-MTP-IQ3_M.gguf",
-            "size": "12.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF-iq4-xs",
-            "url": "https://huggingface.co/DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF/resolve/main/Qwen3.8-27B-Jumbo-FIQ-747-900-T-Brill-50X-NEO-MTP-IQ4_XS.gguf",
-            "size": "15.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF-q4-k-m",
-            "url": "https://huggingface.co/DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF/resolve/main/Qwen3.8-27B-Jumbo-FIQ-747-900-T-Brill-50X-NEO-MTP-Q4_K_M.gguf",
-            "size": "16.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF-q5-k-m",
-            "url": "https://huggingface.co/DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF/resolve/main/Qwen3.8-27B-Jumbo-FIQ-747-900-T-Brill-50X-NEO-MTP-Q5_K_M.gguf",
-            "size": "19.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF-q6-k",
-            "url": "https://huggingface.co/DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF/resolve/main/Qwen3.8-27B-Jumbo-FIQ-747-900-T-Brill-50X-NEO-MTP-Q6_K.gguf",
-            "size": "22.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF-q8-0",
-            "url": "https://huggingface.co/DavidAU/Qwen3.8-27B-Jumbo-Fusion-IQ-747-900-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF/resolve/main/Qwen3.8-27B-Jumbo-FIQ-747-900-T-Brill-50X-NEO-MTP-Q8_0.gguf",
-            "size": "29.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
             "name": "DavidAU/Qwen3.8-27B-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF-iq2-m",
             "url": "https://huggingface.co/DavidAU/Qwen3.8-27B-Turbo-Brilliance-50X-Reasoning-Instruct-NEO-MAX-MTP-GGUF/resolve/main/Qwen3.8-27B-Turbo-Brilliance-50X-RI-NEO-MAX-MTP-IQ2_M.gguf",
             "size": "12.1GB",
@@ -5457,52 +4953,28 @@
             "has_mmproj": true
         },
         {
-            "name": "dealignai/Ornith-1.5-9B-UNCENSORED-GGUF-q2-k",
-            "url": "https://huggingface.co/dealignai/Ornith-1.5-9B-UNCENSORED-GGUF/resolve/main/Ornith-1.5-9B-CRACK-Q2_K.gguf",
-            "size": "3.8GB",
+            "name": "dealignai/Nanbeige4.3-33B-UNCENSORED-GGUF-iq2-xxs",
+            "url": "https://huggingface.co/dealignai/Nanbeige4.3-33B-UNCENSORED-GGUF/resolve/main/Nanbeige4.3-33B-UNCENSORED-IQ2_XXS.gguf",
+            "size": "9.3GB",
             "jinja": false,
             "supports_vision": null,
-            "has_mmproj": true
+            "has_mmproj": null
         },
         {
-            "name": "dealignai/Ornith-1.5-9B-UNCENSORED-GGUF-q3-k-m",
-            "url": "https://huggingface.co/dealignai/Ornith-1.5-9B-UNCENSORED-GGUF/resolve/main/Ornith-1.5-9B-CRACK-Q3_K_M.gguf",
-            "size": "4.6GB",
+            "name": "dealignai/Nanbeige4.3-33B-UNCENSORED-GGUF-q4-k-m",
+            "url": "https://huggingface.co/dealignai/Nanbeige4.3-33B-UNCENSORED-GGUF/resolve/main/Nanbeige4.3-33B-UNCENSORED-Q4_K_M.gguf",
+            "size": "20.1GB",
             "jinja": false,
             "supports_vision": null,
-            "has_mmproj": true
+            "has_mmproj": null
         },
         {
-            "name": "dealignai/Ornith-1.5-9B-UNCENSORED-GGUF-q4-k-m",
-            "url": "https://huggingface.co/dealignai/Ornith-1.5-9B-UNCENSORED-GGUF/resolve/main/Ornith-1.5-9B-CRACK-Q4_K_M.gguf",
-            "size": "5.6GB",
+            "name": "dealignai/Nanbeige4.3-33B-UNCENSORED-GGUF-q6-k",
+            "url": "https://huggingface.co/dealignai/Nanbeige4.3-33B-UNCENSORED-GGUF/resolve/main/Nanbeige4.3-33B-UNCENSORED-Q6_K.gguf",
+            "size": "27.2GB",
             "jinja": false,
             "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "dealignai/Ornith-1.5-9B-UNCENSORED-GGUF-q5-k-m",
-            "url": "https://huggingface.co/dealignai/Ornith-1.5-9B-UNCENSORED-GGUF/resolve/main/Ornith-1.5-9B-CRACK-Q5_K_M.gguf",
-            "size": "6.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "dealignai/Ornith-1.5-9B-UNCENSORED-GGUF-q6-k",
-            "url": "https://huggingface.co/dealignai/Ornith-1.5-9B-UNCENSORED-GGUF/resolve/main/Ornith-1.5-9B-CRACK-Q6_K.gguf",
-            "size": "7.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "dealignai/Ornith-1.5-9B-UNCENSORED-GGUF-q8-0",
-            "url": "https://huggingface.co/dealignai/Ornith-1.5-9B-UNCENSORED-GGUF/resolve/main/Ornith-1.5-9B-CRACK-Q8_0.gguf",
-            "size": "9.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
+            "has_mmproj": null
         },
         {
             "name": "empero-ai/Qwen3.8-27B-Ridge-GGUF-qwen3-8-27b-ridge-3-7bpw",
@@ -5711,86 +5183,6 @@
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
-        },
-        {
-            "name": "empero-ai/Qwythos-27B-v1-GGUF-qwythos-27b-bf16",
-            "url": "https://huggingface.co/empero-ai/Qwythos-27B-v1-GGUF/resolve/main/Qwythos-27B-BF16.gguf",
-            "size": "53.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "empero-ai/Qwythos-27B-v1-GGUF-qwythos-27b-mtp-bf16",
-            "url": "https://huggingface.co/empero-ai/Qwythos-27B-v1-GGUF/resolve/main/Qwythos-27B-MTP-BF16.gguf",
-            "size": "54.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "empero-ai/Qwythos-27B-v1-GGUF-qwythos-27b-mtp-q4-k-m",
-            "url": "https://huggingface.co/empero-ai/Qwythos-27B-v1-GGUF/resolve/main/Qwythos-27B-MTP-Q4_K_M.gguf",
-            "size": "17.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "empero-ai/Qwythos-27B-v1-GGUF-qwythos-27b-mtp-q5-k-m",
-            "url": "https://huggingface.co/empero-ai/Qwythos-27B-v1-GGUF/resolve/main/Qwythos-27B-MTP-Q5_K_M.gguf",
-            "size": "20.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "empero-ai/Qwythos-27B-v1-GGUF-qwythos-27b-mtp-q6-k",
-            "url": "https://huggingface.co/empero-ai/Qwythos-27B-v1-GGUF/resolve/main/Qwythos-27B-MTP-Q6_K.gguf",
-            "size": "22.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "empero-ai/Qwythos-27B-v1-GGUF-qwythos-27b-mtp-q8-0",
-            "url": "https://huggingface.co/empero-ai/Qwythos-27B-v1-GGUF/resolve/main/Qwythos-27B-MTP-Q8_0.gguf",
-            "size": "29.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "empero-ai/Qwythos-27B-v1-GGUF-qwythos-27b-q4-k-m",
-            "url": "https://huggingface.co/empero-ai/Qwythos-27B-v1-GGUF/resolve/main/Qwythos-27B-Q4_K_M.gguf",
-            "size": "17.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "empero-ai/Qwythos-27B-v1-GGUF-qwythos-27b-q5-k-m",
-            "url": "https://huggingface.co/empero-ai/Qwythos-27B-v1-GGUF/resolve/main/Qwythos-27B-Q5_K_M.gguf",
-            "size": "19.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "empero-ai/Qwythos-27B-v1-GGUF-qwythos-27b-q6-k",
-            "url": "https://huggingface.co/empero-ai/Qwythos-27B-v1-GGUF/resolve/main/Qwythos-27B-Q6_K.gguf",
-            "size": "22.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "empero-ai/Qwythos-27B-v1-GGUF-qwythos-27b-q8-0",
-            "url": "https://huggingface.co/empero-ai/Qwythos-27B-v1-GGUF/resolve/main/Qwythos-27B-Q8_0.gguf",
-            "size": "28.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
         },
         {
             "name": "empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF-qwythos-9b-claude-mythos-5-1m-bf16",
@@ -6577,6 +5969,94 @@
             "has_mmproj": null
         },
         {
+            "name": "huihui-ai/Huihui-DeepSeek-V4-Flash-abliterated-ds4-GGUF-f32",
+            "url": "https://huggingface.co/huihui-ai/Huihui-DeepSeek-V4-Flash-abliterated-ds4-GGUF/resolve/main/DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf",
+            "size": "3.8GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "huihui-ai/Huihui-DeepSeek-V4-Flash-abliterated-ds4-GGUF-q2",
+            "url": "https://huggingface.co/huihui-ai/Huihui-DeepSeek-V4-Flash-abliterated-ds4-GGUF/resolve/main/Huihui-DeepSeek-V4-Flash-BF16-abliterated-ds4-Q2.gguf",
+            "size": "86.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "huihui-ai/Huihui-DeepSeek-V4-Flash-abliterated-ds4-GGUF-q2-k",
+            "url": "https://huggingface.co/huihui-ai/Huihui-DeepSeek-V4-Flash-abliterated-ds4-GGUF/resolve/main/Huihui-DeepSeek-V4-Flash-BF16-abliterated-ds4-Q2_K.gguf",
+            "size": "99.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "huihui-ai/Huihui-DeepSeek-V4-Flash-abliterated-ds4-GGUF-q4-k",
+            "url": "https://huggingface.co/huihui-ai/Huihui-DeepSeek-V4-Flash-abliterated-ds4-GGUF/resolve/main/Huihui-DeepSeek-V4-Flash-BF16-abliterated-ds4-Q4_K.gguf",
+            "size": "164.6GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF-f16",
+            "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF/resolve/main/Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-f16.gguf",
+            "size": "71.1GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF-q2-k",
+            "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF/resolve/main/Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q2_K.gguf",
+            "size": "13.2GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF-q3-k",
+            "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF/resolve/main/Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q3_K.gguf",
+            "size": "17.2GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF-q4-k",
+            "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF/resolve/main/Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q4_K.gguf",
+            "size": "21.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF-q5-k",
+            "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF/resolve/main/Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q5_K.gguf",
+            "size": "25.3GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF-q6-k",
+            "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF/resolve/main/Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q6_K.gguf",
+            "size": "29.2GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF-q8-0",
+            "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF/resolve/main/Huihui-Qwen3.6-35B-A3B-abliterated-ggml-model-Q8_0.gguf",
+            "size": "37.8GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
             "name": "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF-f16",
             "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF/resolve/main/Huihui-Qwen3.8-27B-abliterated-Ternary-Bonsai-f16.gguf",
             "size": "53.8GB",
@@ -6961,118 +6441,6 @@
             "has_mmproj": true
         },
         {
-            "name": "ibm-granite/granite-4.2-30b-GGUF-q2-k",
-            "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/main/granite-4.2-30b-Q2_K.gguf",
-            "size": "10.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "ibm-granite/granite-4.2-30b-GGUF-q3-k-l",
-            "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/main/granite-4.2-30b-Q3_K_L.gguf",
-            "size": "15.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "ibm-granite/granite-4.2-30b-GGUF-q3-k-m",
-            "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/main/granite-4.2-30b-Q3_K_M.gguf",
-            "size": "14.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "ibm-granite/granite-4.2-30b-GGUF-q3-k-s",
-            "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/main/granite-4.2-30b-Q3_K_S.gguf",
-            "size": "12.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "ibm-granite/granite-4.2-30b-GGUF-q4-0",
-            "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/main/granite-4.2-30b-Q4_0.gguf",
-            "size": "16.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "ibm-granite/granite-4.2-30b-GGUF-q4-1",
-            "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/main/granite-4.2-30b-Q4_1.gguf",
-            "size": "18.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "ibm-granite/granite-4.2-30b-GGUF-q4-k-m",
-            "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/main/granite-4.2-30b-Q4_K_M.gguf",
-            "size": "17.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "ibm-granite/granite-4.2-30b-GGUF-q4-k-s",
-            "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/main/granite-4.2-30b-Q4_K_S.gguf",
-            "size": "16.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "ibm-granite/granite-4.2-30b-GGUF-q5-0",
-            "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/main/granite-4.2-30b-Q5_0.gguf",
-            "size": "20.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "ibm-granite/granite-4.2-30b-GGUF-q5-1",
-            "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/main/granite-4.2-30b-Q5_1.gguf",
-            "size": "22.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "ibm-granite/granite-4.2-30b-GGUF-q5-k-m",
-            "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/main/granite-4.2-30b-Q5_K_M.gguf",
-            "size": "20.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "ibm-granite/granite-4.2-30b-GGUF-q5-k-s",
-            "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/main/granite-4.2-30b-Q5_K_S.gguf",
-            "size": "20.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "ibm-granite/granite-4.2-30b-GGUF-q6-k",
-            "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/main/granite-4.2-30b-Q6_K.gguf",
-            "size": "24.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "ibm-granite/granite-4.2-30b-GGUF-q8-0",
-            "url": "https://huggingface.co/ibm-granite/granite-4.2-30b-GGUF/resolve/main/granite-4.2-30b-Q8_0.gguf",
-            "size": "31.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
             "name": "ibm-granite/granite-4.2-3b-GGUF-bf16",
             "url": "https://huggingface.co/ibm-granite/granite-4.2-3b-GGUF/resolve/main/granite-4.2-3b-bf16.gguf",
             "size": "7.3GB",
@@ -7313,6 +6681,22 @@
             "has_mmproj": null
         },
         {
+            "name": "InternScience/Sage-A1.5-Q4_K_M-GGUF-q4-k-m",
+            "url": "https://huggingface.co/InternScience/Sage-A1.5-Q4_K_M-GGUF/resolve/main/Sage-A1.5-Q4_K_M.gguf",
+            "size": "21.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "ISTA-DASLab/DeepSeek-V4.1-Flash-1017-GSQ-RCO-GGUF-iq4-nl",
+            "url": "https://huggingface.co/ISTA-DASLab/DeepSeek-V4.1-Flash-1017-GSQ-RCO-GGUF/resolve/main/DeepSeek-V4.1-Flash-Engram-IQ4_NL.gguf",
+            "size": "110.6GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
             "name": "ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF-imatrix-qwen3-8-27b",
             "url": "https://huggingface.co/ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF/resolve/main/imatrix-qwen3.8-27b.gguf",
             "size": "13.6MB",
@@ -7436,46 +6820,6 @@
             "name": "Jackrong/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2-GGUF-q8-0",
             "url": "https://huggingface.co/Jackrong/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2-GGUF/resolve/main/Qwen3.5-27B.Q8_0.gguf",
             "size": "28.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-GGUF-q3-k-m",
-            "url": "https://huggingface.co/Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-GGUF/resolve/main/Qwen3.5-9B.Q3_K_M.gguf",
-            "size": "4.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-GGUF-q4-k-m",
-            "url": "https://huggingface.co/Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-GGUF/resolve/main/Qwen3.5-9B.Q4_K_M.gguf",
-            "size": "5.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-GGUF-q5-k-m",
-            "url": "https://huggingface.co/Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-GGUF/resolve/main/Qwen3.5-9B.Q5_K_M.gguf",
-            "size": "6.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-GGUF-q6-k",
-            "url": "https://huggingface.co/Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-GGUF/resolve/main/Qwen3.5-9B.Q6_K.gguf",
-            "size": "7.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-GGUF-q8-0",
-            "url": "https://huggingface.co/Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-GGUF/resolve/main/Qwen3.5-9B.Q8_0.gguf",
-            "size": "9.5GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
@@ -7849,7 +7193,7 @@
             "has_mmproj": true
         },
         {
-            "name": "JetBrains/Mellum2.1-12B-A2.5B-Thinking-GGUF-bf16",
+            "name": "JetBrains/Mellum2.1-12B-A2.5B-Thinking-GGUF-mellum2-1-12b-a2-5b-thinking-bf16",
             "url": "https://huggingface.co/JetBrains/Mellum2.1-12B-A2.5B-Thinking-GGUF/resolve/main/Mellum2.1-12B-A2.5B-Thinking-BF16.gguf",
             "size": "24.3GB",
             "jinja": false,
@@ -7860,6 +7204,14 @@
             "name": "JetBrains/Mellum2.1-12B-A2.5B-Thinking-GGUF-mellum2-1-12b-a2-5b-thinking-mxfp4-moe",
             "url": "https://huggingface.co/JetBrains/Mellum2.1-12B-A2.5B-Thinking-GGUF/resolve/main/Mellum2.1-12B-A2.5B-Thinking-MXFP4_MOE.gguf",
             "size": "7.0GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "JetBrains/Mellum2.1-12B-A2.5B-Thinking-GGUF-mtp-mellum2-1-12b-a2-5b-thinking-bf16",
+            "url": "https://huggingface.co/JetBrains/Mellum2.1-12B-A2.5B-Thinking-GGUF/resolve/main/mtp-Mellum2.1-12B-A2.5B-Thinking-BF16.gguf",
+            "size": "1.8GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
@@ -8057,105 +7409,73 @@
             "has_mmproj": true
         },
         {
-            "name": "KyleHessling1/Qwopus3.6-27B-Fusion-GGUF-bf16",
-            "url": "https://huggingface.co/KyleHessling1/Qwopus3.6-27B-Fusion-GGUF/resolve/main/Qwopus3.6-27B-Fusion-BF16.gguf",
-            "size": "54.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "KyleHessling1/Qwopus3.6-27B-Fusion-GGUF-q3-k-m",
-            "url": "https://huggingface.co/KyleHessling1/Qwopus3.6-27B-Fusion-GGUF/resolve/main/Qwopus3.6-27B-Fusion-Q3_K_M.gguf",
-            "size": "13.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "KyleHessling1/Qwopus3.6-27B-Fusion-GGUF-q4-k-m",
-            "url": "https://huggingface.co/KyleHessling1/Qwopus3.6-27B-Fusion-GGUF/resolve/main/Qwopus3.6-27B-Fusion-Q4_K_M.gguf",
-            "size": "16.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "KyleHessling1/Qwopus3.6-27B-Fusion-GGUF-q5-k-m",
-            "url": "https://huggingface.co/KyleHessling1/Qwopus3.6-27B-Fusion-GGUF/resolve/main/Qwopus3.6-27B-Fusion-Q5_K_M.gguf",
-            "size": "19.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "KyleHessling1/Qwopus3.6-27B-Fusion-GGUF-q6-k",
-            "url": "https://huggingface.co/KyleHessling1/Qwopus3.6-27B-Fusion-GGUF/resolve/main/Qwopus3.6-27B-Fusion-Q6_K.gguf",
-            "size": "22.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "KyleHessling1/Qwopus3.6-27B-Fusion-GGUF-q8-0",
-            "url": "https://huggingface.co/KyleHessling1/Qwopus3.6-27B-Fusion-GGUF/resolve/main/Qwopus3.6-27B-Fusion-Q8_0.gguf",
-            "size": "29.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "leejet/MiniMax-H3-GGUF-minimax-h3-fl2va-pruned-q4-k-m",
-            "url": "https://huggingface.co/leejet/MiniMax-H3-GGUF/resolve/main/minimax_h3_fl2va_pruned-Q4_K_M.gguf",
-            "size": "11.4GB",
+            "name": "kaitchup/Qwen3.8-27B-SLQ-GGUF-q5-k-m",
+            "url": "https://huggingface.co/kaitchup/Qwen3.8-27B-SLQ-GGUF/resolve/main/Qwen3.8-27B-SLQ-EAR98.5-Q5_K_M.gguf",
+            "size": "20.7GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "leejet/MiniMax-H3-GGUF-minimax-h3-fl2va-q4-k-m",
-            "url": "https://huggingface.co/leejet/MiniMax-H3-GGUF/resolve/main/minimax_h3_fl2va-Q4_K_M.gguf",
-            "size": "18.8GB",
+            "name": "kaitchup/Qwen3.8-27B-SLQ-GGUF-q5-k-s",
+            "url": "https://huggingface.co/kaitchup/Qwen3.8-27B-SLQ-GGUF/resolve/main/Qwen3.8-27B-SLQ-EAR98-Q5_K_S.gguf",
+            "size": "18.9GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "leejet/MiniMax-H3-GGUF-minimax-h3-ref2va-pruned-q2-k-m",
-            "url": "https://huggingface.co/leejet/MiniMax-H3-GGUF/resolve/main/minimax_h3_ref2va_pruned-Q2_K_M.gguf",
-            "size": "6.7GB",
+            "name": "kaitchup/Qwen3.8-27B-SLQ-GGUF-q6-k",
+            "url": "https://huggingface.co/kaitchup/Qwen3.8-27B-SLQ-GGUF/resolve/main/Qwen3.8-27B-SLQ-EAR99-Q6_K.gguf",
+            "size": "23.7GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "leejet/MiniMax-H3-GGUF-minimax-h3-ref2va-pruned-q4-k-m",
-            "url": "https://huggingface.co/leejet/MiniMax-H3-GGUF/resolve/main/minimax_h3_ref2va_pruned-Q4_K_M.gguf",
-            "size": "11.4GB",
+            "name": "KRAFTON/Raon-1-mini-preview-gguf-dflash-raon-1-mini-preview-q8-0",
+            "url": "https://huggingface.co/KRAFTON/Raon-1-mini-preview-gguf/resolve/main/dflash-raon-1-mini-preview-Q8_0.gguf",
+            "size": "732.5MB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "leejet/MiniMax-H3-GGUF-minimax-h3-ref2va-q4-k-m",
-            "url": "https://huggingface.co/leejet/MiniMax-H3-GGUF/resolve/main/minimax_h3_ref2va-Q4_K_M.gguf",
-            "size": "18.8GB",
+            "name": "KRAFTON/Raon-1-mini-preview-gguf-iq4-xs",
+            "url": "https://huggingface.co/KRAFTON/Raon-1-mini-preview-gguf/resolve/main/raon-1-mini-preview-IQ4_XS.gguf",
+            "size": "16.1GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "leejet/MiniMax-H3-GGUF-qwen3vl-32b-minimax-h3-q2-k-m",
-            "url": "https://huggingface.co/leejet/MiniMax-H3-GGUF/resolve/main/qwen3vl_32b_minimax_h3-Q2_K_M.gguf",
-            "size": "13.1GB",
+            "name": "KRAFTON/Raon-1-mini-preview-gguf-q4-k-m",
+            "url": "https://huggingface.co/KRAFTON/Raon-1-mini-preview-gguf/resolve/main/raon-1-mini-preview-Q4_K_M.gguf",
+            "size": "19.7GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "leejet/MiniMax-H3-GGUF-qwen3vl-32b-minimax-h3-q4-k-m",
-            "url": "https://huggingface.co/leejet/MiniMax-H3-GGUF/resolve/main/qwen3vl_32b_minimax_h3-Q4_K_M.gguf",
-            "size": "18.2GB",
+            "name": "KRAFTON/Raon-1-mini-preview-gguf-q5-k-m",
+            "url": "https://huggingface.co/KRAFTON/Raon-1-mini-preview-gguf/resolve/main/raon-1-mini-preview-Q5_K_M.gguf",
+            "size": "22.2GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "KRAFTON/Raon-1-mini-preview-gguf-q6-k",
+            "url": "https://huggingface.co/KRAFTON/Raon-1-mini-preview-gguf/resolve/main/raon-1-mini-preview-Q6_K.gguf",
+            "size": "25.8GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "KRAFTON/Raon-1-mini-preview-gguf-raon-1-mini-preview-q8-0",
+            "url": "https://huggingface.co/KRAFTON/Raon-1-mini-preview-gguf/resolve/main/raon-1-mini-preview-Q8_0.gguf",
+            "size": "30.7GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
@@ -8353,60 +7673,156 @@
             "has_mmproj": null
         },
         {
-            "name": "LiquidAI/LFM2.5-24B-A2B-GGUF-bf16",
-            "url": "https://huggingface.co/LiquidAI/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-BF16.gguf",
-            "size": "48.0GB",
+            "name": "LiquidAI/LFM3-1.7B-GGUF-bf16",
+            "url": "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/main/LFM3-1.7B-BF16.gguf",
+            "size": "3.5GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "LiquidAI/LFM2.5-24B-A2B-GGUF-f16",
-            "url": "https://huggingface.co/LiquidAI/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-F16.gguf",
-            "size": "48.0GB",
+            "name": "LiquidAI/LFM3-1.7B-GGUF-f16",
+            "url": "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/main/LFM3-1.7B-F16.gguf",
+            "size": "3.5GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "LiquidAI/LFM2.5-24B-A2B-GGUF-q4-0",
-            "url": "https://huggingface.co/LiquidAI/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-QAD-Q4_0.gguf",
-            "size": "13.6GB",
+            "name": "LiquidAI/LFM3-1.7B-GGUF-q4-0",
+            "url": "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/main/LFM3-1.7B-QAD-Q4_0.gguf",
+            "size": "1.0GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "LiquidAI/LFM2.5-24B-A2B-GGUF-q4-k-m",
-            "url": "https://huggingface.co/LiquidAI/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-Q4_K_M.gguf",
-            "size": "14.5GB",
+            "name": "LiquidAI/LFM3-1.7B-GGUF-q4-k-m",
+            "url": "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/main/LFM3-1.7B-Q4_K_M.gguf",
+            "size": "1.1GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "LiquidAI/LFM2.5-24B-A2B-GGUF-q5-k-m",
-            "url": "https://huggingface.co/LiquidAI/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-Q5_K_M.gguf",
-            "size": "17.0GB",
+            "name": "LiquidAI/LFM3-1.7B-GGUF-q5-k-m",
+            "url": "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/main/LFM3-1.7B-Q5_K_M.gguf",
+            "size": "1.3GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "LiquidAI/LFM2.5-24B-A2B-GGUF-q6-k",
-            "url": "https://huggingface.co/LiquidAI/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-Q6_K.gguf",
-            "size": "19.7GB",
+            "name": "LiquidAI/LFM3-1.7B-GGUF-q6-k",
+            "url": "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/main/LFM3-1.7B-Q6_K.gguf",
+            "size": "1.4GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "LiquidAI/LFM2.5-24B-A2B-GGUF-q8-0",
-            "url": "https://huggingface.co/LiquidAI/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-Q8_0.gguf",
-            "size": "25.5GB",
+            "name": "LiquidAI/LFM3-1.7B-GGUF-q8-0",
+            "url": "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/main/LFM3-1.7B-Q8_0.gguf",
+            "size": "1.8GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
+        },
+        {
+            "name": "LiquidAI/LFM3-Omni-2B-GGUF-bf16",
+            "url": "https://huggingface.co/LiquidAI/LFM3-Omni-2B-GGUF/resolve/main/LFM3-Omni-2B-BF16.gguf",
+            "size": "3.5GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "LiquidAI/LFM3-Omni-2B-GGUF-f16",
+            "url": "https://huggingface.co/LiquidAI/LFM3-Omni-2B-GGUF/resolve/main/LFM3-Omni-2B-F16.gguf",
+            "size": "3.5GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "LiquidAI/LFM3-Omni-2B-GGUF-q4-0",
+            "url": "https://huggingface.co/LiquidAI/LFM3-Omni-2B-GGUF/resolve/main/LFM3-Omni-2B-Q4_0.gguf",
+            "size": "1.0GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "LiquidAI/LFM3-Omni-2B-GGUF-q4-k-m",
+            "url": "https://huggingface.co/LiquidAI/LFM3-Omni-2B-GGUF/resolve/main/LFM3-Omni-2B-Q4_K_M.gguf",
+            "size": "1.1GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "LiquidAI/LFM3-Omni-2B-GGUF-q8-0",
+            "url": "https://huggingface.co/LiquidAI/LFM3-Omni-2B-GGUF/resolve/main/LFM3-Omni-2B-Q8_0.gguf",
+            "size": "1.8GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "LiquidAI/LFM3-VL-2B-GGUF-bf16",
+            "url": "https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF/resolve/main/LFM3-VL-2B-BF16.gguf",
+            "size": "3.5GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "LiquidAI/LFM3-VL-2B-GGUF-f16",
+            "url": "https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF/resolve/main/LFM3-VL-2B-F16.gguf",
+            "size": "3.5GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "LiquidAI/LFM3-VL-2B-GGUF-q4-0",
+            "url": "https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF/resolve/main/LFM3-VL-2B-QAD-Q4_0.gguf",
+            "size": "1.0GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "LiquidAI/LFM3-VL-2B-GGUF-q4-k-m",
+            "url": "https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF/resolve/main/LFM3-VL-2B-Q4_K_M.gguf",
+            "size": "1.1GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "LiquidAI/LFM3-VL-2B-GGUF-q5-k-m",
+            "url": "https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF/resolve/main/LFM3-VL-2B-Q5_K_M.gguf",
+            "size": "1.3GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "LiquidAI/LFM3-VL-2B-GGUF-q6-k",
+            "url": "https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF/resolve/main/LFM3-VL-2B-Q6_K.gguf",
+            "size": "1.4GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "LiquidAI/LFM3-VL-2B-GGUF-q8-0",
+            "url": "https://huggingface.co/LiquidAI/LFM3-VL-2B-GGUF/resolve/main/LFM3-VL-2B-Q8_0.gguf",
+            "size": "1.8GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
         },
         {
             "name": "llm-jp/llm-jp-4-33b-thinking-gguf-bf16",
@@ -8423,22 +7839,6 @@
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
-        },
-        {
-            "name": "lmstudio-community/Bonsai-27B-GGUF-q1-0",
-            "url": "https://huggingface.co/lmstudio-community/Bonsai-27B-GGUF/resolve/main/Bonsai-27B-Q1_0.gguf",
-            "size": "3.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "lmstudio-community/gemma-4-12B-it-QAT-GGUF-q4-0",
-            "url": "https://huggingface.co/lmstudio-community/gemma-4-12B-it-QAT-GGUF/resolve/main/gemma-4-12B-it-QAT-Q4_0.gguf",
-            "size": "7.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
         },
         {
             "name": "lmstudio-community/gemma-4-E4B-it-GGUF-q4-k-m",
@@ -8513,47 +7913,23 @@
             "has_mmproj": true
         },
         {
-            "name": "LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF-hermes3-6-35b-a3b-uncensored-genesis-apex",
-            "url": "https://huggingface.co/LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF/resolve/main/Hermes3.6-35B-A3B-Uncensored-Genesis-APEX.gguf",
-            "size": "25.8GB",
+            "name": "LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF-hermes3-6-35b-a3b-uncensored-genesis-apex-maxi",
+            "url": "https://huggingface.co/LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF/resolve/main/Hermes3.6-35B-A3B-Uncensored-Genesis-APEX-Maxi.gguf",
+            "size": "24.5GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
         },
         {
-            "name": "LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF-hermes3-6-35b-a3b-uncensored-genesis-apex-compact",
-            "url": "https://huggingface.co/LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF/resolve/main/Hermes3.6-35B-A3B-Uncensored-Genesis-APEX-Compact.gguf",
-            "size": "17.4GB",
+            "name": "LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF-hermes3-6-35b-a3b-uncensored-genesis-apex-mini",
+            "url": "https://huggingface.co/LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF/resolve/main/Hermes3.6-35B-A3B-Uncensored-Genesis-APEX-Mini.gguf",
+            "size": "20.2GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
         },
         {
-            "name": "LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF-hermes3-6-35b-a3b-uncensored-genesis-mtp-apex",
-            "url": "https://huggingface.co/LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF/resolve/main/Hermes3.6-35B-A3B-Uncensored-Genesis-MTP-APEX.gguf",
-            "size": "26.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF-hermes3-6-35b-a3b-uncensored-genesis-mtp-apex-compact",
-            "url": "https://huggingface.co/LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF/resolve/main/Hermes3.6-35B-A3B-Uncensored-Genesis-MTP-APEX-Compact.gguf",
-            "size": "18.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF-hermes3-6-35b-a3b-uncensored-genesis-mtp-q8-k-p",
-            "url": "https://huggingface.co/LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF/resolve/main/Hermes3.6-35B-A3B-Uncensored-Genesis-MTP-Q8_K_P.gguf",
-            "size": "44.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF-hermes3-6-35b-a3b-uncensored-genesis-q8-k-p",
+            "name": "LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF-q8-k-p",
             "url": "https://huggingface.co/LuffyTheFox/Qwen3.6-35B-A3B-Uncensored-Genesis-Hermes-GGUF/resolve/main/Hermes3.6-35B-A3B-Uncensored-Genesis-Q8_K_P.gguf",
             "size": "43.6GB",
             "jinja": false,
@@ -8641,46 +8017,6 @@
             "has_mmproj": null
         },
         {
-            "name": "michaelw9999/Qwen3.6-27B-NVFP4-MTP-GGUF-qwen3-6-27b-nvfp4-mtp-gguf",
-            "url": "https://huggingface.co/michaelw9999/Qwen3.6-27B-NVFP4-MTP-GGUF/resolve/main/Qwen3.6-27B-NVFP4-MTP-GGUF.gguf",
-            "size": "16.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "michaelw9999/Qwen3.6-35B-A3B-NVFP4-MTP-GGUF-qwen3-6-35b-a3b-nvfp4-mtp-hq",
-            "url": "https://huggingface.co/michaelw9999/Qwen3.6-35B-A3B-NVFP4-MTP-GGUF/resolve/main/Qwen3.6-35B-A3B-NVFP4-MTP-HQ.gguf",
-            "size": "20.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "michaelw9999/Qwen3.6-35B-A3B-NVFP4-MTP-GGUF-qwen3-6-35b-a3b-nvfp4-mtp-turbo",
-            "url": "https://huggingface.co/michaelw9999/Qwen3.6-35B-A3B-NVFP4-MTP-GGUF/resolve/main/Qwen3.6-35B-A3B-NVFP4-MTP-TURBO.gguf",
-            "size": "20.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "michaelw9999/Qwopus3.6-27B-Coder-MTP-NVFP4-GGUF-qwopus3-6-27b-coder-mtp-nvfp4-turbo",
-            "url": "https://huggingface.co/michaelw9999/Qwopus3.6-27B-Coder-MTP-NVFP4-GGUF/resolve/main/Qwopus3.6-27B-Coder-MTP-NVFP4-TURBO.gguf",
-            "size": "16.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "michaelw9999/Qwopus3.6-27B-v2-MTP-NVFP4-GGUF-qwopus3-6-27b-v2-mtp-nvfp4-gguf",
-            "url": "https://huggingface.co/michaelw9999/Qwopus3.6-27B-v2-MTP-NVFP4-GGUF/resolve/main/Qwopus3.6-27B-v2-MTP-NVFP4-GGUF.gguf",
-            "size": "16.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
             "name": "microsoft/Phi-3-mini-4k-instruct-gguf-phi-3-mini-4k-instruct-fp16",
             "url": "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-fp16.gguf",
             "size": "7.6GB",
@@ -8731,46 +8067,6 @@
         {
             "name": "migtissera/Tess-4-27B-GGUF-tess-4-27b-q8-0",
             "url": "https://huggingface.co/migtissera/Tess-4-27B-GGUF/resolve/main/Tess-4-27B-Q8_0.gguf",
-            "size": "28.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "migtissera/Tess-4.5-27B-GGUF-mtp-tess-4-5-27b-q4-k-m",
-            "url": "https://huggingface.co/migtissera/Tess-4.5-27B-GGUF/resolve/main/mtp-Tess-4.5-27B-Q4_K_M.gguf",
-            "size": "2.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "migtissera/Tess-4.5-27B-GGUF-mtp-tess-4-5-27b-q8-0",
-            "url": "https://huggingface.co/migtissera/Tess-4.5-27B-GGUF/resolve/main/mtp-Tess-4.5-27B-Q8_0.gguf",
-            "size": "3.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "migtissera/Tess-4.5-27B-GGUF-q6-k",
-            "url": "https://huggingface.co/migtissera/Tess-4.5-27B-GGUF/resolve/main/Tess-4.5-27B-Q6_K.gguf",
-            "size": "22.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "migtissera/Tess-4.5-27B-GGUF-tess-4-5-27b-q4-k-m",
-            "url": "https://huggingface.co/migtissera/Tess-4.5-27B-GGUF/resolve/main/Tess-4.5-27B-Q4_K_M.gguf",
-            "size": "16.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "migtissera/Tess-4.5-27B-GGUF-tess-4-5-27b-q8-0",
-            "url": "https://huggingface.co/migtissera/Tess-4.5-27B-GGUF/resolve/main/Tess-4.5-27B-Q8_0.gguf",
             "size": "28.6GB",
             "jinja": false,
             "supports_vision": null,
@@ -8868,6 +8164,102 @@
             "name": "mradermacher/AdaVaR-3B-GGUF-q8-0",
             "url": "https://huggingface.co/mradermacher/AdaVaR-3B-GGUF/resolve/main/AdaVaR-3B.Q8_0.gguf",
             "size": "3.3GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/B1-9B-GGUF-f16",
+            "url": "https://huggingface.co/mradermacher/B1-9B-GGUF/resolve/main/B1-9B.f16.gguf",
+            "size": "18.4GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/B1-9B-GGUF-iq4-xs",
+            "url": "https://huggingface.co/mradermacher/B1-9B-GGUF/resolve/main/B1-9B.IQ4_XS.gguf",
+            "size": "5.4GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/B1-9B-GGUF-q2-k",
+            "url": "https://huggingface.co/mradermacher/B1-9B-GGUF/resolve/main/B1-9B.Q2_K.gguf",
+            "size": "3.9GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/B1-9B-GGUF-q3-k-l",
+            "url": "https://huggingface.co/mradermacher/B1-9B-GGUF/resolve/main/B1-9B.Q3_K_L.gguf",
+            "size": "5.0GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/B1-9B-GGUF-q3-k-m",
+            "url": "https://huggingface.co/mradermacher/B1-9B-GGUF/resolve/main/B1-9B.Q3_K_M.gguf",
+            "size": "4.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/B1-9B-GGUF-q3-k-s",
+            "url": "https://huggingface.co/mradermacher/B1-9B-GGUF/resolve/main/B1-9B.Q3_K_S.gguf",
+            "size": "4.4GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/B1-9B-GGUF-q4-k-m",
+            "url": "https://huggingface.co/mradermacher/B1-9B-GGUF/resolve/main/B1-9B.Q4_K_M.gguf",
+            "size": "5.8GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/B1-9B-GGUF-q4-k-s",
+            "url": "https://huggingface.co/mradermacher/B1-9B-GGUF/resolve/main/B1-9B.Q4_K_S.gguf",
+            "size": "5.5GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/B1-9B-GGUF-q5-k-m",
+            "url": "https://huggingface.co/mradermacher/B1-9B-GGUF/resolve/main/B1-9B.Q5_K_M.gguf",
+            "size": "6.6GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/B1-9B-GGUF-q5-k-s",
+            "url": "https://huggingface.co/mradermacher/B1-9B-GGUF/resolve/main/B1-9B.Q5_K_S.gguf",
+            "size": "6.5GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/B1-9B-GGUF-q6-k",
+            "url": "https://huggingface.co/mradermacher/B1-9B-GGUF/resolve/main/B1-9B.Q6_K.gguf",
+            "size": "7.6GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/B1-9B-GGUF-q8-0",
+            "url": "https://huggingface.co/mradermacher/B1-9B-GGUF/resolve/main/B1-9B.Q8_0.gguf",
+            "size": "9.8GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
@@ -9260,6 +8652,102 @@
             "name": "mradermacher/Qwen3-VL-8B-Instruct-abliterated-GGUF-q8-0",
             "url": "https://huggingface.co/mradermacher/Qwen3-VL-8B-Instruct-abliterated-GGUF/resolve/main/Qwen3-VL-8B-Instruct-abliterated.Q8_0.gguf",
             "size": "8.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF-f16",
+            "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF/resolve/main/Qwen3.5-9B-Kimi-k3-Distilled.f16.gguf",
+            "size": "18.4GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF-iq4-xs",
+            "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF/resolve/main/Qwen3.5-9B-Kimi-k3-Distilled.IQ4_XS.gguf",
+            "size": "5.4GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF-q2-k",
+            "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF/resolve/main/Qwen3.5-9B-Kimi-k3-Distilled.Q2_K.gguf",
+            "size": "3.9GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF-q3-k-l",
+            "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF/resolve/main/Qwen3.5-9B-Kimi-k3-Distilled.Q3_K_L.gguf",
+            "size": "5.0GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF-q3-k-m",
+            "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF/resolve/main/Qwen3.5-9B-Kimi-k3-Distilled.Q3_K_M.gguf",
+            "size": "4.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF-q3-k-s",
+            "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF/resolve/main/Qwen3.5-9B-Kimi-k3-Distilled.Q3_K_S.gguf",
+            "size": "4.4GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF-q4-k-m",
+            "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF/resolve/main/Qwen3.5-9B-Kimi-k3-Distilled.Q4_K_M.gguf",
+            "size": "5.8GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF-q4-k-s",
+            "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF/resolve/main/Qwen3.5-9B-Kimi-k3-Distilled.Q4_K_S.gguf",
+            "size": "5.5GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF-q5-k-m",
+            "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF/resolve/main/Qwen3.5-9B-Kimi-k3-Distilled.Q5_K_M.gguf",
+            "size": "6.6GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF-q5-k-s",
+            "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF/resolve/main/Qwen3.5-9B-Kimi-k3-Distilled.Q5_K_S.gguf",
+            "size": "6.5GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF-q6-k",
+            "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF/resolve/main/Qwen3.5-9B-Kimi-k3-Distilled.Q6_K.gguf",
+            "size": "7.6GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF-q8-0",
+            "url": "https://huggingface.co/mradermacher/Qwen3.5-9B-Kimi-k3-Distilled-GGUF/resolve/main/Qwen3.5-9B-Kimi-k3-Distilled.Q8_0.gguf",
+            "size": "9.8GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
@@ -9705,150 +9193,6 @@
             "has_mmproj": true
         },
         {
-            "name": "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-GGUF-nvidia-nemotron-3-5-bolt-74b-a9b-24gb",
-            "url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf",
-            "size": "22.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF-q5-k-m",
-            "url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF/resolve/main/NVIDIA-Nemotron-Labs-Dory1.0-4B-Q5_K_M.gguf",
-            "size": "3.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-dspark-minicpm-v-4-7-1b-f16",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/dspark-MiniCPM-V-4_7-1B-F16.gguf",
-            "size": "438.1MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-iq3-m",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-IQ3_M.gguf",
-            "size": "562.9MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-iq3-xs",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-IQ3_XS.gguf",
-            "size": "552.3MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-iq4-nl",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-IQ4_NL.gguf",
-            "size": "658.7MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-iq4-xs",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-IQ4_XS.gguf",
-            "size": "638.9MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-minicpm-v-4-7-1b-f16",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-F16.gguf",
-            "size": "2.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-q4-0",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-Q4_0.gguf",
-            "size": "644.2MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-q4-1",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-Q4_1.gguf",
-            "size": "691.1MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-q4-k-m",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-Q4_K_M.gguf",
-            "size": "672.0MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-q4-k-s",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-Q4_K_S.gguf",
-            "size": "648.0MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-q5-0",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-Q5_0.gguf",
-            "size": "738.1MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-q5-1",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-Q5_1.gguf",
-            "size": "785.1MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-q5-k-m",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-Q5_K_M.gguf",
-            "size": "752.5MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-q5-k-s",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-Q5_K_S.gguf",
-            "size": "738.1MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-q6-k",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-Q6_K.gguf",
-            "size": "837.9MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "openbmb/MiniCPM-V-4.7-1B-gguf-q8-0",
-            "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-1B-gguf/resolve/main/MiniCPM-V-4_7-1B-Q8_0.gguf",
-            "size": "1.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
             "name": "openbmb/MiniCPM-V-4.7-35B-A3B-gguf-dspark-minicpm-v-4-7-35b-a3b-f16",
             "url": "https://huggingface.co/openbmb/MiniCPM-V-4.7-35B-A3B-gguf/resolve/main/dspark-MiniCPM-V-4_7-35B-A3B-F16.gguf",
             "size": "789.4MB",
@@ -10007,6 +9351,14 @@
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
+        },
+        {
+            "name": "orcarouter/DeepSeek-V4.1-Flash-1017-abliterated-GGUF-imatrix",
+            "url": "https://huggingface.co/orcarouter/DeepSeek-V4.1-Flash-1017-abliterated-GGUF/resolve/main/imatrix.gguf",
+            "size": "1.6GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
         },
         {
             "name": "orcarouter/OrcaSAQ-2-Cyber-27B-Uncensored-GGUF-orcasaq-2-27b-uncensored",
@@ -10377,17 +9729,9 @@
             "has_mmproj": true
         },
         {
-            "name": "OS-Software/Ternary-Bonsai-2-27B-Uncensored-Heretic-GGUF-ternary-bonsai-2-27b-uncensored-heretic-pq2-0",
-            "url": "https://huggingface.co/OS-Software/Ternary-Bonsai-2-27B-Uncensored-Heretic-GGUF/resolve/main/Ternary-Bonsai-2-27B-Uncensored-Heretic-PQ2_0.gguf",
-            "size": "7.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "OS-Software/Ternary-Bonsai-2-27B-Uncensored-Heretic-GGUF-ternary-bonsai-2-27b-uncensored-heretic-ptq1-0",
-            "url": "https://huggingface.co/OS-Software/Ternary-Bonsai-2-27B-Uncensored-Heretic-GGUF/resolve/main/Ternary-Bonsai-2-27B-Uncensored-Heretic-PTQ1_0.gguf",
-            "size": "5.9GB",
+            "name": "peculiar-ragdoll/Cyber-Tiel-Coder-35B-A3B-GGUF-MTP-iq3-s",
+            "url": "https://huggingface.co/peculiar-ragdoll/Cyber-Tiel-Coder-35B-A3B-GGUF-MTP/resolve/main/Cyber-Tiel-Coder-35B-A3B-MTP-UD-IQ3_S.gguf",
+            "size": "14.1GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
@@ -10444,6 +9788,14 @@
             "name": "peculiar-ragdoll/Cyber-Tiel-Coder-35B-A3B-GGUF-MTP-q4-k-xl",
             "url": "https://huggingface.co/peculiar-ragdoll/Cyber-Tiel-Coder-35B-A3B-GGUF-MTP/resolve/main/Cyber-Tiel-Coder-35B-A3B-MTP-UD-Q4_K_XL.gguf",
             "size": "22.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "peculiar-ragdoll/Cyber-Tiel-Coder-35B-A3B-GGUF-MTP-q5-k-s",
+            "url": "https://huggingface.co/peculiar-ragdoll/Cyber-Tiel-Coder-35B-A3B-GGUF-MTP/resolve/main/Cyber-Tiel-Coder-35B-A3B-MTP-UD-Q5_K_S.gguf",
+            "size": "25.3GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
@@ -10625,6 +9977,14 @@
             "has_mmproj": null
         },
         {
+            "name": "peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF-iq3-s",
+            "url": "https://huggingface.co/peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF/resolve/main/Tiel-Coder-35B-A3B-UD-IQ3_S.gguf",
+            "size": "13.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
             "name": "peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF-iq3-xxs",
             "url": "https://huggingface.co/peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF/resolve/main/Tiel-Coder-35B-A3B-UD-IQ3_XXS.gguf",
             "size": "13.2GB",
@@ -10636,6 +9996,14 @@
             "name": "peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF-iq4-xs",
             "url": "https://huggingface.co/peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF/resolve/main/Tiel-Coder-35B-A3B-UD-IQ4_XS.gguf",
             "size": "17.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF-MTP-iq3-s",
+            "url": "https://huggingface.co/peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF-MTP/resolve/main/Tiel-Coder-35B-A3B-MTP-UD-IQ3_S.gguf",
+            "size": "14.1GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
@@ -10684,6 +10052,14 @@
             "name": "peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF-MTP-q4-k-xl",
             "url": "https://huggingface.co/peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF-MTP/resolve/main/Tiel-Coder-35B-A3B-MTP-UD-Q4_K_XL.gguf",
             "size": "22.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF-MTP-q5-k-s",
+            "url": "https://huggingface.co/peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF-MTP/resolve/main/Tiel-Coder-35B-A3B-MTP-UD-Q5_K_S.gguf",
+            "size": "25.3GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
@@ -10748,6 +10124,14 @@
             "name": "peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF-q4-k-xl",
             "url": "https://huggingface.co/peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF/resolve/main/Tiel-Coder-35B-A3B-UD-Q4_K_XL.gguf",
             "size": "22.4GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF-q5-k-s",
+            "url": "https://huggingface.co/peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF/resolve/main/Tiel-Coder-35B-A3B-UD-Q5_K_S.gguf",
+            "size": "24.9GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
@@ -10940,70 +10324,6 @@
             "name": "prism-ml/Ternary-Bonsai-2-27B-gguf-ternary-bonsai-2-27b-ptq1-0",
             "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf/resolve/main/Ternary-Bonsai-2-27B-PTQ1_0.gguf",
             "size": "5.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "prism-ml/Ternary-Bonsai-2-2B-gguf-q2-0",
-            "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-2B-gguf/resolve/main/Ternary-Bonsai-2-2B-Q2_0.gguf",
-            "size": "546.7MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "prism-ml/Ternary-Bonsai-2-2B-gguf-ternary-bonsai-2-2b-pq2-0",
-            "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-2B-gguf/resolve/main/Ternary-Bonsai-2-2B-PQ2_0.gguf",
-            "size": "517.3MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "prism-ml/Ternary-Bonsai-2-2B-gguf-ternary-bonsai-2-2b-ptq1-0",
-            "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-2B-gguf/resolve/main/Ternary-Bonsai-2-2B-PTQ1_0.gguf",
-            "size": "429.2MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "prism-ml/Ternary-Bonsai-2-4B-gguf-bf16",
-            "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-4B-gguf/resolve/main/Ternary-Bonsai-2-4B-DFlash2-BF16.gguf",
-            "size": "1.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "prism-ml/Ternary-Bonsai-2-4B-gguf-q2-0",
-            "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-4B-gguf/resolve/main/Ternary-Bonsai-2-4B-Q2_0.gguf",
-            "size": "1.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "prism-ml/Ternary-Bonsai-2-4B-gguf-q8-0",
-            "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-4B-gguf/resolve/main/Ternary-Bonsai-2-4B-PQ2_0-MTP-Q8_0.gguf",
-            "size": "1.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "prism-ml/Ternary-Bonsai-2-4B-gguf-ternary-bonsai-2-4b-pq2-0",
-            "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-4B-gguf/resolve/main/Ternary-Bonsai-2-4B-PQ2_0.gguf",
-            "size": "1.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "prism-ml/Ternary-Bonsai-2-4B-gguf-ternary-bonsai-2-4b-ptq1-0",
-            "url": "https://huggingface.co/prism-ml/Ternary-Bonsai-2-4B-gguf/resolve/main/Ternary-Bonsai-2-4B-PTQ1_0.gguf",
-            "size": "949.5MB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
@@ -11273,6 +10593,22 @@
             "has_mmproj": null
         },
         {
+            "name": "Qwen/Qwen2.5-7B-Instruct-GGUF-q2-k",
+            "url": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q2_k.gguf",
+            "size": "3.0GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "Qwen/Qwen2.5-7B-Instruct-GGUF-q3-k-m",
+            "url": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q3_k_m.gguf",
+            "size": "3.8GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
             "name": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF-q2-k",
             "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-q2_k.gguf",
             "size": "3.0GB",
@@ -11332,14 +10668,6 @@
             "name": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF-qwen2-5-coder-7b-instruct-fp16",
             "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-fp16.gguf",
             "size": "15.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "Qwen/Qwen3-0.6B-GGUF-q8-0",
-            "url": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q8_0.gguf",
-            "size": "639.4MB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
@@ -11561,6 +10889,14 @@
             "has_mmproj": null
         },
         {
+            "name": "RecursiveSI/flint-int4-gguf-q4-1",
+            "url": "https://huggingface.co/RecursiveSI/flint-int4-gguf/resolve/main/flint-int4-q4_1.gguf",
+            "size": "26.0GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
             "name": "rippertnt/HyperCLOVAX-SEED-Text-Instruct-1.5B-Q4_K_M-GGUF-q4-k-m",
             "url": "https://huggingface.co/rippertnt/HyperCLOVAX-SEED-Text-Instruct-1.5B-Q4_K_M-GGUF/resolve/main/hyperclovax-seed-text-instruct-1.5b-q4_k_m.gguf",
             "size": "1.1GB",
@@ -11577,8 +10913,40 @@
             "has_mmproj": true
         },
         {
+            "name": "SC117/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF-q4-0",
+            "url": "https://huggingface.co/SC117/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF/resolve/main/mtp-Qwen3.8-Flash-Next-Q4_0.gguf",
+            "size": "2.2GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
             "name": "SC117/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF-q8-0",
             "url": "https://huggingface.co/SC117/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF/resolve/main/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+            "size": "4.1GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "SC117/Swift-1.5-Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF-q2-0",
+            "url": "https://huggingface.co/SC117/Swift-1.5-Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF/resolve/main/mtp-q2_0.gguf",
+            "size": "889.0MB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "SC117/Swift-1.5-Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF-q4-0",
+            "url": "https://huggingface.co/SC117/Swift-1.5-Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF/resolve/main/mtp-Qwen3.8-Flash-Next-Q4_0.gguf",
+            "size": "2.2GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "SC117/Swift-1.5-Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF-q8-0",
+            "url": "https://huggingface.co/SC117/Swift-1.5-Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF/resolve/main/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
             "size": "4.1GB",
             "jinja": false,
             "supports_vision": null,
@@ -12457,6 +11825,46 @@
             "has_mmproj": null
         },
         {
+            "name": "soyaakinohara/Spark-X2.5-4B-Heretic-jp-gguf-bf16",
+            "url": "https://huggingface.co/soyaakinohara/Spark-X2.5-4B-Heretic-jp-gguf/resolve/main/Spark-X2.5-4B-Heretic-jp-BF16.gguf",
+            "size": "8.2GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "soyaakinohara/Spark-X2.5-4B-Heretic-jp-gguf-q4-k-m",
+            "url": "https://huggingface.co/soyaakinohara/Spark-X2.5-4B-Heretic-jp-gguf/resolve/main/Spark-X2.5-4B-Heretic-jp-Q4_K_M.gguf",
+            "size": "2.6GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "soyaakinohara/Spark-X2.5-4B-Heretic-jp-gguf-q5-k-m",
+            "url": "https://huggingface.co/soyaakinohara/Spark-X2.5-4B-Heretic-jp-gguf/resolve/main/Spark-X2.5-4B-Heretic-jp-Q5_K_M.gguf",
+            "size": "3.0GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "soyaakinohara/Spark-X2.5-4B-Heretic-jp-gguf-q6-k",
+            "url": "https://huggingface.co/soyaakinohara/Spark-X2.5-4B-Heretic-jp-gguf/resolve/main/Spark-X2.5-4B-Heretic-jp-Q6_K.gguf",
+            "size": "3.4GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "soyaakinohara/Spark-X2.5-4B-Heretic-jp-gguf-q8-0",
+            "url": "https://huggingface.co/soyaakinohara/Spark-X2.5-4B-Heretic-jp-gguf/resolve/main/Spark-X2.5-4B-Heretic-jp-Q8_0.gguf",
+            "size": "4.4GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
             "name": "TeichAI/GLM-4.7-Flash-Claude-Opus-4.5-High-Reasoning-Distill-GGUF-bf16",
             "url": "https://huggingface.co/TeichAI/GLM-4.7-Flash-Claude-Opus-4.5-High-Reasoning-Distill-GGUF/resolve/main/glm-4.7-flash-claude-4.5-opus.bf16.gguf",
             "size": "59.9GB",
@@ -13025,6 +12433,22 @@
             "has_mmproj": null
         },
         {
+            "name": "togatogah/jinen-v1-small.gguf-f16",
+            "url": "https://huggingface.co/togatogah/jinen-v1-small.gguf/resolve/main/jinen-v1-small-f16.gguf",
+            "size": "443.3MB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "togatogah/jinen-v1-small.gguf-q5-k-m",
+            "url": "https://huggingface.co/togatogah/jinen-v1-small.gguf/resolve/main/jinen-v1-small-Q5_K_M.gguf",
+            "size": "88.5MB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
             "name": "ttindall/Qwen3.8-27B-Defiance-Uncensored-MTP-GGUF-iq4-xs",
             "url": "https://huggingface.co/ttindall/Qwen3.8-27B-Defiance-Uncensored-MTP-GGUF/resolve/main/Qwen3.8-27B-Defiance-Uncensored-IQ4_XS.gguf",
             "size": "15.7GB",
@@ -13108,182 +12532,6 @@
             "name": "tvall43/Qwen3.6-14B-A3B-FableVibes-GGUF-qwen3-6-14b-a3b-fablevibes-mxfp4-moe",
             "url": "https://huggingface.co/tvall43/Qwen3.6-14B-A3B-FableVibes-GGUF/resolve/main/Qwen3.6-14B-A3B-FableVibes-MXFP4_MOE.gguf",
             "size": "8.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-iq2-m",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-IQ2_M.gguf",
-            "size": "10.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-iq2-s",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-IQ2_S.gguf",
-            "size": "9.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-iq2-xs",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-IQ2_XS.gguf",
-            "size": "9.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-iq2-xxs",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-IQ2_XXS.gguf",
-            "size": "8.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-iq3-m",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-IQ3_M.gguf",
-            "size": "14.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-iq3-xs",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-IQ3_XS.gguf",
-            "size": "12.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-iq3-xxs",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-IQ3_XXS.gguf",
-            "size": "12.3GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-iq4-nl",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-IQ4_NL.gguf",
-            "size": "17.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-iq4-xs",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-IQ4_XS.gguf",
-            "size": "15.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-q2-k",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-Q2_K.gguf",
-            "size": "10.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-q3-k-l",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-Q3_K_L.gguf",
-            "size": "14.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-q3-k-m",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-Q3_K_M.gguf",
-            "size": "13.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-q3-k-s",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-Q3_K_S.gguf",
-            "size": "12.7GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-q4-k-l",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-Q4_K_L.gguf",
-            "size": "18.8GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-q4-k-m",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-Q4_K_M.gguf",
-            "size": "17.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-q4-k-s",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-Q4_K_S.gguf",
-            "size": "16.4GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-q5-k-m",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-Q5_K_M.gguf",
-            "size": "20.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-q5-k-s",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-Q5_K_S.gguf",
-            "size": "19.6GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-q6-k",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-Q6_K.gguf",
-            "size": "23.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-q6-k-l",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-Q6_K_L.gguf",
-            "size": "25.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-q6-k-s",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-Q6_K_S.gguf",
-            "size": "22.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF-q8-0",
-            "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/resolve/main/Swift-1.5-Qwen3.8-27B-Q8_0.gguf",
-            "size": "29.0GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
@@ -13783,6 +13031,78 @@
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
+        },
+        {
+            "name": "unsloth/flint-GGUF-iq1-m",
+            "url": "https://huggingface.co/unsloth/flint-GGUF/resolve/main/flint-UD-IQ1_M.gguf",
+            "size": "11.4GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/flint-GGUF-iq2-xxs",
+            "url": "https://huggingface.co/unsloth/flint-GGUF/resolve/main/flint-UD-IQ2_XXS.gguf",
+            "size": "11.9GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/flint-GGUF-iq3-xxs",
+            "url": "https://huggingface.co/unsloth/flint-GGUF/resolve/main/flint-UD-IQ3_XXS.gguf",
+            "size": "14.5GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/flint-GGUF-q2-k-xl",
+            "url": "https://huggingface.co/unsloth/flint-GGUF/resolve/main/flint-UD-Q2_K_XL.gguf",
+            "size": "13.6GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/flint-GGUF-q3-k-xl",
+            "url": "https://huggingface.co/unsloth/flint-GGUF/resolve/main/flint-UD-Q3_K_XL.gguf",
+            "size": "18.5GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/flint-GGUF-q4-k-xl",
+            "url": "https://huggingface.co/unsloth/flint-GGUF/resolve/main/flint-UD-Q4_K_XL.gguf",
+            "size": "25.1GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/flint-GGUF-q5-k-xl",
+            "url": "https://huggingface.co/unsloth/flint-GGUF/resolve/main/flint-UD-Q5_K_XL.gguf",
+            "size": "29.9GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/flint-GGUF-q6-k-xl",
+            "url": "https://huggingface.co/unsloth/flint-GGUF/resolve/main/flint-UD-Q6_K_XL.gguf",
+            "size": "36.3GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/flint-GGUF-q8-0",
+            "url": "https://huggingface.co/unsloth/flint-GGUF/resolve/main/flint-Q8_0.gguf",
+            "size": "42.3GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
         },
         {
             "name": "unsloth/gemma-4-12b-it-GGUF-bf16",
@@ -15049,78 +14369,6 @@
             "has_mmproj": null
         },
         {
-            "name": "unsloth/LFM2.5-24B-A2B-GGUF-iq2-m",
-            "url": "https://huggingface.co/unsloth/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-UD-IQ2_M.gguf",
-            "size": "7.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "unsloth/LFM2.5-24B-A2B-GGUF-iq2-xxs",
-            "url": "https://huggingface.co/unsloth/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-UD-IQ2_XXS.gguf",
-            "size": "7.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "unsloth/LFM2.5-24B-A2B-GGUF-iq3-xxs",
-            "url": "https://huggingface.co/unsloth/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-UD-IQ3_XXS.gguf",
-            "size": "9.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "unsloth/LFM2.5-24B-A2B-GGUF-q2-k-xl",
-            "url": "https://huggingface.co/unsloth/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-UD-Q2_K_XL.gguf",
-            "size": "8.0GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "unsloth/LFM2.5-24B-A2B-GGUF-q3-k-xl",
-            "url": "https://huggingface.co/unsloth/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-UD-Q3_K_XL.gguf",
-            "size": "10.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "unsloth/LFM2.5-24B-A2B-GGUF-q4-k-xl",
-            "url": "https://huggingface.co/unsloth/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-UD-Q4_K_XL.gguf",
-            "size": "14.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "unsloth/LFM2.5-24B-A2B-GGUF-q5-k-xl",
-            "url": "https://huggingface.co/unsloth/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-UD-Q5_K_XL.gguf",
-            "size": "17.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "unsloth/LFM2.5-24B-A2B-GGUF-q6-k-xl",
-            "url": "https://huggingface.co/unsloth/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-UD-Q6_K_XL.gguf",
-            "size": "21.9GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "unsloth/LFM2.5-24B-A2B-GGUF-q8-0",
-            "url": "https://huggingface.co/unsloth/LFM2.5-24B-A2B-GGUF/resolve/main/LFM2.5-24B-A2B-Q8_0.gguf",
-            "size": "25.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
             "name": "unsloth/LTX-2.3-GGUF-bf16",
             "url": "https://huggingface.co/unsloth/LTX-2.3-GGUF/resolve/main/ltx-2.3-22b-dev-BF16.gguf",
             "size": "42.0GB",
@@ -15425,6 +14673,22 @@
             "has_mmproj": null
         },
         {
+            "name": "unsloth/MiniMax-M3.1-Flash-GGUF-imatrix-unsloth",
+            "url": "https://huggingface.co/unsloth/MiniMax-M3.1-Flash-GGUF/resolve/main/imatrix_unsloth.gguf",
+            "size": "463.0MB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "unsloth/MiniMax-M3.1-Flash-GGUF-q8-0",
+            "url": "https://huggingface.co/unsloth/MiniMax-M3.1-Flash-GGUF/resolve/main/dspark-MiniMax-M3.1-Flash-Q8_0.gguf",
+            "size": "2.1GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
             "name": "unsloth/Muse-Glimmer-30B-GGUF-dflash-kquant",
             "url": "https://huggingface.co/unsloth/Muse-Glimmer-30B-GGUF/resolve/main/dflash-kquant.gguf",
             "size": "1.6GB",
@@ -15545,81 +14809,89 @@
             "has_mmproj": true
         },
         {
-            "name": "unsloth/Muse-Spark-Open-816B-A42B-GGUF-imatrix-unsloth",
-            "url": "https://huggingface.co/unsloth/Muse-Spark-Open-816B-A42B-GGUF/resolve/main/imatrix_unsloth.gguf",
-            "size": "795.7MB",
+            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF-bf16",
+            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16.gguf",
+            "size": "15.1GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
         },
         {
-            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF-dflash-nvidia-nemotron-3-5-bolt-74b-a9b-nvfp4",
-            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF/resolve/main/dflash-NVIDIA-Nemotron-3.5-Bolt-74B-A9B-NVFP4.gguf",
-            "size": "998.2MB",
+            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF-imatrix-unsloth",
+            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF/resolve/main/imatrix_unsloth.gguf",
+            "size": "8.9MB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
         },
         {
-            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF-iq1-m",
-            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-UD-IQ1_M.gguf",
-            "size": "20.3GB",
+            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF-iq2-m",
+            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-E4B-UD-IQ2_M.gguf",
+            "size": "3.5GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
         },
         {
-            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF-iq1-s",
-            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-UD-IQ1_S.gguf",
-            "size": "18.5GB",
+            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF-iq3-xxs",
+            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-E4B-UD-IQ3_XXS.gguf",
+            "size": "3.7GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
         },
         {
-            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF-iq2-m",
-            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-UD-IQ2_M.gguf",
-            "size": "24.6GB",
+            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF-q2-k-xl",
+            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-E4B-UD-Q2_K_XL.gguf",
+            "size": "3.7GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
         },
         {
-            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF-iq3-xxs",
-            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-UD-IQ3_XXS.gguf",
-            "size": "31.6GB",
+            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF-q3-k-xl",
+            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-E4B-UD-Q3_K_XL.gguf",
+            "size": "4.2GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
         },
         {
-            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF-nvidia-nemotron-3-5-bolt-74b-a9b-iq2-xxs",
-            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-IQ2_XXS.gguf",
-            "size": "22.0GB",
+            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF-q4-k-xl",
+            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-E4B-UD-Q4_K_XL.gguf",
+            "size": "5.1GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
         },
         {
-            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF-nvidia-nemotron-3-5-bolt-74b-a9b-ud-iq2-xxs",
-            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-UD-IQ2_XXS.gguf",
-            "size": "22.0GB",
+            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF-q5-k-xl",
+            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-E4B-UD-Q5_K_XL.gguf",
+            "size": "5.8GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
         },
         {
-            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF-q2-k-xl",
-            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-UD-Q2_K_XL.gguf",
-            "size": "28.8GB",
+            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF-q6-k-xl",
+            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-E4B-UD-Q6_K_XL.gguf",
+            "size": "7.3GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
         },
         {
-            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF-q3-k-xl",
-            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-UD-Q3_K_XL.gguf",
-            "size": "39.0GB",
+            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF-q8-0",
+            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF/resolve/main/dflash-NVIDIA-Nemotron-3.5-Bolt-E4B-Q8_0.gguf",
+            "size": "398.9MB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": true
+        },
+        {
+            "name": "unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF-q8-k-xl",
+            "url": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF/resolve/main/NVIDIA-Nemotron-3.5-Bolt-E4B-UD-Q8_K_XL.gguf",
+            "size": "8.2GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
@@ -15825,161 +15097,209 @@
             "has_mmproj": true
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-iq2-m",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-IQ2_M.gguf",
-            "size": "11.6GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-iq1-m",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-UD-IQ1_M.gguf",
+            "size": "9.7GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-iq2-xxs",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-IQ2_XXS.gguf",
-            "size": "11.5GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-iq1-s",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-UD-IQ1_S.gguf",
+            "size": "9.0GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-iq3-s",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-IQ3_S.gguf",
-            "size": "15.0GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-iq2-m",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-UD-IQ2_M.gguf",
+            "size": "10.8GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-iq3-xxs",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-IQ3_XXS.gguf",
-            "size": "13.7GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-iq2-xxs",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-UD-IQ2_XXS.gguf",
+            "size": "10.3GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-iq4-nl",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-IQ4_NL.gguf",
-            "size": "18.1GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-iq3-xxs",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-UD-IQ3_XXS.gguf",
+            "size": "12.9GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-iq4-xs",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-IQ4_XS.gguf",
-            "size": "17.8GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-iq4-nl",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-IQ4_NL.gguf",
+            "size": "17.3GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-q2-k-xl",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-Q2_K_XL.gguf",
-            "size": "12.3GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-iq4-xs",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-IQ4_XS.gguf",
+            "size": "16.4GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-q3-k-m",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-Q3_K_M.gguf",
-            "size": "16.7GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q2-k",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q2_K.gguf",
+            "size": "11.3GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-q3-k-xl",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-Q3_K_XL.gguf",
-            "size": "16.8GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q2-k-l",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q2_K_L.gguf",
+            "size": "11.3GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-q4-k-m",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-Q4_K_M.gguf",
-            "size": "22.1GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q2-k-xl",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-UD-Q2_K_XL.gguf",
+            "size": "11.8GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-q4-k-s",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-Q4_K_S.gguf",
-            "size": "20.9GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q3-k-m",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q3_K_M.gguf",
+            "size": "14.7GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-q4-k-xl",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-Q4_K_XL.gguf",
-            "size": "22.3GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q3-k-s",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q3_K_S.gguf",
+            "size": "13.3GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-q5-k-m",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-Q5_K_M.gguf",
-            "size": "26.5GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q3-k-xl",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-UD-Q3_K_XL.gguf",
+            "size": "13.8GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-q5-k-s",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-Q5_K_S.gguf",
-            "size": "24.9GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q4-0",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf",
+            "size": "17.4GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-q5-k-xl",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-Q5_K_XL.gguf",
-            "size": "26.5GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q4-1",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_1.gguf",
+            "size": "19.2GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-q6-k",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-Q6_K.gguf",
-            "size": "29.3GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q4-k-m",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_K_M.gguf",
+            "size": "18.6GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-q6-k-xl",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-Q6_K_XL.gguf",
-            "size": "31.8GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q4-k-s",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q4_K_S.gguf",
+            "size": "17.5GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-q8-0",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-Q8_0.gguf",
-            "size": "36.9GB",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q4-k-xl",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-UD-Q4_K_XL.gguf",
+            "size": "17.7GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
         },
         {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-q8-k-xl",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-UD-Q8_K_XL.gguf",
-            "size": "38.2GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": null
-        },
-        {
-            "name": "unsloth/Qwen-AgentWorld-35B-A3B-GGUF-qwen-agentworld-35b-a3b-mxfp4-moe",
-            "url": "https://huggingface.co/unsloth/Qwen-AgentWorld-35B-A3B-GGUF/resolve/main/Qwen-AgentWorld-35B-A3B-MXFP4_MOE.gguf",
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q5-k-m",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q5_K_M.gguf",
             "size": "21.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q5-k-s",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q5_K_S.gguf",
+            "size": "21.1GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q5-k-xl",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-UD-Q5_K_XL.gguf",
+            "size": "21.7GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q6-k",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q6_K.gguf",
+            "size": "25.1GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q6-k-xl",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-UD-Q6_K_XL.gguf",
+            "size": "26.3GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q8-0",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-Q8_0.gguf",
+            "size": "32.5GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-q8-k-xl",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-UD-Q8_K_XL.gguf",
+            "size": "36.0GB",
+            "jinja": false,
+            "supports_vision": null,
+            "has_mmproj": null
+        },
+        {
+            "name": "unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF-qwen3-30b-a3b-instruct-2507-ud-tq1-0",
+            "url": "https://huggingface.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF/resolve/main/Qwen3-30B-A3B-Instruct-2507-UD-TQ1_0.gguf",
+            "size": "8.1GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": null
@@ -17020,182 +16340,6 @@
             "name": "unsloth/Qwen3-VL-4B-Instruct-GGUF-q8-k-xl",
             "url": "https://huggingface.co/unsloth/Qwen3-VL-4B-Instruct-GGUF/resolve/main/Qwen3-VL-4B-Instruct-UD-Q8_K_XL.gguf",
             "size": "5.1GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-bf16",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-BF16.gguf",
-            "size": "1.5GB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-iq2-m",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-UD-IQ2_M.gguf",
-            "size": "371.9MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-iq2-xxs",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-UD-IQ2_XXS.gguf",
-            "size": "338.2MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-iq3-xxs",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-UD-IQ3_XXS.gguf",
-            "size": "398.2MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-iq4-nl",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-IQ4_NL.gguf",
-            "size": "506.9MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-iq4-xs",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-IQ4_XS.gguf",
-            "size": "492.6MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q2-k-xl",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-UD-Q2_K_XL.gguf",
-            "size": "417.7MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q3-k-m",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q3_K_M.gguf",
-            "size": "470.2MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q3-k-s",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q3_K_S.gguf",
-            "size": "440.8MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q3-k-xl",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-UD-Q3_K_XL.gguf",
-            "size": "492.2MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q4-0",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_0.gguf",
-            "size": "507.2MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q4-1",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_1.gguf",
-            "size": "535.2MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q4-k-m",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf",
-            "size": "532.5MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q4-k-s",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_S.gguf",
-            "size": "508.1MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q4-k-xl",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
-            "size": "558.8MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q5-k-m",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q5_K_M.gguf",
-            "size": "590.1MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q5-k-s",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q5_K_S.gguf",
-            "size": "568.9MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q5-k-xl",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-UD-Q5_K_XL.gguf",
-            "size": "606.6MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q6-k",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q6_K.gguf",
-            "size": "639.0MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q6-k-xl",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-UD-Q6_K_XL.gguf",
-            "size": "771.1MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q8-0",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q8_0.gguf",
-            "size": "811.8MB",
-            "jinja": false,
-            "supports_vision": null,
-            "has_mmproj": true
-        },
-        {
-            "name": "unsloth/Qwen3.5-0.8B-GGUF-q8-k-xl",
-            "url": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-UD-Q8_K_XL.gguf",
-            "size": "1.2GB",
             "jinja": false,
             "supports_vision": null,
             "has_mmproj": true
