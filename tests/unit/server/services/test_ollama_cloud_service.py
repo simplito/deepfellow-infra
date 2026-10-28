@@ -3,15 +3,16 @@
 
 import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from fastapi import HTTPException
 
 from server.models.models import InstallModelIn, ListModelsFilters
 from server.models.services import InstallServiceIn
+from server.services.base2_service import CustomModel, InstanceConfig, ModelConfig
 from server.services.ollama_cloud_service import MODELS_TTL, OllamaCloudService
-from server.services.remote_service import DefaultRemoteServiceOptions, InstalledInfo, ModelInstalledInfo, RemoteModel
+from server.services.remote_service import DefaultRemoteServiceOptions, InstalledInfo, ModelInstalledInfo, RemoteModel, RemoteService
 
 
 @pytest.fixture
@@ -40,8 +41,9 @@ def _make_installed(api_key: str = "test-key") -> InstalledInfo[DefaultRemoteSer
     )
 
 
-def _mock_tags_response(models: list[str], status: int = 200) -> MagicMock:
-    body = json.dumps({"models": [{"name": m} for m in models]})
+def _mock_tags_response(models: list[str], status: int = 200, capabilities: dict[str, list[str]] | None = None) -> MagicMock:
+    caps = capabilities or {}
+    body = json.dumps({"models": [{"name": m, "capabilities": caps[m]} if m in caps else {"name": m} for m in models]})
     mock_resp = AsyncMock()
     mock_resp.status = status
     mock_resp.text = AsyncMock(return_value=body)
@@ -96,6 +98,26 @@ async def test_fetch_models_returns_dict_on_success(svc: OllamaCloudService) -> 
     assert "llama3:latest" in result
     assert "mistral:7b" in result
     assert result["llama3:latest"].type == "llm"
+
+
+@pytest.mark.asyncio
+@patch("server.services.ollama_cloud_service.aiohttp.ClientSession")
+async def test_fetch_models_from_api_types_models_by_capabilities(mock_client_session: MagicMock, svc: OllamaCloudService) -> None:
+    svc.instances_info["default"].installed = _make_installed()
+    mock_client_session.return_value = _mock_session(
+        _mock_tags_response(
+            ["clef:27b", "gpt-oss:120b", "no-caps", "legacy"],
+            capabilities={"clef:27b": ["decision", "vision"], "gpt-oss:120b": ["completion", "tools", "thinking"], "no-caps": []},
+        )
+    )
+
+    result = await svc._fetch_models_from_api("default")  # pyright: ignore[reportPrivateUsage]
+
+    assert result is not None
+    assert result["clef:27b"].type == "decision"
+    assert result["gpt-oss:120b"].type == "llm"
+    assert result["no-caps"].type == "llm"
+    assert result["legacy"].type == "llm"
 
 
 @pytest.mark.asyncio
@@ -292,6 +314,7 @@ async def test_install_model_skips_refresh_when_model_already_in_cache(svc: Olla
         ("stt", "unregister_audio_transcriptions"),
         ("txt2img", "unregister_image_generations"),
         ("embedding", "unregister_embeddings"),
+        ("decision", "unregister_systemone"),
     ],
 )
 async def test_cleanup_unregisters_non_llm_model_types(
@@ -319,6 +342,52 @@ async def test_cleanup_unregisters_non_llm_model_types(
 
     assert getattr(deps["endpoint_registry"], unregister_method).call_count == 1
     assert "old-model" not in svc.instances_info["default"].installed.models  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+@patch("server.services.ollama_cloud_service.aiohttp.ClientSession")
+async def test_load_model_registers_decision_model_on_systemone(
+    mock_client_session: MagicMock, svc: OllamaCloudService, deps: dict[str, Any]
+) -> None:
+    svc.instances_info["default"].installed = _make_installed()
+    mock_client_session.return_value = _mock_session(_mock_tags_response(["clef:27b"], capabilities={"clef:27b": ["decision", "vision"]}))
+    deps["service_provider"].dismiss_warnings_matching = AsyncMock()
+
+    await svc.load_model("default", ModelConfig(model_id="clef:27b", options=InstallModelIn(spec={})))
+
+    registry = deps["endpoint_registry"]
+    assert registry.register_systemone_as_proxy.call_count == 1
+    assert registry.register_chat_completion_as_proxy.call_count == 0
+    assert svc.instances_info["default"].installed.models["clef:27b"].type == "decision"  # type: ignore[union-attr]
+
+
+def test_get_custom_model_spec_returns_none(svc: OllamaCloudService) -> None:
+    result = svc.get_custom_model_spec()
+
+    assert result is None
+
+
+def test_add_custom_model_raises(svc: OllamaCloudService) -> None:
+    svc.instances_info["default"].installed = _make_installed()
+    model = CustomModel(id="c-1", data={"id": "clef-flash", "type": "decision"})
+
+    with pytest.raises(HTTPException) as exc:
+        svc._add_custom_model("default", model)  # pyright: ignore[reportPrivateUsage]
+
+    assert exc.value.status_code == 400
+    assert "clef-flash" not in svc.models.get("default", {})
+
+
+@pytest.mark.asyncio
+@patch.object(RemoteService, "load_instance", new_callable=AsyncMock)
+async def test_load_instance_drops_custom_models(mock_load_instance: AsyncMock, svc: OllamaCloudService) -> None:
+    options = InstallServiceIn(spec={"api_url": "https://ollama.com", "api_key": "k"})
+    instance_data = InstanceConfig(options=options, custom=[CustomModel(id="c-1", data={"id": "clef-flash", "type": "decision"})])
+
+    await svc.load_instance("default", instance_data)
+
+    assert mock_load_instance.call_count == 1
+    assert mock_load_instance.call_args == call("default", InstanceConfig(options=options, custom=None))
 
 
 @pytest.mark.asyncio

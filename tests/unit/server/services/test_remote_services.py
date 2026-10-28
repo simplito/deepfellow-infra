@@ -289,6 +289,7 @@ def test_get_model_props_respects_disabled_endpoints() -> None:
         ("stt", ["/v1/audio/transcriptions"]),
         ("tts", ["/v1/audio/speech"]),
         ("txt2img", ["/v1/images/generations"]),
+        ("decision", ["/v1/systemone"]),
     ],
 )
 def test_get_model_props_non_llm_advertises_only_its_own_endpoint(model_type: RemoteModelType, expected: list[str]) -> None:
@@ -356,6 +357,13 @@ def test_openai_get_custom_model_spec_not_none_and_has_id_field(openai_svc: Open
     field_names = [f.name for f in spec.fields]
     assert "id" in field_names
     assert "type" in field_names
+
+
+def test_get_custom_model_spec_offers_decision_type(openai_svc: OpenAIService) -> None:
+    spec = openai_svc.get_custom_model_spec()
+
+    assert spec is not None
+    assert "decision" in next(f.values or [] for f in spec.fields if f.name == "type")
 
 
 def test_get_installed_info_when_not_installed_returns_false(openai_svc: OpenAIService) -> None:
@@ -512,6 +520,7 @@ async def test_uninstall_instance_purge_with_other_instance_installed_does_not_c
         ("whisper-1", "stt", "unregister_audio_transcriptions"),
         ("dall-e-2", "txt2img", "unregister_image_generations"),
         ("text-embedding-ada-002", "embedding", "unregister_embeddings"),
+        ("clef", "decision", "unregister_systemone"),
     ],
 )
 async def test_uninstall_instance_unregisters_endpoint_per_type(
@@ -919,6 +928,7 @@ async def test_uninstall_model_not_in_info_is_noop(openai_svc: OpenAIService) ->
         ("whisper-1", "stt", "unregister_audio_transcriptions"),
         ("dall-e-2", "txt2img", "unregister_image_generations"),
         ("text-embedding-ada-002", "embedding", "unregister_embeddings"),
+        ("clef", "decision", "unregister_systemone"),
     ],
 )
 async def test_uninstall_model_unregisters_correct_endpoint(

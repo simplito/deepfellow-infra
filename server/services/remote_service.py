@@ -7,13 +7,13 @@ import asyncio
 from abc import abstractmethod
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar, get_args
 
 from fastapi import HTTPException
 from pydantic import BaseModel
 
 from server.endpointregistry import ProxyOptions, RegistrationId, RegistrationOptions
-from server.models.api import EMBEDDINGS_ENDPOINTS, IMG_ENDPOINTS, STT_ENDPOINTS, TTS_ENDPOINTS, ModelProps
+from server.models.api import DECISION_ENDPOINTS, EMBEDDINGS_ENDPOINTS, IMG_ENDPOINTS, STT_ENDPOINTS, TTS_ENDPOINTS, ModelProps
 from server.models.models import (
     CustomModelField,
     CustomModelId,
@@ -50,7 +50,8 @@ from server.utils.core import (
 )
 from server.utils.logger import logger
 
-RemoteModelType = Literal["llm", "embedding", "stt", "tts", "txt2img"]
+RemoteModelType = Literal["llm", "embedding", "stt", "tts", "txt2img", "decision"]
+REMOTE_MODEL_TYPES: list[str] = list(get_args(RemoteModelType))
 
 
 class RemoteModel(BaseModel):
@@ -102,7 +103,7 @@ class LiveModelEntry(BaseModel):
 
 class RemoteCustomModel(BaseModel):
     id: str
-    type: Literal["llm", "embedding", "stt", "tts", "txt2img"]
+    type: RemoteModelType
     completions: bool = True
     legacy_completions: bool = True
     messages: bool = True
@@ -117,6 +118,7 @@ _NON_LLM_ENDPOINTS: dict[RemoteModelType, list[str]] = {
     "stt": STT_ENDPOINTS,
     "tts": TTS_ENDPOINTS,
     "txt2img": IMG_ENDPOINTS,
+    "decision": DECISION_ENDPOINTS,
 }
 
 
@@ -412,7 +414,7 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
         return CustomModelSpecification(
             fields=[
                 CustomModelField(type="text", name="id", description="Model ID", placeholder="my-custom-model"),
-                CustomModelField(type="oneof", name="type", description="Model Type", values=["llm", "embedding", "stt", "tts", "txt2img"]),
+                CustomModelField(type="oneof", name="type", description="Model Type", values=REMOTE_MODEL_TYPES),
                 CustomModelField(
                     type="bool",
                     name="completions",
@@ -507,6 +509,8 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                     self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
                 if model.type == "embedding":
                     self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
+                if model.type == "decision":
+                    self.endpoint_registry.unregister_systemone(model.registered_name, model.registration_id)
 
             await asyncio.gather(
                 *[
@@ -753,6 +757,18 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                             ),
                             registration_options=RegistrationOptions(origin="local", alias=registered_alias, owned_by=self.get_type()),
                         )
+                    if model.type == "decision":
+                        url = Utils.join_url(url_base, "systemone")
+                        model_info.registration_id = self.endpoint_registry.register_systemone_as_proxy(
+                            model=registered_name,
+                            props=props,
+                            options=ProxyOptions(
+                                url=url,
+                                rewrite_model_to=model.real_model_name or model_id,
+                                headers=headers,
+                            ),
+                            registration_options=RegistrationOptions(origin="local", alias=registered_alias, owned_by=self.get_type()),
+                        )
                     stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
                     self.models_downloaded[model_id] = DownloadedInfo()
                     return InstallModelOut(status="OK", details="Installed")
@@ -780,6 +796,8 @@ class RemoteService(Base2Service[InstalledInfo[T_Options], DownloadedInfo]):
                 self.endpoint_registry.unregister_image_generations(model.registered_name, model.registration_id)
             if model.type == "embedding":
                 self.endpoint_registry.unregister_embeddings(model.registered_name, model.registration_id)
+            if model.type == "decision":
+                self.endpoint_registry.unregister_systemone(model.registered_name, model.registration_id)
 
         if options.purge and model_id in self.models_downloaded:
             del self.models_downloaded[model_id]
