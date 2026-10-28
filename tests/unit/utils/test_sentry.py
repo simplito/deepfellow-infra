@@ -10,8 +10,10 @@ from unittest import mock
 import pytest
 import pytest_asyncio
 import sentry_sdk
+from fastapi.responses import Response
 from opentelemetry import trace
 from opentelemetry.trace import NonRecordingSpan, SpanContext
+from prometheus_client import CollectorRegistry
 from pydantic import SecretStr
 from sentry_sdk.envelope import Envelope
 from sentry_sdk.integrations.atexit import AtexitIntegration
@@ -20,11 +22,23 @@ from sentry_sdk.transport import Transport
 
 from server.config import AppSettings
 from server.dynamic_config import DynamicSettings
+from server.endpointregistry import ChatCompletionEndpoint, EndpointRegistry, RegistrationOptions
+from server.metrics_registry import MetricsRegistry
+from server.models.api import ModelProps
+from server.models.services import InstallServiceIn
+from server.services.openai_service import OpenAIService
+from server.services.remote_service import DefaultRemoteServiceOptions, InstalledInfo
+from server.services_manager import ServicesManager
 from server.utils.sentry import (
     SDK_LOGGER_NAME,
+    UpstreamError,
     _forward_sdk_warnings,  # pyright: ignore[reportPrivateUsage]
     _SdkWarningForwarder,  # pyright: ignore[reportPrivateUsage]
+    attach_tags,
+    attached_tags,
     capture_exception,
+    is_reported,
+    mark_reported,
     parse_dsn,
     sentry,
 )
@@ -443,6 +457,113 @@ async def test_capture_exception_logs_and_swallows_errors(
     assert mock_logger.exception.call_args == mock.call("Failed to report exception to Sentry (error_id=%s)", "error-1")
 
 
+@pytest.mark.asyncio
+async def test_capture_exception_sets_fingerprint(active_sentry: RecordingTransport):
+    capture_exception(UpstreamError("vllm upstream returned HTTP 500"), error_id="error-1", fingerprint=["upstream-http", "vllm", "500"])
+
+    event = active_sentry.events()[0]
+    assert event["fingerprint"] == ["upstream-http", "vllm", "500"]
+    assert event["exception"]["values"][0]["type"] == "UpstreamError"
+    assert event["exception"]["values"][0]["value"] == "vllm upstream returned HTTP 500"
+
+
+@pytest.mark.asyncio
+async def test_capture_exception_leaves_default_fingerprint(active_sentry: RecordingTransport):
+    _raise_and_capture("boom")
+
+    assert "fingerprint" not in active_sentry.events()[0]
+
+
+@pytest.mark.asyncio
+async def test_before_send_keeps_fingerprint_with_short_secret(active_sentry: RecordingTransport):
+    sentry.register_secret_source(lambda: ["vllm"])
+
+    capture_exception(UpstreamError("boom"), error_id="error-1", fingerprint=["upstream-http", "vllm", "500"])
+
+    assert active_sentry.events()[0]["fingerprint"] == ["upstream-http", "vllm", "500"]
+
+
+def test_attached_tags_empty_for_untouched_exception():
+    assert attached_tags(RuntimeError("boom")) == {}
+
+
+def test_attach_tags_round_trip():
+    exc = RuntimeError("boom")
+
+    attach_tags(exc, {"service": "vllm", "model": "m1"})
+
+    assert attached_tags(exc) == {"service": "vllm", "model": "m1"}
+
+
+def test_attach_tags_merges_over_previous_tags():
+    exc = RuntimeError("boom")
+    attach_tags(exc, {"service": "vllm", "error_type": "http_5xx"})
+
+    attach_tags(exc, {"error_type": "connection_error", "model": "m1"})
+
+    assert attached_tags(exc) == {"service": "vllm", "error_type": "connection_error", "model": "m1"}
+
+
+def test_attached_tags_returns_copy():
+    exc = RuntimeError("boom")
+    attach_tags(exc, {"service": "vllm"})
+
+    attached_tags(exc)["service"] = "changed"
+
+    assert attached_tags(exc) == {"service": "vllm"}
+
+
+def test_attached_tags_include_tags_of_cause():
+    cause = RuntimeError("upstream")
+    attach_tags(cause, {"service": "vllm", "error_type": "http_5xx"})
+    wrapper = RuntimeError("wrapped")
+    wrapper.__cause__ = cause
+    attach_tags(wrapper, {"error_type": "model_error"})
+
+    assert attached_tags(wrapper) == {"service": "vllm", "error_type": "model_error"}
+
+
+def test_attached_tags_ignore_implicit_context():
+    context = RuntimeError("unrelated")
+    attach_tags(context, {"service": "vllm"})
+    exc = RuntimeError("later")
+    exc.__context__ = context
+
+    assert attached_tags(exc) == {}
+
+
+def test_cause_chain_stops_on_cycle():
+    first = RuntimeError("first")
+    second = RuntimeError("second")
+    first.__cause__ = second
+    second.__cause__ = first
+    mark_reported(second)
+
+    assert is_reported(first) is True
+    assert attached_tags(first) == {}
+
+
+def test_is_reported_true_when_cause_reported():
+    cause = RuntimeError("upstream")
+    mark_reported(cause)
+    wrapper = RuntimeError("wrapped")
+    wrapper.__cause__ = cause
+
+    assert is_reported(wrapper) is True
+
+
+def test_is_reported_false_for_untouched_exception():
+    assert is_reported(RuntimeError("boom")) is False
+
+
+def test_mark_reported_sets_flag():
+    exc = RuntimeError("boom")
+
+    mark_reported(exc)
+
+    assert is_reported(exc) is True
+
+
 # --- secret scrubbing ---
 
 
@@ -475,6 +596,66 @@ async def test_before_send_scrubs_values_from_registered_secret_source(active_se
     _raise_and_capture("provider rejected sk-provider-key-value")
 
     assert active_sentry.events()[0]["exception"]["values"][0]["value"] == "provider rejected [Filtered]"
+
+
+@pytest.mark.asyncio
+async def test_before_send_scrubs_installed_provider_api_key(active_sentry: RecordingTransport):
+    manager = ServicesManager()
+    openai = OpenAIService(
+        config=mock.MagicMock(),
+        endpoint_registry=mock.MagicMock(),
+        service_provider=mock.MagicMock(),
+        model_downloader=mock.MagicMock(),
+        docker_service=mock.MagicMock(),
+        hardware=mock.MagicMock(gpus=[]),
+        services_manager=manager,
+    )
+    openai.instances_info["default"].installed = InstalledInfo(
+        models={},
+        options=InstallServiceIn(spec={"api_url": "https://api.openai.com", "api_key": "sk-proj-abc123"}),
+        parsed_options=DefaultRemoteServiceOptions(api_url="https://api.openai.com", api_key="sk-proj-abc123"),
+    )
+    manager.register_service(openai)
+    sentry.register_secret_source(manager.secret_values)
+
+    _raise_and_capture("GET https://api.openai.com/v1/models?key=sk-proj-abc123 failed")
+
+    assert active_sentry.events()[0]["exception"]["values"][0]["value"] == "GET https://api.openai.com/v1/models?key=[Filtered] failed"
+    assert "sk-proj-abc123" not in active_sentry.serialized()
+
+
+@pytest.mark.asyncio
+async def test_upstream_5xx_event_carries_no_response_body(active_sentry: RecordingTransport):
+    registry = EndpointRegistry(
+        config=mock.MagicMock(),
+        parent_infra=mock.MagicMock(),
+        model_tester=mock.MagicMock(),
+        metrics_registry=MetricsRegistry(registry=CollectorRegistry()),
+    )
+    rid = registry.register_chat_completion(
+        "qwen3",
+        ModelProps(private=False, type="llm", endpoints=["chat"]),
+        ChatCompletionEndpoint(),
+        RegistrationOptions(origin="local", owned_by="vllm"),
+    )
+    upstream = Response(content=b"prompt too long: tell me the launch codes", status_code=500)
+
+    result = await registry.with_usage(registry.registry[rid].registered_model, mock.AsyncMock(return_value=upstream))
+
+    assert result.body == b"prompt too long: tell me the launch codes"
+    event = active_sentry.events()[0]
+    assert event["exception"]["values"][0]["value"] == "vllm upstream returned HTTP 500"
+    assert event["tags"]["upstream_status"] == "500"
+    assert "launch codes" not in active_sentry.serialized()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_drops_registered_secret_sources(active_sentry: RecordingTransport):
+    sentry.register_secret_source(lambda: ["sk-provider-key-value"])
+
+    await sentry.shutdown()
+
+    assert "sk-provider-key-value" not in sentry._secret_values()  # pyright: ignore[reportPrivateUsage]
 
 
 @pytest.mark.asyncio

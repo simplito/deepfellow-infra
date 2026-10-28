@@ -24,6 +24,7 @@ from server.error_handlers import (
 )
 from server.utils.failed_span import remember_failed_span
 from server.utils.security_headers import CACHE_CONTROL, CONTENT_SECURITY_POLICY
+from server.utils.sentry import attach_tags, mark_reported
 
 TRACE_ID = 0x0AF7651916CD43DD8448EB211C80319C
 SPAN_ID = 0x00F067AA0BA902B7
@@ -92,6 +93,18 @@ async def _invalid_span(request: Request) -> None:
     raise RuntimeError("fail")
 
 
+async def _tagged() -> None:
+    exc = RuntimeError("connection refused")
+    attach_tags(exc, {"service": "ollama", "model": "llama3", "error_type": "connection_error"})
+    raise exc
+
+
+async def _reported() -> None:
+    exc = RuntimeError("stream broke after 5xx")
+    mark_reported(exc)
+    raise exc
+
+
 async def _missing() -> None:
     raise HTTPException(status_code=404, detail="Model not found")
 
@@ -116,6 +129,8 @@ def app() -> FastAPI:
     app.add_api_route("/boom", _boom, methods=["GET"])
     app.add_api_route("/traced", _traced, methods=["POST"])
     app.add_api_route("/invalid-span", _invalid_span, methods=["POST"])
+    app.add_api_route("/tagged", _tagged, methods=["GET"])
+    app.add_api_route("/reported", _reported, methods=["GET"])
     app.add_api_route("/missing", _missing, methods=["GET"])
     app.add_api_route("/validated", _validated, methods=["POST"])
     app.add_api_route("/stream", _stream, methods=["GET"])
@@ -252,7 +267,31 @@ def test_handle_unhandled_exception_reports_to_sentry_with_response_error_id(moc
         error_id=resp.headers["X-Error-Id"],
         handled=False,
         span_context=SpanContext(trace_id=TRACE_ID, span_id=SPAN_ID, is_remote=False),
+        tags={},
     )
+
+
+@mock.patch("server.error_handlers.capture_exception")
+def test_handle_unhandled_exception_reports_attached_tags(mock_capture_exception: mock.MagicMock, client: TestClient):
+    resp = client.get("/tagged")
+
+    assert resp.status_code == 500
+    assert mock_capture_exception.call_count == 1
+    assert mock_capture_exception.call_args.kwargs["error_id"] == resp.headers["X-Error-Id"]
+    assert mock_capture_exception.call_args.kwargs["tags"] == {"service": "ollama", "model": "llama3", "error_type": "connection_error"}
+
+
+@mock.patch("server.error_handlers.logger")
+@mock.patch("server.error_handlers.capture_exception")
+def test_handle_unhandled_exception_logs_but_skips_reported_exception(
+    mock_capture_exception: mock.MagicMock, mock_logger: mock.MagicMock, client: TestClient
+):
+    resp = client.get("/reported")
+
+    assert resp.status_code == 500
+    assert "X-Error-Id" in resp.headers
+    assert mock_capture_exception.call_count == 0
+    assert mock_logger.error.call_count == 1
 
 
 @mock.patch("server.utils.sentry.event_from_exception")

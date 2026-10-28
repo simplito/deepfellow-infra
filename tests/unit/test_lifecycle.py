@@ -335,6 +335,18 @@ async def test_lifespan_sets_up_sentry_with_loaded_config(app: FastAPI, base_moc
 
 
 @pytest.mark.asyncio
+async def test_lifespan_registers_service_secrets_with_sentry(app: FastAPI, base_mocks: dict[str, Mock]) -> None:
+    _apply_base_patches(base_mocks)
+
+    async with lifespan(app):
+        pass
+
+    svc_mgr = base_mocks["server.lifecycle.ServicesManager"].return_value
+    mock_sentry = base_mocks["server.lifecycle.sentry"]
+    assert mock_sentry.register_secret_source.call_args_list == [call(svc_mgr.secret_values)]
+
+
+@pytest.mark.asyncio
 @patch("server.lifecycle.logger")
 async def test_lifespan_starts_when_sentry_setup_fails(mock_logger: MagicMock, app: FastAPI, base_mocks: dict[str, Mock]) -> None:
     _apply_base_patches(base_mocks)

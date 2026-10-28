@@ -207,6 +207,20 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
         self.load_default_models("default")
         self._installing = set()
 
+    def get_secret_values(self) -> list[str]:
+        """Return the service's and installed models' `password` option values."""
+        values = super().get_secret_values()
+        for instance_name, instance in self.instances_info.items():
+            if instance.installed is None:
+                continue
+            for model_id, model_info in instance.installed.models.items():
+                model = self.models.get(instance_name, {}).get(model_id)
+                if model is None:
+                    continue
+                spec = model_info.options.spec or {}
+                values += [str(spec[field.name]) for field in model.model_spec.fields if field.type == "password" and spec.get(field.name)]
+        return values
+
     async def load_service(self, config: ServiceRawConfig) -> None:
         """Load service using the config, dropping any persisted entry for a retired model id.
 

@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - vLLM speech-to-text (`stt`) models such as Whisper, served on `/v1/audio/transcriptions`.
 - vLLM catalog now lists 50 speech-to-text models, and the catalog refresh fetches them from HuggingFace.
 - `just test-unit`, `just test-e2e` and `just test-smoke` commands.
+- Model and provider failures are reported to Sentry.
 
 ### Changed
 

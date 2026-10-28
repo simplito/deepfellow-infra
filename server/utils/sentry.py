@@ -5,7 +5,7 @@
 
 import asyncio
 import logging
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import cast
 
@@ -34,6 +34,46 @@ FILTERED = "[Filtered]"
 SDK_LOGGER_NAME = "sentry_sdk.errors"
 
 SecretSource = Callable[[], Iterable[str]]
+
+_ATTACHED_TAGS_ATTR = "_df_sentry_tags"
+_REPORTED_ATTR = "_df_sentry_reported"
+
+
+class UpstreamError(Exception):
+    """Stands in for a model failure that raised nothing (upstream 5xx, dead container); never raised."""
+
+
+def attach_tags(exc: BaseException, tags: Mapping[str, str]) -> None:
+    """Attach Sentry tags to `exc` for a later report."""
+    setattr(exc, _ATTACHED_TAGS_ATTR, {**attached_tags(exc), **tags})
+
+
+def _cause_chain(exc: BaseException) -> list[BaseException]:
+    """Return `exc` and the exceptions it was raised from, outermost first."""
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and all(current is not seen for seen in chain):
+        chain.append(current)
+        current = current.__cause__
+    return chain
+
+
+def attached_tags(exc: BaseException) -> dict[str, str]:
+    """Return the Sentry tags attached to `exc` or to an exception it was raised from."""
+    tags: dict[str, str] = {}
+    for link in reversed(_cause_chain(exc)):
+        tags.update(cast("dict[str, str]", getattr(link, _ATTACHED_TAGS_ATTR, {})))
+    return tags
+
+
+def mark_reported(exc: BaseException) -> None:
+    """Mark `exc` as already reported to Sentry."""
+    setattr(exc, _REPORTED_ATTR, True)
+
+
+def is_reported(exc: BaseException) -> bool:
+    """Whether `exc`, or an exception it was raised from, was already reported to Sentry."""
+    return any(getattr(link, _REPORTED_ATTR, False) is True for link in _cause_chain(exc))
 
 
 @dataclass(frozen=True)
@@ -104,6 +144,7 @@ def _forward_sdk_warnings() -> None:
 _UNSCRUBBED_KEYS = frozenset(
     {
         *("event_id", "level", "platform", "timestamp", "release", "environment", "server_name", "sdk", "tags", "mechanism", "type"),
+        "fingerprint",
         *("trace_id", "span_id", "parent_span_id"),
         *("filename", "abs_path", "module", "function", "context_line", "pre_context", "post_context"),
     }
@@ -216,9 +257,10 @@ class SentryManager:
         self._applied = target
 
     async def shutdown(self) -> None:
-        """Flush pending events and close the client."""
+        """Flush pending events, close the client and drop the secret sources."""
         await self._close_client()
         self._applied = None
+        self._secret_sources.clear()
 
     async def _close_client(self) -> None:
         previous_client = sentry_sdk.get_client()
@@ -271,6 +313,7 @@ def capture_exception(
     handled: bool = True,
     tags: Mapping[str, str] | None = None,
     span_context: SpanContext | None = None,
+    fingerprint: Sequence[str] | None = None,
 ) -> None:
     """Send `exc` to Sentry with correlation tags; never raises, and does nothing while Sentry is off.
 
@@ -284,6 +327,7 @@ def capture_exception(
         tags: Extra event tags.
         span_context: The OTel span the failure belongs to; defaults to the current span. Its IDs are
             added as `trace_id`/`span_id` when valid.
+        fingerprint: Sentry grouping key replacing the default one.
     """
     try:
         client = sentry_sdk.get_client()
@@ -296,6 +340,8 @@ def capture_exception(
             event_tags["trace_id"] = format(context.trace_id, "032x")
             event_tags["span_id"] = format(context.span_id, "016x")
         event["tags"] = {**event_tags, **(tags or {})}
+        if fingerprint is not None:
+            event["fingerprint"] = list(fingerprint)
         sentry_sdk.capture_event(event, hint=hint)
     except Exception:
         logger.exception("Failed to report exception to Sentry (error_id=%s)", error_id)

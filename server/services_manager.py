@@ -75,6 +75,10 @@ class ServicesManager:
             raise RuntimeError("Service already registered", service_id)
         self.services[service_id] = service
 
+    def secret_values(self) -> list[str]:
+        """Return every service's secret option values."""
+        return [value for service in self.services.values() if isinstance(service, Base2Service) for value in service.get_secret_values()]
+
     async def drain_warning_tasks(self) -> None:
         """Await every service's pending fire-and-forget warning writes so shutdown doesn't drop them."""
         drains = [service.drain_warning_tasks() for service in self.services.values() if isinstance(service, Base2Service)]
