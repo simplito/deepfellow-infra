@@ -8,7 +8,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-from scripts.healthcheck import check_health
+from scripts.healthcheck import check_health, get_health_url
 
 
 def _make_response(status: int) -> MagicMock:
@@ -42,3 +42,13 @@ def test_check_health_200(status_code: int, result: int) -> None:
 def test_check_health_on_http_error(side_effect: Exception) -> None:
     with patch("scripts.healthcheck.urlopen", side_effect=side_effect):
         assert check_health() == 1
+
+
+def test_get_health_url_defaults_to_http(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("UVICORN_SSL_CERTFILE", raising=False)
+    assert get_health_url() == "http://localhost:8086/health"
+
+
+def test_get_health_url_uses_https_when_tls_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("UVICORN_SSL_CERTFILE", "/certs/cert.pem")
+    assert get_health_url() == "https://localhost:8086/health"

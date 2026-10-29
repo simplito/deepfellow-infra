@@ -54,6 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Container healthcheck works when Infra serves HTTPS (`UVICORN_SSL_CERTFILE` set).
 - `$` in a service's command, entrypoint and healthcheck now reaches the container as typed.
 - Ollama catalog refresh fills in sizes ollama.com shows as a range (e.g. decision models, `gemma4`).
 - Installing an Ollama instance on rootful Docker no longer fails with `Permission denied` when its model store was created as root by an earlier install.

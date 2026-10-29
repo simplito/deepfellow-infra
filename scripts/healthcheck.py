@@ -8,6 +8,7 @@
 Returns exit code 0 if healthy, 1 if unhealthy.
 """
 
+import os
 import sys
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
@@ -15,9 +16,15 @@ from urllib.request import urlopen
 # ruff: noqa: T201
 
 
+def get_health_url() -> str:
+    """Build the health URL, using https when uvicorn is configured with a TLS certificate."""
+    scheme = "https" if os.environ.get("UVICORN_SSL_CERTFILE") else "http"
+    return f"{scheme}://localhost:8086/health"
+
+
 def check_health() -> int:
     """Check if the infra is healthy."""
-    url = "http://localhost:8086/health"
+    url = get_health_url()
     try:
         # Timeout after 5 seconds
         with urlopen(url, timeout=5) as response:
