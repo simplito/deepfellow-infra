@@ -5,6 +5,7 @@
 
 import asyncio
 import re
+from contextlib import suppress
 from typing import Any
 
 from fastapi import HTTPException
@@ -287,6 +288,24 @@ class ServicesManager:
         """Get docker compose file."""
         service_type, instance = self.split_service_type_and_instance(service_id)
         return await self._get_service(service_type).restart_docker(instance, model_id)
+
+    async def cancel_pending_installs(self) -> None:
+        """Cancel every install in progress (e.g. services still loading at shutdown), stopping the underlying Docker work."""
+
+        async def cancel(service: BaseService, instance: str) -> None:
+            # HTTPException: finished meanwhile (404) or the service can't cancel (405)
+            with suppress(HTTPException):
+                await service.cancel_instance_install(instance)
+
+        await asyncio.gather(
+            *(
+                cancel(service, instance)
+                for service in self.services.values()
+                for instance, info in service.instances_info.items()
+                if info.installing
+            ),
+            return_exceptions=True,
+        )
 
     async def stop_all_services(self) -> None:
         """Stop all installed services gracefully."""

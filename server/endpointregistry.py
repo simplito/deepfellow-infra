@@ -720,6 +720,9 @@ class ModelInfo(NamedTuple):
     type: str
 
 
+MODEL_LOADING_RETRY_AFTER_SECONDS = 5
+
+
 class EndpointRegistry:
     def __init__(
         self,
@@ -745,6 +748,7 @@ class EndpointRegistry:
         self.mcp_endpoints = Endpoint[McpEndpoint](self.registry, self.parent_infra)
         self.response_item_store = ResponseItemStore()
         self._proxy_api_keys = dict[str, str]()
+        self._loading_models = dict[ModelId, int]()
 
     @property
     def _proxy_timeout(self) -> ClientTimeout:
@@ -786,8 +790,30 @@ class EndpointRegistry:
         models = self.get_models()
         model = next((x for x in models.data if x.id == model_id), None)
         if model is None:
-            raise HTTPException(404, f"Model not found {model_id}")
+            raise self.model_not_found(model_id, f"Model not found {model_id}")
         return model
+
+    def set_model_loading(self, model_id: ModelId) -> None:
+        """Mark a model as still loading after a restart: requests for it get 503 instead of 404 until it registers."""
+        self._loading_models[model_id] = self._loading_models.get(model_id, 0) + 1
+
+    def clear_model_loading(self, model_id: ModelId) -> None:
+        """Undo one `set_model_loading()`; a model name loading on several instances stays marked until all are done."""
+        remaining = self._loading_models.get(model_id, 0) - 1
+        if remaining > 0:
+            self._loading_models[model_id] = remaining
+        else:
+            self._loading_models.pop(model_id, None)
+
+    def model_not_found(self, model_id: ModelId, detail: str = "Model not found") -> HTTPException:
+        """Error for a model that is not registered: retryable 503 while it is still loading, 404 otherwise."""
+        if model_id in self._loading_models:
+            return HTTPException(
+                503,
+                f"Model {model_id} is still loading, try again shortly",
+                headers={"Retry-After": str(MODEL_LOADING_RETRY_AFTER_SECONDS)},
+            )
+        return HTTPException(404, detail)
 
     def list_models(self) -> list[Model]:
         """List models for load balancing."""
@@ -1501,7 +1527,7 @@ class EndpointRegistry:
         on_messages = endpoint.endpoint.on_messages if endpoint else None
         if not endpoint or not on_messages:
             if not self.model_exists(body.model):
-                raise HTTPException(404, "Model not found")
+                raise self.model_not_found(body.model)
             msg = "Given model not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
@@ -1542,7 +1568,7 @@ class EndpointRegistry:
         on_responses = endpoint.endpoint.on_responses if endpoint else None
         if not endpoint or not on_responses:
             if not self.model_exists(body.model):
-                raise HTTPException(404, "Model not found")
+                raise self.model_not_found(body.model)
             msg = "Given model not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
@@ -1593,7 +1619,7 @@ class EndpointRegistry:
         on_chat_completion = endpoint.endpoint.on_chat_completion if endpoint else None
         if not endpoint or not on_chat_completion:
             if not self.model_exists(body.model):
-                raise HTTPException(404, "Model not found")
+                raise self.model_not_found(body.model)
             msg = "Given model not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
@@ -1628,7 +1654,7 @@ class EndpointRegistry:
         on_completion = endpoint.endpoint.on_completion if endpoint else None
         if not endpoint or not on_completion:
             if not self.model_exists(body.model):
-                raise HTTPException(404, "Model not found")
+                raise self.model_not_found(body.model)
             msg = "Given model not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
@@ -1663,7 +1689,7 @@ class EndpointRegistry:
         on_ollama_chat = endpoint.endpoint.on_ollama_chat if endpoint else None
         if not endpoint or not on_ollama_chat:
             if not self.model_exists(body.model):
-                raise HTTPException(404, "Model not found")
+                raise self.model_not_found(body.model)
             msg = "Given model not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
@@ -1695,7 +1721,7 @@ class EndpointRegistry:
         endpoint = self.embeddings_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
             if not self.model_exists(body.model):
-                raise HTTPException(404, "Model not found")
+                raise self.model_not_found(body.model)
             raise HTTPException(400, "Given model is not supported")
 
         async def func() -> StarletteResponse:
@@ -1715,7 +1741,7 @@ class EndpointRegistry:
         endpoint = self.images_generations_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
             if not self.model_exists(body.model):
-                raise HTTPException(404, "Model not found")
+                raise self.model_not_found(body.model)
             raise HTTPException(400, "Given model is not supported")
 
         async def func() -> StarletteResponse:
@@ -1735,7 +1761,7 @@ class EndpointRegistry:
         endpoint = self.audio_speech_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
             if not self.model_exists(body.model):
-                raise HTTPException(404, "Model not found")
+                raise self.model_not_found(body.model)
             raise HTTPException(400, "Given model is not supported")
 
         async def func() -> StarletteResponse:
@@ -1753,7 +1779,7 @@ class EndpointRegistry:
         endpoint = self.audio_transcriptions_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
             if not self.model_exists(body.model):
-                raise HTTPException(404, "Model not found")
+                raise self.model_not_found(body.model)
             raise HTTPException(400, "Given model is not supported")
 
         async def func() -> StarletteResponse:
@@ -1776,7 +1802,7 @@ class EndpointRegistry:
         endpoint = self.rerank_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
             if not self.model_exists(body.model):
-                raise HTTPException(404, "Model not found")
+                raise self.model_not_found(body.model)
             raise HTTPException(400, "Given model is not supported")
 
         async def func() -> StarletteResponse:
@@ -1796,7 +1822,7 @@ class EndpointRegistry:
         endpoint = self.systemone_endpoints.get_model(body.model, registration_id=registration_id)
         if not endpoint:
             if not self.model_exists(body.model):
-                raise HTTPException(404, "Model not found")
+                raise self.model_not_found(body.model)
             raise HTTPException(400, "Given model is not supported")
 
         async def func() -> StarletteResponse:

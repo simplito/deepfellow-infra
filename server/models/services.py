@@ -54,6 +54,7 @@ class ServiceSpecification(BaseModel):
 class InstallServiceProgress(BaseModel):
     stage: str
     value: float
+    image: str | None = None  # docker image being pulled, if the current stage is pulling one
 
 
 class RetrieveServiceOut(BaseModel):

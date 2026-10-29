@@ -737,6 +737,18 @@ async def test_refresh_catalog_raises_405_for_non_ollama(services_manager: Servi
     assert exc_info.value.status_code == 405
 
 
+@pytest.mark.asyncio
+async def test_cancel_pending_installs_cancels_only_installing_instances_and_tolerates_errors(services_manager: ServicesManager):
+    svc = FakeService("ollama", instances=["a", "b", "c"])
+    svc.instances_info = {"a": MagicMock(installing=object()), "b": MagicMock(installing=None), "c": MagicMock(installing=object())}
+    svc.cancel_instance_install = AsyncMock(side_effect=[None, HTTPException(404, "not installing")])
+    services_manager.register_service(svc)
+
+    await services_manager.cancel_pending_installs()
+
+    assert svc.cancel_instance_install.await_args_list == [call("a"), call("c")]
+
+
 def test_secret_values_collects_from_every_base2_service() -> None:
     manager = ServicesManager()
     first = MagicMock(spec=Base2Service)

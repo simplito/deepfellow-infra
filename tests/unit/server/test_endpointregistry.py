@@ -6090,3 +6090,73 @@ async def test_register_proxy_decision_proxies_to_child_systemone(mock_make_http
     assert mock_make_http_request.call_count == 1
     assert mock_make_http_request.call_args.kwargs["url"] == "http://child:8086/v1/systemone"
     assert mock_make_http_request.call_args.kwargs["headers"]["Authorization"] == "Bearer child-key"
+
+
+@pytest.mark.asyncio
+async def test_execute_rerank_raises_503_with_retry_after_while_model_is_loading():
+    reg = make_registry()
+    reg.set_model_loading("rnk")
+    body = MagicMock(spec=RerankRequest)
+    body.model = "rnk"
+    body.model_dump_json.return_value = "{}"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.execute_rerank(body)
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.headers == {"Retry-After": "5"}
+
+
+def test_get_model_raises_503_while_model_is_loading_and_404_after():
+    reg = make_registry()
+    reg.set_model_loading("m")
+
+    with pytest.raises(HTTPException) as loading:
+        reg.get_model("m")
+    reg.clear_model_loading("m")
+    with pytest.raises(HTTPException) as done:
+        reg.get_model("m")
+
+    assert loading.value.status_code == 503
+    assert done.value.status_code == 404
+
+
+def test_model_loading_on_two_instances_stays_marked_until_both_are_done():
+    reg = make_registry()
+    reg.set_model_loading("m")
+    reg.set_model_loading("m")
+
+    reg.clear_model_loading("m")
+
+    assert reg.model_not_found("m").status_code == 503
+    reg.clear_model_loading("m")
+    assert reg.model_not_found("m").status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method",
+    [
+        "execute_messages",
+        "execute_responses",
+        "execute_chat_completion",
+        "execute_completion",
+        "execute_ollama_chat",
+        "execute_embeddings",
+        "execute_images_generations",
+        "execute_audio_speech",
+        "execute_audio_transcriptions",
+        "execute_rerank",
+        "execute_systemone",
+    ],
+)
+async def test_execute_raises_503_while_model_is_loading(method: str):
+    reg = make_registry()
+    reg.set_model_loading("m")
+    body = MagicMock()
+    body.model = "m"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await getattr(reg, method)(body)
+
+    assert exc_info.value.status_code == 503

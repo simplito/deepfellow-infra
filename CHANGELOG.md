@@ -10,10 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - `/opsx:sync` command and `openspec-sync-specs` skill, from OpenSpec 1.15.0.
 - `THIRD_PARTY.md` with the MIT license notice for the OpenSpec-generated commands and skills.
+- Service status shows the Docker image being pulled (`installed.image`) from 0%, so clients can say what is downloading.
 
 ### Changed
 
 - OpenSpec `/opsx:*` commands and `openspec-*` skills regenerated with OpenSpec 1.15.0 (from 1.3.1).
+- Installed services load in the background after start; their models return `503` with `Retry-After` until ready.
+
+### Fixed
+
+- Models of services still loading after a restart answer `503` with `Retry-After` instead of `404 Model not found`, so clients retry.
+- Infra answers `/health` right after start while installed services load in the background, so `deepfellow infra update` no longer reports "unhealthy" during an image pull.
 
 
 ## [0.37.0] - 2026-10-28

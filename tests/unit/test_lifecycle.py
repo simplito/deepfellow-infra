@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 Simplito sp. z o.o.
 
+import asyncio
 import re
 import subprocess
 from collections.abc import Generator
 from contextlib import ExitStack
+from typing import Any
 from unittest import mock
 from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
@@ -130,7 +132,7 @@ def _apply_base_patches(active_patches: dict[str, Mock], *, config: MagicMock | 
     ctx.load_services = AsyncMock()
 
     task_mgr = active_patches["server.lifecycle.TaskManager"].return_value
-    task_mgr.add_task_safe = MagicMock()
+    task_mgr.add_task_safe = MagicMock(side_effect=lambda *_args: asyncio.get_running_loop().create_future())  # pyright: ignore[reportUnknownLambdaType]
 
     parent = active_patches["server.lifecycle.ParentInfra"].return_value
     parent.run = MagicMock(return_value=MagicMock())
@@ -138,6 +140,7 @@ def _apply_base_patches(active_patches: dict[str, Mock], *, config: MagicMock | 
     svc_mgr = active_patches["server.lifecycle.ServicesManager"].return_value
     svc_mgr.stop_all_services = AsyncMock()
     svc_mgr.drain_warning_tasks = AsyncMock()
+    svc_mgr.cancel_pending_installs = AsyncMock()
     svc_mgr.resolve_platform_compatibility = AsyncMock()
 
     otlp_logging = active_patches["server.lifecycle.OtlpLoggingManager"].return_value
@@ -387,3 +390,26 @@ async def test_lifespan_shuts_down_sentry_on_exit(app: FastAPI, base_mocks: dict
         pass
 
     assert base_mocks["server.lifecycle.sentry"].shutdown.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_lifespan_shutdown_cancels_loading_before_stopping_services(app: FastAPI, base_mocks: dict[str, Mock]) -> None:
+    _apply_base_patches(base_mocks, config=_make_config(stop_on_shutdown=True))
+    svc_mgr = base_mocks["server.lifecycle.ServicesManager"].return_value
+    task_mgr = base_mocks["server.lifecycle.TaskManager"].return_value
+    order: list[str] = []
+    svc_mgr.cancel_pending_installs.side_effect = lambda: order.append("cancel installs")
+    svc_mgr.stop_all_services.side_effect = lambda: order.append("stop services")
+    tasks: list[asyncio.Future[None]] = []
+
+    def add_task_safe(*_args: Any) -> asyncio.Future[None]:
+        tasks.append(asyncio.get_running_loop().create_future())
+        return tasks[-1]
+
+    task_mgr.add_task_safe.side_effect = add_task_safe
+
+    async with lifespan(app):
+        pass
+
+    assert order == ["cancel installs", "stop services"]
+    assert tasks[0].cancelled()
