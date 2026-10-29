@@ -389,6 +389,9 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     _reconciliation_tasks: dict[str, "asyncio.Task[None]"]
     _crash_poll_state: dict[tuple[str, str], int]
     _failed_models: dict[str, set[str]]
+    _restoring: dict[str, InstanceConfig]
+    """Persisted config of instances being loaded from services.json at startup. Their live state is incomplete until the
+    image is pulled and the models are loaded, so `_save()` must not overwrite the persisted entry with it."""
     _warning_tasks: set["asyncio.Task[None]"]
     _platform_unsupported_reason: str | None
     """Cached result of `resolve_platform_compatibility()`, run once at app startup. `None` means
@@ -429,6 +432,7 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         self.images_download_progress = {}
         self._log_cache = {}
         self._failed_models = {}
+        self._restoring = {}
         self._warning_tasks = set()
         self._edit_locks = {}
         self._edit_kept_gpu_utilization = {}
@@ -952,6 +956,13 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
                 instance, model.model_id, model.options, on_success, lambda _e: None, container_name_override=container_name_override
             )
             await promise.wait()
+        except asyncio.CancelledError:
+            if is_own_cancellation():
+                raise
+            # Cancelled by the user through cancel_model_install(): a decision, not a failure.
+            logger.info(f"{self.get_id(instance)} loading model {model.model_id} cancelled")
+            self._forget_restoring_model(instance, model.model_id)
+            return
         except Exception as exc:
             logger.exception(f"{self.get_id(instance)} get error while loading model {model.model_id}")
             self._failed_models.setdefault(instance, set()).add(model.model_id)
@@ -979,7 +990,11 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
             return
 
         self.load_default_models(instance)
+        await self._register_custom_models_on_load(instance, instance_data)
+        await self._load_restoring(instance, instance_data, instance_data.options)
 
+    async def _register_custom_models_on_load(self, instance: str, instance_data: InstanceConfig) -> None:
+        """Register the persisted custom models, warning instead of failing when one of them can't be registered."""
         if instance_data.custom:
             for custom in instance_data.custom:
                 model_id = custom.data.get("id", custom.id)
@@ -1001,12 +1016,51 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
                     except Exception:
                         logger.exception(f"{self.get_id(instance)} failed to record warning for custom model {model_id}")
 
-        promise = await self.install_instance(instance, instance_data.options, instance_data, save=False, run_after_install=False)
-        await promise.wait()
-        logger.info(f"{self.get_id(instance)} service checked")
-        tasks = [asyncio.create_task(self.load_model(instance, model)) for model in instance_data.models or []]
-        await asyncio.gather(*tasks)
-        await self._after_install(instance)
+    async def _load_restoring(self, instance: str, instance_data: InstanceConfig, options: InstallServiceIn) -> None:
+        """Install the instance and load its persisted models, keeping the persisted config safe from concurrent saves."""
+        # Loading runs while the API is up, so a concurrent _save() must not persist (or mutate instance_data with)
+        # the half-loaded state. Work on a snapshot of what was persisted.
+        snapshot = instance_data.model_copy(deep=True)
+        self._restoring[instance] = snapshot
+        # Until a model registers, requests for it get a retryable 503 instead of a 404 that looks like a typo.
+        loading = {index: self._registered_name(model) for index, model in enumerate(snapshot.models or [])}
+        for name in loading.values():
+            self.endpoint_registry.set_model_loading(name)
+
+        async def load_model_and_unmark(index: int, model: ModelConfig) -> None:
+            try:
+                await self.load_model(instance, model)
+            finally:
+                self.endpoint_registry.clear_model_loading(loading.pop(index))
+
+        try:
+            promise = await self.install_instance(instance, options, instance_data, save=False, run_after_install=False)
+            try:
+                await promise.wait()
+            except asyncio.CancelledError:
+                if is_own_cancellation():
+                    raise
+                # Cancelled by the user through cancel_instance_install(): a decision, not a failure.
+                logger.info(f"{self.get_id(instance)} loading cancelled")
+                return
+            logger.info(f"{self.get_id(instance)} service checked")
+            tasks = [asyncio.create_task(load_model_and_unmark(index, model)) for index, model in enumerate(snapshot.models or [])]
+            await asyncio.gather(*tasks)
+            await self._after_install(instance)
+        finally:
+            self._restoring.pop(instance, None)
+            for name in loading.values():
+                self.endpoint_registry.clear_model_loading(name)
+
+    @staticmethod
+    def _registered_name(model: ModelConfig) -> str:
+        """Name the model is served under: its id, or the `rename` install option when set."""
+        return (model.options.spec or {}).get("rename") or model.model_id
+
+    def _forget_restoring_model(self, instance: str, model_id: str) -> None:
+        """Drop a model from the config being restored, so `_save()` doesn't resurrect it after the user removed it."""
+        if restoring := self._restoring.get(instance):
+            restoring.models = [m for m in restoring.models or [] if m.model_id != model_id]
 
     async def load_service(self, config: ServiceRawConfig) -> None:
         """Load service using the config."""
@@ -1080,8 +1134,15 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     async def _save(self) -> None:
         instances_config = {}
         for instance_name, instance in self.instances_info.items():
+            restoring = self._restoring.get(instance_name)
+            if restoring is not None and instance.installed is None:
+                instances_config[instance_name] = restoring.model_copy(deep=True)
+                continue
             generated = self._generate_instance_config(instance_name, instance.installed, instance.config.custom)
             generated.models = self._preserve_failed_models(instance_name, generated.models or [])
+            if restoring is not None:
+                live_ids = {m.model_id for m in generated.models}
+                generated.models = [*generated.models, *(m for m in restoring.models or [] if m.model_id not in live_ids)]
             instance.config.models = generated.models
             instance.config.options = generated.options
             instances_config[instance_name] = generated
@@ -1821,6 +1882,7 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     async def uninstall_model(self, instance: str, model_id: str, options: UninstallModelIn) -> None:
         """Uninstall the model."""
         await self._uninstall_model(instance, model_id, options)
+        self._forget_restoring_model(instance, model_id)
         if instance_failures := self._failed_models.get(instance):
             instance_failures.discard(model_id)
         try:
@@ -1856,7 +1918,11 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         if not installing:
             return False
         if installing.last_chunk and installing.last_chunk["type"] == "progress":
-            return InstallServiceProgress(stage=installing.last_chunk["stage"], value=installing.last_chunk["value"])
+            return InstallServiceProgress(
+                stage=installing.last_chunk["stage"],
+                value=installing.last_chunk["value"],
+                image=installing.last_chunk.get("data", {}).get("image"),
+            )
         if installing.last_chunk and installing.last_chunk["type"] == "finish":
             return InstallServiceProgress(stage="install", value=1)
         return InstallServiceProgress(stage="download", value=0)
@@ -1939,12 +2005,13 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         stream: Stream[StreamChunk],
     ) -> None:
         """Docker pull only if image does not exist."""
-        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
+        data = {"image": image.name}
+        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data=data))
         if not await self.docker_service.is_docker_image_pulled(image.name):
             size = await self.docker_service.get_docker_image_size(image.name)
             async for progress in self.docker_service.docker_pull(image.name, size or convert_size_to_bytes(image.size) or 0):
-                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress, data={}))
-        stream.emit(StreamChunkProgress(type="progress", stage="download", value=1, data={}))
+                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress, data=data))
+        stream.emit(StreamChunkProgress(type="progress", stage="download", value=1, data=data))
 
     async def _stop_docker(self, docker_options: DockerOptions) -> None:
         """Stop docker and log error if it occurs."""

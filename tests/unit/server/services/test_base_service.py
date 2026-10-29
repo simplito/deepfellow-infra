@@ -4,7 +4,7 @@
 import asyncio
 import contextlib
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -3369,6 +3369,16 @@ def test_get_service_installed_info_chunk(
     assert result.value == expected_value  # type: ignore[union-attr]
 
 
+def test_get_service_installed_info_reports_pulled_image(base2_svc: _Base2Impl) -> None:
+    mock_installing = MagicMock()
+    mock_installing.last_chunk = {"type": "progress", "stage": "download", "value": 0, "data": {"image": "ollama/ollama:0.34.1"}}
+    base2_svc.instances_info["default"].installing = mock_installing
+
+    result = base2_svc._get_service_installed_info("default")  # pyright: ignore[reportPrivateUsage]
+
+    assert result.image == "ollama/ollama:0.34.1"  # type: ignore[union-attr]
+
+
 @pytest.mark.asyncio
 async def test_get_docker_compose_file_reads_file(base2_svc: _Base2Impl) -> None:
     with (
@@ -3529,6 +3539,7 @@ async def test_docker_pull_emits_progress_when_image_not_present(base2_svc: _Bas
     await base2_svc._docker_pull(image, stream)  # pyright: ignore[reportPrivateUsage]
 
     assert stream.emit.call_count >= 3
+    assert all(c.args[0]["data"] == {"image": "my-image"} for c in stream.emit.call_args_list)
 
 
 @pytest.mark.asyncio
@@ -4553,3 +4564,147 @@ def test_get_disabled_reason_falls_back_to_platform_reason(base2_svc: _Base2Impl
 def test_get_disabled_reason_none_when_both_checks_pass(base2_svc: _Base2Impl) -> None:
     with patch.object(base2_svc, "get_hardware_unsupported_reason", return_value=None):
         assert base2_svc.get_disabled_reason() is None
+
+
+def _restoring_config() -> InstanceConfig:
+    return InstanceConfig(options=InstallServiceIn(spec={}), models=[ModelConfig(model_id="llama3", options=InstallModelIn())])
+
+
+def _saved_instances(base2_deps: dict[str, Any]) -> dict[str, Any]:
+    return base2_deps["service_provider"].save_service_config.await_args.args[1]["instances"]
+
+
+async def _start_loading(base2_svc: _Base2Impl, config: InstanceConfig) -> tuple["asyncio.Task[None]", PromiseWithProgress[Any, Any]]:
+    """Start `load_instance` with its image pull blocked on the returned promise."""
+    pull: PromiseWithProgress[Any, Any] = PromiseWithProgress()
+    base2_svc.install_instance = AsyncMock(return_value=pull)  # type: ignore[method-assign]
+    base2_svc._after_install = AsyncMock()  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage]
+    base2_svc.load_model = AsyncMock()  # type: ignore[method-assign]
+    task = asyncio.create_task(base2_svc.load_instance("default", config))
+    await asyncio.sleep(0)
+    return task, pull
+
+
+@pytest.mark.asyncio
+async def test_save_during_instance_pull_keeps_persisted_instance(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["service_provider"].save_service_config = AsyncMock()
+    config = _restoring_config()
+    task, pull = await _start_loading(base2_svc, config)
+
+    await base2_svc._save()  # pyright: ignore[reportPrivateUsage]
+
+    saved = _saved_instances(base2_deps)["default"]
+    assert saved["options"] is not None
+    assert [m["model_id"] for m in saved["models"]] == ["llama3"]
+    pull._future.set_result(InstallServiceOut(status="OK"))  # pyright: ignore[reportPrivateUsage]
+    await task
+    base2_svc.load_model.assert_awaited_once()  # type: ignore[attr-defined]
+    assert [c.args[1].model_id for c in base2_svc.load_model.await_args_list] == ["llama3"]  # type: ignore[attr-defined]
+    assert base2_svc._restoring == {}  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_save_while_models_load_keeps_models_not_loaded_yet(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["service_provider"].save_service_config = AsyncMock()
+    base2_svc._restoring["default"] = _restoring_config()  # pyright: ignore[reportPrivateUsage]
+    base2_svc.instances_info["default"].installed = MagicMock()
+
+    await base2_svc._save()  # pyright: ignore[reportPrivateUsage]
+
+    assert [m["model_id"] for m in _saved_instances(base2_deps)["default"]["models"]] == ["llama3"]
+
+
+@pytest.mark.asyncio
+async def test_uninstall_model_while_restoring_is_not_resurrected_by_save(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["service_provider"].save_service_config = AsyncMock()
+    base2_svc._restoring["default"] = _restoring_config()  # pyright: ignore[reportPrivateUsage]
+    base2_svc.instances_info["default"].installed = MagicMock()
+
+    await base2_svc.uninstall_model("default", "llama3", UninstallModelIn())
+
+    assert _saved_instances(base2_deps)["default"]["models"] == []
+
+
+@pytest.mark.asyncio
+async def test_cancelling_instance_pull_during_load_ends_load_quietly(base2_svc: _Base2Impl) -> None:
+    task, pull = await _start_loading(base2_svc, _restoring_config())
+
+    pull.cancel()
+    await task
+
+    assert not task.cancelled()
+    base2_svc.load_model.assert_not_awaited()  # type: ignore[attr-defined]
+    base2_svc._after_install.assert_not_awaited()  # type: ignore[attr-defined]  # pyright: ignore[reportPrivateUsage]
+    assert base2_svc._restoring == {}  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_cancelling_load_task_itself_propagates(base2_svc: _Base2Impl) -> None:
+    task, _pull = await _start_loading(base2_svc, _restoring_config())
+
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert base2_svc._restoring == {}  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_cancelling_model_install_during_load_is_not_a_failure(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    pull: PromiseWithProgress[Any, Any] = PromiseWithProgress()
+    base2_svc._reserve_and_install = AsyncMock(return_value=pull)  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage]
+    base2_svc._restoring["default"] = _restoring_config()  # pyright: ignore[reportPrivateUsage]
+    task = asyncio.create_task(base2_svc.load_model("default", ModelConfig(model_id="llama3", options=InstallModelIn())))
+    await asyncio.sleep(0)
+
+    pull.cancel()
+    await task
+
+    assert not task.cancelled()
+    assert base2_svc._failed_models.get("default") is None  # pyright: ignore[reportPrivateUsage]
+    base2_deps["service_provider"].add_warning.assert_not_awaited()
+    assert base2_svc._restoring["default"].models == []  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_cancelling_model_load_task_itself_propagates(base2_svc: _Base2Impl) -> None:
+    pull: PromiseWithProgress[Any, Any] = PromiseWithProgress()
+    base2_svc._reserve_and_install = AsyncMock(return_value=pull)  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage]
+    task = asyncio.create_task(base2_svc.load_model("default", ModelConfig(model_id="llama3", options=InstallModelIn())))
+    await asyncio.sleep(0)
+
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+@pytest.mark.asyncio
+async def test_models_are_marked_loading_until_loaded_and_unmarked_when_load_ends(base2_svc: _Base2Impl) -> None:
+    registry = cast("MagicMock", base2_svc.endpoint_registry)
+    config = InstanceConfig(
+        options=InstallServiceIn(spec={}),
+        models=[
+            ModelConfig(model_id="llama3", options=InstallModelIn()),
+            ModelConfig(model_id="qwen", options=InstallModelIn(spec={"rename": "my-qwen"})),
+        ],
+    )
+    task, pull = await _start_loading(base2_svc, config)
+
+    assert [c.args[0] for c in registry.set_model_loading.call_args_list] == ["llama3", "my-qwen"]
+    registry.clear_model_loading.assert_not_called()
+
+    pull._future.set_result(InstallServiceOut(status="OK"))  # pyright: ignore[reportPrivateUsage]
+    await task
+
+    assert sorted(c.args[0] for c in registry.clear_model_loading.call_args_list) == ["llama3", "my-qwen"]
+
+
+@pytest.mark.asyncio
+async def test_models_are_unmarked_when_pull_is_cancelled(base2_svc: _Base2Impl) -> None:
+    task, pull = await _start_loading(base2_svc, _restoring_config())
+
+    pull.cancel()
+    await task
+
+    base2_svc.endpoint_registry.clear_model_loading.assert_called_once_with("llama3")  # type: ignore[attr-defined]

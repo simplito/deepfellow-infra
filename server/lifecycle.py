@@ -8,7 +8,8 @@ import os
 import re
 import subprocess
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from typing import Any
 
 from fastapi import FastAPI
 
@@ -135,8 +136,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
         await services_manager.resolve_platform_compatibility()
 
-        # Load functions
-        await context.load_services()
+        # Load services in the background: loading may pull images for minutes, and /health must answer meanwhile.
+        # Services still loading are reported as installing (with their pull progress) by the services API.
+        load_task = task_manager.add_task_safe(context.load_services(), "lifecycle.load_services")
         task_manager.add_task_safe(parent_infra.run(), "lifecycle.parent_infra")
     except AppStartError as e:
         logger.error(str(e))
@@ -144,7 +146,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     yield
     # Shutdown: stop all services gracefully if enabled
     logger.debug("Shutdown all containers gracefully")
-    shutdown_steps: list[tuple[str, Callable[[], Awaitable[None]]]] = [("drain warning tasks", services_manager.drain_warning_tasks)]
+
+    shutdown_steps: list[tuple[str, Callable[[], Awaitable[None]]]] = [
+        ("stop loading services", lambda: stop_loading(services_manager, load_task)),
+        ("drain warning tasks", services_manager.drain_warning_tasks),
+    ]
     if config.is_stop_containers_on_shutdown_enabled():
         shutdown_steps.append(("stop services", services_manager.stop_all_services))
     shutdown_steps += [("tracer", tracer.close), ("OTLP logging", otlp_logging.close), ("Sentry", sentry.shutdown)]
@@ -154,6 +160,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             await step()
         except Exception:
             logger.exception("Shutdown step '%s' failed, continuing", name)
+
+
+async def stop_loading(services_manager: ServicesManager, load_task: "asyncio.Task[Any]") -> None:
+    """Stop the background service loading: cancel the pulls first, as cancelling the load task alone leaves the Docker work running."""
+    await services_manager.cancel_pending_installs()
+    load_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await load_task
 
 
 def check_subnet(subnet: str) -> None:
