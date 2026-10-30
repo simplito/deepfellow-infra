@@ -17,11 +17,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - OpenSpec `/opsx:*` commands and `openspec-*` skills regenerated with OpenSpec 1.15.0 (from 1.3.1).
 - **Breaking:** Ollama install and update reject unknown spec fields like `url`; saved configs only warn.
 - Installed services load in the background after start; their models return `503` with `Retry-After` until ready.
+- **Breaking:** vLLM on GPU defaults to CUDA 13 (`v0.32.0`); drivers older than 580 must pin `v0.29.0-cu129-ubuntu2404` (the `-cu129` builds of `v0.30.0`–`v0.32.0` don't start).
 
 ### Fixed
 
 - Models of services still loading after a restart answer `503` with `Retry-After` instead of `404 Model not found`, so clients retry.
 - Infra answers `/health` right after start while installed services load in the background, so `deepfellow infra update` no longer reports "unhealthy" during an image pull.
+- vLLM models on GPU start again: the default `-cu129` image crashed on startup.
+- A failed install answers with the reason (e.g. the container did not become healthy), not a bare "Internal server error".
+- A host driver too old for the image's CUDA version is reported as such, not as a missing NVIDIA container toolkit.
 
 
 ## [0.37.0] - 2026-10-28

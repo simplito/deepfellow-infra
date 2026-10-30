@@ -2449,6 +2449,45 @@ def test_diagnose_gpu_error_driver_pattern_returns_driver_message() -> None:
     assert "driver" in result.lower()
 
 
+def test_diagnose_gpu_error_cuda_requirement_names_the_cuda_version() -> None:
+    result = _diagnose_gpu_error(
+        "nvidia-container-cli: requirement error: unsatisfied condition: cuda>=13.0, please update your driver to a newer version"
+    )
+    assert result is not None
+    assert "CUDA 13.0" in result
+    assert "580" in result
+    assert "older image version" in result
+    assert "toolkit" not in result.lower()
+
+
+def test_diagnose_gpu_error_cuda_requirement_other_than_13_has_no_driver_number() -> None:
+    result = _diagnose_gpu_error("nvidia-container-cli: requirement error: unsatisfied condition: cuda>=12.9")
+    assert result is not None
+    assert "CUDA 12.9" in result
+    assert "580" not in result
+
+
+@pytest.mark.parametrize(
+    "log",
+    [
+        "RuntimeError: CUDA driver version is insufficient for CUDA runtime version",
+        "RuntimeError: The NVIDIA driver on your system is too old (found version 12090).",
+    ],
+)
+def test_diagnose_gpu_error_cuda_runtime_driver_too_old(log: str) -> None:
+    result = _diagnose_gpu_error(log)
+    assert result is not None
+    assert "a newer CUDA version" in result
+    assert "older image version" in result
+    assert "580" not in result
+
+
+def test_diagnose_gpu_error_other_nvidia_container_cli_error_is_still_the_toolkit() -> None:
+    result = _diagnose_gpu_error("nvidia-container-cli: initialization error: load library failed")
+    assert result is not None
+    assert "toolkit" in result.lower()
+
+
 def test_diagnose_gpu_error_no_match_returns_none() -> None:
     assert _diagnose_gpu_error("container started successfully") is None
 
@@ -3339,6 +3378,21 @@ async def test_ensure_compose_running_gpu_toolkit_error_raises_actionable_app_er
 
 
 @pytest.mark.asyncio
+async def test_ensure_compose_running_cuda_requirement_error_names_the_cuda_version(docker_service: DockerService, tmp_path: Path) -> None:
+    options = _opts(hardware=[NvidiaGpuInfo(name="RTX 3090", vram="24 GB", id=0)])
+    error = DockerComposeStartError("", "nvidia-container-cli: requirement error: unsatisfied condition: cuda>=13.0")
+
+    with (
+        patch.object(docker_service, "create_compose_file", new_callable=AsyncMock, return_value=11434),
+        patch.object(docker_service, "start_docker_compose", new_callable=AsyncMock, side_effect=error),
+        pytest.raises(AppError, match=r"needs CUDA 13\.0") as exc_info,
+    ):
+        await docker_service._ensure_compose_running(tmp_path / "compose.yaml", options, is_running=False, has_difference=True, port=None)  # type: ignore[reportPrivateUsage]
+
+    assert "toolkit" not in str(exc_info.value).lower()
+
+
+@pytest.mark.asyncio
 async def test_ensure_compose_running_gpu_unknown_error_raises_generic_app_error(docker_service: DockerService, tmp_path: Path) -> None:
     gpu = NvidiaGpuInfo(name="RTX 3090", vram="24 GB", id=0)
     options = _opts(hardware=[gpu])
@@ -3831,6 +3885,19 @@ async def test_assert_compose_healthy_gpu_error_in_logs_raises_actionable_app_er
         await docker_service._assert_compose_healthy(compose_file, options, start_output=None)  # type: ignore[reportPrivateUsage]
 
     assert docker_service.has_gpu_support is True
+
+
+@pytest.mark.asyncio
+async def test_assert_compose_healthy_driver_too_old_in_logs_raises_cuda_app_error(docker_service: DockerService, tmp_path: Path) -> None:
+    options = _opts(hardware=[NvidiaGpuInfo(name="RTX 3090", vram="24 GB", id=0)])
+    logs = "RuntimeError: CUDA driver version is insufficient for CUDA runtime version"
+
+    with (
+        patch.object(docker_service, "is_docker_compose_healthy", new_callable=AsyncMock, return_value=False),
+        patch.object(docker_service, "get_docker_compose_logs", new_callable=AsyncMock, return_value=logs),
+        pytest.raises(AppError, match="needs a newer CUDA version"),
+    ):
+        await docker_service._assert_compose_healthy(tmp_path / "compose.yaml", options, start_output=None)  # type: ignore[reportPrivateUsage]
 
 
 @pytest.mark.asyncio

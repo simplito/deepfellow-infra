@@ -11,6 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
+from server.utils.exceptions import AppError
 from server.utils.failed_span import get_failed_span_context
 from server.utils.logger import logger
 from server.utils.security_headers import add_security_headers
@@ -68,6 +69,8 @@ async def handle_validation_error(_request: Request, exc: Exception) -> JSONResp
 async def handle_unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
     """Translate any exception no other handler caught into an OpenAI-style 500 carrying an error ID.
 
+    The message hides the exception, except for an `AppError`, whose message is meant for the user.
+
     The same ID goes into the message, the `X-Error-Id` header and the log line, along with the
     trace/span IDs of the traced endpoint that failed, if any. The log line has no traceback:
     Starlette re-raises the exception after this handler returns, and uvicorn logs it then. If the
@@ -84,7 +87,8 @@ async def handle_unhandled_exception(request: Request, exc: Exception) -> JSONRe
     if not is_reported(exc):
         capture_exception(exc, error_id=error_id, handled=False, span_context=span_context, tags=attached_tags(exc))
 
-    body = build_error_body(f"Internal server error. Error ID: {error_id}", "api_error")
+    message = f"{str(exc).rstrip()} (Error ID: {error_id})" if isinstance(exc, AppError) else f"Internal server error. Error ID: {error_id}"
+    body = build_error_body(message, "api_error")
     response = JSONResponse(status_code=500, content=body, headers={ERROR_ID_HEADER: error_id})
     # This handler runs in ServerErrorMiddleware, outside SecurityHeadersMiddleware.
     add_security_headers(response.headers, request.scope)
