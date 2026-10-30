@@ -22,6 +22,8 @@ from server.error_handlers import (
     handle_unhandled_exception,
     register_exception_handlers,
 )
+from server.utils.core import PromiseWithProgress, Stream, StreamChunk
+from server.utils.exceptions import AppError
 from server.utils.failed_span import remember_failed_span
 from server.utils.security_headers import CACHE_CONTROL, CONTENT_SECURITY_POLICY
 from server.utils.sentry import attach_tags, mark_reported
@@ -105,6 +107,19 @@ async def _reported() -> None:
     raise exc
 
 
+async def _app_error() -> None:
+    raise AppError("Container vllm-qwen failed to become healthy:\nOSError: libnvrtc.so.13: cannot open shared object file\n")
+
+
+async def _failing_install(_progress: Stream[StreamChunk]) -> BaseModel:
+    raise AppError("Failed to start vllm-qwen: unhealthy")
+
+
+async def _promise_install() -> BaseModel:
+    # an install route without `stream`
+    return await PromiseWithProgress[BaseModel, StreamChunk](func=_failing_install).wait()
+
+
 async def _missing() -> None:
     raise HTTPException(status_code=404, detail="Model not found")
 
@@ -132,6 +147,8 @@ def app() -> FastAPI:
     app.add_api_route("/tagged", _tagged, methods=["GET"])
     app.add_api_route("/reported", _reported, methods=["GET"])
     app.add_api_route("/missing", _missing, methods=["GET"])
+    app.add_api_route("/app-error", _app_error, methods=["GET"])
+    app.add_api_route("/promise-install", _promise_install, methods=["POST"])
     app.add_api_route("/validated", _validated, methods=["POST"])
     app.add_api_route("/stream", _stream, methods=["GET"])
     return app
@@ -159,6 +176,27 @@ def test_handle_unhandled_exception_hides_exception_details(client: TestClient):
     assert "secret internal detail" not in resp.text
     assert "RuntimeError" not in resp.text
     assert all("secret internal detail" not in value for value in resp.headers.values())
+
+
+def test_handle_unhandled_exception_shows_the_app_error_message_with_error_id(client: TestClient):
+    resp = client.get("/app-error")
+
+    assert resp.status_code == 500
+    error_id = resp.headers["X-Error-Id"]
+    message = "Container vllm-qwen failed to become healthy:\nOSError: libnvrtc.so.13: cannot open shared object file"
+    assert resp.json()["error"] == {
+        "message": f"{message} (Error ID: {error_id})",
+        "type": "api_error",
+        "param": None,
+        "code": None,
+    }
+
+
+def test_non_streamed_promise_failure_shows_the_app_error_message(client: TestClient):
+    resp = client.post("/promise-install")
+
+    assert resp.status_code == 500
+    assert resp.json()["error"]["message"] == f"Failed to start vllm-qwen: unhealthy (Error ID: {resp.headers['X-Error-Id']})"
 
 
 def test_handle_unhandled_exception_adds_security_headers(client: TestClient):

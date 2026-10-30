@@ -63,6 +63,10 @@ _GPU_TOOLKIT_PATTERNS = (
     "nvidia container cli",
 )
 
+# The image needs a newer CUDA than the host driver supports (container toolkit; CUDA runtime, PyTorch).
+_CUDA_REQUIREMENT_RE = re.compile(r"unsatisfied condition: cuda>=(\d+\.\d+)")
+_CUDA_DRIVER_TOO_OLD = ("cuda driver version is insufficient", "the nvidia driver on your system is too old")
+
 # Substrings that indicate the GPU driver itself has failed.
 _GPU_DRIVER_PATTERNS = (
     "failed to initialize nvml",
@@ -75,6 +79,13 @@ _GPU_DRIVER_PATTERNS = (
 def _diagnose_gpu_error(text: str) -> str | None:
     """Return a user-facing message if *text* contains a known GPU failure, else None."""
     lower = text.lower()
+    # Before the toolkit patterns: this error also mentions nvidia-container-cli.
+    if (required := _CUDA_REQUIREMENT_RE.search(lower)) or any(p in lower for p in _CUDA_DRIVER_TOO_OLD):
+        needs = f"CUDA {required[1]}" if required else "a newer CUDA version"
+        driver = "the NVIDIA driver (580 or newer for CUDA 13)" if required and required[1].startswith("13.") else "the NVIDIA driver"
+        return (
+            f"The image needs {needs}, which the host's NVIDIA driver does not support. Update {driver} or choose an older image version."
+        )
     if any(p in lower for p in _GPU_TOOLKIT_PATTERNS):
         return (
             "GPU is unavailable: the NVIDIA container toolkit is not installed on this host. "
