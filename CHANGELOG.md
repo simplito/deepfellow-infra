@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 
 - OpenSpec `/opsx:*` commands and `openspec-*` skills regenerated with OpenSpec 1.15.0 (from 1.3.1).
+- **Breaking:** Ollama install and update reject unknown spec fields like `url`; saved configs only warn.
 - Installed services load in the background after start; their models return `503` with `Retry-After` until ready.
 
 ### Fixed

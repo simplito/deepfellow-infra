@@ -358,6 +358,8 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
     _warmth_poll_tasks: dict[str, asyncio.Task[None]]
     _ps_query_failing: set[str]
     _blob_locks: BlobLocks
+    _legacy_spec_fields = frozenset({"gpu"})
+    _rejects_unknown_spec_fields = True
 
     @property
     def _supported_gpus(self) -> list[GpuInfo]:
@@ -492,6 +494,11 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         )
 
         return ServiceSpecification(fields=fields)
+
+    def _unknown_spec_field_hint(self, field: str) -> str | None:
+        if field == "url":
+            return "To use an Ollama instance that is already running (e.g. on the host), install the ollama-external service instead."
+        return None
 
     def get_model_spec(self) -> ModelSpecification:
         """Return the model specification."""
