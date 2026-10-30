@@ -600,6 +600,59 @@ def test_is_given_hardware_support_gpu_string_gpu_raises_when_no_gpus(base2_deps
     assert exc_info.value.status_code == 400
 
 
+def _spec_with_fields(*names: str) -> ServiceSpecification:
+    return ServiceSpecification(fields=[ServiceField(type="text", name=name, description=name) for name in names])
+
+
+def test_get_unknown_spec_fields_returns_sorted_unknown_keys(base2_svc: _Base2Impl) -> None:
+    with patch.object(base2_svc, "get_spec", return_value=_spec_with_fields("hardware")):
+        assert base2_svc.get_unknown_spec_fields({"url": "x", "hardware": "CPU", "abc": 1}) == ["abc", "url"]
+
+
+def test_get_unknown_spec_fields_accepts_legacy_fields(base2_svc: _Base2Impl) -> None:
+    with (
+        patch.object(base2_svc, "_legacy_spec_fields", frozenset({"gpu"})),
+        patch.object(base2_svc, "get_spec", return_value=_spec_with_fields("hardware")),
+    ):
+        assert base2_svc.get_unknown_spec_fields({"gpu": True}) == []
+
+
+def test_validate_spec_fields_passes_for_known_fields(base2_svc: _Base2Impl) -> None:
+    with patch.object(base2_svc, "get_spec", return_value=_spec_with_fields("hardware", "image_version")):
+        base2_svc.validate_spec_fields({"hardware": "CPU", "image_version": "1.0"})
+
+
+def test_validate_spec_fields_raises_400_listing_unknown_and_supported_fields(base2_svc: _Base2Impl) -> None:
+    with (
+        patch.object(base2_svc, "get_spec", return_value=_spec_with_fields("image_version", "hardware")),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        base2_svc.validate_spec_fields({"url": "x", "hardware": "CPU"})
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Service test-b2 does not support spec field(s): url. Supported fields: hardware, image_version."
+
+
+def test_validate_spec_fields_says_none_when_service_has_no_fields(base2_svc: _Base2Impl) -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        base2_svc.validate_spec_fields({"url": "x"})
+
+    assert exc_info.value.detail == "Service test-b2 does not support spec field(s): url. Supported fields: none."
+
+
+def test_validate_spec_fields_appends_service_hint(base2_svc: _Base2Impl) -> None:
+    def hint(field: str) -> str | None:
+        return "Use other." if field == "url" else None
+
+    with (
+        patch.object(base2_svc, "_unknown_spec_field_hint", side_effect=hint),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        base2_svc.validate_spec_fields({"url": "x", "abc": 1})
+
+    assert exc_info.value.detail == "Service test-b2 does not support spec field(s): abc, url. Supported fields: none. Use other."
+
+
 @pytest.mark.asyncio
 async def test_installing_model_init_creates_task() -> None:
     value = InstallModelOut(status="OK", details="done")
@@ -1949,6 +2002,142 @@ async def test_load_instance_passes_persisted_model_container_names_as_override(
 
 
 @pytest.mark.asyncio
+async def test_install_instance_rejects_unknown_spec_fields_when_enabled(base2_svc: _Base2Impl) -> None:
+    install_instance_mock = AsyncMock()
+    with (
+        patch.object(base2_svc, "_rejects_unknown_spec_fields", True),
+        patch.object(base2_svc, "_install_instance", new=install_instance_mock),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await base2_svc.install_instance("default", InstallServiceIn(spec={"url": "x"}))
+
+    assert exc_info.value.status_code == 400
+    install_instance_mock.assert_not_awaited()
+    assert base2_svc.instances_info["default"].installing is None
+
+
+@pytest.mark.asyncio
+async def test_install_instance_accepts_unknown_spec_fields_by_default(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["service_provider"].save_service_config = AsyncMock()
+    install_instance_mock = AsyncMock(return_value=PromiseWithProgress(value={}))
+    options = InstallServiceIn(spec={"url": "x"})
+
+    with patch.object(base2_svc, "_install_instance", new=install_instance_mock):
+        promise = await base2_svc.install_instance("default", options)
+        await promise.wait()
+
+    install_instance_mock.assert_awaited_once_with("default", options, None)
+
+
+@pytest.mark.asyncio
+async def test_load_instance_warns_about_unknown_spec_fields_and_still_installs(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["service_provider"].save_service_config = AsyncMock()
+    installed_value: dict[str, Any] = {}
+    promise: PromiseWithProgress[Any, StreamChunk] = PromiseWithProgress(value=installed_value)
+    instance_data = InstanceConfig(options=InstallServiceIn(spec={"url": "x"}), models=[], custom=None)
+
+    with (
+        patch.object(base2_svc, "_rejects_unknown_spec_fields", True),
+        patch.object(base2_svc, "_install_instance", new=AsyncMock(return_value=promise)),
+        patch("server.services.base2_service.logger") as logger_mock,
+    ):
+        await base2_svc.load_instance("default", instance_data)
+
+    assert base2_svc.instances_info["default"].installed is installed_value
+    assert any("url" in str(c.args[0]) for c in logger_mock.warning.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_load_instance_records_warning_with_hint_after_install_clears_old_ones(
+    base2_svc: _Base2Impl, base2_deps: dict[str, Any]
+) -> None:
+    """The install step clears the instance's warnings on success, so the warning must be recorded after it."""
+    service_provider = base2_deps["service_provider"]
+    service_provider.save_service_config = AsyncMock()
+    promise: PromiseWithProgress[Any, StreamChunk] = PromiseWithProgress(value={})
+    instance_data = InstanceConfig(options=InstallServiceIn(spec={"url": "x"}), models=[], custom=None)
+
+    def hint(field: str) -> str | None:
+        return "Use other." if field == "url" else None
+
+    with (
+        patch.object(base2_svc, "_rejects_unknown_spec_fields", True),
+        patch.object(base2_svc, "_unknown_spec_field_hint", side_effect=hint),
+        patch.object(base2_svc, "_install_instance", new=AsyncMock(return_value=promise)),
+    ):
+        await base2_svc.load_instance("default", instance_data)
+
+    service_provider.add_warning.assert_awaited_once_with(
+        "test-b2",
+        "Service instance 'default' ignores unsupported spec field(s) saved in its config: url. Use other.",
+        instance="default",
+    )
+    call_names = [name for name, _args, _kwargs in service_provider.mock_calls]
+    assert call_names.index("add_warning") > call_names.index("dismiss_warnings_matching_any")
+
+
+@pytest.mark.asyncio
+async def test_load_instance_records_no_warning_without_unknown_spec_fields(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["service_provider"].save_service_config = AsyncMock()
+    promise: PromiseWithProgress[Any, StreamChunk] = PromiseWithProgress(value={})
+    instance_data = InstanceConfig(options=InstallServiceIn(spec={}), models=[], custom=None)
+
+    with (
+        patch.object(base2_svc, "_rejects_unknown_spec_fields", True),
+        patch.object(base2_svc, "_install_instance", new=AsyncMock(return_value=promise)),
+    ):
+        await base2_svc.load_instance("default", instance_data)
+
+    base2_deps["service_provider"].add_warning.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_load_instance_continues_when_unknown_spec_fields_check_fails(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["service_provider"].save_service_config = AsyncMock()
+    promise: PromiseWithProgress[Any, StreamChunk] = PromiseWithProgress(value={})
+    instance_data = InstanceConfig(options=InstallServiceIn(spec={"url": "x"}), models=[], custom=None)
+    after_install_mock = AsyncMock()
+
+    with (
+        patch.object(base2_svc, "_rejects_unknown_spec_fields", True),
+        patch.object(base2_svc, "_install_instance", new=AsyncMock(return_value=promise)),
+        patch.object(base2_svc, "get_unknown_spec_fields", side_effect=RuntimeError("boom")),
+        patch.object(base2_svc, "_after_install", new=after_install_mock),
+        patch("server.services.base2_service.logger") as logger_mock,
+    ):
+        await base2_svc.load_instance("default", instance_data)
+
+    after_install_mock.assert_awaited_once_with("default")
+    assert any("failed to check saved spec" in str(c.args[0]) for c in logger_mock.exception.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_load_instance_continues_when_recording_unknown_spec_fields_warning_fails(
+    base2_svc: _Base2Impl, base2_deps: dict[str, Any]
+) -> None:
+    service_provider = base2_deps["service_provider"]
+    service_provider.save_service_config = AsyncMock()
+    service_provider.add_warning = AsyncMock(side_effect=RuntimeError("boom"))
+    promise: PromiseWithProgress[Any, StreamChunk] = PromiseWithProgress(value={})
+    instance_data = InstanceConfig(options=InstallServiceIn(spec={"url": "x"}), models=[], custom=None)
+    after_install_mock = AsyncMock()
+
+    with (
+        patch.object(base2_svc, "_rejects_unknown_spec_fields", True),
+        patch.object(base2_svc, "_install_instance", new=AsyncMock(return_value=promise)),
+        patch.object(base2_svc, "_after_install", new=after_install_mock),
+        patch("server.services.base2_service.logger") as logger_mock,
+    ):
+        await base2_svc.load_instance("default", instance_data)
+
+    service_provider.add_warning.assert_awaited_once()
+    after_install_mock.assert_awaited_once_with("default")
+    assert any(
+        "failed to record warning about unsupported saved spec fields" in str(c.args[0]) for c in logger_mock.exception.call_args_list
+    )
+
+
+@pytest.mark.asyncio
 async def test_install_instance_does_not_pass_a_container_name_override(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
     """Fresh install always re-derives the name from the live suffix."""
     base2_deps["service_provider"].save_service_config = AsyncMock()
@@ -2579,6 +2768,113 @@ async def test_install_instance_reservation_converts_cancelled_error_for_other_w
 
     assert exc_info.value.status_code == 409
     assert base2_svc.instances_info["default"].installing is None
+
+
+@pytest.mark.asyncio
+async def test_update_instance_rejected_for_new_field_does_not_log_dropping_saved_ones(base2_svc: _Base2Impl) -> None:
+    base2_svc.instances_info["default"].installed = object()
+
+    with (
+        patch.object(base2_svc, "_rejects_unknown_spec_fields", True),
+        patch.object(base2_svc, "_generate_instance_config", return_value=InstanceConfig(options=InstallServiceIn(spec={"url": "x"}))),
+        patch("server.services.base2_service.logger") as logger_mock,
+        pytest.raises(HTTPException),
+    ):
+        await base2_svc.update_instance("default", InstallServiceIn(spec={"url": "x", "sync_interval": 60}))
+
+    assert not any("dropping" in str(c.args[0]) for c in logger_mock.warning.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_update_instance_passes_supported_spec_fields_unchanged(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["service_provider"].save_service_config = AsyncMock()
+    base2_svc.instances_info["default"].installed = object()
+    install_instance_mock = AsyncMock(return_value=PromiseWithProgress(value={}))
+    options = InstallServiceIn(spec={"hardware": "CPU"})
+
+    with (
+        patch.object(base2_svc, "_rejects_unknown_spec_fields", True),
+        patch.object(base2_svc, "get_spec", return_value=_spec_with_fields("hardware")),
+        patch.object(base2_svc, "_uninstall_instance", new=AsyncMock()),
+        patch.object(base2_svc, "_install_instance", new=install_instance_mock),
+        patch("server.services.base2_service.logger") as logger_mock,
+    ):
+        promise = await base2_svc.update_instance("default", options)
+        await promise.wait()
+
+    assert install_instance_mock.call_args.args[1] is options
+    assert not any("dropping" in str(c.args[0]) for c in logger_mock.warning.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_update_instance_rejects_new_unknown_spec_fields_before_uninstalling(base2_svc: _Base2Impl) -> None:
+    base2_svc.instances_info["default"].installed = object()
+    uninstall_mock = AsyncMock()
+
+    with (
+        patch.object(base2_svc, "_rejects_unknown_spec_fields", True),
+        patch.object(base2_svc, "_uninstall_instance", new=uninstall_mock),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await base2_svc.update_instance("default", InstallServiceIn(spec={"url": "x"}))
+
+    assert exc_info.value.status_code == 400
+    uninstall_mock.assert_not_awaited()
+    assert base2_svc.instances_info["default"].installing is None
+
+
+@pytest.mark.asyncio
+async def test_update_instance_rejects_changed_value_of_unknown_spec_field_from_saved_config(base2_svc: _Base2Impl) -> None:
+    base2_svc.instances_info["default"].installed = object()
+    uninstall_mock = AsyncMock()
+
+    with (
+        patch.object(base2_svc, "_rejects_unknown_spec_fields", True),
+        patch.object(base2_svc, "_generate_instance_config", return_value=InstanceConfig(options=InstallServiceIn(spec={"url": "x"}))),
+        patch.object(base2_svc, "_uninstall_instance", new=uninstall_mock),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await base2_svc.update_instance("default", InstallServiceIn(spec={"url": "y"}))
+
+    assert exc_info.value.status_code == 400
+    uninstall_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_instance_drops_unknown_spec_fields_kept_from_saved_config(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["service_provider"].save_service_config = AsyncMock()
+    base2_svc.instances_info["default"].installed = object()
+    install_instance_mock = AsyncMock(return_value=PromiseWithProgress(value={}))
+
+    with (
+        patch.object(base2_svc, "_rejects_unknown_spec_fields", True),
+        patch.object(base2_svc, "_generate_instance_config", return_value=InstanceConfig(options=InstallServiceIn(spec={"url": "x"}))),
+        patch.object(base2_svc, "_uninstall_instance", new=AsyncMock()),
+        patch.object(base2_svc, "_install_instance", new=install_instance_mock),
+        patch("server.services.base2_service.logger") as logger_mock,
+    ):
+        promise = await base2_svc.update_instance("default", InstallServiceIn(spec={"url": "x"}))
+        await promise.wait()
+
+    assert install_instance_mock.call_args.args[1].spec == {}
+    assert any("dropping" in str(c.args[0]) and "url" in str(c.args[0]) for c in logger_mock.warning.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_update_instance_passes_unknown_spec_fields_unchanged_by_default(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["service_provider"].save_service_config = AsyncMock()
+    base2_svc.instances_info["default"].installed = object()
+    install_instance_mock = AsyncMock(return_value=PromiseWithProgress(value={}))
+    options = InstallServiceIn(spec={"url": "x"})
+
+    with (
+        patch.object(base2_svc, "_uninstall_instance", new=AsyncMock()),
+        patch.object(base2_svc, "_install_instance", new=install_instance_mock),
+    ):
+        promise = await base2_svc.update_instance("default", options)
+        await promise.wait()
+
+    assert install_instance_mock.call_args.args[1] is options
 
 
 @pytest.mark.asyncio

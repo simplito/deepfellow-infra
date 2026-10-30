@@ -402,6 +402,12 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     """Override to False for services whose ``_generate_instance_config`` never populates ``ModelConfig.definition``
     (e.g. it has no registry snapshot to persist). Otherwise ``load_service`` treats every model as needing a
     backfill save on every startup, forever."""
+    _legacy_spec_fields: frozenset[str] = frozenset()
+    """Spec keys still accepted for backward compatibility although ``get_spec()`` no longer lists them
+    (e.g. ``gpu``, the old name of ``hardware``), so ``validate_spec_fields`` doesn't reject them."""
+    _rejects_unknown_spec_fields: bool = False
+    """Override to True for services whose install and update reject spec fields they don't support
+    (see ``validate_spec_fields``). A saved config with such fields still loads, with a service warning."""
     _edit_locks: dict[tuple[str, str], asyncio.Lock]
     # GPU utilization of a model being re-installed by an edit, so the reinstall (or a rollback) keeps its current size.
     _edit_kept_gpu_utilization: dict[tuple[str, str], float]
@@ -1044,6 +1050,10 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
                 logger.info(f"{self.get_id(instance)} loading cancelled")
                 return
             logger.info(f"{self.get_id(instance)} service checked")
+            try:
+                await self._warn_about_unknown_saved_spec_fields(instance, options.spec)
+            except Exception:
+                logger.exception(f"{self.get_id(instance)} failed to check saved spec for unsupported fields")
             tasks = [asyncio.create_task(load_model_and_unmark(index, model)) for index, model in enumerate(snapshot.models or [])]
             await asyncio.gather(*tasks)
             await self._after_install(instance)
@@ -1192,6 +1202,8 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
             if self.instances_info[instance].installing:
                 raise HTTPException(status_code=400, detail=f"Service {self.get_id(instance)} on {instance} instance already installing")
 
+        self._validate_install_spec_fields(options, instance_config)
+
         # Reserve the slot synchronously (no `await` before this point) so a concurrent call can
         # never observe "not installing" once this one has started, no matter how long the
         # service's own `_install_instance()` takes to actually produce the real promise.
@@ -1248,6 +1260,8 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         previous_config = self._generate_instance_config(instance, info.installed, info.config.custom)
         previous_options = previous_config.options
         preserved_models = self._preserve_failed_models(instance, previous_config.models or [])
+
+        options = self._validate_update_spec_fields(instance, options, previous_options)
 
         # Reserve the slot synchronously (no `await` before this point) so a concurrent call can
         # never observe "not installing" once this one has started, no matter how long validation,
@@ -1428,6 +1442,88 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
             e.args = (f"{e.args[0]} {suffix}", *e.args[1:])
         else:
             e.args = (suffix,)
+
+    def get_unknown_spec_fields(self, spec: dict[str, Any]) -> list[str]:
+        """Return the keys of `spec` that are neither a field of `get_spec()` nor a legacy key, sorted."""
+        known = {field.name for field in self.get_spec().fields} | self._legacy_spec_fields
+        return sorted(key for key in spec if key not in known)
+
+    def _unknown_spec_field_hint(self, field: str) -> str | None:  # noqa: ARG002
+        """Return a hint for an unsupported spec field (e.g. which service supports it instead), or None."""
+        return None
+
+    def _validate_install_spec_fields(self, options: InstallServiceIn, instance_config: InstanceConfig | None) -> None:
+        # A load from the saved config (`instance_config` set) is not checked - it may hold fields saved before this check existed.
+        if self._rejects_unknown_spec_fields and instance_config is None:
+            self.validate_spec_fields(options.spec)
+
+    def _validate_update_spec_fields(
+        self, instance: str, options: InstallServiceIn, previous_options: InstallServiceIn | None
+    ) -> InstallServiceIn:
+        """Return `options` without the unsupported fields kept from the saved config, rejecting any other unsupported field."""
+        if not self._rejects_unknown_spec_fields:
+            return options
+        cleaned = self._without_persisted_unknown_spec_fields(options, previous_options)
+        self.validate_spec_fields(cleaned.spec)
+        if dropped := sorted(options.spec.keys() - cleaned.spec.keys()):
+            logger.warning(f"{self.get_id(instance)} dropping unsupported spec field(s) kept from the saved config: {', '.join(dropped)}")
+        return cleaned
+
+    def _without_persisted_unknown_spec_fields(
+        self, options: InstallServiceIn, previous_options: InstallServiceIn | None
+    ) -> InstallServiceIn:
+        """Drop unsupported fields an update only sends back from the saved config, so they don't block it.
+
+        The WebUI "Update" button and `df-cli service update` resend the whole saved spec, which may hold
+        fields saved before `validate_spec_fields` existed. Fields new in this request, or with a changed
+        value, are rejected.
+        """
+        previous_spec = previous_options.spec if previous_options else {}
+        stale = [
+            field
+            for field in self.get_unknown_spec_fields(options.spec)
+            if field in previous_spec and previous_spec[field] == options.spec[field]
+        ]
+        if not stale:
+            return options
+        return options.model_copy(update={"spec": {key: value for key, value in options.spec.items() if key not in stale}})
+
+    def validate_spec_fields(self, spec: dict[str, Any]) -> None:
+        """Raise `HTTPException(400, ...)` if `spec` has fields this service doesn't support.
+
+        Without this, an unsupported field is silently dropped by the service's options model, so the user
+        never learns that the setting they asked for (e.g. `url` on `ollama`) has no effect.
+        """
+        unknown = self.get_unknown_spec_fields(spec)
+        if not unknown:
+            return
+        supported = sorted({field.name for field in self.get_spec().fields})
+        detail = (
+            f"Service {self.get_type()} does not support spec field(s): {', '.join(unknown)}. "
+            f"Supported fields: {', '.join(supported) or 'none'}."
+        )
+        if hints := self._unknown_spec_field_hints(unknown):
+            detail = f"{detail} {hints}"
+        raise HTTPException(status_code=400, detail=detail)
+
+    def _unknown_spec_field_hints(self, unknown: list[str]) -> str:
+        return " ".join(hint for field in unknown if (hint := self._unknown_spec_field_hint(field)))
+
+    async def _warn_about_unknown_saved_spec_fields(self, instance: str, spec: dict[str, Any]) -> None:
+        """Log and record a warning for unsupported fields in a saved config, which still loads without them.
+
+        Must run after the install step, whose success clears the instance's warnings.
+        """
+        if not self._rejects_unknown_spec_fields or not (unknown := self.get_unknown_spec_fields(spec)):
+            return
+        message = f"Service instance '{instance}' ignores unsupported spec field(s) saved in its config: {', '.join(unknown)}."
+        if hints := self._unknown_spec_field_hints(unknown):
+            message = f"{message} {hints}"
+        logger.warning(f"{self.get_id(instance)} {message}")
+        try:
+            await self.service_provider.add_warning(self.get_type(), message, instance=instance)
+        except Exception:
+            logger.exception(f"{self.get_id(instance)} failed to record warning about unsupported saved spec fields")
 
     async def _validate_update_options(self, options: InstallServiceIn) -> None:
         """Validate new options before update_instance tears down the existing installation.

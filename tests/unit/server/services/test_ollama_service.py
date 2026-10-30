@@ -150,6 +150,35 @@ def test_spec_all_optional_fields_not_required(svc: OllamaService) -> None:
             assert field.required is False, f"Field {field.name!r} should be optional"
 
 
+def test_validate_spec_fields_accepts_spec_and_legacy_fields(svc: OllamaService) -> None:
+    svc.validate_spec_fields({"hardware": "CPU", "gpu": False, "image_version": "0.12.0", "mode": "offline", "num_parallel": 2})
+
+
+def test_validate_spec_fields_rejects_url_pointing_to_ollama_external(svc: OllamaService) -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        svc.validate_spec_fields({"url": "http://host.docker.internal:11434"})
+
+    assert exc_info.value.status_code == 400
+    assert "does not support spec field(s): url." in exc_info.value.detail
+    assert "install the ollama-external service instead" in exc_info.value.detail
+
+
+def test_validate_spec_fields_has_no_hint_for_other_unknown_fields(svc: OllamaService) -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        svc.validate_spec_fields({"sync_interval": 60})
+
+    assert "ollama-external" not in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_install_instance_rejects_url_pointing_to_ollama_external(svc: OllamaService) -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        await svc.install_instance("default", InstallServiceIn(spec={"url": "http://host.docker.internal:11434"}))
+
+    assert exc_info.value.status_code == 400
+    assert "ollama-external" in exc_info.value.detail
+
+
 def test_model_spec_has_rename_alive_time_context(svc: OllamaService) -> None:
     spec = svc.get_model_spec()
 
