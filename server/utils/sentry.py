@@ -5,11 +5,18 @@
 
 import asyncio
 import logging
-from collections.abc import Callable, Iterable, Mapping, Sequence
+import socket
+import uuid
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import cast
 
+import aiohttp
 import sentry_sdk
+from fastapi.exceptions import RequestValidationError
 from opentelemetry import trace
 from opentelemetry.trace import SpanContext
 from pydantic import SecretStr
@@ -17,9 +24,16 @@ from sentry_sdk.integrations.atexit import AtexitIntegration
 from sentry_sdk.integrations.dedupe import DedupeIntegration
 from sentry_sdk.types import Event, Hint
 from sentry_sdk.utils import Dsn, event_from_exception
+from starlette.exceptions import HTTPException
 
 from server.config import AppSettings
 from server.dynamic_config import DynamicSettings
+from server.utils.exceptions import (
+    ApiError,
+    DockerImageAuthorizationError,
+    DockerImageDoesNotExistError,
+    DockerPlatformMismatchError,
+)
 from server.utils.logger import logger
 from server.utils.version import get_infra_version
 
@@ -33,7 +47,14 @@ FILTERED = "[Filtered]"
 # only to this logger.
 SDK_LOGGER_NAME = "sentry_sdk.errors"
 
+TAGS_ATTR = "sentry_tags"
+FINGERPRINT_ATTR = "sentry_fingerprint"
+REPORTED_ATTR = "sentry_reported"
+SDK_ORIGIN_ATTR = "sentry_sdk_origin"
+
 SecretSource = Callable[[], Iterable[str]]
+
+_EXPECTED_API_ERROR_CODES = frozenset({1, 2, 3, 4})
 
 _ATTACHED_TAGS_ATTR = "_df_sentry_tags"
 _REPORTED_ATTR = "_df_sentry_reported"
@@ -76,6 +97,19 @@ def is_reported(exc: BaseException) -> bool:
     return any(getattr(link, _REPORTED_ATTR, False) is True for link in _cause_chain(exc))
 
 
+_context_tags: ContextVar[Mapping[str, str]] = ContextVar("sentry_context_tags", default=MappingProxyType({}))
+
+
+@contextmanager
+def sentry_tags(**tags: str) -> Iterator[None]:
+    """Tag every event captured inside the block, including from tasks created inside it (`service`, `operation`, `image`)."""
+    token = _context_tags.set({**_context_tags.get(), **tags})
+    try:
+        yield
+    finally:
+        _context_tags.reset(token)
+
+
 @dataclass(frozen=True)
 class _Target:
     """The Sentry configuration to apply: off, or on with a DSN and an environment."""
@@ -114,7 +148,7 @@ class _SdkWarningForwarder(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         """Log `record`'s message on the infra logger, keeping its level and traceback."""
-        logger.log(record.levelno, "Sentry SDK: %s", record.getMessage(), exc_info=record.exc_info)
+        logger.log(record.levelno, "Sentry SDK: %s", record.getMessage(), exc_info=record.exc_info, extra={SDK_ORIGIN_ATTR: True})
 
 
 def _forward_sdk_warnings() -> None:
@@ -134,6 +168,51 @@ def _forward_sdk_warnings() -> None:
             handler.addFilter(log_filter)
     sdk_logger.propagate = False
     sdk_logger.addHandler(_SdkWarningForwarder())
+
+
+def is_expected_error(exc: BaseException) -> bool:
+    """Whether `exc` is a failure caused by the user or their environment, which must not be reported as an infra bug."""
+    if isinstance(exc, HTTPException):
+        return exc.status_code < 500
+    if isinstance(exc, ApiError):
+        return exc.code in _EXPECTED_API_ERROR_CODES
+    return isinstance(
+        exc, RequestValidationError | DockerImageDoesNotExistError | DockerImageAuthorizationError | DockerPlatformMismatchError
+    )
+
+
+def is_network_error(exc: BaseException) -> bool:
+    """Whether `exc` is a failure to open a connection (DNS lookup, refused, unreachable)."""
+    return isinstance(exc, aiohttp.ClientConnectorError | socket.gaierror)
+
+
+class SentryLogHandler(logging.Handler):
+    """Send ERROR records carrying an unreported, unexpected exception to Sentry."""
+
+    def __init__(self) -> None:
+        super().__init__(logging.ERROR)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Send the exception of `record` to Sentry; never raises."""
+        try:
+            exc = record.exc_info[1] if record.exc_info else None
+            if exc is None or not sentry.is_active or is_reported(exc):
+                return
+            if getattr(record, SDK_ORIGIN_ATTR, False) or getattr(record, REPORTED_ATTR, False) or record.name.startswith("uvicorn."):
+                return
+            fingerprint: Sequence[str] | None = getattr(record, FINGERPRINT_ATTR, None)
+            if is_expected_error(exc) or (fingerprint is None and is_network_error(exc)):
+                return
+            tags: Mapping[str, str] = getattr(record, TAGS_ATTR, None) or {}
+            capture_exception(exc, error_id=str(uuid.uuid4()), tags=tags, fingerprint=fingerprint)
+        except Exception:
+            self.handleError(record)
+
+
+def _attach_log_handler() -> None:
+    """Add `SentryLogHandler` to the infra logger; idempotent."""
+    if not any(isinstance(handler, SentryLogHandler) for handler in logger.handlers):
+        logger.addHandler(SentryLogHandler())
 
 
 # Event fields left out of scrubbing, at any depth: they hold SDK- or infra-generated identifiers and enums
@@ -216,6 +295,7 @@ class SentryManager:
         """
         self.config = config
         _forward_sdk_warnings()
+        _attach_log_handler()
         target = _target_for(config)
         # Cleared before the old client is closed: if the steps below fail, nothing is applied any more,
         # so any configuration (including the previous one) must count as pending.
@@ -324,7 +404,7 @@ def capture_exception(
         exc: The exception to report.
         error_id: The identifier already logged (and, for a request, returned to the client) for this failure.
         handled: False for exceptions nothing caught (the catch-all 500 handler), True for caught-and-logged ones.
-        tags: Extra event tags.
+        tags: Extra event tags, on top of those set by `sentry_tags`.
         span_context: The OTel span the failure belongs to; defaults to the current span. Its IDs are
             added as `trace_id`/`span_id` when valid.
         fingerprint: Sentry grouping key replacing the default one.
@@ -339,9 +419,9 @@ def capture_exception(
         if context.is_valid:
             event_tags["trace_id"] = format(context.trace_id, "032x")
             event_tags["span_id"] = format(context.span_id, "016x")
-        event["tags"] = {**event_tags, **(tags or {})}
+        event["tags"] = {**event_tags, **_context_tags.get(), **attached_tags(exc), **(tags or {})}
         if fingerprint is not None:
             event["fingerprint"] = list(fingerprint)
         sentry_sdk.capture_event(event, hint=hint)
     except Exception:
-        logger.exception("Failed to report exception to Sentry (error_id=%s)", error_id)
+        logger.exception("Failed to report exception to Sentry (error_id=%s)", error_id, extra={REPORTED_ATTR: True})

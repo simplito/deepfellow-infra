@@ -42,7 +42,13 @@ from server.docker import (
     normalize_docker_platform,
 )
 from server.utils.core import CommandResult, CommandResult2
-from server.utils.exceptions import AppError, DockerComposeStartError, DockerImageAuthorizationError, DockerImageDoesNotExistError
+from server.utils.exceptions import (
+    AppError,
+    DockerComposeStartError,
+    DockerImageAuthorizationError,
+    DockerImageDoesNotExistError,
+    DockerPlatformMismatchError,
+)
 from server.utils.hardware import IntelGpuInfo, NvidiaGpuInfo
 
 
@@ -63,6 +69,15 @@ def _make_docker_mock(images_mock: MagicMock | None = None) -> tuple[MagicMock, 
     cm.__aenter__ = AsyncMock(return_value=instance)
     cm.__aexit__ = AsyncMock(return_value=False)
     return cm, instance
+
+
+_REAL_PLATFORM_MISMATCH = DockerService._platform_mismatch  # type: ignore[reportPrivateUsage]
+
+
+@pytest.fixture(autouse=True)
+def no_platform_mismatch():
+    with patch.object(DockerService, "_platform_mismatch", new_callable=AsyncMock, return_value=None):
+        yield
 
 
 @pytest.fixture
@@ -2285,6 +2300,37 @@ async def test_docker_pull_uses_auth_for_known_registry(docker_service: DockerSe
     assert captured_kwargs.get("auth") == "mytoken"
 
 
+@pytest.mark.parametrize(
+    ("error", "reported"),
+    [
+        (DockerError(status=500, message="daemon exploded"), True),
+        (DockerError(status=404, message="not found"), False),
+        (DockerError(status=401, message="unauthorized"), False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_docker_pull_reports_only_unexpected_failures_to_sentry(
+    docker_service: DockerService, error: Exception, reported: bool
+) -> None:
+    async def fake_pull(*args: Any, **kwargs: Any):
+        raise error
+        yield  # make it an async generator
+
+    images = MagicMock()
+    images.pull = fake_pull
+    cm, _ = _make_docker_mock(images)
+    with (
+        patch("server.docker.Docker", return_value=cm),
+        patch("server.docker.capture_exception") as mock_capture,
+        pytest.raises(type(error)),
+    ):
+        _ = [p async for p in docker_service.docker_pull("ubuntu:latest", image_size=1000)]
+
+    assert mock_capture.call_count == int(reported)
+    if reported:
+        assert mock_capture.call_args.kwargs["tags"] == {"operation": "docker_pull", "image": "ubuntu:latest"}
+
+
 @pytest.mark.asyncio
 async def test_generate_docker_compose_content_intel_gpu_with_gids(docker_service: DockerService) -> None:
     gpu = IntelGpuInfo(name="Intel Arc", vram=None, id=0)
@@ -3427,6 +3473,82 @@ async def test_ensure_compose_running_non_gpu_start_error_raises_app_error(docke
         pytest.raises(AppError, match="Failed to start"),
     ):
         await docker_service._ensure_compose_running(compose_file, options, is_running=False, has_difference=True, port=None)  # type: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_ensure_compose_running_start_error_on_platform_mismatch_raises_platform_mismatch_error(
+    docker_service: DockerService, tmp_path: Path
+) -> None:
+    options = _opts()
+
+    with (
+        patch.object(docker_service, "create_compose_file", new_callable=AsyncMock, return_value=11434),
+        patch.object(docker_service, "start_docker_compose", new_callable=AsyncMock, side_effect=DockerComposeStartError("out", "err")),
+        patch.object(docker_service, "get_image_platforms", new_callable=AsyncMock, return_value=["linux/arm64"]),
+        patch.object(DockerService, "_platform_mismatch", _REAL_PLATFORM_MISMATCH),
+        pytest.raises(DockerPlatformMismatchError, match="platform mismatch"),
+    ):
+        await docker_service._ensure_compose_running(tmp_path / "compose.yaml", options, is_running=False, has_difference=True, port=None)  # type: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_assert_compose_healthy_on_platform_mismatch_raises_platform_mismatch_error(
+    docker_service: DockerService, tmp_path: Path
+) -> None:
+    with (
+        patch.object(docker_service, "is_docker_compose_healthy", new_callable=AsyncMock, return_value=False),
+        patch.object(docker_service, "get_docker_compose_logs", new_callable=AsyncMock, return_value="exec format error"),
+        patch.object(docker_service, "get_image_platforms", new_callable=AsyncMock, return_value=["linux/arm64"]),
+        patch.object(DockerService, "_platform_mismatch", _REAL_PLATFORM_MISMATCH),
+        pytest.raises(DockerPlatformMismatchError, match="failed to become healthy"),
+    ):
+        await docker_service._assert_compose_healthy(tmp_path / "compose.yaml", _opts(), start_output=None)  # type: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("platforms", "expected_mismatch"),
+    [(["linux/arm64"], True), (["linux/amd64", "linux/arm64"], False), ([], False)],
+)
+async def test_platform_mismatch_compares_image_platforms_with_host(
+    docker_service: DockerService, platforms: list[str], expected_mismatch: bool
+) -> None:
+    with (
+        patch.object(docker_service, "get_image_platforms", new_callable=AsyncMock, return_value=platforms),
+        patch.object(DockerService, "_platform_mismatch", _REAL_PLATFORM_MISMATCH),
+    ):
+        mismatch = await docker_service._platform_mismatch("img:1")  # type: ignore[reportPrivateUsage]
+
+    assert (mismatch is not None) is expected_mismatch
+
+
+@pytest.mark.asyncio
+async def test_platform_mismatch_is_none_when_platforms_cannot_be_determined(docker_service: DockerService) -> None:
+    with (
+        patch.object(docker_service, "get_image_platforms", new_callable=AsyncMock, side_effect=RuntimeError("no docker")),
+        patch.object(DockerService, "_platform_mismatch", _REAL_PLATFORM_MISMATCH),
+    ):
+        assert await docker_service._platform_mismatch("img:1") is None  # type: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_docker_pull_does_not_report_platform_mismatch_to_sentry(docker_service: DockerService) -> None:
+    async def fake_pull(*args: Any, **kwargs: Any):
+        raise DockerError(status=500, message="no matching manifest for linux/arm64")
+        yield  # make it an async generator
+
+    images = MagicMock()
+    images.pull = fake_pull
+    cm, _ = _make_docker_mock(images)
+    with (
+        patch("server.docker.Docker", return_value=cm),
+        patch("server.docker.capture_exception") as mock_capture,
+        patch.object(DockerService, "_platform_mismatch", new_callable=AsyncMock, return_value="platform mismatch"),
+        pytest.raises(DockerError),
+    ):
+        _ = [p async for p in docker_service.docker_pull("ubuntu:latest", image_size=1000)]
+
+    assert mock_capture.call_count == 0
 
 
 @pytest.mark.asyncio

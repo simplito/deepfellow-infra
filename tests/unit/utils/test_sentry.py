@@ -1,26 +1,33 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 Simplito sp. z o.o.
 
+import asyncio
 import functools
 import logging
+import socket
 from collections.abc import Generator
 from typing import TYPE_CHECKING, Any, cast
 from unittest import mock
 
+import aiohttp
 import pytest
 import pytest_asyncio
 import sentry_sdk
+from aiodocker.exceptions import DockerError
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import Response
 from opentelemetry import trace
 from opentelemetry.trace import NonRecordingSpan, SpanContext
 from prometheus_client import CollectorRegistry
-from pydantic import SecretStr
+from pydantic import SecretStr, TypeAdapter, ValidationError
 from sentry_sdk.envelope import Envelope
 from sentry_sdk.integrations.atexit import AtexitIntegration
 from sentry_sdk.integrations.dedupe import DedupeIntegration
 from sentry_sdk.transport import Transport
+from starlette.exceptions import HTTPException
 
 from server.config import AppSettings
+from server.docker import DockerOptions, DockerService
 from server.dynamic_config import DynamicSettings
 from server.endpointregistry import ChatCompletionEndpoint, EndpointRegistry, RegistrationOptions
 from server.metrics_registry import MetricsRegistry
@@ -29,18 +36,33 @@ from server.models.services import InstallServiceIn
 from server.services.openai_service import OpenAIService
 from server.services.remote_service import DefaultRemoteServiceOptions, InstalledInfo
 from server.services_manager import ServicesManager
+from server.utils.exceptions import (
+    ApiError,
+    AppError,
+    DockerComposeStartError,
+    DockerImageAuthorizationError,
+    DockerImageDoesNotExistError,
+    DockerPlatformMismatchError,
+)
 from server.utils.sentry import (
+    FINGERPRINT_ATTR,
+    REPORTED_ATTR,
     SDK_LOGGER_NAME,
+    SDK_ORIGIN_ATTR,
+    TAGS_ATTR,
     UpstreamError,
     _forward_sdk_warnings,  # pyright: ignore[reportPrivateUsage]
     _SdkWarningForwarder,  # pyright: ignore[reportPrivateUsage]
     attach_tags,
     attached_tags,
     capture_exception,
+    is_expected_error,
+    is_network_error,
     is_reported,
     mark_reported,
     parse_dsn,
     sentry,
+    sentry_tags,
 )
 from server.utils.version import get_infra_version
 
@@ -454,7 +476,9 @@ async def test_capture_exception_logs_and_swallows_errors(
 
     assert mock_capture_event.call_count == 1
     assert mock_logger.exception.call_count == 1
-    assert mock_logger.exception.call_args == mock.call("Failed to report exception to Sentry (error_id=%s)", "error-1")
+    assert mock_logger.exception.call_args == mock.call(
+        "Failed to report exception to Sentry (error_id=%s)", "error-1", extra={REPORTED_ATTR: True}
+    )
 
 
 @pytest.mark.asyncio
@@ -752,7 +776,9 @@ def test_forward_sdk_warnings_relogs_sdk_warning_on_infra_logger(mock_logger: mo
     logging.getLogger(SDK_LOGGER_NAME).warning("Rate-limited via 429")
 
     assert mock_logger.log.call_count == 1
-    assert mock_logger.log.call_args == mock.call(logging.WARNING, "Sentry SDK: %s", "Rate-limited via 429", exc_info=None)
+    assert mock_logger.log.call_args == mock.call(
+        logging.WARNING, "Sentry SDK: %s", "Rate-limited via 429", exc_info=None, extra={SDK_ORIGIN_ATTR: True}
+    )
 
 
 @mock.patch("server.utils.sentry.logger")
@@ -770,3 +796,310 @@ def test_forward_sdk_warnings_installs_one_handler():
 
     handlers = logging.getLogger(SDK_LOGGER_NAME).handlers
     assert len([handler for handler in handlers if isinstance(handler, _SdkWarningForwarder)]) == 1
+
+
+def _raise(exc: BaseException) -> None:
+    raise exc
+
+
+def _log_exception(**extra: Any) -> None:
+    try:
+        _fail("boom")
+    except RuntimeError:
+        logging.getLogger("uvicorn").exception("something failed", extra=extra)
+
+
+@pytest.mark.asyncio
+async def test_log_with_exception_is_reported(active_sentry: RecordingTransport):
+    _log_exception()
+
+    events = active_sentry.events()
+    assert len(events) == 1
+    assert events[0]["exception"]["values"][0]["value"] == "boom"
+    assert events[0]["tags"]["error_id"]
+
+
+@pytest.mark.asyncio
+async def test_log_without_exception_is_not_reported(active_sentry: RecordingTransport):
+    logging.getLogger("uvicorn").error("plain error")
+
+    assert active_sentry.events() == []
+
+
+@pytest.mark.asyncio
+async def test_log_with_exception_below_error_level_is_not_reported(active_sentry: RecordingTransport):
+    try:
+        _fail("boom")
+    except RuntimeError:
+        logging.getLogger("uvicorn").warning("warned", exc_info=True)
+
+    assert active_sentry.events() == []
+
+
+@pytest.mark.asyncio
+async def test_exception_log_outside_except_block_is_not_reported(active_sentry: RecordingTransport):
+    logging.getLogger("uvicorn").exception("no active exception")
+
+    assert active_sentry.events() == []
+
+
+@pytest.mark.asyncio
+async def test_uvicorn_child_logger_records_are_not_duplicated(active_sentry: RecordingTransport):
+    handler = next(h for h in logging.getLogger("uvicorn").handlers if type(h).__name__ == "SentryLogHandler")
+    exc_info = (RuntimeError, RuntimeError("asgi"), None)
+    record = logging.getLogger("uvicorn.error").makeRecord(
+        "uvicorn.error", logging.ERROR, __file__, 1, "Exception in ASGI application", (), exc_info
+    )
+
+    handler.emit(record)
+
+    assert active_sentry.events() == []
+
+
+@pytest.mark.asyncio
+async def test_sdk_origin_log_is_not_reported_so_delivery_errors_cannot_loop(active_sentry: RecordingTransport):
+    _log_exception(**{SDK_ORIGIN_ATTR: True})
+
+    assert active_sentry.events() == []
+
+
+@pytest.mark.asyncio
+async def test_forwarded_sdk_error_with_exception_is_not_reported(active_sentry: RecordingTransport):
+    try:
+        _fail("network down")
+    except RuntimeError:
+        logging.getLogger(SDK_LOGGER_NAME).exception("Failed to send envelope")
+
+    assert active_sentry.events() == []
+
+
+@pytest.mark.asyncio
+async def test_log_marked_reported_is_not_sent_again(active_sentry: RecordingTransport):
+    _log_exception(sentry_reported=True)
+
+    assert active_sentry.events() == []
+
+
+@pytest.mark.asyncio
+async def test_log_extra_tags_and_context_tags_are_set(active_sentry: RecordingTransport):
+    with sentry_tags(service="vllm", image="vllm:1"):
+        _log_exception(**{TAGS_ATTR: {"operation": "docker_install"}})
+
+    tags = active_sentry.events()[0]["tags"]
+    assert (tags["service"], tags["image"], tags["operation"]) == ("vllm", "vllm:1", "docker_install")
+
+
+@pytest.mark.asyncio
+async def test_context_tags_do_not_leak_after_block(active_sentry: RecordingTransport):
+    with sentry_tags(service="vllm"):
+        pass
+    _log_exception()
+
+    assert "service" not in active_sentry.events()[0]["tags"]
+
+
+@pytest.mark.asyncio
+async def test_log_with_fingerprint_groups_events(active_sentry: RecordingTransport):
+    for _ in range(2):
+        try:
+            _raise(RuntimeError("bad"))
+        except RuntimeError:
+            logging.getLogger("uvicorn").exception("WS client disconnected", extra={FINGERPRINT_ATTR: ["mesh"]})
+
+    events = active_sentry.events()
+    assert [event["fingerprint"] for event in events] == [["mesh"], ["mesh"]]
+
+
+@pytest.mark.asyncio
+async def test_expected_error_log_with_fingerprint_is_not_reported(active_sentry: RecordingTransport):
+    try:
+        _raise(ApiError("Invalid api key", 2))
+    except ApiError:
+        logging.getLogger("uvicorn").exception("WS client disconnected", extra={FINGERPRINT_ATTR: ["mesh"]})
+
+    assert active_sentry.events() == []
+
+
+@pytest.mark.asyncio
+async def test_expected_error_log_is_not_reported(active_sentry: RecordingTransport):
+    try:
+        _raise(DockerImageDoesNotExistError("img:1"))
+    except DockerImageDoesNotExistError:
+        logging.getLogger("uvicorn").exception("pull failed")
+
+    assert active_sentry.events() == []
+
+
+def test_log_is_not_reported_while_sentry_is_off():
+    with mock.patch("server.utils.sentry.capture_exception") as mock_capture:
+        _log_exception()
+
+    assert mock_capture.call_count == 0
+
+
+def _validation_error() -> ValidationError:
+    try:
+        TypeAdapter(int).validate_python("x")
+    except ValidationError as e:
+        return e
+    raise AssertionError
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (HTTPException(404), True),
+        (HTTPException(500), False),
+        (ApiError("Invalid api key", 2), True),
+        (ApiError("Method not found", -32601), False),
+        (ApiError("Internal error", -32603), False),
+        (RequestValidationError([]), True),
+        (_validation_error(), False),
+        (DockerImageAuthorizationError("img"), True),
+        (socket.gaierror("dns"), False),
+        (DockerPlatformMismatchError("platform mismatch"), True),
+        (AppError("no matching manifest for linux/arm64"), False),
+        (DockerError(500, "no matching manifest for linux/arm64 in the manifest list entries"), False),
+        (AppError("Container x failed to become healthy:\nexec /bin/sh: exec format error"), False),
+        (
+            DockerComposeStartError(
+                "",
+                "WARNING: The requested image's platform (linux/arm64) does not match the detected host platform\n"
+                "Error response from daemon: port is already allocated",
+            ),
+            False,
+        ),
+        (OSError(8, "Exec format error"), False),
+        (RuntimeError("boom"), False),
+    ],
+)
+def test_is_expected_error(exc: BaseException, expected: bool):
+    assert is_expected_error(exc) is expected
+
+
+@pytest.mark.asyncio
+async def test_shutdown_flushes_queued_events(active_sentry: RecordingTransport):
+    _log_exception()
+
+    with mock.patch.object(sentry_sdk.get_client(), "close", wraps=sentry_sdk.get_client().close) as mock_close:
+        await sentry.shutdown()
+
+    assert mock_close.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [(socket.gaierror("dns"), True), (aiohttp.ClientConnectorError(mock.MagicMock(), OSError("down")), True), (RuntimeError("x"), False)],
+)
+def test_is_network_error(exc: BaseException, expected: bool):
+    assert is_network_error(exc) is expected
+
+
+@pytest.mark.asyncio
+async def test_context_tags_reach_tasks_created_inside_block(active_sentry: RecordingTransport):
+    async def fail() -> None:
+        _log_exception()
+
+    with sentry_tags(service="vllm"):
+        task = asyncio.create_task(fail())
+    await task
+
+    assert active_sentry.events()[0]["tags"]["service"] == "vllm"
+
+
+@pytest.mark.asyncio
+async def test_log_handler_never_raises_when_reporting_fails(active_sentry: RecordingTransport):
+    with (
+        mock.patch("server.utils.sentry.capture_exception", side_effect=RuntimeError("sdk broke")),
+        mock.patch.object(logging.Handler, "handleError") as mock_handle_error,
+    ):
+        _log_exception()
+
+    assert mock_handle_error.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_same_exception_captured_then_logged_is_sent_once(active_sentry: RecordingTransport):
+    try:
+        _fail("boom")
+    except RuntimeError as exc:
+        capture_exception(exc, error_id="e-1", tags={"operation": "docker_pull"})
+        logging.getLogger("uvicorn").exception("pull failed")
+
+    assert len(active_sentry.events()) == 1
+
+
+@pytest.mark.asyncio
+async def test_network_error_log_is_not_reported(active_sentry: RecordingTransport):
+    try:
+        _raise(socket.gaierror("dns"))
+    except socket.gaierror:
+        logging.getLogger("uvicorn").exception("Docker Hub tags fetch error for ollama/ollama")
+
+    assert active_sentry.events() == []
+
+
+@pytest.mark.asyncio
+async def test_network_error_log_with_fingerprint_is_reported(active_sentry: RecordingTransport):
+    try:
+        _raise(socket.gaierror("dns"))
+    except socket.gaierror:
+        logging.getLogger("uvicorn").exception("WS client disconnected", extra={FINGERPRINT_ATTR: ["mesh"]})
+
+    assert len(active_sentry.events()) == 1
+
+
+@pytest.mark.asyncio
+async def test_log_of_exception_marked_reported_is_not_sent_again(active_sentry: RecordingTransport):
+    try:
+        _fail("boom")
+    except RuntimeError as exc:
+        mark_reported(exc)
+        logging.getLogger("uvicorn").exception("already reported elsewhere")
+
+    assert active_sentry.events() == []
+
+
+@pytest.mark.asyncio
+async def test_failed_install_event_carries_service_operation_and_image(active_sentry: RecordingTransport, config: AppSettings):
+    docker_service = DockerService(config, mock.MagicMock(), "docker compose", False, "linux", "amd64", True, "linux/amd64")
+    options = DockerOptions(name="vllm", container_name="vllm-1", image="vllm/vllm-openai:1", image_port=8000)
+
+    async def failing_install(_: DockerOptions) -> tuple[int, bool, bool]:
+        try:
+            _fail("compose up failed")
+        except RuntimeError:
+            logging.getLogger("uvicorn").exception("Failed to start %s", options.name)
+        return 8000, True, False
+
+    with mock.patch.object(docker_service, "_install_and_run_docker", failing_install):
+        await docker_service.install_and_run_docker(options)
+
+    tags = active_sentry.events()[0]["tags"]
+    assert (tags["service"], tags["operation"], tags["image"]) == (options.service_name, "docker_install", "vllm/vllm-openai:1")
+
+
+@pytest.mark.asyncio
+async def test_capture_exception_includes_attached_tags_below_explicit_tags(active_sentry: RecordingTransport):
+    exc = RuntimeError("boom")
+    attach_tags(exc, {"service": "ollama", "operation": "attached"})
+
+    capture_exception(exc, error_id="error-1", tags={"operation": "explicit"})
+
+    tags = active_sentry.events()[0]["tags"]
+    assert (tags["service"], tags["operation"]) == ("ollama", "explicit")
+
+
+@pytest.mark.asyncio
+async def test_failed_install_raised_out_of_block_keeps_tags(active_sentry: RecordingTransport, config: AppSettings):
+    docker_service = DockerService(config, mock.MagicMock(), "docker compose", False, "linux", "amd64", True, "linux/amd64")
+    options = DockerOptions(name="vllm", container_name="vllm-1", image="vllm/vllm-openai:1", image_port=8000)
+
+    with mock.patch.object(docker_service, "_install_and_run_docker", side_effect=AppError("compose up failed")):
+        try:
+            await docker_service.install_and_run_docker(options)
+        except AppError:
+            logging.getLogger("uvicorn").exception("Error during generator")
+
+    tags = active_sentry.events()[0]["tags"]
+    assert (tags["service"], tags["operation"], tags["image"]) == (options.service_name, "docker_install", "vllm/vllm-openai:1")

@@ -3452,7 +3452,7 @@ def test_with_usage_connection_error_is_reported_once_by_global_handler_with_tag
     assert mock_handler_capture.call_count == 1
     assert mock_handler_capture.call_args.kwargs["error_id"] == resp.headers["X-Error-Id"]
     assert mock_handler_capture.call_args.kwargs["handled"] is False
-    assert mock_handler_capture.call_args.kwargs["tags"] == {**VLLM_TAGS, "error_type": "connection_error"}
+    assert attached_tags(mock_handler_capture.call_args.args[0]) == {**VLLM_TAGS, "error_type": "connection_error"}
 
 
 @patch("server.error_handlers.capture_exception")
@@ -3469,7 +3469,7 @@ def test_with_usage_broken_2xx_stream_is_reported_once_by_global_handler_with_ta
     assert mock_registry_capture.call_count == 0
     assert mock_handler_capture.call_count == 1
     assert mock_handler_capture.call_args.kwargs["handled"] is False
-    assert mock_handler_capture.call_args.kwargs["tags"] == {**VLLM_TAGS, "error_type": "connection_error"}
+    assert attached_tags(mock_handler_capture.call_args.args[0]) == {**VLLM_TAGS, "error_type": "connection_error"}
 
 
 @pytest.mark.parametrize("status_code", [200, 503])
@@ -3504,7 +3504,7 @@ def test_with_usage_4xx_http_exception_mid_stream_is_reported_by_global_handler_
 
     assert mock_registry_capture.call_count == 0
     assert mock_handler_capture.call_count == 1
-    assert mock_handler_capture.call_args.kwargs["tags"] == {**VLLM_TAGS, "error_type": "model_error"}
+    assert attached_tags(mock_handler_capture.call_args.args[0]) == {**VLLM_TAGS, "error_type": "model_error"}
 
 
 @patch("server.error_handlers.capture_exception")

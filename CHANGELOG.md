@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Errors from background tasks, Docker installs and image pulls, and the mesh connection are now reported to Sentry; failures caused by the user's input or image are not.
 - `/opsx:sync` command and `openspec-sync-specs` skill, from OpenSpec 1.15.0.
 - `THIRD_PARTY.md` with the MIT license notice for the OpenSpec-generated commands and skills.
 - Service status shows the Docker image being pulled (`installed.image`) from 0%, so clients can say what is downloading.

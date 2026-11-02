@@ -15,7 +15,7 @@ from server.utils.exceptions import AppError, OpenAIHTTPException
 from server.utils.failed_span import get_failed_span_context
 from server.utils.logger import logger
 from server.utils.security_headers import add_security_headers
-from server.utils.sentry import attached_tags, capture_exception, is_reported
+from server.utils.sentry import capture_exception, is_reported
 
 ERROR_ID_HEADER = "X-Error-Id"
 
@@ -88,7 +88,7 @@ async def handle_unhandled_exception(request: Request, exc: Exception) -> JSONRe
         correlation += f", trace_id={span_context.trace_id:032x}, span_id={span_context.span_id:016x}"
     logger.error("Unhandled %s on %s %r (%s)", type(exc).__name__, request.method, request.url.path, correlation)
     if not is_reported(exc):
-        capture_exception(exc, error_id=error_id, handled=False, span_context=span_context, tags=attached_tags(exc))
+        capture_exception(exc, error_id=error_id, handled=False, span_context=span_context)
 
     message = f"{str(exc).rstrip()} (Error ID: {error_id})" if isinstance(exc, AppError) else f"Internal server error. Error ID: {error_id}"
     body = build_error_body(message, "api_error")
