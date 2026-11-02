@@ -5,6 +5,8 @@
 
 from typing import Any
 
+from fastapi import HTTPException
+
 
 class AppError(Exception):
     """Raised when error in application occurs."""
@@ -47,3 +49,12 @@ class DockerComposeStartError(AppError):
         super().__init__(stderr or stdout or "docker compose failed")
         self.stdout = stdout
         self.stderr = stderr
+
+
+class OpenAIHTTPException(HTTPException):
+    """HTTPException carrying an explicit OpenAI error `type` and `code`."""
+
+    def __init__(self, status_code: int, detail: str, error_type: str, code: str | None = None, headers: dict[str, str] | None = None):
+        super().__init__(status_code, detail, headers)
+        self.error_type = error_type
+        self.code = code

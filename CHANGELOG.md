@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Breaking:** vLLM on GPU defaults to CUDA 13 (`v0.32.0`); drivers older than 580 must pin `v0.29.0-cu129-ubuntu2404` (the `-cu129` builds of `v0.30.0`–`v0.32.0` don't start).
 - `web-search` MCP image bumped to `v0.3.3`; it now uses streamable HTTP instead of SSE.
 - `changelog-check` also runs on `main` and fails when a merge puts an entry under a released version.
+- Unknown model errors return OpenAI's `code: model_not_found`.
 
 ### Fixed
 

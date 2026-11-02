@@ -19,6 +19,9 @@ from prometheus_client import CollectorRegistry
 from pydantic import BaseModel, ValidationError
 
 import server.endpointregistry as _er_module
+from server.api.openai import router as openai_router
+from server.config import AppSettings
+from server.core.dependencies import auth_server, get_config, get_endpoint_registry
 from server.endpointregistry import (
     ChatCompletionEndpoint,
     CustomEndpoint,
@@ -62,6 +65,7 @@ from server.models.api import (
     SystemOneRequest,
 )
 from server.utils.core import HttpClientError
+from server.utils.exceptions import OpenAIHTTPException
 from server.utils.sentry import UpstreamError, attached_tags, is_reported
 from server.websockets.models import UsageChangeRequest
 
@@ -6119,6 +6123,54 @@ def test_get_model_raises_503_while_model_is_loading_and_404_after():
 
     assert loading.value.status_code == 503
     assert done.value.status_code == 404
+
+
+def test_model_not_found_returns_openai_model_not_found_error():
+    reg = make_registry()
+
+    exc = reg.model_not_found("m", "Model not found m")
+
+    assert isinstance(exc, OpenAIHTTPException)
+    assert exc.status_code == 404
+    assert exc.detail == "Model not found m"
+    assert exc.error_type == "invalid_request_error"
+    assert exc.code == "model_not_found"
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("GET", "/v1/models/missing", None),
+        ("POST", "/v1/chat/completions", {"model": "missing", "messages": [{"role": "user", "content": "hi"}]}),
+        ("POST", "/v1/responses", {"model": "missing", "input": "hi"}),
+        ("POST", "/v1/embeddings", {"model": "missing", "input": "hi"}),
+    ],
+)
+def test_unknown_model_returns_openai_model_not_found_body(method: str, path: str, body: dict[str, Any] | None):
+    reg = make_registry()
+    app = FastAPI()
+    register_exception_handlers(app)
+    app.include_router(openai_router)
+    app.dependency_overrides[auth_server] = lambda: "test-key"
+    app.dependency_overrides[get_endpoint_registry] = lambda: reg
+    app.dependency_overrides[get_config] = lambda: AppSettings()  # pyright: ignore[reportCallIssue]
+
+    resp = TestClient(app).request(method, path, json=body)
+
+    assert resp.status_code == 404
+    assert resp.json()["error"]["type"] == "invalid_request_error"
+    assert resp.json()["error"]["code"] == "model_not_found"
+    assert resp.json()["error"]["param"] is None
+
+
+def test_model_not_found_returns_plain_503_while_model_is_loading():
+    reg = make_registry()
+    reg.set_model_loading("m")
+
+    exc = reg.model_not_found("m")
+
+    assert not isinstance(exc, OpenAIHTTPException)
+    assert exc.status_code == 503
 
 
 def test_model_loading_on_two_instances_stays_marked_until_both_are_done():

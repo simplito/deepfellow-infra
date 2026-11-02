@@ -52,6 +52,7 @@ from server.models.api import (
 )
 from server.models.common import JsonSerializable, StarletteResponse
 from server.utils.core import HttpClientError, HttpResponse, Utils, make_http_request
+from server.utils.exceptions import OpenAIHTTPException
 from server.utils.sentry import UpstreamError, attach_tags, capture_exception, mark_reported
 from server.websockets.models import RegistrationId, UsageChangeRequest, WarmChangeRequest
 from server.websockets.parent_infra_group import ParentInfraGroup
@@ -806,14 +807,14 @@ class EndpointRegistry:
             self._loading_models.pop(model_id, None)
 
     def model_not_found(self, model_id: ModelId, detail: str = "Model not found") -> HTTPException:
-        """Error for a model that is not registered: retryable 503 while it is still loading, 404 otherwise."""
+        """Error for a model that is not registered: retryable 503 while it is still loading, OpenAI's `model_not_found` 404 otherwise."""
         if model_id in self._loading_models:
             return HTTPException(
                 503,
                 f"Model {model_id} is still loading, try again shortly",
                 headers={"Retry-After": str(MODEL_LOADING_RETRY_AFTER_SECONDS)},
             )
-        return HTTPException(404, detail)
+        return OpenAIHTTPException(404, detail, "invalid_request_error", "model_not_found")
 
     def list_models(self) -> list[Model]:
         """List models for load balancing."""
