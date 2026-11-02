@@ -50,7 +50,7 @@ WebUI (from `webui/` directory):
 ## Branch and Commit Conventions
 
 - Branch naming: `<gitlab-issue-id>-<short-description>` (e.g. `333-add-claude-service`)
-- Commits: conventional commits format (enforced by pre-commit hook)
+- Commits: see the commit message rule in `BASE_WORKFLOW.md`
 - Run `just pre-commit` before pushing
 - Never add `Co-Authored-By: Claude` trailers to commits
 - Never add `🤖 Generated with Claude Code` or similar AI attribution to PR/MR descriptions
