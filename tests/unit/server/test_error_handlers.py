@@ -23,7 +23,7 @@ from server.error_handlers import (
     register_exception_handlers,
 )
 from server.utils.core import PromiseWithProgress, Stream, StreamChunk
-from server.utils.exceptions import AppError
+from server.utils.exceptions import AppError, OpenAIHTTPException
 from server.utils.failed_span import remember_failed_span
 from server.utils.security_headers import CACHE_CONTROL, CONTENT_SECURITY_POLICY
 from server.utils.sentry import attach_tags, mark_reported
@@ -124,6 +124,10 @@ async def _missing() -> None:
     raise HTTPException(status_code=404, detail="Model not found")
 
 
+async def _model_not_found() -> None:
+    raise OpenAIHTTPException(404, "Model not found gpt-x", "invalid_request_error", "model_not_found")
+
+
 async def _validated(body: _Body) -> None:
     pass
 
@@ -147,6 +151,7 @@ def app() -> FastAPI:
     app.add_api_route("/tagged", _tagged, methods=["GET"])
     app.add_api_route("/reported", _reported, methods=["GET"])
     app.add_api_route("/missing", _missing, methods=["GET"])
+    app.add_api_route("/model-not-found", _model_not_found, methods=["GET"])
     app.add_api_route("/app-error", _app_error, methods=["GET"])
     app.add_api_route("/promise-install", _promise_install, methods=["POST"])
     app.add_api_route("/validated", _validated, methods=["POST"])
@@ -272,6 +277,15 @@ def test_handle_http_exception_keeps_response_without_error_id(client: TestClien
     assert resp.status_code == 404
     assert resp.json() == {"error": {"message": "Model not found", "type": "not_found_error", "param": None, "code": None}}
     assert "X-Error-Id" not in resp.headers
+
+
+def test_handle_http_exception_uses_explicit_type_and_code_of_openai_http_exception(client: TestClient):
+    resp = client.get("/model-not-found")
+
+    assert resp.status_code == 404
+    assert resp.json() == {
+        "error": {"message": "Model not found gpt-x", "type": "invalid_request_error", "param": None, "code": "model_not_found"}
+    }
 
 
 def test_handle_validation_error_keeps_response_without_error_id(client: TestClient):

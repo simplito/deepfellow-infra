@@ -11,7 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
-from server.utils.exceptions import AppError
+from server.utils.exceptions import AppError, OpenAIHTTPException
 from server.utils.failed_span import get_failed_span_context
 from server.utils.logger import logger
 from server.utils.security_headers import add_security_headers
@@ -52,7 +52,10 @@ async def handle_http_exception(_request: Request, exc: Exception) -> JSONRespon
     """Translate any `HTTPException` into an OpenAI-style error response."""
     assert isinstance(exc, HTTPException)
     message, param = _message_and_param_from_detail(exc.detail)
-    body = build_error_body(message, _error_type_for_status(exc.status_code), param)
+    if isinstance(exc, OpenAIHTTPException):
+        body = build_error_body(message, exc.error_type, param, exc.code)
+    else:
+        body = build_error_body(message, _error_type_for_status(exc.status_code), param)
     return JSONResponse(status_code=exc.status_code, content=body, headers=exc.headers)
 
 
