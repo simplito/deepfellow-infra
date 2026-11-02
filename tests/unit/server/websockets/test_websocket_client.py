@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 
 import server.websockets.websocket_client as _wc_module
+from server.utils.sentry import FINGERPRINT_ATTR, REPORTED_ATTR
 from server.websockets.websocket_client import WebSocketClient
 
 
@@ -371,6 +372,27 @@ async def test_loop_swallows_connect_exception():
             await client.loop()
 
     assert "disconnect" in calls
+
+
+@pytest.mark.asyncio
+async def test_loop_marks_only_the_first_failure_of_an_outage_for_sentry(caplog: pytest.LogCaptureFixture):
+    client = make_client()
+    client.process_loop = True
+    mock_ws_module = MagicMock()
+    mock_ws_module.connect.side_effect = RuntimeError("cannot connect")
+    sleeps: list[float] = []
+
+    async def stop_after_three(delay: float) -> None:
+        sleeps.append(delay)
+        if len(sleeps) == 3:
+            client.process_loop = False
+
+    with patch.object(_wc_module, "websockets", mock_ws_module), patch("asyncio.sleep", new=stop_after_three):
+        await client.loop()
+
+    records = [record for record in caplog.records if record.getMessage() == "WS client disconnected"]
+    assert [hasattr(record, FINGERPRINT_ATTR) for record in records] == [True, False, False]
+    assert [getattr(record, REPORTED_ATTR, False) for record in records] == [False, True, True]
 
 
 @pytest.mark.asyncio

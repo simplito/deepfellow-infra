@@ -11,6 +11,9 @@ from contextlib import suppress
 import websockets
 
 from server.utils.logger import logger
+from server.utils.sentry import FINGERPRINT_ATTR, REPORTED_ATTR, TAGS_ATTR
+
+_RECONNECT_FINGERPRINT = ["mesh-websocket-disconnected"]
 
 
 class WebSocketClient:
@@ -96,7 +99,11 @@ class WebSocketClient:
                         await queue.put(None)
                         await send_task
             except Exception:
-                logger.exception("WS client disconnected")
+                if failure_count == 0:
+                    extra = {FINGERPRINT_ATTR: _RECONNECT_FINGERPRINT, TAGS_ATTR: {"operation": "mesh_connection"}}
+                else:
+                    extra = {REPORTED_ATTR: True}
+                logger.exception("WS client disconnected", extra=extra)
                 failure_count += 1
             self.on_disconnect()
             if not self.process_loop:

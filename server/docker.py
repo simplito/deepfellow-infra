@@ -10,6 +10,7 @@ import platform
 import re
 import shlex
 import shutil
+import uuid
 from collections.abc import AsyncGenerator, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
@@ -24,10 +25,17 @@ from pydantic import BaseModel
 from server.config import AppSettings
 from server.portservice import PortService
 from server.utils.core import CommandResult2, Stream, StreamChunk, StreamChunkProgress, Utils, get_cpu_architecture, get_os
-from server.utils.exceptions import AppError, DockerComposeStartError, DockerImageAuthorizationError, DockerImageDoesNotExistError
+from server.utils.exceptions import (
+    AppError,
+    DockerComposeStartError,
+    DockerImageAuthorizationError,
+    DockerImageDoesNotExistError,
+    DockerPlatformMismatchError,
+)
 from server.utils.hardware import HardwarePartInfo, IntelGpuInfo, NvidiaGpuInfo
 from server.utils.loading import Progress
 from server.utils.logger import logger
+from server.utils.sentry import attach_tags, capture_exception, is_expected_error, mark_reported, sentry_tags
 
 ARCH_ALIASES = {
     "x86_64": ("amd64", None),
@@ -170,6 +178,11 @@ def normalize_docker_platform(platform_str: str) -> str:
         msg = f"Platform '{platform_str}' requires a variant for architecture '{arch_normalized}'"
         raise ValueError(msg)
     return f"{os_part}/{arch_normalized}/{variant_normalized}" if variant_normalized else f"{os_part}/{arch_normalized}"
+
+
+def _failure_error(msg: str, mismatch: str | None) -> AppError:
+    """Build the error for a failed start, a `DockerPlatformMismatchError` when the image doesn't fit the host."""
+    return DockerPlatformMismatchError(f"{msg}\n{mismatch}") if mismatch else AppError(msg)
 
 
 def _strip_tag_keep_digest(image: str) -> str:
@@ -879,16 +892,28 @@ class DockerService:
             arch = image_data[0].get("Architecture", "").lower()
             return [normalize_docker_platform(f"{os_type}/{arch}")] if arch else []
 
+    def _describe_platform_mismatch(self, image: str, platforms: list[str]) -> str | None:
+        """Describe why `image` can't run on this host, or None when its platforms are unknown or include the host's."""
+        if not platforms or self.host_platform in platforms:
+            return None
+        return (
+            f"The docker image {image} is not compatible with the current system, "
+            f"platform mismatch, {self.host_platform} not in [{','.join(platforms)}]."
+        )
+
+    async def _platform_mismatch(self, image: str) -> str | None:
+        """Describe the platform mismatch of `image` with this host; None when there is none or it can't be determined."""
+        with suppress(Exception):
+            return self._describe_platform_mismatch(image, await self.get_image_platforms(image))
+        return None
+
     async def get_image_warnings(self, image: str) -> list[str]:
         """Get warnings about run given image on current platform."""
         warnings: list[str] = []
         try:
-            platforms = await self.get_image_platforms(image)
-            if self.host_platform not in platforms and platforms:
-                warnings.append(
-                    f"The docker image {image} is not compatible with the current system, "
-                    f"platform mismatch, {self.host_platform} not in [{','.join(platforms)}]."
-                )
+            mismatch = self._describe_platform_mismatch(image, await self.get_image_platforms(image))
+            if mismatch:
+                warnings.append(mismatch)
         except DockerImageDoesNotExistError:
             warnings.append(f"Docker image does not exist {image}.")
         except DockerImageAuthorizationError:
@@ -996,17 +1021,24 @@ class DockerService:
         if image_name_info.registry in self.auths:
             additional_params = {"auth": self.auths[image_name_info.registry]}
 
-        async with Docker() as docker:
-            async for chunk in docker.images.pull(full_image_name, stream=True, timeout=24 * 60 * 60, **additional_params):
-                if (
-                    (id := chunk.get("id"))
-                    and (chunk.get("status") == "Downloading")
-                    and (value := chunk.get("progressDetail", {}).get("current"))
-                ):
-                    bytes_per_id[id] = value
-                    image_bytes = sum(bytes_per_id.values())
-                    progress.set_actual_value(image_bytes)
-                    yield progress.get_percentage()
+        try:
+            async with Docker() as docker:
+                async for chunk in docker.images.pull(full_image_name, stream=True, timeout=24 * 60 * 60, **additional_params):
+                    if (
+                        (id := chunk.get("id"))
+                        and (chunk.get("status") == "Downloading")
+                        and (value := chunk.get("progressDetail", {}).get("current"))
+                    ):
+                        bytes_per_id[id] = value
+                        image_bytes = sum(bytes_per_id.values())
+                        progress.set_actual_value(image_bytes)
+                        yield progress.get_percentage()
+        except Exception as exc:
+            is_missing_or_denied = isinstance(exc, DockerError) and exc.status in (401, 403, 404)
+            if not (is_expected_error(exc) or is_missing_or_denied or await self._platform_mismatch(full_image_name)):
+                capture_exception(exc, error_id=str(uuid.uuid4()), tags={"operation": "docker_pull", "image": full_image_name})
+                mark_reported(exc)
+            raise
 
     async def remove_image(self, image_name: str) -> None:
         """Remove docker image."""
@@ -1508,16 +1540,18 @@ class DockerService:
             logs = ""
             with suppress(Exception):
                 logs = await self.get_docker_compose_logs(compose_path)
+            mismatch = await self._platform_mismatch(options.image)
             combined = "\n".join(filter(None, [exc_output, logs]))
             if uses_gpu:
                 gpu_msg = _diagnose_gpu_error(combined)
                 if gpu_msg:
                     raise AppError(gpu_msg) from None
             if logs:
-                logger.exception("Failed to start %s — full compose logs:\n%s", options.name, _bounded_for_logging(combined))
+                log = logger.error if mismatch else logger.exception
+                log("Failed to start %s — full compose logs:\n%s", options.name, _bounded_for_logging(combined))
             short = "\n".join(filter(None, [exc_output, _extract_error_excerpt(logs)]))
             msg = f"Failed to start {options.name}: {short or 'unknown error, see server logs for details'}"
-            raise AppError(msg) from None
+            raise _failure_error(msg, mismatch) from None
         return start_output, port, False
 
     async def _assert_compose_healthy(self, compose_path: Path, options: DockerOptions, start_output: CommandResult2 | None) -> None:
@@ -1557,7 +1591,7 @@ class DockerService:
         msg = f"Container {options.name} failed to become healthy"
         if short:
             msg = f"{msg}:\n{short}"
-        raise AppError(msg)
+        raise _failure_error(msg, await self._platform_mismatch(options.image))
 
     async def install_and_run_docker(self, options: DockerOptions) -> tuple[int, bool, bool]:
         """Run docker compose and return (port, whether the container was (re)started, whether it was adopted).
@@ -1578,6 +1612,15 @@ class DockerService:
                 "and try again (an already-installed container keeps its pinned name until it is updated or reinstalled)."
             )
             raise HTTPException(400, msg)
+        tags = {"service": options.service_name, "operation": "docker_install", "image": options.image}
+        with sentry_tags(**tags):
+            try:
+                return await self._install_and_run_docker(options)
+            except Exception as exc:
+                attach_tags(exc, tags)
+                raise
+
+    async def _install_and_run_docker(self, options: DockerOptions) -> tuple[int, bool, bool]:
         compose_path = self.get_docker_compose_file_path(options.name)
         is_running = await self.is_docker_compose_running(compose_path, options.service_name)
         has_difference, port = await self.has_docker_compose_difference(compose_path, options)

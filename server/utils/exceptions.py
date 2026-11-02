@@ -40,6 +40,10 @@ class DockerImageAuthorizationError(Exception):
         self.image = image
 
 
+class DockerPlatformMismatchError(AppError):
+    """Raised when a docker image can't run on this host because it is not built for the host platform."""
+
+
 class DockerComposeStartError(AppError):
     """Raised when docker compose up exits with a non-zero code."""
 

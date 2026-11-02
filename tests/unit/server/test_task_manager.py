@@ -3,10 +3,13 @@
 
 import asyncio
 import logging
+from unittest import mock
 
 import pytest
 
 from server.task_manager import TaskManager
+from server.utils.exceptions import ApiError
+from server.utils.sentry import is_reported
 
 
 @pytest.fixture
@@ -99,3 +102,28 @@ async def test_add_task_safe_without_err_msg(task_manager: TaskManager):
 
     task = task_manager.add_task_safe(failing())
     await task  # should not raise
+
+
+@pytest.mark.asyncio
+async def test_add_task_safe_reports_exception_to_sentry(task_manager: TaskManager):
+    async def failing() -> None:
+        raise RuntimeError("boom")
+
+    with mock.patch("server.task_manager.capture_exception") as mock_capture:
+        await task_manager.add_task_safe(failing(), "my.task")
+
+    assert mock_capture.call_count == 1
+    assert isinstance(mock_capture.call_args.args[0], RuntimeError)
+    assert mock_capture.call_args.kwargs["tags"] == {"operation": "background_task", "task": "my.task"}
+    assert is_reported(mock_capture.call_args.args[0])
+
+
+@pytest.mark.asyncio
+async def test_add_task_safe_does_not_report_expected_exception(task_manager: TaskManager):
+    async def failing() -> None:
+        raise ApiError("Invalid api key", 2)
+
+    with mock.patch("server.task_manager.capture_exception") as mock_capture:
+        await task_manager.add_task_safe(failing())
+
+    assert mock_capture.call_count == 0
