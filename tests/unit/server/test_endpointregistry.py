@@ -3427,6 +3427,9 @@ async def test_with_usage_does_not_report_or_tag_mesh_model(mock_capture_excepti
     assert attached_tags(error) == {}
 
 
+PROXIED_ENDPOINT_TAGS = {"http.method": "GET", "http.route": "/proxied"}
+
+
 def _app_proxying(registry: EndpointRegistry, model: RegisteredModel[Any], func: AsyncMock) -> TestClient:
     app = FastAPI()
     register_exception_handlers(app)
@@ -3452,6 +3455,7 @@ def test_with_usage_connection_error_is_reported_once_by_global_handler_with_tag
     assert mock_handler_capture.call_count == 1
     assert mock_handler_capture.call_args.kwargs["error_id"] == resp.headers["X-Error-Id"]
     assert mock_handler_capture.call_args.kwargs["handled"] is False
+    assert mock_handler_capture.call_args.kwargs["tags"] == PROXIED_ENDPOINT_TAGS
     assert attached_tags(mock_handler_capture.call_args.args[0]) == {**VLLM_TAGS, "error_type": "connection_error"}
 
 
@@ -3469,6 +3473,7 @@ def test_with_usage_broken_2xx_stream_is_reported_once_by_global_handler_with_ta
     assert mock_registry_capture.call_count == 0
     assert mock_handler_capture.call_count == 1
     assert mock_handler_capture.call_args.kwargs["handled"] is False
+    assert mock_handler_capture.call_args.kwargs["tags"] == PROXIED_ENDPOINT_TAGS
     assert attached_tags(mock_handler_capture.call_args.args[0]) == {**VLLM_TAGS, "error_type": "connection_error"}
 
 
@@ -3504,6 +3509,7 @@ def test_with_usage_4xx_http_exception_mid_stream_is_reported_by_global_handler_
 
     assert mock_registry_capture.call_count == 0
     assert mock_handler_capture.call_count == 1
+    assert mock_handler_capture.call_args.kwargs["tags"] == PROXIED_ENDPOINT_TAGS
     assert attached_tags(mock_handler_capture.call_args.args[0]) == {**VLLM_TAGS, "error_type": "model_error"}
 
 
