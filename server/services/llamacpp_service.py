@@ -21,7 +21,7 @@ from server.applicationcontext import get_base_url
 from server.config import get_main_dir
 from server.docker import DockerImage, DockerOptions
 from server.endpointregistry import ProxyOptions, RegistrationId, RegistrationOptions
-from server.models.api import LLM_ENDPOINTS, ModelProps
+from server.models.api import ModelProps
 from server.models.models import (
     CustomModelField,
     CustomModelId,
@@ -736,7 +736,6 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
                     props=ModelProps(
                         private=True,
                         type="llm",
-                        endpoints=LLM_ENDPOINTS,
                         context_window=context_window,
                         max_context_window=max_context_window,
                         supports_vision=model.supports_vision,

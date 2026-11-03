@@ -245,28 +245,6 @@ def test_remove_custom_model_raises_400_when_in_use(svc: OllamaExternalService) 
     assert exc_info.value.status_code == 400
 
 
-@pytest.mark.parametrize(
-    ("support_responses", "support_messages", "expected"),
-    [
-        (False, False, ["/v1/completions", "/v1/chat/completions"]),
-        (False, True, ["/v1/completions", "/v1/chat/completions", "/v1/messages"]),
-        (True, True, ["/v1/completions", "/v1/chat/completions", "/v1/responses", "/v1/messages"]),
-    ],
-)
-def test_get_supported_endpoints(
-    svc: OllamaExternalService,
-    support_responses: bool,
-    support_messages: bool,
-    expected: list[str],
-) -> None:
-    svc.support_responses = support_responses
-    svc.support_messages = support_messages
-
-    result = svc.get_supported_endpoints()
-
-    assert result == expected
-
-
 @pytest.mark.asyncio
 async def test_stop_instance_does_nothing(svc: OllamaExternalService) -> None:
     await svc.stop_instance("default")

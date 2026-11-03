@@ -26,7 +26,7 @@ from server.applicationcontext import get_base_url
 from server.config import get_main_dir
 from server.docker import DockerImage, DockerOptions, DockerPath
 from server.endpointregistry import ProxyOptions, RegistrationId, RegistrationOptions
-from server.models.api import DECISION_ENDPOINTS, EMBEDDINGS_ENDPOINTS, IMG_ENDPOINTS, LLM_ENDPOINTS, ModelProps
+from server.models.api import DECISION_ENDPOINTS, EMBEDDINGS_ENDPOINTS, IMG_ENDPOINTS, ModelProps
 from server.models.models import (
     CustomModelField,
     CustomModelId,
@@ -1807,7 +1807,6 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                             props=ModelProps(
                                 private=True,
                                 type=model.type,
-                                endpoints=LLM_ENDPOINTS,
                                 context_window=context_window,
                                 max_context_window=max_context_window,
                                 supports_vision=capabilities.supports_vision,
