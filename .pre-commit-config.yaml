@@ -1,9 +1,4 @@
 repos:
-  - repo: https://github.com/qoomon/git-conventional-commits
-    rev: v2.6.7
-    hooks:
-      - id: conventional-commits
-
   - repo: local
     hooks:
       - id: ruff-py

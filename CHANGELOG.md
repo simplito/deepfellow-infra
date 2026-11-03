@@ -32,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - A failed install answers with the reason (e.g. the container did not become healthy), not a bare "Internal server error".
 - A host driver too old for the image's CUDA version is reported as such, not as a missing NVIDIA container toolkit.
 
+### Removed
+
+- The `conventional-commits` pre-commit hook, which rejected commit messages starting with the work item tag.
 
 ## [0.37.0] - 2026-10-28
 
