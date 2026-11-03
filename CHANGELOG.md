@@ -33,6 +33,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - A failed install answers with the reason (e.g. the container did not become healthy), not a bare "Internal server error".
 - A host driver too old for the image's CUDA version is reported as such, not as a missing NVIDIA container toolkit.
 - Models from a single-file Hugging Face URL install instead of failing with a 404.
+- Ollama embedding models report the token limit Ollama really embeds (e.g. 128, not 512, for `paraphrase-multilingual`).
+- vLLM and SGLang embedding models report their token limit (`max_context_window`), taken from the running server.
 
 ### Removed
 

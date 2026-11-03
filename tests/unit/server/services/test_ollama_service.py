@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import itertools
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -99,6 +100,13 @@ def deps(tmp_path: Path) -> dict[str, Any]:
 @pytest.fixture
 def svc(deps: dict[str, Any]) -> OllamaService:
     return OllamaService(**deps)
+
+
+@pytest.fixture(autouse=True)
+def embedding_token_limit() -> Iterator[AsyncMock]:
+    """Keep installs from measuring against a real Ollama; tests set `return_value` to a measured limit."""
+    with patch("server.services.ollama_service.OllamaEmbeddingTokenLimits.resolve", new_callable=AsyncMock, return_value=None) as mock:
+        yield mock
 
 
 def test_get_type(svc: OllamaService) -> None:
@@ -1250,6 +1258,58 @@ async def test_install_model_registers_embedding_endpoint(svc: OllamaService, de
         await promise.wait()
 
     assert deps["endpoint_registry"].register_embeddings_as_proxy.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_install_model_embedding_reports_token_limit_ollama_applies(
+    svc: OllamaService, deps: dict[str, Any], embedding_token_limit: AsyncMock
+) -> None:
+    installed = _make_installed_info(svc)
+    svc.instances_info["default"].installed = installed
+    svc.models["default"]["bge-m3"] = OllamaModel(id="bge-m3", size="1GB", type="embedding", hash="def", context=8192)
+    embedding_token_limit.return_value = 2048
+
+    with patch("server.services.ollama_service.fetch_from", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = FetchResult(status_code=200, data="")
+        promise = await svc._install_model("default", "bge-m3", InstallModelIn(spec={}))  # pyright: ignore[reportPrivateUsage]
+        await promise.wait()
+
+    props: ModelProps = deps["endpoint_registry"].register_embeddings_as_proxy.call_args.kwargs["props"]
+    assert props.max_context_window == 2048
+    assert props.context_window == 2048
+    assert embedding_token_limit.call_args == call("default", "http://localhost:11434", "bge-m3", scope="4096", context_ceiling=4096)
+
+
+@pytest.mark.asyncio
+async def test_install_model_embedding_keeps_window_when_limit_unknown(
+    svc: OllamaService, deps: dict[str, Any], embedding_token_limit: AsyncMock
+) -> None:
+    installed = _make_installed_info(svc)
+    svc.instances_info["default"].installed = installed
+    svc.models["default"]["mxbai"] = OllamaModel(id="mxbai", size="1GB", type="embedding", hash="def", context=512)
+    embedding_token_limit.return_value = None
+
+    with patch("server.services.ollama_service.fetch_from", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = FetchResult(status_code=200, data="")
+        promise = await svc._install_model("default", "mxbai", InstallModelIn(spec={}))  # pyright: ignore[reportPrivateUsage]
+        await promise.wait()
+
+    props: ModelProps = deps["endpoint_registry"].register_embeddings_as_proxy.call_args.kwargs["props"]
+    assert props.max_context_window == 512
+
+
+@pytest.mark.asyncio
+async def test_install_model_llm_does_not_measure_embedding_limit(svc: OllamaService, embedding_token_limit: AsyncMock) -> None:
+    installed = _make_installed_info(svc)
+    svc.instances_info["default"].installed = installed
+    svc.models["default"]["test-llm"] = OllamaModel(id="test-llm", size="1GB", type="llm", hash="abc", context=4096)
+
+    with patch("server.services.ollama_service.fetch_from", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = FetchResult(status_code=200, data="")
+        promise = await svc._install_model("default", "test-llm", InstallModelIn(spec={}))  # pyright: ignore[reportPrivateUsage]
+        await promise.wait()
+
+    assert embedding_token_limit.call_count == 0
 
 
 @pytest.mark.asyncio

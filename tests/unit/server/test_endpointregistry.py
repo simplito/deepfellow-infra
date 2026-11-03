@@ -2261,6 +2261,37 @@ def test_update_modality_support_is_no_op_when_unchanged():
     assert reg.registry[rid].registered_model.props is original_props
 
 
+def test_update_context_window_updates_props_and_tells_parent():
+    reg = make_registry()
+    rid = reg.register_chat_completion("emb", make_props(), make_chat_endpoint(), RegistrationOptions(origin="local"))
+    reg.parent_infra.send_models_list.reset_mock()  # pyright: ignore[reportAttributeAccessIssue]
+
+    reg.update_context_window(rid, context_window=2048, max_context_window=2048)
+
+    props = reg.registry[rid].registered_model.props
+    assert (props.context_window, props.max_context_window) == (2048, 2048)
+    assert reg.parent_infra.send_models_list.call_count == 1  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def test_update_context_window_no_op_for_unknown_id():
+    reg = make_registry()
+    reg.update_context_window("nonexistent", context_window=2048, max_context_window=2048)  # must not raise
+
+
+def test_update_context_window_is_no_op_when_unchanged():
+    reg = make_registry()
+    rid = reg.register_chat_completion(
+        "emb", make_props(context_window=2048, max_context_window=2048), make_chat_endpoint(), RegistrationOptions(origin="local")
+    )
+    original_props = reg.registry[rid].registered_model.props
+    reg.parent_infra.send_models_list.reset_mock()  # pyright: ignore[reportAttributeAccessIssue]
+
+    reg.update_context_window(rid, context_window=2048, max_context_window=2048)
+
+    assert reg.registry[rid].registered_model.props is original_props
+    assert reg.parent_infra.send_models_list.call_count == 0  # pyright: ignore[reportAttributeAccessIssue]
+
+
 def test_update_models_sends_models_list_when_changed():
     reg = make_registry()
     new_model = Model(id="new-id", name="gpt-4", type="llm", props=make_props(), usage=0)

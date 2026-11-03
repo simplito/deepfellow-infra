@@ -1307,6 +1307,18 @@ class EndpointRegistry:
         if props.supports_vision != supports_vision or props.supports_audio != supports_audio:
             entry.registered_model.props = props.model_copy(update={"supports_vision": supports_vision, "supports_audio": supports_audio})
 
+    def update_context_window(self, registration_id: RegistrationId, *, context_window: int | None, max_context_window: int | None) -> None:
+        """Update a registration's `context_window`/`max_context_window` in place and tell the parent infra."""
+        entry = self.registry.get(registration_id, None)
+        if entry is None:
+            return
+        props = entry.registered_model.props
+        if (props.context_window, props.max_context_window) != (context_window, max_context_window):
+            entry.registered_model.props = props.model_copy(
+                update={"context_window": context_window, "max_context_window": max_context_window}
+            )
+            self.parent_infra.send_models_list()
+
     def update_models(self, prev_list: list[Model], new_list: list[Model], api_url: str, api_key: str, owned_by: str = "mesh") -> None:
         """Update models, it remove old models and add new ones.
 

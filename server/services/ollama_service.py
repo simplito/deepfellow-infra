@@ -78,6 +78,7 @@ from server.utils.ollama import (
     supports_gguf_quantization,
 )
 from server.utils.ollama_catalog import OllamaCatalogClient
+from server.utils.ollama_embedding_limit import OllamaEmbeddingTokenLimits
 from server.utils.ollama_registry import (
     OLLAMA_REGISTRY_HOST,
     BlobLocks,
@@ -354,6 +355,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
     `_SHOW_FAILURE_CACHE_SECONDS` instead of retrying on every call.
     """
     _vram_cache: dict[tuple[str, str], float]
+    _embedding_token_limits: OllamaEmbeddingTokenLimits
     _installing: set[tuple[str, str]]
     _warmth_poll_tasks: dict[str, asyncio.Task[None]]
     _ps_query_failing: set[str]
@@ -374,6 +376,9 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         self._capabilities_cache = {}
         self._show_failure_at = {}
         self._vram_cache = {}
+        self._embedding_token_limits = OllamaEmbeddingTokenLimits(
+            self.config.get_storage_services_dir() / self.get_type() / "embedding_token_limits.json"
+        )
         self._installing = set()
         self._warmth_poll_tasks = {}
         self._ps_query_failing = set()
@@ -1765,6 +1770,13 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                     max_context_window = model_form_context_window or model_max_context_window or service_max_context_window
 
                     context_window = model_form_context_window or service_form_context_window or default_context_window
+                    if model.type == "embedding":
+                        effective_context = service_form_context_window or self.default_context_length
+                        token_limit = await self._embedding_token_limits.resolve(
+                            instance, info.base_url, internal_name, scope=str(effective_context), context_ceiling=effective_context
+                        )
+                        if token_limit is not None:
+                            max_context_window = min(max_context_window, token_limit)
                     context_window = min(context_window, max_context_window)
                     # `or` (not `is not None`) is intentional here: Ollama's OLLAMA_NUM_PARALLEL=0 means
                     # "auto", so an explicit 0 must fall through to the fallback of 1 just like None does.

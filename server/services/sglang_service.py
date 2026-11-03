@@ -72,6 +72,7 @@ from server.utils.hardware import HardwarePartInfo
 from server.utils.loading import Progress
 from server.utils.logger import logger
 from server.utils.registry_client import image_without_registry_prefix, registry_for
+from server.utils.served_model_len import fetch_served_max_model_len
 from server.utils.size_fetcher import fetch_huggingface_model_size
 
 # Qwen3-Reranker-family models refuse to start with `--is-embedding`; every other reranker in the
@@ -1053,7 +1054,13 @@ class SglangService(Base2Service[InstalledInfo, DownloadedInfo]):
         if model.model_type == "embedding":
             return self.endpoint_registry.register_embeddings_as_proxy(
                 model=registered_name,
-                props=ModelProps(private=True, type="embedding", endpoints=EMBEDDINGS_ENDPOINTS),
+                props=ModelProps(
+                    private=True,
+                    type="embedding",
+                    endpoints=EMBEDDINGS_ENDPOINTS,
+                    context_window=context_window,
+                    max_context_window=max_context_window,
+                ),
                 options=ProxyOptions(url=f"{model_info.base_url}/v1/embeddings", rewrite_model_to=model_id),
                 registration_options=RegistrationOptions(
                     origin="local", alias=registered_alias, owned_by=self.get_type(), capacity_state=capacity_state
@@ -1110,6 +1117,19 @@ class SglangService(Base2Service[InstalledInfo, DownloadedInfo]):
                 raw_concurrency,
             )
         return max(1, raw_concurrency)
+
+    async def _resolve_context_windows(
+        self, model: SglangModel, model_id: str, local_model_path: Path, base_url: str, max_model_length: int | None
+    ) -> tuple[int | None, int | None]:
+        """Return `(context_window, max_context_window)` for a new model; for embeddings, one below SGLang's `context_len`."""
+        if model.model_type == "llm":
+            max_context_window = await get_model_dir_context_window(local_model_path)
+            return max_model_length or max_context_window, max_context_window
+        if model.model_type == "embedding":
+            context_length = await fetch_served_max_model_len(base_url, model_id) or max_model_length
+            limit = context_length - 1 if context_length else None
+            return limit, limit
+        return None, None
 
     async def _install_model(
         self, instance: str, model_id: str, options: InstallModelIn, container_name_override: str | None = None
@@ -1217,12 +1237,9 @@ class SglangService(Base2Service[InstalledInfo, DownloadedInfo]):
                 registered_alias = parsed_model_options.alias
                 container_host = self.docker_service.get_container_host(subnet, docker_options)
                 container_port = self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port)
-                if model.model_type == "llm":
-                    max_context_window = await get_model_dir_context_window(local_model_path)
-                    context_window = max_model_length or max_context_window
-                else:
-                    max_context_window = None
-                    context_window = None
+                context_window, max_context_window = await self._resolve_context_windows(
+                    model, model_id, local_model_path, get_base_url(container_host, container_port), max_model_length
+                )
                 info.models[model_id] = model_info = ModelInstalledInfo(
                     id=model_id,
                     registered_name=registered_name,

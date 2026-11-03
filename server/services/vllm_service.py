@@ -81,6 +81,7 @@ from server.utils.loading import Progress
 from server.utils.logger import logger
 from server.utils.model_downloader import AdapterRegistryDownloader
 from server.utils.registry_client import image_without_registry_prefix, registry_for
+from server.utils.served_model_len import fetch_served_max_model_len
 from server.utils.size_fetcher import fetch_huggingface_model_size, fmt_size, sum_siblings_size_bytes
 
 # Mirrors the `just get-vllm-models` release recipe (see justfile): one fetch per model type,
@@ -1312,7 +1313,13 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
         if model.model_type == "embedding":
             return self.endpoint_registry.register_embeddings_as_proxy(
                 model=registered_name,
-                props=ModelProps(private=True, type="embedding", endpoints=EMBEDDINGS_ENDPOINTS),
+                props=ModelProps(
+                    private=True,
+                    type="embedding",
+                    endpoints=EMBEDDINGS_ENDPOINTS,
+                    context_window=context_window,
+                    max_context_window=max_context_window,
+                ),
                 options=ProxyOptions(url=f"{model_info.base_url}/v1/embeddings", rewrite_model_to=model_id),
                 registration_options=RegistrationOptions(
                     origin="local", alias=registered_alias, owned_by=self.get_type(), capacity_state=capacity_state
@@ -1412,6 +1419,18 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
                 raise
         return docker_exposed_port, user_model_length, restarted, adopted
 
+    async def _resolve_context_windows(
+        self, model: VllmModel, model_id: str, local_model_path: Path, base_url: str, user_model_length: int | None
+    ) -> tuple[int | None, int | None]:
+        """Return `(context_window, max_context_window)` to register a freshly started model with."""
+        if model.model_type == "llm":
+            max_context_window = await get_model_dir_context_window(local_model_path)
+            return user_model_length or max_context_window, max_context_window
+        if model.model_type == "embedding":
+            limit = await fetch_served_max_model_len(base_url, model_id) or user_model_length
+            return limit, limit
+        return None, None
+
     async def _install_model(  # noqa: C901
         self, instance: str, model_id: str, options: InstallModelIn, container_name_override: str | None = None
     ) -> PromiseWithProgress[InstallModelOut, StreamChunk]:
@@ -1440,7 +1459,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             self._installing.discard(key)
             raise
 
-        async def func(stream: Stream[StreamChunk]) -> InstallModelOut:  # noqa: C901
+        async def func(stream: Stream[StreamChunk]) -> InstallModelOut:
             nonlocal user_model_length
             model_info: ModelInstalledInfo | None = None
             docker_options: DockerOptions | None = None
@@ -1548,12 +1567,9 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
                 registered_alias = parsed_model_options.alias
                 container_host = self.docker_service.get_container_host(subnet, docker_options)
                 container_port = self.docker_service.get_container_port(subnet, docker_exposed_port, docker_options.image_port)
-                if model.model_type == "llm":
-                    max_context_window = await get_model_dir_context_window(local_model_path)
-                    context_window = user_model_length or max_context_window
-                else:
-                    max_context_window = None
-                    context_window = None
+                context_window, max_context_window = await self._resolve_context_windows(
+                    model, model_id, local_model_path, get_base_url(container_host, container_port), user_model_length
+                )
                 info.models[model_id] = model_info = ModelInstalledInfo(
                     id=model_id,
                     registered_name=registered_name,
