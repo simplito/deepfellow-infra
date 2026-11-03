@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `web-search` MCP image bumped to `v0.3.3`; it now uses streamable HTTP instead of SSE.
 - `changelog-check` also runs on `main` and fails when a merge puts an entry under a released version.
 - Unknown model errors return OpenAI's `code: model_not_found`.
+- MR templates (`feature`, `bug`): the `## Relates` hint no longer gives a work-item example, which the Plane bot took for a real reference (DFINFRA-461)
 
 ### Fixed
 

@@ -10,7 +10,7 @@
 <!-- What solution was applied? -->
 
 ## Relates
-<!-- Related work items (e.g. DFMAIN-12) or MRs. No [ ] brackets here: brackets change the work item state. The MR title [PROJECT-NN] already links this MR. -->
+<!-- Related work items or MRs. No [ ] brackets here: brackets change the work item state. The MR title already links this MR. -->
 
 -
 
