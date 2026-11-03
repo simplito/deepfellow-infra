@@ -160,13 +160,19 @@ def test_hf_repo_downloader_init_sets_headers_and_modifiers() -> None:
         ("username/repo", True),
         ("https://huggingface.co/username/repo", True),
         ("https://huggingface.co/username/repo/tree/main", True),
+        ("https://huggingface.co/resolve/repo", True),
         ("https://example.com/model.gguf", False),
+        ("https://huggingface.co/username/repo/resolve/main/model.safetensors?download=true", False),
+        ("https://huggingface.co/username/repo/resolve/main/model.gguf", False),
     ],
     ids=[
         "relative_model_id",
         "full_huggingface_url",
         "huggingface_tree_main",
+        "repo_owner_named_resolve",
         "non_huggingface_url",
+        "single_file_safetensors",
+        "single_file_gguf",
     ],
 )
 def test_hf_repo_downloader_check_url(url: str, expected_result: bool) -> None:
@@ -562,8 +568,13 @@ def test_hf_model_downloader_init_sets_headers_and_modifiers() -> None:
     ("url", "expected"),
     [
         ("https://huggingface.co/user/repo/resolve/main/model.gguf", True),
-        ("https://huggingface.co/user/repo/resolve/main/model.safetensors", False),
+        ("https://huggingface.co/user/repo/resolve/main/model.safetensors", True),
+        ("https://huggingface.co/user/repo/resolve/main/model.safetensors?download=true", True),
+        ("https://huggingface.co/user/repo/resolve/v1.0/sub/dir/model.bin", True),
+        ("https://huggingface.co/user/repo", False),
+        ("https://huggingface.co/user/repo/tree/main", False),
         ("https://example.com/model.gguf", False),
+        ("https://example.com/user/repo/resolve/main/model.safetensors", False),
     ],
 )
 def test_hf_model_downloader_check_url(url: str, expected: bool) -> None:
@@ -591,6 +602,40 @@ async def test_hf_model_downloader_download_strips_query_string(tmp_path: Path) 
             pass
 
     assert captured_url == "https://huggingface.co/user/repo/resolve/main/model.gguf"
+
+
+@pytest.mark.asyncio
+async def test_hf_model_downloader_download_single_file_without_query_and_with_token(tmp_path: Path) -> None:
+    dl = _make_hf_model_dl()
+    model_dir = tmp_path / "models"
+    temp_dir = tmp_path / "temp"
+    calls: list[tuple[Any, ...]] = []
+
+    async def capture(*args: Any, **kwargs: Any):
+        calls.append(args)
+        yield SuccessDownloadPacket(model_dir / "sdxl_lightning_8step.safetensors", "sdxl_lightning_8step.safetensors")
+
+    with patch("server.utils.model_downloader.Utils.ensure_model_downloaded", side_effect=capture):
+        packets = [
+            p
+            async for p in dl.download(
+                "https://huggingface.co/ByteDance/SDXL-Lightning/resolve/main/sdxl_lightning_8step.safetensors?download=true",
+                model_dir,
+                temp_dir,
+                "sdxl_lightning_8step.safetensors",
+            )
+        ]
+
+    assert calls == [
+        (
+            "https://huggingface.co/ByteDance/SDXL-Lightning/resolve/main/sdxl_lightning_8step.safetensors",
+            model_dir,
+            temp_dir,
+            "sdxl_lightning_8step.safetensors",
+            {"Authorization": "Bearer hf-key"},
+        )
+    ]
+    assert isinstance(packets[-1], SuccessDownloadPacket)
 
 
 @pytest.mark.asyncio
@@ -1072,6 +1117,40 @@ async def test_model_downloader_download_routes_huggingface_gguf_url_to_hf_model
         pass
 
     assert routed_to == ["hf_model"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://huggingface.co/ByteDance/SDXL-Lightning/resolve/main/sdxl_lightning_8step.safetensors?download=true", "hf_model"),
+        ("https://huggingface.co/ByteDance/SDXL-Lightning", "hf_repo"),
+        ("https://huggingface.co/ByteDance/SDXL-Lightning/tree/main", "hf_repo"),
+        ("ByteDance/SDXL-Lightning", "hf_repo"),
+    ],
+    ids=["single_file", "repository_url", "tree_url", "bare_id"],
+)
+async def test_model_downloader_download_routes_huggingface_urls(tmp_path: Path, url: str, expected: str) -> None:
+    config = make_mock_config(tmp_path)
+    md = ModelDownloader(config)
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    routed_to: list[str] = []
+
+    def mock_download(name: str):
+        async def download(url: str, model_dir: Path, temp_dir: Path, filename: str | None = None, revision: str | None = None):
+            routed_to.append(name)
+            yield SuccessDownloadPacket(model_dir)
+
+        return download
+
+    md.custom_downloaders[0].download = mock_download("hf_repo")
+    md.custom_downloaders[1].download = mock_download("hf_model")
+
+    async for _ in md.download(url, model_dir):
+        pass
+
+    assert routed_to == [expected]
 
 
 @pytest.mark.asyncio
