@@ -79,6 +79,13 @@ def svc(deps: dict[str, Any]) -> VllmService:
     return VllmService(**deps)
 
 
+@pytest.fixture(autouse=True)
+def served_max_model_len() -> Iterator[AsyncMock]:
+    """Keep installs from querying a real server's `/v1/models`; tests set `return_value` to a served length."""
+    with patch("server.services.vllm_service.fetch_served_max_model_len", new_callable=AsyncMock, return_value=None) as mock:
+        yield mock
+
+
 def _make_installed_info(hardware: str | bool | None = False) -> InstalledInfo:
     return InstalledInfo(
         models={},
@@ -5003,3 +5010,56 @@ def test_read_models_reads_stt_entries_from_catalog(tmp_path: Path) -> None:
 
     assert models["openai/whisper-small"].model_type == "stt"
     assert models["openai/whisper-small"].hf_id == "openai/whisper-small"
+
+
+async def _install_vllm(svc: VllmService, model_id: str, tmp_path: Path, spec: dict[str, Any] | None = None) -> None:
+    with (
+        patch.object(svc, "_download_model_or_set_progress", new_callable=AsyncMock, return_value=tmp_path / "model"),  # pyright: ignore[reportPrivateUsage]
+        patch("server.services.vllm_service.get_model_dir_context_window", new_callable=AsyncMock, return_value=512),
+        patch("server.services.vllm_service.get_base_url", return_value="http://localhost:8000"),
+        patch.object(svc, "get_specified_hardware_parts", return_value=[]),
+    ):
+        promise = await svc._install_model("default", model_id, InstallModelIn(spec=spec or {}))  # pyright: ignore[reportPrivateUsage]
+        await promise.wait()
+
+
+@pytest.mark.asyncio
+async def test_install_model_embedding_reports_length_vllm_serves(
+    svc: VllmService, deps: dict[str, Any], tmp_path: Path, served_max_model_len: AsyncMock
+) -> None:
+    _setup_install_mocks(svc, deps)
+    svc.models["default"]["all-minilm"] = VllmModel(hf_id="sentence-transformers/all-MiniLM-L6-v2", size="90MB", model_type="embedding")
+    served_max_model_len.return_value = 256
+
+    await _install_vllm(svc, "all-minilm", tmp_path)
+
+    props = deps["endpoint_registry"].register_embeddings_as_proxy.call_args.kwargs["props"]
+    assert props.max_context_window == 256
+    assert props.context_window == 256
+    assert served_max_model_len.call_args == call("http://localhost:8000", "all-minilm")
+
+
+@pytest.mark.asyncio
+async def test_install_model_embedding_falls_back_to_configured_length(
+    svc: VllmService, deps: dict[str, Any], tmp_path: Path, served_max_model_len: AsyncMock
+) -> None:
+    _setup_install_mocks(svc, deps)
+    svc.models["default"]["all-minilm"] = VllmModel(hf_id="sentence-transformers/all-MiniLM-L6-v2", size="90MB", model_type="embedding")
+    served_max_model_len.return_value = None
+
+    await _install_vllm(svc, "all-minilm", tmp_path, {"max_model_length": 128})
+
+    props = deps["endpoint_registry"].register_embeddings_as_proxy.call_args.kwargs["props"]
+    assert props.max_context_window == 128
+
+
+@pytest.mark.asyncio
+async def test_install_model_llm_does_not_query_served_length(
+    svc: VllmService, deps: dict[str, Any], tmp_path: Path, served_max_model_len: AsyncMock
+) -> None:
+    _setup_install_mocks(svc, deps)
+    svc.models["default"]["gemma"] = VllmModel(hf_id="google/gemma-3-270m-it", size="1GB", model_type="llm")
+
+    await _install_vllm(svc, "gemma", tmp_path)
+
+    assert served_max_model_len.call_count == 0

@@ -51,6 +51,7 @@ from server.utils.core import (
 from server.utils.loading import Progress
 from server.utils.logger import logger
 from server.utils.ollama import decision_models_unsupported_message, raise_ollama_pull_error, supports_decision_models
+from server.utils.ollama_embedding_limit import OllamaEmbeddingTokenLimits
 from server.utils.size_fetcher import fetch_ollama_ref_bytes, fmt_size
 
 
@@ -104,6 +105,7 @@ _const = OllamaAiConst(
 )
 
 _WARMTH_POLL_INTERVAL_SECONDS = 15  # matches the staleness already tolerated for the UI's loaded-model display
+_EMBEDDING_LIMIT_MAX_AGE_SECONDS = 24 * 3600
 
 
 @dataclass
@@ -153,6 +155,7 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
     ollama_version: str
     _installing: set[tuple[str, str]]
     _warmth_poll_tasks: dict[str, asyncio.Task[None]]
+    _embedding_token_limits: OllamaEmbeddingTokenLimits
     _persists_model_definitions = False
 
     def _after_init(self) -> None:
@@ -160,6 +163,10 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
         self.load_default_models("default")
         self._installing = set()
         self._warmth_poll_tasks = {}
+        self._embedding_token_limits = OllamaEmbeddingTokenLimits(
+            self.config.get_storage_services_dir() / self.get_type() / "embedding_token_limits.json",
+            max_age_seconds=_EMBEDDING_LIMIT_MAX_AGE_SECONDS,
+        )
 
     def load_default_models(self, instance: str) -> None:
         """Load default models to instance."""
@@ -359,6 +366,7 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
                     break
                 try:
                     await self._sync_models_from_external_ollama(instance, info.installed)
+                    await self._refresh_embedding_token_limits(instance, info.installed)
                     await self._save()
                 except Exception:
                     logger.exception(f"{self.get_id(instance)} model sync tick failed")
@@ -551,6 +559,44 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
             pass
         return None, None, None, None
 
+    async def _fetch_synced_model_info(
+        self, instance: str, installed_info: InstalledInfo, model_id: str
+    ) -> tuple[int | None, bool | None, bool | None, bool | None]:
+        """Return a synced model's context length (an embedding model's real token limit) and capabilities."""
+        context_length, supports_vision, supports_audio, supports_decision = await self._fetch_show_info(installed_info.base_url, model_id)
+        if self._determine_model_type(model_id, instance, supports_decision) == "embedding":
+            context_length = await self._embedding_context_length(instance, installed_info.base_url, model_id, context_length)
+        return context_length, supports_vision, supports_audio, supports_decision
+
+    async def _embedding_context_length(self, instance: str, base_url: str, model_id: str, context_length: int | None) -> int | None:
+        """Narrow an embedding model's window to the tokens Ollama really embeds; it silently truncates the rest."""
+        token_limit = await self._embedding_token_limits.resolve(instance, base_url, model_id)
+        if token_limit is None:
+            return context_length
+        return min(context_length, token_limit) if context_length else token_limit
+
+    async def _refresh_embedding_token_limits(self, instance: str, installed_info: InstalledInfo) -> None:
+        """Measure registered embedding models again whose last measurement failed or expired."""
+        stale = [
+            model.id
+            for model in installed_info.models.values()
+            if model.type == "embedding" and not self._embedding_token_limits.has_fresh_measurement(instance, model.id)
+        ]
+        await asyncio.gather(*(self._refresh_embedding_token_limit(instance, installed_info, model_id) for model_id in stale))
+
+    async def _refresh_embedding_token_limit(self, instance: str, installed_info: InstalledInfo, model_id: str) -> None:
+        """Update a registered embedding model's window once a fresh measurement is in; a failed one keeps the previous value."""
+        context_length, _, _, _ = await self._fetch_show_info(installed_info.base_url, model_id)
+        context_length = await self._embedding_context_length(instance, installed_info.base_url, model_id, context_length)
+        model_info = installed_info.models.get(model_id)
+        if model_info is None or not model_info.registration_id:
+            return
+        if not self._embedding_token_limits.has_fresh_measurement(instance, model_id):
+            return
+        self.endpoint_registry.update_context_window(
+            model_info.registration_id, context_window=context_length, max_context_window=context_length
+        )
+
     async def _retry_unresolved_capabilities(self, installed_info: InstalledInfo, model_id: str) -> None:
         """Retry `/api/show` for an already-registered model whose capabilities are still unknown.
 
@@ -586,6 +632,10 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
                     self.endpoint_registry.unregister_systemone(model.registered_name, model.registration_id)
             self.models_downloaded.pop(removed_id, None)
 
+    def _is_registered_or_installing(self, instance: str, installed_info: InstalledInfo, model_id: str) -> bool:
+        """Tell whether `model_id` is already registered or an install of it, which registers it itself, is underway."""
+        return model_id in installed_info.models or (instance, model_id) in self._installing
+
     async def _sync_models_from_external_ollama(
         self, instance: str, installed_info: InstalledInfo, *, is_initial_sync: bool = False
     ) -> None:
@@ -597,6 +647,7 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
         saved_model_ids = {m.model_id for m in (self.get_instance_info(instance).config.models or [])}
         current_model_ids: set[str] = set()
 
+        new_entries: list[tuple[str, int]] = []
         for entry in tag_data.get("models", []):
             model_id: str = entry["name"].removesuffix(":latest")
             current_model_ids.add(model_id)
@@ -606,12 +657,16 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
                 continue
             if not is_initial_sync and model_id in self.models_downloaded:
                 continue
+            if self._is_registered_or_installing(instance, installed_info, model_id):
+                continue
+            new_entries.append((model_id, entry.get("size", 0)))
 
-            context_length, supports_vision, supports_audio, supports_decision = await self._fetch_show_info(
-                installed_info.base_url, model_id
-            )
+        infos = await asyncio.gather(*(self._fetch_synced_model_info(instance, installed_info, model_id) for model_id, _ in new_entries))
+        for (model_id, size), (context_length, supports_vision, supports_audio, supports_decision) in zip(new_entries, infos, strict=True):
+            if self._is_registered_or_installing(instance, installed_info, model_id):
+                continue
             self._register_synced_model(
-                instance, installed_info, model_id, entry.get("size", 0), context_length, supports_vision, supports_audio, supports_decision
+                instance, installed_info, model_id, size, context_length, supports_vision, supports_audio, supports_decision
             )
 
         self._remove_stale_models(installed_info, (set(installed_info.models) | saved_model_ids) - current_model_ids)
@@ -811,6 +866,8 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
                     )
 
                 context_length, supports_vision, supports_audio, _ = await self._fetch_show_info(info.base_url, model_id)
+                if model.type == "embedding":
+                    context_length = await self._embedding_context_length(instance, info.base_url, model_id, context_length)
                 registered_name = parsed_model_options.rename if parsed_model_options.rename else model_id
                 registered_alias = parsed_model_options.alias
                 info.models[model_id] = model_info = ModelInstalledInfo(

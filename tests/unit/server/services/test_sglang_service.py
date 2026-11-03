@@ -73,6 +73,13 @@ def svc(gpu_deps: dict[str, Any]) -> SglangService:
     return SglangService(**gpu_deps)
 
 
+@pytest.fixture(autouse=True)
+def served_max_model_len() -> Iterator[AsyncMock]:
+    """Keep installs from querying a real server's `/v1/models`; tests set `return_value` to a served length."""
+    with patch("server.services.sglang_service.fetch_served_max_model_len", new_callable=AsyncMock, return_value=None) as mock:
+        yield mock
+
+
 def _make_installed_info(hardware: str | bool | None = True) -> InstalledInfo:
     return InstalledInfo(
         models={},
@@ -2998,3 +3005,58 @@ def test_newer_real_tag_needing_a_newer_cuda(svc: SglangService) -> None:
     tags = svc.filter_docker_tags(real_tags("sglang"), "GPU")
     assert newer_tag_needing_cuda(tags, "v0.5.19-cu129", (12, 9)) == ("v0.5.21-cu130", (13, 0))
     assert newer_tag_needing_cuda(tags, "v0.5.19-cu129", (13, 4)) is None
+
+
+async def _install_sglang(svc: SglangService, model_id: str, tmp_path: Path) -> None:
+    with (
+        patch.object(svc, "_download_model_or_set_progress", new_callable=AsyncMock, return_value=tmp_path / "model"),  # pyright: ignore[reportPrivateUsage]
+        patch("server.services.sglang_service.get_model_dir_context_window", new_callable=AsyncMock, return_value=8194),
+        patch("server.services.sglang_service.get_base_url", return_value="http://localhost:30000"),
+        patch.object(svc, "get_specified_hardware_parts", return_value=[]),
+    ):
+        promise = await svc._install_model("default", model_id, InstallModelIn(spec={}))  # pyright: ignore[reportPrivateUsage]
+        await promise.wait()
+
+
+@pytest.mark.asyncio
+async def test_install_model_embedding_reports_one_token_below_context_len(
+    svc: SglangService, gpu_deps: dict[str, Any], tmp_path: Path, served_max_model_len: AsyncMock
+) -> None:
+    _setup_install_mocks(svc, gpu_deps)
+    svc.models["default"]["bge-m3"] = SglangModel(hf_id="BAAI/bge-m3", size="2GB", model_type="embedding")
+    served_max_model_len.return_value = 8192
+
+    await _install_sglang(svc, "bge-m3", tmp_path)
+
+    props = gpu_deps["endpoint_registry"].register_embeddings_as_proxy.call_args.kwargs["props"]
+    assert props.max_context_window == 8191
+    assert props.context_window == 8191
+    assert served_max_model_len.call_args == call("http://localhost:30000", "bge-m3")
+
+
+@pytest.mark.asyncio
+async def test_install_model_embedding_falls_back_to_configured_context_length(
+    svc: SglangService, gpu_deps: dict[str, Any], tmp_path: Path, served_max_model_len: AsyncMock
+) -> None:
+    _setup_install_mocks(svc, gpu_deps)
+    svc.models["default"]["bge-m3"] = SglangModel(hf_id="BAAI/bge-m3", size="2GB", model_type="embedding", max_model_len=4096)
+    served_max_model_len.return_value = None
+
+    await _install_sglang(svc, "bge-m3", tmp_path)
+
+    props = gpu_deps["endpoint_registry"].register_embeddings_as_proxy.call_args.kwargs["props"]
+    assert props.max_context_window == 4095
+
+
+@pytest.mark.asyncio
+async def test_install_model_embedding_without_known_length_reports_none(
+    svc: SglangService, gpu_deps: dict[str, Any], tmp_path: Path, served_max_model_len: AsyncMock
+) -> None:
+    _setup_install_mocks(svc, gpu_deps)
+    svc.models["default"]["bge-m3"] = SglangModel(hf_id="BAAI/bge-m3", size="2GB", model_type="embedding")
+    served_max_model_len.return_value = None
+
+    await _install_sglang(svc, "bge-m3", tmp_path)
+
+    props = gpu_deps["endpoint_registry"].register_embeddings_as_proxy.call_args.kwargs["props"]
+    assert props.max_context_window is None

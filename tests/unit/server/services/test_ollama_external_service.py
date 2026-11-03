@@ -4,6 +4,7 @@
 import asyncio
 import itertools
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -65,6 +66,15 @@ def deps() -> dict[str, Any]:
 @pytest.fixture
 def svc(deps: dict[str, Any]) -> OllamaExternalService:
     return OllamaExternalService(**deps)
+
+
+@pytest.fixture(autouse=True)
+def embedding_token_limit() -> Iterator[AsyncMock]:
+    """Keep installs and syncs from measuring against a real Ollama; tests set `return_value` to a measured limit."""
+    with patch(
+        "server.services.ollama_external_service.OllamaEmbeddingTokenLimits.resolve", new_callable=AsyncMock, return_value=None
+    ) as mock:
+        yield mock
 
 
 @pytest.fixture
@@ -704,6 +714,239 @@ async def test_install_model_registers_embedding_endpoint(
 
 
 @pytest.mark.asyncio
+async def test_install_model_embedding_reports_token_limit_ollama_applies(
+    svc: OllamaExternalService, installed: InstalledInfo, deps: dict[str, Any], embedding_token_limit: AsyncMock
+) -> None:
+    svc.models["default"]["bge-m3"] = OllamaModel(id="bge-m3", size="1GB", type="embedding")
+    embedding_token_limit.return_value = 2048
+
+    with (
+        patch.object(svc, "_download_model_or_set_progress", new_callable=AsyncMock),  # pyright: ignore[reportPrivateUsage]
+        patch.object(svc, "_sync_models_from_external_ollama", new_callable=AsyncMock),  # pyright: ignore[reportPrivateUsage]
+        patch.object(svc, "_fetch_show_info", new_callable=AsyncMock, return_value=(8192, None, None, None)),  # pyright: ignore[reportPrivateUsage]
+    ):
+        promise = await svc._install_model("default", "bge-m3", InstallModelIn())  # pyright: ignore[reportPrivateUsage]
+        await promise.wait()
+
+    props = deps["endpoint_registry"].register_embeddings_as_proxy.call_args.kwargs["props"]
+    assert props.max_context_window == 2048
+    assert props.context_window == 2048
+    assert embedding_token_limit.call_args == call("default", "http://localhost:11434", "bge-m3")
+
+
+@pytest.mark.asyncio
+async def test_install_model_llm_does_not_measure_embedding_limit(
+    svc: OllamaExternalService, installed: InstalledInfo, embedding_token_limit: AsyncMock
+) -> None:
+    svc.models["default"]["test-llm"] = OllamaModel(id="test-llm", size="1GB", type="llm")
+
+    with (
+        patch.object(svc, "_download_model_or_set_progress", new_callable=AsyncMock),  # pyright: ignore[reportPrivateUsage]
+        patch.object(svc, "_sync_models_from_external_ollama", new_callable=AsyncMock),  # pyright: ignore[reportPrivateUsage]
+        patch.object(svc, "_fetch_show_info", new_callable=AsyncMock, return_value=(8192, None, None, None)),  # pyright: ignore[reportPrivateUsage]
+    ):
+        promise = await svc._install_model("default", "test-llm", InstallModelIn())  # pyright: ignore[reportPrivateUsage]
+        await promise.wait()
+
+    assert embedding_token_limit.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_sync_models_embedding_reports_token_limit_ollama_applies(
+    svc: OllamaExternalService, installed: InstalledInfo, deps: dict[str, Any], embedding_token_limit: AsyncMock
+) -> None:
+    svc.models["default"]["paraphrase-multilingual"] = OllamaModel(id="paraphrase-multilingual", size="500MB", type="embedding")
+    embedding_token_limit.return_value = 128
+    tags = json.dumps({"models": [{"name": "paraphrase-multilingual:latest", "size": 1024}]})
+
+    with (
+        patch(
+            "server.services.ollama_external_service.fetch_from",
+            new_callable=AsyncMock,
+            return_value=FetchResult(status_code=200, data=tags),
+        ),
+        patch.object(svc, "_fetch_show_info", new_callable=AsyncMock, return_value=(512, None, None, None)),  # pyright: ignore[reportPrivateUsage]
+    ):
+        await svc._sync_models_from_external_ollama("default", installed, is_initial_sync=True)  # pyright: ignore[reportPrivateUsage]
+
+    props = deps["endpoint_registry"].register_embeddings_as_proxy.call_args.kwargs["props"]
+    assert props.max_context_window == 128
+    assert props.context_window == 128
+
+
+@pytest.mark.asyncio
+async def test_sync_models_does_not_measure_a_decision_model(
+    svc: OllamaExternalService, installed: InstalledInfo, embedding_token_limit: AsyncMock
+) -> None:
+    svc.models["default"]["laya"] = OllamaModel(id="laya", size="500MB", type="embedding")
+    tags = json.dumps({"models": [{"name": "laya:latest", "size": 1024}]})
+
+    with (
+        patch(
+            "server.services.ollama_external_service.fetch_from",
+            new_callable=AsyncMock,
+            return_value=FetchResult(status_code=200, data=tags),
+        ),
+        patch.object(svc, "_fetch_show_info", new_callable=AsyncMock, return_value=(512, None, None, True)),  # pyright: ignore[reportPrivateUsage]
+    ):
+        await svc._sync_models_from_external_ollama("default", installed, is_initial_sync=True)  # pyright: ignore[reportPrivateUsage]
+
+    assert embedding_token_limit.call_count == 0
+
+
+async def _until_awaited(mock: AsyncMock, count: int) -> None:
+    for _ in range(100):
+        if mock.await_count >= count:
+            return
+        await asyncio.sleep(0)
+    pytest.fail(f"expected {count} awaits, got {mock.await_count}")
+
+
+@pytest.mark.asyncio
+async def test_sync_during_install_probe_leaves_one_registration(
+    svc: OllamaExternalService, installed: InstalledInfo, deps: dict[str, Any], embedding_token_limit: AsyncMock
+) -> None:
+    svc.models["default"]["bge-m3"] = OllamaModel(id="bge-m3", size="1GB", type="embedding")
+    tags = json.dumps({"models": [{"name": "bge-m3:latest", "size": 1024}]})
+    probe_done = asyncio.Event()
+
+    async def slow_probe(*_args: object, **_kwargs: object) -> int:
+        await probe_done.wait()
+        return 2048
+
+    embedding_token_limit.side_effect = slow_probe
+
+    with (
+        patch(
+            "server.services.ollama_external_service.fetch_from",
+            new_callable=AsyncMock,
+            return_value=FetchResult(status_code=200, data=tags),
+        ),
+        patch.object(svc, "_download_model_or_set_progress", new_callable=AsyncMock),  # pyright: ignore[reportPrivateUsage]
+        patch.object(svc, "_fetch_show_info", new_callable=AsyncMock, return_value=(8192, None, None, None)),  # pyright: ignore[reportPrivateUsage]
+    ):
+        promise = await svc._install_model("default", "bge-m3", InstallModelIn())  # pyright: ignore[reportPrivateUsage]
+        await _until_awaited(embedding_token_limit, 1)
+        sync = asyncio.create_task(svc._sync_models_from_external_ollama("default", installed))  # pyright: ignore[reportPrivateUsage]
+        await asyncio.sleep(0)
+        probe_done.set()
+        await asyncio.gather(promise.wait(), sync)
+
+    assert deps["endpoint_registry"].register_embeddings_as_proxy.call_count == 1
+    assert embedding_token_limit.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_syncs_leave_one_registration(
+    svc: OllamaExternalService, installed: InstalledInfo, deps: dict[str, Any], embedding_token_limit: AsyncMock
+) -> None:
+    svc.models["default"]["bge-m3"] = OllamaModel(id="bge-m3", size="1GB", type="embedding")
+    tags = json.dumps({"models": [{"name": "bge-m3:latest", "size": 1024}]})
+    probes_done = asyncio.Event()
+
+    async def slow_probe(*_args: object, **_kwargs: object) -> int:
+        await probes_done.wait()
+        return 2048
+
+    embedding_token_limit.side_effect = slow_probe
+
+    with (
+        patch(
+            "server.services.ollama_external_service.fetch_from",
+            new_callable=AsyncMock,
+            return_value=FetchResult(status_code=200, data=tags),
+        ),
+        patch.object(svc, "_fetch_show_info", new_callable=AsyncMock, return_value=(8192, None, None, None)),  # pyright: ignore[reportPrivateUsage]
+    ):
+        syncs = [asyncio.create_task(svc._sync_models_from_external_ollama("default", installed)) for _ in range(2)]  # pyright: ignore[reportPrivateUsage]
+        await _until_awaited(embedding_token_limit, 2)
+        probes_done.set()
+        await asyncio.gather(*syncs)
+
+    assert deps["endpoint_registry"].register_embeddings_as_proxy.call_count == 1
+    assert installed.models["bge-m3"].registration_id == deps["endpoint_registry"].register_embeddings_as_proxy.return_value
+
+
+def _register_embedding(installed: InstalledInfo, model_id: str = "bge-m3", registration_id: str = "reg-emb") -> ModelInstalledInfo:
+    model = _make_model_installed_info(model_id, registration_id)
+    model.type = "embedding"
+    installed.models[model_id] = model
+    return model
+
+
+@pytest.mark.asyncio
+async def test_refresh_measures_a_stale_embedding_model_and_updates_its_registration(
+    svc: OllamaExternalService, installed: InstalledInfo, deps: dict[str, Any], embedding_token_limit: AsyncMock
+) -> None:
+    _register_embedding(installed)
+    embedding_token_limit.return_value = 2048
+    fresh = MagicMock(side_effect=[False, True])
+
+    with (
+        patch.object(svc._embedding_token_limits, "has_fresh_measurement", fresh),  # pyright: ignore[reportPrivateUsage]
+        patch.object(svc, "_fetch_show_info", new_callable=AsyncMock, return_value=(8192, None, None, None)),  # pyright: ignore[reportPrivateUsage]
+    ):
+        await svc._refresh_embedding_token_limits("default", installed)  # pyright: ignore[reportPrivateUsage]
+
+    assert embedding_token_limit.call_args == call("default", "http://localhost:11434", "bge-m3")
+    assert deps["endpoint_registry"].update_context_window.call_args == call("reg-emb", context_window=2048, max_context_window=2048)
+
+
+@pytest.mark.asyncio
+async def test_refresh_keeps_the_registration_when_measuring_fails_again(
+    svc: OllamaExternalService, installed: InstalledInfo, deps: dict[str, Any], embedding_token_limit: AsyncMock
+) -> None:
+    _register_embedding(installed)
+    embedding_token_limit.return_value = 8192
+
+    with (
+        patch.object(svc._embedding_token_limits, "has_fresh_measurement", return_value=False),  # pyright: ignore[reportPrivateUsage]
+        patch.object(svc, "_fetch_show_info", new_callable=AsyncMock, return_value=(8192, None, None, None)),  # pyright: ignore[reportPrivateUsage]
+    ):
+        await svc._refresh_embedding_token_limits("default", installed)  # pyright: ignore[reportPrivateUsage]
+
+    assert embedding_token_limit.call_count == 1
+    assert deps["endpoint_registry"].update_context_window.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_refresh_leaves_fresh_and_non_embedding_models_alone(
+    svc: OllamaExternalService, installed: InstalledInfo, deps: dict[str, Any], embedding_token_limit: AsyncMock
+) -> None:
+    _register_embedding(installed)
+    installed.models["my-llm"] = _make_model_installed_info("my-llm")
+
+    with patch.object(svc._embedding_token_limits, "has_fresh_measurement", return_value=True) as fresh:  # pyright: ignore[reportPrivateUsage]
+        await svc._refresh_embedding_token_limits("default", installed)  # pyright: ignore[reportPrivateUsage]
+
+    assert fresh.call_args_list == [call("default", "bge-m3")]
+    assert embedding_token_limit.call_count == 0
+    assert deps["endpoint_registry"].update_context_window.call_count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("uninstalled", [True, False])
+async def test_refresh_skips_a_model_without_a_registration(
+    svc: OllamaExternalService, installed: InstalledInfo, deps: dict[str, Any], embedding_token_limit: AsyncMock, uninstalled: bool
+) -> None:
+    _register_embedding(installed, registration_id="")
+    embedding_token_limit.return_value = 2048
+
+    async def show(*_args: object) -> tuple[int, None, None, None]:
+        if uninstalled:
+            installed.models.pop("bge-m3")
+        return 8192, None, None, None
+
+    with (
+        patch.object(svc._embedding_token_limits, "has_fresh_measurement", MagicMock(side_effect=[False, True])),  # pyright: ignore[reportPrivateUsage]
+        patch.object(svc, "_fetch_show_info", side_effect=show),  # pyright: ignore[reportPrivateUsage]
+    ):
+        await svc._refresh_embedding_token_limits("default", installed)  # pyright: ignore[reportPrivateUsage]
+
+    assert deps["endpoint_registry"].update_context_window.call_count == 0
+
+
+@pytest.mark.asyncio
 async def test_install_model_uses_rename_as_registered_name(svc: OllamaExternalService, installed: InstalledInfo) -> None:
     svc.models["default"]["test-llm"] = OllamaModel(id="test-llm", size="1GB", type="llm")
 
@@ -1296,10 +1539,13 @@ async def test_start_sync_task_loop_runs_sync_and_breaks(svc: OllamaExternalServ
     with (
         patch("asyncio.sleep", side_effect=mock_sleep),
         patch.object(svc, "_sync_models_from_external_ollama", new_callable=AsyncMock),  # pyright: ignore[reportPrivateUsage]
+        patch.object(svc, "_refresh_embedding_token_limits", new_callable=AsyncMock) as refresh,  # pyright: ignore[reportPrivateUsage]
         patch.object(svc, "_save", new_callable=AsyncMock),  # pyright: ignore[reportPrivateUsage]
     ):
         svc._start_sync_task("default", 1)  # pyright: ignore[reportPrivateUsage]
         await svc._sync_tasks["default"]  # pyright: ignore[reportPrivateUsage]
+
+    assert refresh.call_args == call("default", installed)
 
 
 @pytest.mark.asyncio
