@@ -16,6 +16,7 @@ from opentelemetry.trace import INVALID_SPAN_CONTEXT, SpanContext
 from pydantic import BaseModel
 
 from server.error_handlers import (
+    _endpoint_tags,  # pyright: ignore[reportPrivateUsage]
     _error_type_for_status,  # pyright: ignore[reportPrivateUsage]
     _message_and_param_from_detail,  # pyright: ignore[reportPrivateUsage]
     build_error_body,
@@ -140,6 +141,7 @@ def app() -> FastAPI:
     app = FastAPI()
     register_exception_handlers(app)
     app.add_api_route("/boom", _boom, methods=["GET"])
+    app.add_api_route("/items/{item_id}", _boom, methods=["GET"])
     app.add_api_route("/traced", _traced, methods=["POST"])
     app.add_api_route("/invalid-span", _invalid_span, methods=["POST"])
     app.add_api_route("/reported", _reported, methods=["GET"])
@@ -312,7 +314,58 @@ def test_handle_unhandled_exception_reports_to_sentry_with_response_error_id(moc
         error_id=resp.headers["X-Error-Id"],
         handled=False,
         span_context=SpanContext(trace_id=TRACE_ID, span_id=SPAN_ID, is_remote=False),
+        tags={"http.method": "POST", "http.route": "/traced"},
     )
+
+
+@mock.patch("server.error_handlers.capture_exception")
+def test_handle_unhandled_exception_tags_route_template_instead_of_raw_path(mock_capture_exception: mock.MagicMock, client: TestClient):
+    client.get("/items/secret-123?api_key=hunter2")
+
+    tags = mock_capture_exception.call_args.kwargs["tags"]
+    assert tags == {"http.method": "GET", "http.route": "/items/{item_id}"}
+    assert all("secret-123" not in value and "hunter2" not in value for value in tags.values())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope_extra", [{}, {"route": object()}, {"route": mock.Mock(path_format=None)}])
+@mock.patch("server.error_handlers.capture_exception")
+async def test_handle_unhandled_exception_omits_route_tag_without_matched_route_template(
+    mock_capture_exception: mock.MagicMock, scope_extra: dict[str, object]
+):
+    request = Request({"type": "http", "method": "GET", "path": "/no/such/route", "query_string": b"", "headers": [], **scope_extra})
+
+    resp = await handle_unhandled_exception(request, RuntimeError("fail"))
+
+    assert resp.status_code == 500
+    assert mock_capture_exception.call_args.kwargs["tags"] == {"http.method": "GET"}
+
+
+class _BrokenRoute:
+    @property
+    def path_format(self) -> str:
+        raise RuntimeError("broken route")
+
+
+@pytest.mark.asyncio
+@mock.patch("server.error_handlers.capture_exception")
+async def test_handle_unhandled_exception_reports_without_endpoint_tags_when_building_them_fails(mock_capture_exception: mock.MagicMock):
+    request = Request({"type": "http", "method": "GET", "path": "/boom", "query_string": b"", "headers": [], "route": _BrokenRoute()})
+
+    resp = await handle_unhandled_exception(request, RuntimeError("fail"))
+
+    assert resp.status_code == 500
+    assert mock_capture_exception.call_count == 1
+    assert mock_capture_exception.call_args.kwargs["tags"] == {}
+
+
+@mock.patch("server.error_handlers.logger")
+def test_endpoint_tags_never_raises(mock_logger: mock.MagicMock):
+    request = mock.MagicMock(spec=Request)
+    type(request).method = mock.PropertyMock(side_effect=RuntimeError("broken scope"))
+
+    assert _endpoint_tags(request) == {}
+    assert mock_logger.warning.call_count == 1
 
 
 @mock.patch("server.error_handlers.logger")

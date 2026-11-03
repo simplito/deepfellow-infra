@@ -69,6 +69,23 @@ async def handle_validation_error(_request: Request, exc: Exception) -> JSONResp
     return JSONResponse(status_code=400, content=body)
 
 
+def _endpoint_tags(request: Request) -> dict[str, str]:
+    """Sentry tags naming the failed endpoint: the HTTP method and the matched route template, never the raw path.
+
+    `http.route` is omitted when no route matched (e.g. a request served by the static files mount).
+    Never raises: a failure yields no tags.
+    """
+    try:
+        tags = {"http.method": request.method}
+        route_template = getattr(request.scope.get("route"), "path_format", None)
+        if isinstance(route_template, str):
+            tags["http.route"] = route_template
+    except Exception:
+        logger.warning("Failed to build endpoint tags for Sentry", exc_info=True)
+        return {}
+    return tags
+
+
 async def handle_unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
     """Translate any exception no other handler caught into an OpenAI-style 500 carrying an error ID.
 
@@ -79,7 +96,8 @@ async def handle_unhandled_exception(request: Request, exc: Exception) -> JSONRe
     Starlette re-raises the exception after this handler returns, and uvicorn logs it then. If the
     response had already started (e.g. mid-stream), Starlette drops this response but the log
     line is still written. When Sentry is on, the exception is reported to it as unhandled, tagged
-    with the same IDs and its attached tags, unless already reported; that never raises.
+    with the same IDs, the endpoint's method and route template, and its attached tags, unless
+    already reported; that never raises.
     """
     error_id = str(uuid.uuid4())
     correlation = f"error_id={error_id}"
@@ -88,7 +106,7 @@ async def handle_unhandled_exception(request: Request, exc: Exception) -> JSONRe
         correlation += f", trace_id={span_context.trace_id:032x}, span_id={span_context.span_id:016x}"
     logger.error("Unhandled %s on %s %r (%s)", type(exc).__name__, request.method, request.url.path, correlation)
     if not is_reported(exc):
-        capture_exception(exc, error_id=error_id, handled=False, span_context=span_context)
+        capture_exception(exc, error_id=error_id, handled=False, span_context=span_context, tags=_endpoint_tags(request))
 
     message = f"{str(exc).rstrip()} (Error ID: {error_id})" if isinstance(exc, AppError) else f"Internal server error. Error ID: {error_id}"
     body = build_error_body(message, "api_error")

@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `/opsx:sync` command and `openspec-sync-specs` skill, from OpenSpec 1.15.0.
 - `THIRD_PARTY.md` with the MIT license notice for the OpenSpec-generated commands and skills.
 - Service status shows the Docker image being pulled (`installed.image`) from 0%, so clients can say what is downloading.
+- Sentry events for unhandled errors carry `http.method` and `http.route` (route template, not the raw URL) tags.
 
 ### Changed
 
