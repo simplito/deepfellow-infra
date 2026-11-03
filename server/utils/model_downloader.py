@@ -31,6 +31,8 @@ from server.utils.loading import Progress
 from server.utils.logger import logger
 
 _PROGRESS_LOG_STEP = 0.1  # log every ~10% of progress so the console isn't flooded with updates
+# One file of a repository: https://huggingface.co/<owner>/<repo>/resolve/<revision>/<path>
+_HF_FILE_URL = re.compile(r"^https://huggingface\.co/[^/]+/[^/]+/resolve/")
 
 
 class BDownloader:
@@ -252,7 +254,11 @@ class HuggingFaceRepoDownloader(BaseDownloader):
         https://huggingface.co/username/repo-name
         https://huggingface.co/username/repo-name/tree/main
         https://huggingface.co/api/models/username/repo-name/tree/main
+
+        A single file (`.../resolve/<revision>/<path>`) is not a repository: HuggingFaceModelDownloader handles it.
         """
+        if _HF_FILE_URL.match(url):
+            return False
         return not url.startswith("http") or (bool(re.search(self.huggingface_url_pattern, url)))
 
     @staticmethod
@@ -344,8 +350,8 @@ class HuggingFaceModelDownloader(BaseDownloader):
         ]
 
     def check_url(self, url: str) -> bool:
-        """Check is url handled by this downloader."""
-        return bool(url.startswith("https://huggingface.co/") and ".gguf" in url)
+        """Check is url handled by this downloader: a single Hugging Face file (`.../resolve/...`) or a `.gguf` URL."""
+        return bool(_HF_FILE_URL.match(url) or (url.startswith("https://huggingface.co/") and ".gguf" in url))
 
     async def download(
         self,
