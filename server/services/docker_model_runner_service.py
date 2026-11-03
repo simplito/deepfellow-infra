@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from server.config import get_main_dir
 from server.endpointregistry import ProxyOptions, RegistrationId, RegistrationOptions
-from server.models.api import EMBEDDINGS_ENDPOINTS, LLM_ENDPOINTS, ModelProps
+from server.models.api import EMBEDDINGS_ENDPOINTS, ModelProps
 from server.models.models import (
     CustomModelSpecification,
     InstallModelIn,
@@ -268,7 +268,7 @@ class DockerModelRunnerService(Base2Service[InstalledInfo, DownloadedInfo]):
         if model_type == "llm":
             model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                 model=registered_name,
-                props=ModelProps(private=True, type="llm", endpoints=LLM_ENDPOINTS),
+                props=ModelProps(private=True, type="llm"),
                 chat_completions=ProxyOptions(
                     url=f"{installed_info.base_url}/engines/v1/chat/completions",
                     rewrite_model_to=model_id,
@@ -594,7 +594,7 @@ class DockerModelRunnerService(Base2Service[InstalledInfo, DownloadedInfo]):
             if model.type == "llm":
                 model_info.registration_id = self.endpoint_registry.register_chat_completion_as_proxy(
                     model=registered_name,
-                    props=ModelProps(private=True, type="llm", endpoints=LLM_ENDPOINTS),
+                    props=ModelProps(private=True, type="llm"),
                     chat_completions=ProxyOptions(
                         url=f"{info.base_url}/engines/v1/chat/completions",
                         rewrite_model_to=model_id,

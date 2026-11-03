@@ -467,7 +467,6 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
                 props=ModelProps(
                     private=True,
                     type="llm",
-                    endpoints=self.get_supported_endpoints(),
                     context_window=context_length,
                     max_context_window=context_length,
                     supports_vision=supports_vision,
@@ -829,7 +828,6 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
                             props=ModelProps(
                                 private=True,
                                 type="llm",
-                                endpoints=self.get_supported_endpoints(),
                                 context_window=context_length,
                                 max_context_window=context_length,
                                 supports_vision=supports_vision,
@@ -937,12 +935,3 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
         info = self.get_instance_installed_info(instance)
         await self._sync_models_from_external_ollama(instance, info, is_initial_sync=False)
         await self._save()
-
-    def get_supported_endpoints(self) -> list[str]:
-        """Get supported endpoints."""
-        endpoints = ["/v1/completions", "/v1/chat/completions"]
-        if self.support_responses:
-            endpoints.append("/v1/responses")
-        if self.support_messages:
-            endpoints.append("/v1/messages")
-        return endpoints

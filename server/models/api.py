@@ -16,15 +16,16 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, SerializerFun
 
 from server.utils.logger import logger
 
-LLM_ENDPOINTS = ["/v1/completions", "/v1/chat/completions", "/v1/responses", "/v1/messages", "/api/chat"]
-LLM_SUFFIX_MAP: tuple[tuple[str, str], ...] = (
-    ("on_completion", "v1"),
-    ("on_chat_completion", "v2"),
-    ("on_responses", "v3"),
-    ("on_messages", "ant"),
-    ("on_ollama_chat", "ollama"),
+# `ChatCompletionEndpoint` callback field -> (registration type suffix, public endpoint path). The registry derives both an LLM's
+# registration type and its advertised `props.endpoints` from the callbacks actually set, so a model never lists an endpoint it can't serve.
+LLM_CALLBACK_MAP: tuple[tuple[str, str, str], ...] = (
+    ("on_completion", "v1", "/v1/completions"),
+    ("on_chat_completion", "v2", "/v1/chat/completions"),
+    ("on_responses", "v3", "/v1/responses"),
+    ("on_messages", "ant", "/v1/messages"),
+    ("on_ollama_chat", "ollama", "/api/chat"),
 )
-ALL_LLM_SUFFIXES = tuple(suffix for _, suffix in LLM_SUFFIX_MAP)
+ALL_LLM_SUFFIXES = tuple(suffix for _, suffix, _ in LLM_CALLBACK_MAP)
 EMBEDDINGS_ENDPOINTS = ["/v1/embeddings"]
 STT_ENDPOINTS = ["/v1/audio/transcriptions"]
 TTS_ENDPOINTS = ["/v1/audio/speech"]
@@ -522,7 +523,8 @@ class McpToolInfo(BaseModel):
 class ModelProps(BaseModel):
     private: bool
     type: str
-    endpoints: list[str]
+    # For LLMs the registry overwrites this with the endpoints actually registered for the model, so services leave it empty.
+    endpoints: list[str] = []
     context_window: Annotated[int, Field(gt=0)] | None = None
     max_context_window: Annotated[int, Field(gt=0)] | None = None
     prefix: str | None = None

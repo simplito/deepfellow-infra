@@ -1774,6 +1774,66 @@ def test_register_chat_completion_type_is_llm_partial():
     assert "v2" in models[0].props.type
 
 
+def test_register_chat_completion_endpoints_list_all_registered_callbacks():
+    reg = make_registry()
+    ep = make_chat_endpoint(on_chat=True, on_completion=True, on_responses=True, on_messages=True, on_ollama=True)
+
+    reg.register_chat_completion("gpt-4", ModelProps(private=False, type="llm"), ep, None)
+
+    models = reg.chat_completion_endpoints.get_models()
+    assert models[0].props.endpoints == ["/v1/completions", "/v1/chat/completions", "/v1/responses", "/v1/messages", "/api/chat"]
+
+
+def test_register_chat_completion_endpoints_drop_unregistered_from_caller_list():
+    reg = make_registry()
+    ep = make_chat_endpoint(on_chat=True, on_completion=True, on_responses=False, on_messages=False, on_ollama=False)
+    props = make_props(endpoints=["/v1/completions", "/v1/chat/completions", "/v1/responses", "/v1/messages", "/api/chat"])
+
+    reg.register_chat_completion("gpt-4", props, ep, None)
+
+    models = reg.chat_completion_endpoints.get_models()
+    assert models[0].props.endpoints == ["/v1/completions", "/v1/chat/completions"]
+    assert props.endpoints == ["/v1/completions", "/v1/chat/completions", "/v1/responses", "/v1/messages", "/api/chat"]
+
+
+def test_register_chat_completion_endpoints_keep_caller_subset():
+    reg = make_registry()
+    ep = make_chat_endpoint(on_chat=True, on_completion=True, on_responses=True, on_messages=True, on_ollama=True)
+
+    reg.register_chat_completion("claude", make_props(endpoints=["/v1/chat/completions", "/v1/messages"]), ep, None)
+
+    models = reg.chat_completion_endpoints.get_models()
+    assert models[0].props.endpoints == ["/v1/chat/completions", "/v1/messages"]
+
+
+@pytest.mark.parametrize(
+    ("ollama_chat", "expected"),
+    [
+        (None, ["/v1/chat/completions"]),
+        (ProxyOptions(url="http://example.com/api/chat"), ["/v1/chat/completions", "/api/chat"]),
+    ],
+)
+def test_register_chat_completion_as_proxy_advertises_api_chat_only_when_proxied(
+    ollama_chat: ProxyOptions | None,
+    expected: list[str],
+) -> None:
+    reg = make_registry()
+
+    reg.register_chat_completion_as_proxy(
+        model="gpt-4",
+        props=ModelProps(private=False, type="llm"),
+        chat_completions=ProxyOptions(url="http://example.com/v1/chat/completions"),
+        completions=None,
+        responses=None,
+        messages=None,
+        ollama_chat=ollama_chat,
+        registration_options=None,
+    )
+
+    models = reg.chat_completion_endpoints.get_models()
+    assert models[0].props.endpoints == expected
+
+
 @pytest.mark.asyncio
 async def test_register_chat_completion_as_proxy_registers_model():
     reg = make_registry()
@@ -2330,6 +2390,16 @@ def test_register_proxy_llm_registers_chat_completion():
     reg._register_proxy("gpt-4", "llm", make_props(), "http://example.com/", "key", RegistrationOptions(origin="http://example.com/"))  # pyright: ignore[reportPrivateUsage]
 
     assert reg.chat_completion_endpoints.has_model("gpt-4")
+
+
+def test_register_proxy_llm_keeps_peer_endpoints():
+    reg = make_registry()
+    props = make_props(endpoints=["/v1/chat/completions", "/v1/messages"])
+
+    reg._register_proxy("claude", "llm", props, "http://example.com/", "key", RegistrationOptions(origin="http://example.com/"))  # pyright: ignore[reportPrivateUsage]
+
+    models = reg.chat_completion_endpoints.get_models()
+    assert models[0].props.endpoints == ["/v1/chat/completions", "/v1/messages"]
 
 
 def test_register_proxy_tts_registers_audio_speech():
@@ -4708,7 +4778,7 @@ async def test_execute_messages_error_with_no_supported_endpoints():
     with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
         await reg.execute_messages(body)
 
-    assert "Given model not support" in exc_info.value.detail
+    assert "Given model does not support" in exc_info.value.detail
     assert "/v1/responses" not in exc_info.value.detail
     assert "/v1/chat/completions" not in exc_info.value.detail
     assert "/v1/completions" not in exc_info.value.detail
@@ -4728,7 +4798,7 @@ async def test_execute_responses_error_with_no_supported_endpoints():
     with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
         await reg.execute_responses(body)
 
-    assert "Given model not support" in exc_info.value.detail
+    assert "Given model does not support" in exc_info.value.detail
     assert "/v1/messages" not in exc_info.value.detail
     assert "/v1/chat/completions" not in exc_info.value.detail
     assert "/v1/completions" not in exc_info.value.detail
@@ -4747,7 +4817,7 @@ async def test_execute_chat_completion_error_with_no_supported_endpoints():
     with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
         await reg.execute_chat_completion(body)
 
-    assert "Given model not support" in exc_info.value.detail
+    assert "Given model does not support" in exc_info.value.detail
     assert "/v1/messages" not in exc_info.value.detail
     assert "/v1/responses" not in exc_info.value.detail
     assert "/v1/completions" not in exc_info.value.detail
@@ -4765,7 +4835,7 @@ async def test_execute_completion_error_with_no_supported_endpoints():
     with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
         await reg.execute_completion(body)
 
-    assert "Given model not support" in exc_info.value.detail
+    assert "Given model does not support" in exc_info.value.detail
     assert "/v1/messages" not in exc_info.value.detail
     assert "/v1/responses" not in exc_info.value.detail
     assert "/v1/chat/completions" not in exc_info.value.detail
@@ -4783,7 +4853,7 @@ async def test_execute_ollama_chat_error_with_no_supported_endpoints():
     with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
         await reg.execute_ollama_chat(body)
 
-    assert "Given model not support" in exc_info.value.detail
+    assert "Given model does not support" in exc_info.value.detail
     assert "/v1/messages" not in exc_info.value.detail
     assert "/v1/responses" not in exc_info.value.detail
     assert "/v1/chat/completions" not in exc_info.value.detail
@@ -4933,7 +5003,7 @@ async def test_execute_messages_raises_400_when_model_registered_for_other_endpo
         await reg.execute_messages(body)
 
     assert exc_info.value.status_code == 400
-    assert "Given model not support this endpoint" in exc_info.value.detail
+    assert "Given model does not support this endpoint" in exc_info.value.detail
 
 
 def test_session_store_evicts_oldest_when_at_capacity() -> None:

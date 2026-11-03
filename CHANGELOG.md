@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - vLLM models on GPU start again: the default `-cu129` image crashed on startup.
 - A failed install answers with the reason (e.g. the container did not become healthy), not a bare "Internal server error".
 - A host driver too old for the image's CUDA version is reported as such, not as a missing NVIDIA container toolkit.
+- `/v1/models` lists only the endpoints a model actually serves: llama.cpp, vLLM, SGLang and Docker Model Runner models no longer list `/api/chat`, and external Ollama models now do.
 - Models from a single-file Hugging Face URL install instead of failing with a 404.
 
 ### Removed

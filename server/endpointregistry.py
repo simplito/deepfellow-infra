@@ -26,7 +26,7 @@ from server.models.api import (
     ALL_LLM_SUFFIXES,
     CHAT_COMPLETION_EXTRA_FIELDS,
     COMPLETION_LEGACY_EXTRA_FIELDS,
-    LLM_SUFFIX_MAP,
+    LLM_CALLBACK_MAP,
     ApiModel,
     ApiModelProps,
     ApiModels,
@@ -363,7 +363,7 @@ class Endpoint[T]:
 
     def get_model_available_endpoints(self, model: dict[RegistrationId, RegisteredModel[T]]) -> list[str]:
         """Get model available endpoints."""
-        return list({endpoint for item in model.values() for endpoint in item.props.endpoints})
+        return list(dict.fromkeys(endpoint for item in model.values() for endpoint in item.props.endpoints))
 
     def get_model_context_window(self, model: dict[RegistrationId, RegisteredModel[T]]) -> int | None:
         """Get model context window, or None when no registration declares one."""
@@ -874,8 +874,16 @@ class EndpointRegistry:
         endpoint: ChatCompletionEndpoint,
         registration_options: RegistrationOptions | None,
     ) -> RegistrationId:
-        """Register chat completion endpoint for given model."""
-        suffixes = [suffix for field, suffix in LLM_SUFFIX_MAP if getattr(endpoint, field)]
+        """Register chat completion endpoint for given model.
+
+        `props.endpoints` is narrowed to the endpoints backed by a callback on `endpoint`, so a model never advertises one it
+        can't serve. An empty list (local services) means all registered ones; a non-empty one (a mesh peer's own list) is kept
+        only where it overlaps, since a mesh proxy registers callbacks from the peer's `type`, which can be broader than that list.
+        """
+        registered = [(suffix, path) for field, suffix, path in LLM_CALLBACK_MAP if getattr(endpoint, field)]
+        suffixes = [suffix for suffix, _ in registered]
+        endpoints = [path for _, path in registered if not props.endpoints or path in props.endpoints]
+        props = props.model_copy(update={"endpoints": endpoints})
 
         model_type = "llm" if len(suffixes) == len(ALL_LLM_SUFFIXES) else "llm-" + "-".join(suffixes)
         return self.chat_completion_endpoints.add_model(model, props, endpoint, model_type, registration_options)
@@ -1529,7 +1537,7 @@ class EndpointRegistry:
         if not endpoint or not on_messages:
             if not self.model_exists(body.model):
                 raise self.model_not_found(body.model)
-            msg = "Given model not support this endpoint.\n"
+            msg = "Given model does not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
                 if endpoint.endpoint.on_responses:
@@ -1570,7 +1578,7 @@ class EndpointRegistry:
         if not endpoint or not on_responses:
             if not self.model_exists(body.model):
                 raise self.model_not_found(body.model)
-            msg = "Given model not support this endpoint.\n"
+            msg = "Given model does not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
                 if endpoint.endpoint.on_messages:
@@ -1621,7 +1629,7 @@ class EndpointRegistry:
         if not endpoint or not on_chat_completion:
             if not self.model_exists(body.model):
                 raise self.model_not_found(body.model)
-            msg = "Given model not support this endpoint.\n"
+            msg = "Given model does not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
                 if endpoint.endpoint.on_messages:
@@ -1656,7 +1664,7 @@ class EndpointRegistry:
         if not endpoint or not on_completion:
             if not self.model_exists(body.model):
                 raise self.model_not_found(body.model)
-            msg = "Given model not support this endpoint.\n"
+            msg = "Given model does not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
                 if endpoint.endpoint.on_messages:
@@ -1691,7 +1699,7 @@ class EndpointRegistry:
         if not endpoint or not on_ollama_chat:
             if not self.model_exists(body.model):
                 raise self.model_not_found(body.model)
-            msg = "Given model not support this endpoint.\n"
+            msg = "Given model does not support this endpoint.\n"
             if endpoint:
                 supported_endpoints = []
                 if endpoint.endpoint.on_messages:

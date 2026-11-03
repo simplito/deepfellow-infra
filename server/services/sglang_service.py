@@ -25,7 +25,7 @@ from server.docker import (
     DockerOptions,
 )
 from server.endpointregistry import CapacityState, ProxyOptions, RegistrationId, RegistrationOptions
-from server.models.api import EMBEDDINGS_ENDPOINTS, LLM_ENDPOINTS, ModelProps
+from server.models.api import EMBEDDINGS_ENDPOINTS, ModelProps
 from server.models.models import (
     CustomModelField,
     CustomModelId,
@@ -1064,7 +1064,6 @@ class SglangService(Base2Service[InstalledInfo, DownloadedInfo]):
             props=ModelProps(
                 private=True,
                 type="llm",
-                endpoints=LLM_ENDPOINTS,
                 context_window=context_window,
                 max_context_window=max_context_window,
                 supports_vision=model.supports_vision,
