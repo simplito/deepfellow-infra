@@ -7,7 +7,8 @@ import asyncio
 import typing
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+import aiohttp
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import SecretStr, ValidationError
 
@@ -24,11 +25,11 @@ from server.core.dependencies import (
     get_task_manager,
 )
 from server.dynamic_config import DynamicSettings
-from server.models.config import ConfigEntry, ConfigOut, ConfigRevealOut
+from server.models.config import ConfigEntry, ConfigOut, ConfigRevealOut, SentryBrowserConfigOut
 from server.task_manager import TaskManager
 from server.utils.logger import logger
 from server.utils.model_downloader import ModelDownloader
-from server.utils.sentry import parse_dsn, sentry
+from server.utils.sentry import browser_config, parse_dsn, sentry, tunnel_url
 from server.utils.tracing import OtlpLoggingManager, tracer
 from server.websockets.infra_websocket_server import InfraWebsocketServer
 from server.websockets.parent_infra_group import ParentInfraGroup
@@ -38,6 +39,14 @@ router = APIRouter(prefix="/admin/config", tags=["Config"])
 _MASKED = "••••••••"
 _ENV_PREFIX: str = AppSettings.model_config.get("env_prefix", "DF_")  # type: ignore[call-overload]
 _SENTRY_FIELDS = frozenset({"sentry_enabled", "sentry_dsn", "sentry_environment"})
+
+# Sentry's own limit for a single event; WebUI error envelopes are far smaller.
+SENTRY_TUNNEL_MAX_BYTES = 1024 * 1024
+SENTRY_TUNNEL_CONCURRENCY = 8
+_SENTRY_TUNNEL_TIMEOUT = aiohttp.ClientTimeout(total=10, connect=5)
+# Sentry's rate-limit headers, passed back so the browser SDK backs off.
+_SENTRY_TUNNEL_PASSTHROUGH_HEADERS = ("X-Sentry-Rate-Limits", "Retry-After")
+_sentry_tunnel_slots = asyncio.Semaphore(SENTRY_TUNNEL_CONCURRENCY)
 
 
 def _is_editable(field_name: str) -> bool:
@@ -122,6 +131,67 @@ async def get_config_entries(
             )
         )
     return ConfigOut(entries=entries)
+
+
+@router.get("/sentry", summary="Sentry configuration for the WebUI.")
+async def get_sentry_browser_config(config: Annotated[AppSettings, Depends(get_config)]) -> SentryBrowserConfigOut:
+    """Return the Sentry settings the WebUI initializes its browser SDK with.
+
+    Public: the WebUI reads it before sign-in, so errors on the sign-in page are reported too. A browser
+    Sentry DSN is public by design (it only allows sending events); it is left out whenever Sentry is off.
+    """
+    return browser_config(config)
+
+
+async def _read_body(request: Request, limit: int) -> bytes | None:
+    """Return the request body, or None as soon as it is longer than `limit` bytes."""
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        return None
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > limit:
+            return None
+    return bytes(body)
+
+
+@router.post("/sentry/tunnel", summary="Forward a WebUI Sentry envelope to the configured Sentry.")
+async def sentry_tunnel(request: Request, config: Annotated[AppSettings, Depends(get_config)]) -> Response:
+    """Forward a Sentry envelope from the WebUI's browser SDK (its `tunnel` option) to the configured Sentry.
+
+    The WebUI's CSP allows requests to its own origin only (`connect-src 'self'`), so the browser can't send
+    events to the Sentry host itself. Public, like `GET /admin/config/sentry`, so errors before sign-in are
+    reported too. Never an open relay: the target is built from the configured DSN, and the envelope must
+    name that DSN. Answers 404 while Sentry is off, 400 for any other envelope, 413 above
+    `SENTRY_TUNNEL_MAX_BYTES`, 429 while `SENTRY_TUNNEL_CONCURRENCY` envelopes are already in flight, 502 when
+    Sentry can't be reached, and otherwise Sentry's own status with its rate-limit headers.
+    """
+    if _sentry_tunnel_slots.locked():
+        return Response(status_code=429, headers={"Retry-After": "60"})
+    async with _sentry_tunnel_slots:
+        envelope = await _read_body(request, SENTRY_TUNNEL_MAX_BYTES)
+        if envelope is None:
+            return Response(status_code=413)
+        try:
+            url = tunnel_url(config, envelope)
+        except ValueError:
+            return Response(status_code=400)
+        if url is None:
+            return Response(status_code=404)
+        try:
+            async with (
+                aiohttp.ClientSession(timeout=_SENTRY_TUNNEL_TIMEOUT) as session,
+                session.post(
+                    url, data=envelope, headers={"Content-Type": "application/x-sentry-envelope"}, allow_redirects=False
+                ) as upstream,
+            ):
+                headers = {name: upstream.headers[name] for name in _SENTRY_TUNNEL_PASSTHROUGH_HEADERS if name in upstream.headers}
+                return Response(status_code=upstream.status, headers=headers)
+        except (aiohttp.ClientError, TimeoutError) as e:
+            # WARNING, not ERROR: an ERROR log would itself be reported to Sentry, which is what just failed.
+            logger.warning("Could not forward a WebUI Sentry envelope to %s: %r", url, e)
+            return Response(status_code=502)
 
 
 @router.get("/{key}/reveal", summary="Reveal a secret configuration value.")

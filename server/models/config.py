@@ -21,3 +21,12 @@ class ConfigOut(BaseModel):
 class ConfigRevealOut(BaseModel):
     key: str
     value: str
+
+
+class SentryBrowserConfigOut(BaseModel):
+    """Sentry settings the WebUI initializes its browser SDK with; `dsn` and `release` are None whenever Sentry is off."""
+
+    enabled: bool
+    dsn: str | None
+    environment: str | None
+    release: str | None

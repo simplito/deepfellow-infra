@@ -28,6 +28,12 @@ PUBLIC_WHITELIST: dict[str, set[str] | None] = {
     # The OAuth authorization server's browser redirect must reach this unauthenticated —
     # it never carries a DeepFellow admin API key. See server/api/mcp_oauth.py's module docstring.
     "/mcp-oauth/callback": {"GET"},
+    # The WebUI initializes Sentry before sign-in, when it has no admin API key yet.
+    # A browser Sentry DSN is public by design. See server/api/config.py.
+    "/admin/config/sentry": {"GET"},
+    # The WebUI sends its Sentry events through Infra (same origin, allowed by the CSP), also before sign-in.
+    # It only forwards to the configured DSN. See server/api/config.py.
+    "/admin/config/sentry/tunnel": {"POST"},
 }
 
 

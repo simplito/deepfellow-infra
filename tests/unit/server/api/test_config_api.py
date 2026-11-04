@@ -4,16 +4,19 @@
 """Tests for server/api/config.py endpoints."""
 
 import asyncio
+import json
+import logging
 from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 from starlette.testclient import TestClient
 
-from server.api.config import router
+from server.api.config import SENTRY_TUNNEL_MAX_BYTES, router
 from server.config import AppSettings
 from server.core.dependencies import (
     auth_admin,
@@ -777,3 +780,233 @@ def test_update_config_applies_generation_limit(client: TestClient, config: Magi
 
     assert response.status_code == 200
     assert config.max_choices == 4
+
+
+VALID_DSN = "https://public-key@o1.ingest.sentry.io/123"
+
+
+@pytest.fixture
+def public_client(config: MagicMock) -> Generator[TestClient]:
+    # No `auth_admin` override: the endpoint must answer without any credentials.
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_config] = lambda: config
+    with TestClient(app) as c:
+        yield c
+
+
+def _set_sentry(config: MagicMock, *, enabled: bool, dsn: str, environment: str = "staging") -> None:
+    config.sentry_enabled = enabled
+    config.sentry_dsn = SecretStr(dsn)
+    config.sentry_environment = environment
+
+
+@patch("server.utils.sentry.get_infra_version", return_value="1.2.3")
+def test_sentry_browser_config_returns_dsn_without_auth_when_enabled(
+    mock_get_infra_version: MagicMock, public_client: TestClient, config: MagicMock
+) -> None:
+    _set_sentry(config, enabled=True, dsn=VALID_DSN)
+
+    resp = public_client.get("/admin/config/sentry")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"enabled": True, "dsn": VALID_DSN, "environment": "staging", "release": "1.2.3"}
+    assert mock_get_infra_version.call_count == 1
+
+
+@patch("server.utils.sentry.get_infra_version", return_value="1.2.3")
+def test_sentry_browser_config_hides_dsn_when_disabled(
+    mock_get_infra_version: MagicMock, public_client: TestClient, config: MagicMock
+) -> None:
+    _set_sentry(config, enabled=False, dsn=VALID_DSN)
+
+    resp = public_client.get("/admin/config/sentry")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"enabled": False, "dsn": None, "environment": None, "release": None}
+    assert VALID_DSN not in resp.text
+    assert mock_get_infra_version.call_count == 0
+
+
+@patch("server.utils.sentry.get_infra_version", return_value="1.2.3")
+def test_sentry_browser_config_is_off_with_empty_dsn(
+    mock_get_infra_version: MagicMock, public_client: TestClient, config: MagicMock
+) -> None:
+    _set_sentry(config, enabled=True, dsn="")
+
+    resp = public_client.get("/admin/config/sentry")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"enabled": False, "dsn": None, "environment": None, "release": None}
+    assert mock_get_infra_version.call_count == 0
+
+
+@patch("server.utils.sentry.get_infra_version", return_value="1.2.3")
+def test_sentry_browser_config_is_off_with_malformed_dsn(
+    mock_get_infra_version: MagicMock, public_client: TestClient, config: MagicMock
+) -> None:
+    _set_sentry(config, enabled=True, dsn="not-a-dsn")
+
+    resp = public_client.get("/admin/config/sentry")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"enabled": False, "dsn": None, "environment": None, "release": None}
+    assert "not-a-dsn" not in resp.text
+    assert mock_get_infra_version.call_count == 0
+
+
+@patch("server.utils.sentry.get_infra_version", return_value="1.2.3")
+def test_sentry_browser_config_defaults_environment_to_production(
+    mock_get_infra_version: MagicMock, public_client: TestClient, config: MagicMock
+) -> None:
+    _set_sentry(config, enabled=True, dsn=VALID_DSN, environment="")
+
+    resp = public_client.get("/admin/config/sentry")
+
+    assert resp.status_code == 200
+    assert resp.json()["environment"] == "production"
+    assert mock_get_infra_version.call_count == 1
+
+
+# --- sentry tunnel ---
+
+TUNNEL_PATH = "/admin/config/sentry/tunnel"
+VALID_ENVELOPE_URL = "https://o1.ingest.sentry.io/api/123/envelope/"
+
+
+def _envelope(header: object) -> bytes:
+    return json.dumps(header).encode() + b'\n{"type":"event"}\n{"message":"boom"}'
+
+
+def _upstream_session(status: int = 200, headers: dict[str, str] | None = None) -> MagicMock:
+    """Build a mock for aiohttp.ClientSession whose `post` answers with `status` and `headers`."""
+    upstream = MagicMock()
+    upstream.status = status
+    upstream.headers = headers or {}
+    request_cm = MagicMock()
+    request_cm.__aenter__ = AsyncMock(return_value=upstream)
+    request_cm.__aexit__ = AsyncMock(return_value=False)
+    session = MagicMock()
+    session.post.return_value = request_cm
+    session_cm = MagicMock()
+    session_cm.__aenter__ = AsyncMock(return_value=session)
+    session_cm.__aexit__ = AsyncMock(return_value=False)
+    return MagicMock(return_value=session_cm)
+
+
+def _posted(session_factory: MagicMock) -> MagicMock:
+    return session_factory.return_value.__aenter__.return_value.post
+
+
+def test_sentry_tunnel_forwards_envelope_to_configured_sentry_without_auth(public_client: TestClient, config: MagicMock) -> None:
+    _set_sentry(config, enabled=True, dsn=VALID_DSN)
+    envelope = _envelope({"dsn": VALID_DSN, "event_id": "abc"})
+    session_factory = _upstream_session(429, {"X-Sentry-Rate-Limits": "60:error:key", "Retry-After": "60", "X-Other": "x"})
+
+    with patch("server.api.config.aiohttp.ClientSession", session_factory):
+        resp = public_client.post(TUNNEL_PATH, content=envelope)
+
+    assert resp.status_code == 429
+    assert resp.headers["X-Sentry-Rate-Limits"] == "60:error:key"
+    assert resp.headers["Retry-After"] == "60"
+    assert "X-Other" not in resp.headers
+    _posted(session_factory).assert_called_once_with(
+        VALID_ENVELOPE_URL, data=envelope, headers={"Content-Type": "application/x-sentry-envelope"}, allow_redirects=False
+    )
+
+
+def test_sentry_tunnel_builds_url_from_configured_dsn_with_port_and_path(public_client: TestClient, config: MagicMock) -> None:
+    dsn = "https://key@sentry.example.com:9000/sub/42"
+    _set_sentry(config, enabled=True, dsn=dsn)
+    session_factory = _upstream_session()
+
+    with patch("server.api.config.aiohttp.ClientSession", session_factory):
+        resp = public_client.post(TUNNEL_PATH, content=_envelope({"dsn": dsn}))
+
+    assert resp.status_code == 200
+    assert _posted(session_factory).call_args.args == ("https://sentry.example.com:9000/sub/api/42/envelope/",)
+
+
+@pytest.mark.parametrize(
+    "envelope",
+    [
+        _envelope({"event_id": "abc"}),
+        _envelope({"dsn": 42}),
+        _envelope(["not", "an", "object"]),
+        _envelope({"dsn": "not-a-dsn"}),
+        _envelope({"dsn": "https://public-key@evil.example.com/123"}),
+        _envelope({"dsn": "https://public-key@o1.ingest.sentry.io/999"}),
+        _envelope({"dsn": "https://other-key@o1.ingest.sentry.io/123"}),
+        _envelope({"dsn": "http://public-key@o1.ingest.sentry.io/123"}),
+        _envelope({"dsn": "https://public-key@o1.ingest.sentry.io:8443/123"}),
+        b"not json\n{}",
+        b"\xff\xfe\n{}",
+        b"",
+    ],
+)
+def test_sentry_tunnel_rejects_envelope_not_for_configured_dsn(public_client: TestClient, config: MagicMock, envelope: bytes) -> None:
+    _set_sentry(config, enabled=True, dsn=VALID_DSN)
+    session_factory = _upstream_session()
+
+    with patch("server.api.config.aiohttp.ClientSession", session_factory):
+        resp = public_client.post(TUNNEL_PATH, content=envelope)
+
+    assert resp.status_code == 400
+    session_factory.assert_not_called()
+
+
+@pytest.mark.parametrize(("enabled", "dsn"), [(False, VALID_DSN), (True, ""), (True, "not-a-dsn")])
+def test_sentry_tunnel_is_not_found_while_sentry_is_off(public_client: TestClient, config: MagicMock, enabled: bool, dsn: str) -> None:
+    _set_sentry(config, enabled=enabled, dsn=dsn)
+    session_factory = _upstream_session()
+
+    with patch("server.api.config.aiohttp.ClientSession", session_factory):
+        resp = public_client.post(TUNNEL_PATH, content=_envelope({"dsn": VALID_DSN}))
+
+    assert resp.status_code == 404
+    session_factory.assert_not_called()
+
+
+@pytest.mark.parametrize("chunked", [False, True])
+def test_sentry_tunnel_rejects_envelope_over_size_limit(public_client: TestClient, config: MagicMock, chunked: bool) -> None:
+    _set_sentry(config, enabled=True, dsn=VALID_DSN)
+    envelope = _envelope({"dsn": VALID_DSN}) + b"x" * SENTRY_TUNNEL_MAX_BYTES
+    session_factory = _upstream_session()
+
+    with patch("server.api.config.aiohttp.ClientSession", session_factory):
+        # A generator body is sent chunked, without Content-Length, so only the streamed byte count can stop it.
+        content = iter([envelope[i : i + 65536] for i in range(0, len(envelope), 65536)]) if chunked else envelope
+        resp = public_client.post(TUNNEL_PATH, content=content)
+
+    assert resp.status_code == 413
+    session_factory.assert_not_called()
+
+
+@pytest.mark.parametrize("error", [aiohttp.ClientConnectionError("refused"), TimeoutError()])
+def test_sentry_tunnel_answers_bad_gateway_when_sentry_unreachable(
+    public_client: TestClient, config: MagicMock, caplog: pytest.LogCaptureFixture, error: Exception
+) -> None:
+    _set_sentry(config, enabled=True, dsn=VALID_DSN)
+    session_factory = _upstream_session()
+    _posted(session_factory).return_value.__aenter__.side_effect = error
+
+    with patch("server.api.config.aiohttp.ClientSession", session_factory), caplog.at_level(logging.WARNING):
+        resp = public_client.post(TUNNEL_PATH, content=_envelope({"dsn": VALID_DSN}))
+
+    assert resp.status_code == 502
+    assert [record.levelno for record in caplog.records] == [logging.WARNING]
+
+
+def test_sentry_tunnel_answers_too_many_requests_while_all_slots_busy(public_client: TestClient, config: MagicMock) -> None:
+    _set_sentry(config, enabled=True, dsn=VALID_DSN)
+    session_factory = _upstream_session()
+
+    with (
+        patch("server.api.config._sentry_tunnel_slots", MagicMock(locked=MagicMock(return_value=True))),
+        patch("server.api.config.aiohttp.ClientSession", session_factory),
+    ):
+        resp = public_client.post(TUNNEL_PATH, content=_envelope({"dsn": VALID_DSN}))
+
+    assert resp.status_code == 429
+    assert resp.headers["Retry-After"] == "60"
+    session_factory.assert_not_called()
