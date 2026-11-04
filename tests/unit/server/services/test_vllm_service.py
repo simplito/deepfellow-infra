@@ -3924,7 +3924,7 @@ def test_get_default_docker_tag_gpu(svc: VllmService) -> None:
 
 
 def test_default_gpu_image_is_the_plain_release_build() -> None:
-    assert _const.images["gpu"].name == "vllm/vllm-openai:v0.32.0"
+    assert _const.images["gpu"].name == "vllm/vllm-openai:v0.33.0"
 
 
 def test_get_default_docker_tag_cpu(svc: VllmService) -> None:

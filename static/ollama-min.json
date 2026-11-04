@@ -1882,50 +1882,50 @@
         },
         {
             "name": "lfm3",
-            "size": "1.7GB",
-            "hash": "2012d88e202f",
+            "size": "1.1GB",
+            "hash": "df5fd9016d22",
             "context": 262144
         },
         {
             "name": "lfm3-audio",
-            "size": "2.1GB",
-            "hash": "ecfcfb300186",
-            "context": null
+            "size": "1.7GB",
+            "hash": "3cc080be117a",
+            "context": 128000
         },
         {
             "name": "lfm3-audio:2b",
-            "size": "2.1GB",
-            "hash": "ecfcfb300186",
-            "context": null
+            "size": "1.7GB",
+            "hash": "3cc080be117a",
+            "context": 128000
         },
         {
             "name": "lfm3-omni",
-            "size": "2.4GB",
-            "hash": "8c2f5a2d126d",
+            "size": "2.0GB",
+            "hash": "b6e3243f2821",
             "context": 128000
         },
         {
             "name": "lfm3-omni:2b",
-            "size": "2.4GB",
-            "hash": "8c2f5a2d126d",
+            "size": "2.0GB",
+            "hash": "b6e3243f2821",
             "context": 128000
         },
         {
             "name": "lfm3-vl",
-            "size": "1.7GB",
-            "hash": "280791ff33bb",
+            "size": "1.5GB",
+            "hash": "b663c9779257",
             "context": 128000
         },
         {
             "name": "lfm3-vl:2b",
-            "size": "1.7GB",
-            "hash": "280791ff33bb",
+            "size": "1.5GB",
+            "hash": "b663c9779257",
             "context": 128000
         },
         {
             "name": "lfm3:1.7b",
-            "size": "1.7GB",
-            "hash": "2012d88e202f",
+            "size": "1.1GB",
+            "hash": "df5fd9016d22",
             "context": 262144
         },
         {
@@ -2379,6 +2379,18 @@
             "size": "68GB",
             "hash": "8fa55398527b",
             "context": 4096
+        },
+        {
+            "name": "mimo-v2.6",
+            "size": "6.6GB",
+            "hash": "4af06b564ed4",
+            "context": 262144
+        },
+        {
+            "name": "mimo-v2.6:9b",
+            "size": "6.6GB",
+            "hash": "4af06b564ed4",
+            "context": 262144
         },
         {
             "name": "minicpm-v",
@@ -3717,7 +3729,7 @@
         {
             "name": "qwen3.6",
             "size": "23GB",
-            "hash": "8a43277aac50",
+            "hash": "86b2d171ce90",
             "context": 262144
         },
         {
@@ -3735,13 +3747,13 @@
         {
             "name": "qwen3.6:35b",
             "size": "23GB",
-            "hash": "8a43277aac50",
+            "hash": "86b2d171ce90",
             "context": 262144
         },
         {
             "name": "qwen3.6:35b-mlx",
-            "size": "24GB",
-            "hash": "e92a3e94bbca",
+            "size": "23GB",
+            "hash": "4a5e082f2bd3",
             "context": 262144
         },
         {
@@ -4161,7 +4173,7 @@
         {
             "name": "SpeakLeash/bielik-11b-v3.0-instruct:Q4_K_M",
             "size": "6.7GB",
-            "hash": "2a22034adb28",
+            "hash": "64d9b83aa068",
             "context": 32768
         },
         {
@@ -4753,31 +4765,31 @@
         {
             "name": "d3",
             "size": "5.8GB",
-            "hash": "50e469b6b0e6",
+            "hash": "220b8c27d159",
             "context": 262144
         },
         {
             "name": "d3:27b",
             "size": "30GB",
-            "hash": "bc873824c9ed",
+            "hash": "f8fddf0710b6",
             "context": 262144
         },
         {
             "name": "d3:2b",
             "size": "3.2GB",
-            "hash": "b31336d5e0cc",
+            "hash": "8b46c3a121be",
             "context": 262144
         },
         {
             "name": "d3:4b",
             "size": "5.8GB",
-            "hash": "50e469b6b0e6",
+            "hash": "220b8c27d159",
             "context": 262144
         },
         {
             "name": "d3:9b",
             "size": "10GB",
-            "hash": "6e6c5ab6ce3a",
+            "hash": "6bb69bf91674",
             "context": 262144
         },
         {
@@ -4946,6 +4958,18 @@
             "name": "pplx-decider",
             "size": "17GB",
             "hash": "733585a9ebb6",
+            "context": 262144
+        },
+        {
+            "name": "pplx-decider-flash",
+            "size": "5.6GB",
+            "hash": "4b41cf615edc",
+            "context": 262144
+        },
+        {
+            "name": "pplx-decider-flash:4b",
+            "size": "5.6GB",
+            "hash": "4b41cf615edc",
             "context": 262144
         },
         {
