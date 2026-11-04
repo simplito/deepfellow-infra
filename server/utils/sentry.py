@@ -4,6 +4,7 @@
 """Sentry error tracking: (re)configure the SDK client, report exceptions to it and scrub secrets from its events."""
 
 import asyncio
+import json
 import logging
 import socket
 import uuid
@@ -20,6 +21,7 @@ from fastapi.exceptions import RequestValidationError
 from opentelemetry import trace
 from opentelemetry.trace import SpanContext
 from pydantic import SecretStr
+from sentry_sdk.consts import EndpointType
 from sentry_sdk.integrations.atexit import AtexitIntegration
 from sentry_sdk.integrations.dedupe import DedupeIntegration
 from sentry_sdk.types import Event, Hint
@@ -28,6 +30,7 @@ from starlette.exceptions import HTTPException
 
 from server.config import AppSettings
 from server.dynamic_config import DynamicSettings
+from server.models.config import SentryBrowserConfigOut
 from server.utils.exceptions import (
     ApiError,
     DockerImageAuthorizationError,
@@ -138,6 +141,53 @@ def _target_for(settings: AppSettings | DynamicSettings) -> _Target:
     if not settings.sentry_enabled or not dsn:
         return _OFF
     return _Target(active=True, dsn=dsn, environment=settings.sentry_environment or DEFAULT_ENVIRONMENT)
+
+
+def browser_config(settings: AppSettings) -> SentryBrowserConfigOut:
+    """Return the Sentry settings for the WebUI's browser SDK, on only under the same conditions as the server's client.
+
+    A malformed DSN counts as off, so the browser never gets a DSN the server itself refuses to use. The
+    release (the exact Infra version) is left out while Sentry is off, so the public endpoint can't be
+    used to fingerprint installs that don't use Sentry.
+    """
+    if _browser_dsn(settings) is None:
+        return SentryBrowserConfigOut(enabled=False, dsn=None, environment=None, release=None)
+    target = _target_for(settings)
+    return SentryBrowserConfigOut(enabled=True, dsn=target.dsn, environment=target.environment, release=get_infra_version())
+
+
+def _browser_dsn(settings: AppSettings) -> Dsn | None:
+    """Return the parsed DSN the WebUI reports to, or None while Sentry is off or its DSN is malformed."""
+    target = _target_for(settings)
+    if not target.active:
+        return None
+    try:
+        return parse_dsn(target.dsn)
+    except ValueError:
+        return None
+
+
+def tunnel_url(settings: AppSettings, envelope: bytes) -> str | None:
+    """Return where to forward a WebUI Sentry `envelope`, or None while Sentry is off.
+
+    The URL is built from the configured DSN only, and the envelope's own `dsn` header must name that same
+    Sentry (scheme, host, path, project and key), so the tunnel can never be used to send anything elsewhere.
+
+    Raises:
+        ValueError: If the envelope's first line is not a JSON header with a `dsn` matching the configured one.
+    """
+    configured = _browser_dsn(settings)
+    if configured is None:
+        return None
+    header: object = json.loads(envelope.split(b"\n", 1)[0])
+    dsn = cast("dict[str, object]", header).get("dsn") if isinstance(header, dict) else None
+    if not isinstance(dsn, str) or _dsn_identity(parse_dsn(dsn)) != _dsn_identity(configured):
+        raise ValueError("The envelope header does not name the configured Sentry DSN")
+    return configured.to_auth().get_api_url(EndpointType.ENVELOPE)
+
+
+def _dsn_identity(dsn: Dsn) -> tuple[str, str, str, str, str]:
+    return (dsn.scheme, dsn.netloc, dsn.path, dsn.project_id, dsn.public_key)
 
 
 class _SdkWarningForwarder(logging.Handler):

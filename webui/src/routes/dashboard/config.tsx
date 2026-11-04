@@ -33,7 +33,7 @@ import {
 import { apiClient } from "@/deepfellow/client";
 import type { ConfigEntry } from "@/deepfellow/types";
 import { useRequireAuth } from "@/hooks/use-auth";
-import { isBooleanValue } from "@/utils/config-helpers";
+import { isBooleanValue, sortConfigEntries } from "@/utils/config-helpers";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
@@ -393,157 +393,147 @@ function ConfigPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {[...data.entries]
-                          .sort((a, b) => {
-                            const aFilled = a.is_secret || Boolean(a.value);
-                            const bFilled = b.is_secret || Boolean(b.value);
-                            return (bFilled ? 1 : 0) - (aFilled ? 1 : 0);
-                          })
-                          .map((entry) => (
-                            <TableRow key={entry.key}>
-                              <TableCell className="pl-6 font-mono text-sm">
-                                {entry.key}
-                              </TableCell>
-                              <TableCell className="font-mono text-sm">
-                                {entry.field_name in editing ? (
-                                  isBooleanValue(entry.value) ? (
-                                    <Switch
-                                      checked={
-                                        editing[entry.field_name] === "True"
-                                      }
-                                      onCheckedChange={(checked) =>
-                                        setEditing((prev) => ({
-                                          ...prev,
-                                          [entry.field_name]: checked
-                                            ? "True"
-                                            : "False",
-                                        }))
-                                      }
-                                    />
-                                  ) : (
-                                    <Input
-                                      autoFocus
-                                      className="h-8 max-w-xs"
-                                      type={
-                                        entry.is_secret ? "password" : "text"
-                                      }
-                                      // Stop browsers from suggesting/autofilling a saved login
-                                      // password into this field just because type="password".
-                                      autoComplete={
-                                        entry.is_secret ? "new-password" : "off"
-                                      }
-                                      placeholder={
-                                        entry.is_secret
-                                          ? "Enter new value"
-                                          : undefined
-                                      }
-                                      value={editing[entry.field_name]}
-                                      onChange={(e) =>
-                                        setEditing((prev) => ({
-                                          ...prev,
-                                          [entry.field_name]: e.target.value,
-                                        }))
-                                      }
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter")
-                                          confirmEdit(entry);
-                                        if (e.key === "Escape")
-                                          cancelEdit(entry);
-                                      }}
-                                    />
-                                  )
-                                ) : entry.is_secret ? (
-                                  entry.key in revealed ? (
-                                    revealed[entry.key]
-                                  ) : (
-                                    <span className="text-muted-foreground tracking-widest">
-                                      ••••••••
-                                    </span>
-                                  )
-                                ) : entry.value ? (
-                                  entry.value
+                        {sortConfigEntries(data.entries).map((entry) => (
+                          <TableRow key={entry.key}>
+                            <TableCell className="pl-6 font-mono text-sm">
+                              {entry.key}
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {entry.field_name in editing ? (
+                                isBooleanValue(entry.value) ? (
+                                  <Switch
+                                    checked={
+                                      editing[entry.field_name] === "True"
+                                    }
+                                    onCheckedChange={(checked) =>
+                                      setEditing((prev) => ({
+                                        ...prev,
+                                        [entry.field_name]: checked
+                                          ? "True"
+                                          : "False",
+                                      }))
+                                    }
+                                  />
                                 ) : (
-                                  <span className="text-muted-foreground italic">
-                                    -
+                                  <Input
+                                    autoFocus
+                                    className="h-8 max-w-xs"
+                                    type={entry.is_secret ? "password" : "text"}
+                                    // Stop browsers from suggesting/autofilling a saved login
+                                    // password into this field just because type="password".
+                                    autoComplete={
+                                      entry.is_secret ? "new-password" : "off"
+                                    }
+                                    placeholder={
+                                      entry.is_secret
+                                        ? "Enter new value"
+                                        : undefined
+                                    }
+                                    value={editing[entry.field_name]}
+                                    onChange={(e) =>
+                                      setEditing((prev) => ({
+                                        ...prev,
+                                        [entry.field_name]: e.target.value,
+                                      }))
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") confirmEdit(entry);
+                                      if (e.key === "Escape") cancelEdit(entry);
+                                    }}
+                                  />
+                                )
+                              ) : entry.is_secret ? (
+                                entry.key in revealed ? (
+                                  revealed[entry.key]
+                                ) : (
+                                  <span className="text-muted-foreground tracking-widest">
+                                    ••••••••
                                   </span>
-                                )}
-                              </TableCell>
-                              <TableCell className="pr-6 text-right">
-                                <div className="flex justify-end gap-1">
-                                  {entry.field_name in editing ? (
-                                    <>
+                                )
+                              ) : entry.value ? (
+                                entry.value
+                              ) : (
+                                <span className="text-muted-foreground italic">
+                                  -
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="pr-6 text-right">
+                              <div className="flex justify-end gap-1">
+                                {entry.field_name in editing ? (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="size-7"
+                                      onClick={() => confirmEdit(entry)}
+                                      disabled={updateMutation.isPending}
+                                      title="Save"
+                                    >
+                                      <Check className="size-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="size-7"
+                                      onClick={() => cancelEdit(entry)}
+                                      disabled={updateMutation.isPending}
+                                      title="Cancel"
+                                    >
+                                      <X className="size-4" />
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    {entry.is_editable && (
                                       <Button
                                         variant="ghost"
                                         size="icon"
                                         className="size-7"
-                                        onClick={() => confirmEdit(entry)}
-                                        disabled={updateMutation.isPending}
-                                        title="Save"
+                                        onClick={() => startEdit(entry)}
+                                        title="Edit value"
                                       >
-                                        <Check className="size-4" />
+                                        <Pencil className="size-4" />
                                       </Button>
+                                    )}
+                                    {entry.is_secret && (
                                       <Button
                                         variant="ghost"
                                         size="icon"
                                         className="size-7"
-                                        onClick={() => cancelEdit(entry)}
-                                        disabled={updateMutation.isPending}
-                                        title="Cancel"
+                                        onClick={() => handleReveal(entry)}
+                                        title={
+                                          entry.key in revealed
+                                            ? "Hide value"
+                                            : "Reveal value"
+                                        }
                                       >
-                                        <X className="size-4" />
-                                      </Button>
-                                    </>
-                                  ) : (
-                                    <>
-                                      {entry.is_editable && (
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="size-7"
-                                          onClick={() => startEdit(entry)}
-                                          title="Edit value"
-                                        >
-                                          <Pencil className="size-4" />
-                                        </Button>
-                                      )}
-                                      {entry.is_secret && (
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="size-7"
-                                          onClick={() => handleReveal(entry)}
-                                          title={
-                                            entry.key in revealed
-                                              ? "Hide value"
-                                              : "Reveal value"
-                                          }
-                                        >
-                                          {entry.key in revealed ? (
-                                            <EyeOff className="size-4" />
-                                          ) : (
-                                            <Eye className="size-4" />
-                                          )}
-                                        </Button>
-                                      )}
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="size-7"
-                                        onClick={() => handleCopy(entry)}
-                                        title="Copy to clipboard"
-                                      >
-                                        {copied === entry.key ? (
-                                          <ClipboardCheck className="size-4" />
+                                        {entry.key in revealed ? (
+                                          <EyeOff className="size-4" />
                                         ) : (
-                                          <Clipboard className="size-4" />
+                                          <Eye className="size-4" />
                                         )}
                                       </Button>
-                                    </>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                                    )}
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="size-7"
+                                      onClick={() => handleCopy(entry)}
+                                      title="Copy to clipboard"
+                                    >
+                                      {copied === entry.key ? (
+                                        <ClipboardCheck className="size-4" />
+                                      ) : (
+                                        <Clipboard className="size-4" />
+                                      )}
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
                       </TableBody>
                     </Table>
                   )}

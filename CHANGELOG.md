@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+
+- WebUI reports render errors, uncaught exceptions and unhandled promise rejections to Sentry, including on the sign-in page, and shows a fallback screen instead of a blank page.
+- Public `GET /admin/config/sentry` returning the browser Sentry settings; the DSN and the Infra version are left out while Sentry is off.
+- Public `POST /admin/config/sentry/tunnel` forwarding the WebUI's Sentry events to the configured Sentry only, so the WebUI's CSP can keep `connect-src 'self'`.
+- Sentry settings sit next to the OTel ones on the WebUI Configuration page.
+
 ## [0.38.0] - 2026-11-04
 
 ### Added
