@@ -20,7 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - OpenSpec `/opsx:*` commands and `openspec-*` skills regenerated with OpenSpec 1.15.0 (from 1.3.1).
 - **Breaking:** Ollama install and update reject unknown spec fields like `url`; saved configs only warn.
 - Installed services load in the background after start; their models return `503` with `Retry-After` until ready.
-- **Breaking:** vLLM on GPU defaults to CUDA 13 (`v0.32.0`); drivers older than 580 must pin `v0.29.0-cu129-ubuntu2404` (the `-cu129` builds of `v0.30.0`–`v0.32.0` don't start).
+- **Breaking:** vLLM on GPU defaults to CUDA 13 (`v0.33.0`); drivers older than 580 must pin `v0.29.0-cu129-ubuntu2404` (the `-cu129` builds of `v0.30.0`–`v0.32.0` don't start).
+- Default images are now Ollama `0.40.14`, llama.cpp `b12098`, SGLang `v0.5.23-cu130` and vLLM `v0.33.0`; unpinned instances switch on next start and keep their models. Model catalogs refreshed.
 - `web-search` MCP image bumped to `v0.3.3`; it now uses streamable HTTP instead of SSE.
 - `changelog-check` also runs on `main` and fails when a merge puts an entry under a released version.
 - Unknown model errors return OpenAI's `code: model_not_found`.

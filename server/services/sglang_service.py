@@ -213,7 +213,7 @@ def _read_models() -> dict[str, SglangModel]:
 
 
 _const = SglangConst(
-    image=DockerImage(name="lmsysorg/sglang:v0.5.22-cu130", size="15.2 GB"),
+    image=DockerImage(name="lmsysorg/sglang:v0.5.23-cu130", size="15.2 GB"),
     models=_read_models(),
 )
 
