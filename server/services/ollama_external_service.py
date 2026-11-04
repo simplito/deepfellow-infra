@@ -4,6 +4,7 @@
 """Ollama external service."""
 
 import asyncio
+import functools
 import json
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal
@@ -52,6 +53,7 @@ from server.utils.loading import Progress
 from server.utils.logger import logger
 from server.utils.ollama import decision_models_unsupported_message, raise_ollama_pull_error, supports_decision_models
 from server.utils.ollama_embedding_limit import OllamaEmbeddingTokenLimits
+from server.utils.ollama_tokenizer import OllamaTokenizers
 from server.utils.size_fetcher import fetch_ollama_ref_bytes, fmt_size
 
 
@@ -156,6 +158,7 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
     _installing: set[tuple[str, str]]
     _warmth_poll_tasks: dict[str, asyncio.Task[None]]
     _embedding_token_limits: OllamaEmbeddingTokenLimits
+    _tokenizers: OllamaTokenizers
     _persists_model_definitions = False
 
     def _after_init(self) -> None:
@@ -167,6 +170,7 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
             self.config.get_storage_services_dir() / self.get_type() / "embedding_token_limits.json",
             max_age_seconds=_EMBEDDING_LIMIT_MAX_AGE_SECONDS,
         )
+        self._tokenizers = OllamaTokenizers()
 
     def load_default_models(self, instance: str) -> None:
         """Load default models to instance."""
@@ -511,6 +515,7 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
                 ),
                 options=ProxyOptions(url=f"{installed_info.base_url}/v1/embeddings", rewrite_model_to=model_id),
                 registration_options=RegistrationOptions(origin="local", owned_by=self.get_type(), warm=False),
+                tokenizer=functools.partial(self._tokenizers.archive, installed_info.base_url, model_id),
             )
         if model_type == "decision":
             model_info.registration_id = self.endpoint_registry.register_systemone_as_proxy(
@@ -930,6 +935,7 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
                             registration_options=RegistrationOptions(
                                 origin="local", alias=registered_alias, owned_by=self.get_type(), warm=False
                             ),
+                            tokenizer=functools.partial(self._tokenizers.archive, info.base_url, model_id),
                         )
                     if model.type == "decision":
                         model_info.registration_id = self.endpoint_registry.register_systemone_as_proxy(

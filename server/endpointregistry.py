@@ -4,6 +4,7 @@
 """Endpoint registry holds callbacks for given endpoints and models."""
 
 import asyncio
+import functools
 import json
 import random
 import time
@@ -11,7 +12,7 @@ import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple, TypeVar, cast
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 import aiohttp
 from aiohttp import ClientTimeout, JsonPayload
@@ -68,6 +69,8 @@ type EndpointCallback[T] = Callable[[T, Request | None], Awaitable[StarletteResp
 type CustomEndpointCallback = Callable[[Request], Awaitable[StarletteResponse]]
 type McpEndpointCallback = Callable[[Request], Awaitable[StarletteResponse]]
 
+type TokenizerSource = Callable[[], Awaitable[bytes | None]]
+"""Returns the model's tokenizer as a doc-chunker zip (`tokenizer.json` + `tokenizer_config.json`), or None if it has none."""
 type CapacityState = int | Literal["unbounded", "unknown"]
 """A backend's routing concurrency limit: a positive int (known, finite), "unbounded" (no
 concurrency concept, e.g. a cloud/proxy backend), or "unknown" (we tried and failed to
@@ -96,6 +99,8 @@ _MCP_PROXY_MAX_BODY_BYTES = 10 * 1024 * 1024  # generous for MCP JSON-RPC payloa
 
 class SimpleEndpoint[T](NamedTuple):
     on_request: EndpointCallback[T]
+    tokenizer: TokenizerSource | None = None
+    """Only embeddings set it: the tokenizer `GET /v1/models/{model}/tokenizer` serves."""
 
 
 class CustomEndpoint(NamedTuple):
@@ -958,13 +963,14 @@ class EndpointRegistry:
         props: ModelProps,
         options: ProxyOptions,
         registration_options: RegistrationOptions | None,
+        tokenizer: TokenizerSource | None = None,
     ) -> RegistrationId:
         """Register embeddings for given model as a proxy."""
 
         async def on_request(body: EmbeddingRequest, request: Request | None) -> StreamingResponse:
             return await post_json(body, options, request, timeout=self._proxy_timeout)
 
-        return self.register_embeddings(model, props, SimpleEndpoint(on_request=on_request), registration_options)
+        return self.register_embeddings(model, props, SimpleEndpoint(on_request=on_request, tokenizer=tokenizer), registration_options)
 
     def unregister_embeddings(self, model: str, registration_id: RegistrationId) -> None:
         """Unregister embeddings for given model."""
@@ -1484,14 +1490,15 @@ class EndpointRegistry:
                 registration_options=registration_options,
             )
         elif type == "embedding":
+            headers = {"Authorization": f"Bearer {api_key}"}
             self.register_embeddings_as_proxy(
                 model=model_id,
                 props=props,
-                options=ProxyOptions(
-                    url=urljoin(url, "v1/embeddings"),
-                    headers={"Authorization": f"Bearer {api_key}"},
-                ),
+                options=ProxyOptions(url=urljoin(url, "v1/embeddings"), headers=headers),
                 registration_options=registration_options,
+                tokenizer=functools.partial(
+                    get_tokenizer, urljoin(url, f"v1/models/{quote(model_id, safe='/:')}/tokenizer"), headers, self._proxy_timeout
+                ),
             )
         elif type == "rerank":
             self.register_rerank_as_proxy(
@@ -1750,6 +1757,32 @@ class EndpointRegistry:
 
         return await self.with_usage(endpoint, func)
 
+    async def get_embeddings_tokenizer(self, model_id: ModelId) -> tuple[bytes, int | None]:
+        """Return an embedding model's tokenizer zip and its smallest limit over registrations; 404 if it has none, 503 if one failed."""
+        registrations = list(self.embeddings_endpoints.models.get(model_id, {}).values())
+        if not registrations:
+            if not self.model_exists(model_id):
+                raise self.model_not_found(model_id)
+            raise HTTPException(400, "Given model is not supported")
+        if len({r.name for r in registrations}) > 1:
+            raise HTTPException(404, "tokenizer_not_available")
+        failed = False
+        for registered in registrations:
+            if not registered.endpoint.tokenizer:
+                continue
+            try:
+                archive = await registered.endpoint.tokenizer()
+            except Exception:
+                logger.warning("Tokenizer of %r from %s failed, trying the next backend", model_id, registered.origin, exc_info=True)
+                failed = True
+                continue
+            if archive:
+                limits = [r.props.max_context_window for r in registrations if r.props.max_context_window is not None]
+                return archive, min(limits) if limits else None
+        if failed:
+            raise HTTPException(503, "tokenizer_fetch_failed")
+        raise HTTPException(404, "tokenizer_not_available")
+
     async def execute_images_generations(
         self,
         body: ImagesRequest,
@@ -1998,6 +2031,21 @@ def _classify_error(e: Exception) -> str:
     if isinstance(e, HttpClientError):
         return "http_error"
     return "model_error"
+
+
+async def get_tokenizer(url: str, headers: dict[str, str], timeout: ClientTimeout) -> bytes | None:
+    """Fetch a model's tokenizer zip from another infra, or None when it has none (404); other failures raise."""
+    try:
+        response = await make_http_request(url=url, headers=headers, timeout=timeout)
+    except aiohttp.ClientError as e:
+        raise HTTPException(502, f"Tokenizer fetch failed: {e}") from e
+    if response.response.status == 404:
+        await response.discard()
+        return None
+    if response.response.status != 200:
+        await response.discard()
+        raise HTTPException(502, f"Tokenizer fetch failed with status {response.response.status}")
+    return b"".join([chunk async for chunk in response.content])
 
 
 async def post_json(

@@ -39,6 +39,7 @@ from server.endpointregistry import (
     _read_body_with_limit,  # pyright: ignore[reportPrivateUsage]
     _rewrite_sse_endpoint_events,  # pyright: ignore[reportPrivateUsage]
     _unwrap_json_text,  # pyright: ignore[reportPrivateUsage]
+    get_tokenizer,
     post_form,
     post_json,
     post_json_rerank_sglang,
@@ -6319,3 +6320,277 @@ async def test_execute_raises_503_while_model_is_loading(method: str):
         await getattr(reg, method)(body)
 
     assert exc_info.value.status_code == 503
+
+
+# ─── get_embeddings_tokenizer ─────────────────────────────────────────────────
+
+
+def _register_embedding(
+    reg: EndpointRegistry,
+    model: str,
+    tokenizer: AsyncMock | None,
+    max_context_window: int | None,
+    origin: str = "local",
+    alias: str | None = None,
+) -> None:
+    reg.register_embeddings(
+        model,
+        make_props(type="embedding", max_context_window=max_context_window),
+        SimpleEndpoint(on_request=AsyncMock(), tokenizer=tokenizer),
+        RegistrationOptions(origin=origin, alias=alias),
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_embeddings_tokenizer_returns_archive_and_limit():
+    reg = make_registry()
+    _register_embedding(reg, "bge-m3", AsyncMock(return_value=b"zip"), 8192)
+
+    archive, max_tokens = await reg.get_embeddings_tokenizer("bge-m3")
+
+    assert archive == b"zip"
+    assert max_tokens == 8192
+
+
+@pytest.mark.asyncio
+async def test_get_embeddings_tokenizer_reports_smallest_limit_over_backends():
+    reg = make_registry()
+    _register_embedding(reg, "bge-m3", AsyncMock(return_value=b"zip"), 8192)
+    _register_embedding(reg, "bge-m3", None, 2048)
+    _register_embedding(reg, "bge-m3", None, None)
+
+    _, max_tokens = await reg.get_embeddings_tokenizer("bge-m3")
+
+    assert max_tokens == 2048
+
+
+@pytest.mark.asyncio
+async def test_get_embeddings_tokenizer_skips_backends_without_tokenizer():
+    reg = make_registry()
+    _register_embedding(reg, "bge-m3", AsyncMock(return_value=None), 8192)
+    _register_embedding(reg, "bge-m3", AsyncMock(return_value=b"zip"), 8192)
+
+    archive, _ = await reg.get_embeddings_tokenizer("bge-m3")
+
+    assert archive == b"zip"
+
+
+@pytest.mark.asyncio
+async def test_get_embeddings_tokenizer_without_known_limit_returns_none():
+    reg = make_registry()
+    _register_embedding(reg, "bge-m3", AsyncMock(return_value=b"zip"), None)
+
+    _, max_tokens = await reg.get_embeddings_tokenizer("bge-m3")
+
+    assert max_tokens is None
+
+
+@pytest.mark.asyncio
+async def test_get_embeddings_tokenizer_404_when_no_backend_has_tokenizer():
+    reg = make_registry()
+    _register_embedding(reg, "text-embedding-3-small", None, 8191)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.get_embeddings_tokenizer("text-embedding-3-small")
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "tokenizer_not_available"
+
+
+@pytest.mark.asyncio
+async def test_get_embeddings_tokenizer_404_for_unknown_model():
+    reg = make_registry()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.get_embeddings_tokenizer("unknown")
+
+    assert isinstance(exc_info.value, OpenAIHTTPException)
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.code == "model_not_found"
+
+
+@pytest.mark.asyncio
+async def test_get_embeddings_tokenizer_503_while_model_is_loading():
+    reg = make_registry()
+    reg.set_model_loading("emb")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.get_embeddings_tokenizer("emb")
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.headers == {"Retry-After": "5"}
+
+
+@pytest.mark.asyncio
+async def test_get_embeddings_tokenizer_400_for_non_embedding_model():
+    reg = make_registry()
+    reg.register_chat_completion("llm", make_props(), make_chat_endpoint(), RegistrationOptions(origin="local"))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.get_embeddings_tokenizer("llm")
+
+    assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_register_embeddings_as_proxy_keeps_tokenizer_source():
+    reg = make_registry()
+    tokenizer = AsyncMock(return_value=b"zip")
+    reg.register_embeddings_as_proxy(
+        "bge-m3",
+        make_props(type="embedding"),
+        ProxyOptions(url="http://vllm:8000/v1/embeddings"),
+        RegistrationOptions(origin="local"),
+        tokenizer=tokenizer,
+    )
+
+    archive, _ = await reg.get_embeddings_tokenizer("bge-m3")
+
+    assert archive == b"zip"
+
+
+@pytest.mark.asyncio
+async def test_get_embeddings_tokenizer_serves_alias_of_one_model():
+    reg = make_registry()
+    _register_embedding(reg, "bge-m3", AsyncMock(return_value=b"zip"), 8192, alias="embed")
+
+    archive, max_tokens = await reg.get_embeddings_tokenizer("embed")
+
+    assert archive == b"zip"
+    assert max_tokens == 8192
+
+
+@pytest.mark.asyncio
+async def test_get_embeddings_tokenizer_404_for_alias_over_different_models():
+    reg = make_registry()
+    bge_tokenizer = AsyncMock(return_value=b"zip")
+    _register_embedding(reg, "bge-m3", bge_tokenizer, 8192, alias="embed")
+    _register_embedding(reg, "nomic-embed-text", None, 2048, alias="embed")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.get_embeddings_tokenizer("embed")
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "tokenizer_not_available"
+    assert bge_tokenizer.await_count == 0
+
+
+def _http_response(status: int, chunks: list[bytes] | None = None) -> MagicMock:
+    async def content():
+        for chunk in chunks or []:
+            yield chunk
+
+    response = MagicMock()
+    response.response.status = status
+    response.content = content()
+    response.discard = AsyncMock()
+    return response
+
+
+@pytest.mark.asyncio
+async def test_register_proxy_embedding_fetches_tokenizer_from_peer():
+    reg = make_registry()
+    reg._register_proxy(  # pyright: ignore[reportPrivateUsage]
+        "BAAI/bge-m3", "embedding", make_props(type="embedding"), "http://child/", "key", RegistrationOptions(origin="http://child/")
+    )
+
+    with patch(
+        "server.endpointregistry.make_http_request", new_callable=AsyncMock, return_value=_http_response(200, [b"PK", b"zip"])
+    ) as mock_req:
+        archive, _ = await reg.get_embeddings_tokenizer("BAAI/bge-m3")
+
+    assert archive == b"PKzip"
+    assert mock_req.call_args.kwargs["url"] == "http://child/v1/models/BAAI/bge-m3/tokenizer"
+    assert mock_req.call_args.kwargs["headers"] == {"Authorization": "Bearer key"}
+
+
+@pytest.mark.asyncio
+async def test_register_proxy_embedding_404_when_peer_has_no_tokenizer():
+    reg = make_registry()
+    reg._register_proxy(  # pyright: ignore[reportPrivateUsage]
+        "nomic-embed-text", "embedding", make_props(type="embedding"), "http://child/", "key", RegistrationOptions(origin="http://child/")
+    )
+    response = _http_response(404)
+
+    with (
+        patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, return_value=response),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await reg.get_embeddings_tokenizer("nomic-embed-text")
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "tokenizer_not_available"
+    assert response.discard.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_get_embeddings_tokenizer_skips_backend_that_fails():
+    reg = make_registry()
+    _register_embedding(reg, "bge-m3", AsyncMock(side_effect=HTTPException(502, "Tokenizer fetch failed")), 8192, origin="http://child/")
+    _register_embedding(reg, "bge-m3", AsyncMock(return_value=b"zip"), 8192)
+
+    archive, _ = await reg.get_embeddings_tokenizer("bge-m3")
+
+    assert archive == b"zip"
+
+
+@pytest.mark.asyncio
+async def test_get_embeddings_tokenizer_503_when_only_backend_fails():
+    reg = make_registry()
+    _register_embedding(reg, "bge-m3", AsyncMock(side_effect=HTTPException(502, "Tokenizer fetch failed")), 8192, origin="http://child/")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.get_embeddings_tokenizer("bge-m3")
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == "tokenizer_fetch_failed"
+
+
+@pytest.mark.asyncio
+async def test_get_embeddings_tokenizer_503_when_a_failure_hides_the_answer():
+    reg = make_registry()
+    _register_embedding(reg, "bge-m3", AsyncMock(side_effect=OSError("permission denied")), 8192)
+    _register_embedding(reg, "bge-m3", AsyncMock(return_value=None), 8192)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.get_embeddings_tokenizer("bge-m3")
+
+    assert exc_info.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_register_proxy_embedding_quotes_model_name_in_tokenizer_url():
+    reg = make_registry()
+    reg._register_proxy(  # pyright: ignore[reportPrivateUsage]
+        "my model#1", "embedding", make_props(type="embedding"), "http://child/", "key", RegistrationOptions(origin="http://child/")
+    )
+
+    with patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, return_value=_http_response(200, [b"zip"])) as mock_req:
+        await reg.get_embeddings_tokenizer("my model#1")
+
+    assert mock_req.call_args.kwargs["url"] == "http://child/v1/models/my%20model%231/tokenizer"
+
+
+@pytest.mark.asyncio
+async def test_get_tokenizer_502_when_peer_fails():
+    response = _http_response(500)
+
+    with (
+        patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, return_value=response),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await get_tokenizer("http://child/v1/models/m/tokenizer", {}, aiohttp.ClientTimeout(total=1))
+
+    assert exc_info.value.status_code == 502
+    assert response.discard.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_get_tokenizer_502_when_peer_unreachable():
+    with (
+        patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, side_effect=aiohttp.ClientConnectionError("refused")),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await get_tokenizer("http://child/v1/models/m/tokenizer", {}, aiohttp.ClientTimeout(total=1))
+
+    assert exc_info.value.status_code == 502

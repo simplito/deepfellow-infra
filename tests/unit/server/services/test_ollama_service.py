@@ -1278,6 +1278,9 @@ async def test_install_model_embedding_reports_token_limit_ollama_applies(
     assert props.max_context_window == 2048
     assert props.context_window == 2048
     assert embedding_token_limit.call_args == call("default", "http://localhost:11434", "bge-m3", scope="4096", context_ceiling=4096)
+    tokenizer = deps["endpoint_registry"].register_embeddings_as_proxy.call_args.kwargs["tokenizer"]
+    assert tokenizer.func == svc._tokenizers.archive  # pyright: ignore[reportPrivateUsage]
+    assert tokenizer.args == ("http://localhost:11434", "bge-m3")
 
 
 @pytest.mark.asyncio

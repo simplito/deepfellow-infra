@@ -27,6 +27,7 @@ dependencies = [
     "opentelemetry-sdk>=1.27.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.27.0",
     "sentry-sdk>=2.46.0",
+    "tokenizers~=0.23.3",
 ]
 
 [dependency-groups]

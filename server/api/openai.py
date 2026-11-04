@@ -5,7 +5,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Form, Path, Query, Request
+from fastapi import APIRouter, Body, Depends, Form, Path, Query, Request, Response
 
 from server.config import AppSettings
 from server.core.dependencies import auth_server, get_config, get_endpoint_registry
@@ -52,6 +52,34 @@ async def on_models(
     """
     models = endpoint_registry.get_models()
     return models if additional_data else ApiModelsCompatible(**models.model_dump())
+
+
+@router.get(
+    "/v1/models/{model_id:path}/tokenizer",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {"application/zip": {}},
+            "headers": {
+                "X-Max-Tokens": {"description": "Most tokens the model embeds, the smallest over its backends; absent when unknown"}
+            },
+        },
+        400: {"description": "The model is not an embedding model"},
+        404: {"description": "`model_not_found`, or `tokenizer_not_available` when infra has no tokenizer for the model"},
+        503: {"description": "`tokenizer_fetch_failed` when a backend that may have one failed, or the model is still loading; retry"},
+    },
+)
+async def on_model_tokenizer(
+    _: Annotated[str, Depends(auth_server)],
+    model_id: Annotated[str, Path(description="The ID of an embedding model.")],
+    endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
+) -> Response:
+    """Return an installed embedding model's tokenizer as a zip (`tokenizer.json`, `tokenizer_config.json`) for doc-chunker."""
+    archive, max_tokens = await endpoint_registry.get_embeddings_tokenizer(model_id)
+    headers = {"Content-Disposition": 'attachment; filename="tokenizer.zip"'}
+    if max_tokens is not None:
+        headers["X-Max-Tokens"] = str(max_tokens)
+    return Response(content=archive, media_type="application/zip", headers=headers)
 
 
 @router.get("/v1/models/{model_id:path}")

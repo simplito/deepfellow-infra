@@ -2,8 +2,10 @@
 # SPDX-FileCopyrightText: 2026 Simplito sp. z o.o.
 
 import asyncio
+import io
 import json
 import time
+import zipfile
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -3060,3 +3062,20 @@ async def test_install_model_embedding_without_known_length_reports_none(
 
     props = gpu_deps["endpoint_registry"].register_embeddings_as_proxy.call_args.kwargs["props"]
     assert props.max_context_window is None
+
+
+@pytest.mark.asyncio
+async def test_install_model_embedding_serves_tokenizer_from_model_dir(
+    svc: SglangService, gpu_deps: dict[str, Any], tmp_path: Path
+) -> None:
+    _setup_install_mocks(svc, gpu_deps)
+    svc.models["default"]["bge-m3"] = SglangModel(hf_id="BAAI/bge-m3", size="2GB", model_type="embedding")
+    (tmp_path / "model").mkdir()
+    (tmp_path / "model" / "tokenizer.json").write_text("{}")
+    (tmp_path / "model" / "tokenizer_config.json").write_text("{}")
+
+    await _install_sglang(svc, "bge-m3", tmp_path)
+
+    tokenizer = gpu_deps["endpoint_registry"].register_embeddings_as_proxy.call_args.kwargs["tokenizer"]
+    archive = await tokenizer()
+    assert zipfile.ZipFile(io.BytesIO(archive)).namelist() == ["tokenizer.json", "tokenizer_config.json"]
