@@ -5,6 +5,7 @@
 
 import asyncio
 import errno
+import functools
 import hashlib
 import json
 import os
@@ -87,6 +88,7 @@ from server.utils.ollama_registry import (
     OllamaRegistryError,
     parse_model_ref,
 )
+from server.utils.ollama_tokenizer import OllamaTokenizers
 from server.utils.registry_client import image_without_registry_prefix, registry_for
 from server.utils.size_fetcher import fetch_ollama_ref_bytes, fmt_size
 from server.utils.vram_calculator import (
@@ -356,6 +358,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
     """
     _vram_cache: dict[tuple[str, str], float]
     _embedding_token_limits: OllamaEmbeddingTokenLimits
+    _tokenizers: OllamaTokenizers
     _installing: set[tuple[str, str]]
     _warmth_poll_tasks: dict[str, asyncio.Task[None]]
     _ps_query_failing: set[str]
@@ -379,6 +382,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         self._embedding_token_limits = OllamaEmbeddingTokenLimits(
             self.config.get_storage_services_dir() / self.get_type() / "embedding_token_limits.json"
         )
+        self._tokenizers = OllamaTokenizers()
         self._installing = set()
         self._warmth_poll_tasks = {}
         self._ps_query_failing = set()
@@ -1841,6 +1845,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                             registration_options=RegistrationOptions(
                                 origin="local", alias=registered_alias, owned_by=self.get_type(), capacity_state=capacity, warm=False
                             ),
+                            tokenizer=functools.partial(self._tokenizers.archive, info.base_url, rewrite_model_to),
                         )
                     if model.type == "txt2img":
                         model_info.registration_id = self.endpoint_registry.register_image_generations_as_proxy(

@@ -5,6 +5,7 @@
 
 import asyncio
 import contextlib
+import functools
 import json
 import re
 import shutil
@@ -83,6 +84,7 @@ from server.utils.model_downloader import AdapterRegistryDownloader
 from server.utils.registry_client import image_without_registry_prefix, registry_for
 from server.utils.served_model_len import fetch_served_max_model_len
 from server.utils.size_fetcher import fetch_huggingface_model_size, fmt_size, sum_siblings_size_bytes
+from server.utils.tokenizer_archive import tokenizer_from_dir
 
 # Mirrors the `just get-vllm-models` release recipe (see justfile): one fetch per model type,
 # each merged into its own registry key so a refresh reproduces exactly what the offline,
@@ -1296,8 +1298,9 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
         max_context_window: int | None,
         capacity: int | None,
         registered_alias: str | None = None,
+        tokenizer_dir: Path | None = None,
     ) -> RegistrationId:
-        """Register the model in the endpoint registry based on its type."""
+        """Register the model in the endpoint registry based on its type; embeddings serve their tokenizer from `tokenizer_dir`."""
         # vLLM always has a real, finite concurrency limit; `capacity is None` here means we
         # failed to determine it (docker-log fetch or parse failure), never that it's unbounded.
         capacity_state: CapacityState = capacity if capacity is not None else "unknown"
@@ -1321,6 +1324,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
                     max_context_window=max_context_window,
                 ),
                 options=ProxyOptions(url=f"{model_info.base_url}/v1/embeddings", rewrite_model_to=model_id),
+                tokenizer=functools.partial(tokenizer_from_dir, tokenizer_dir) if tokenizer_dir else None,
                 registration_options=RegistrationOptions(
                     origin="local", alias=registered_alias, owned_by=self.get_type(), capacity_state=capacity_state
                 ),
@@ -1594,6 +1598,7 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
                     context_window=context_window,
                     max_context_window=max_context_window,
                     capacity=capacity,
+                    tokenizer_dir=local_model_path,
                 )
                 stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
                 self._purge_stale_download(model_id, local_model_path, local_adapter_path)

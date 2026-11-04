@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `THIRD_PARTY.md` with the MIT license notice for the OpenSpec-generated commands and skills.
 - Service status shows the Docker image being pulled (`installed.image`) from 0%, so clients can say what is downloading.
 - Sentry events for unhandled errors carry `http.method` and `http.route` (route template, not the raw URL) tags.
+- `GET /v1/models/{model}/tokenizer` returns an embedding model's tokenizer as a zip for doc-chunker, with its token limit in `X-Max-Tokens` (Ollama, Ollama External, vLLM and SGLang, also through the mesh).
 
 ### Changed
 

@@ -2,8 +2,10 @@
 # SPDX-FileCopyrightText: 2026 Simplito sp. z o.o.
 
 import asyncio
+import io
 import json
 import time
+import zipfile
 from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -4285,6 +4287,23 @@ async def test_reconcile_instance_models_releases_reranker_model(svc: VllmServic
 
 
 @pytest.mark.asyncio
+async def test_reconcile_instance_models_releases_embedding_model(svc: VllmService, deps: dict[str, Any]) -> None:
+    installed = _make_installed_info()
+    model_info = _make_model_installed_info(model_id="m1", registration_id="reg-1", gpu_memory_utilization=0.5, model_type="embedding")
+    installed.models["m1"] = model_info
+    svc.gpu_memory_utilization = 0.5
+    deps["docker_service"].get_container_status = AsyncMock(return_value=_status(exists=False, state="", health=""))
+    deps["docker_service"].uninstall_docker = AsyncMock()
+
+    with patch.object(svc, "_save", new_callable=AsyncMock):
+        for _ in range(3):
+            await svc._reconcile_instance_models("default", installed)  # pyright: ignore[reportPrivateUsage]
+
+    deps["endpoint_registry"].unregister_embeddings.assert_called_once_with("m1", "reg-1")
+    deps["endpoint_registry"].unregister_chat_completion.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_start_reconciliation_task_cancels_existing_and_stop_cancels_it(svc: VllmService) -> None:
     svc.instances_info["default"].installed = _make_installed_info()
 
@@ -5063,3 +5082,18 @@ async def test_install_model_llm_does_not_query_served_length(
     await _install_vllm(svc, "gemma", tmp_path)
 
     assert served_max_model_len.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_install_model_embedding_serves_tokenizer_from_model_dir(svc: VllmService, deps: dict[str, Any], tmp_path: Path) -> None:
+    _setup_install_mocks(svc, deps)
+    svc.models["default"]["all-minilm"] = VllmModel(hf_id="sentence-transformers/all-MiniLM-L6-v2", size="90MB", model_type="embedding")
+    (tmp_path / "model").mkdir()
+    (tmp_path / "model" / "tokenizer.json").write_text("{}")
+    (tmp_path / "model" / "tokenizer_config.json").write_text("{}")
+
+    await _install_vllm(svc, "all-minilm", tmp_path)
+
+    tokenizer = deps["endpoint_registry"].register_embeddings_as_proxy.call_args.kwargs["tokenizer"]
+    archive = await tokenizer()
+    assert zipfile.ZipFile(io.BytesIO(archive)).namelist() == ["tokenizer.json", "tokenizer_config.json"]

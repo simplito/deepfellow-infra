@@ -4,6 +4,7 @@
 """Sglang service."""
 
 import asyncio
+import functools
 import json
 import re
 import shutil
@@ -74,6 +75,7 @@ from server.utils.logger import logger
 from server.utils.registry_client import image_without_registry_prefix, registry_for
 from server.utils.served_model_len import fetch_served_max_model_len
 from server.utils.size_fetcher import fetch_huggingface_model_size
+from server.utils.tokenizer_archive import tokenizer_from_dir
 
 # Qwen3-Reranker-family models refuse to start with `--is-embedding`; every other reranker in the
 # registry is a cross-encoder, which accepts (and defaults to) it.
@@ -1035,8 +1037,9 @@ class SglangService(Base2Service[InstalledInfo, DownloadedInfo]):
         max_context_window: int | None,
         capacity: int | None,
         registered_alias: str | None = None,
+        tokenizer_dir: Path | None = None,
     ) -> RegistrationId:
-        """Register the model in the endpoint registry based on its type."""
+        """Register the model in the endpoint registry based on its type; embeddings serve their tokenizer from `tokenizer_dir`."""
         # SGLang always sizes a real, finite `max_running_requests` from KV-cache memory at startup;
         # `capacity is None` here means we failed to determine it (docker-log fetch or parse failure),
         # never that it's unbounded.
@@ -1062,6 +1065,7 @@ class SglangService(Base2Service[InstalledInfo, DownloadedInfo]):
                     max_context_window=max_context_window,
                 ),
                 options=ProxyOptions(url=f"{model_info.base_url}/v1/embeddings", rewrite_model_to=model_id),
+                tokenizer=functools.partial(tokenizer_from_dir, tokenizer_dir) if tokenizer_dir else None,
                 registration_options=RegistrationOptions(
                     origin="local", alias=registered_alias, owned_by=self.get_type(), capacity_state=capacity_state
                 ),
@@ -1264,6 +1268,7 @@ class SglangService(Base2Service[InstalledInfo, DownloadedInfo]):
                     context_window=context_window,
                     max_context_window=max_context_window,
                     capacity=capacity,
+                    tokenizer_dir=local_model_path,
                 )
                 stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
                 self._purge_stale_download(model_id, local_model_path)

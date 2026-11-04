@@ -668,3 +668,44 @@ def test_validation_error_returns_openai_style_error_body_with_param(
     assert body["error"]["type"] == "invalid_request_error"
     assert body["error"]["param"] == "messages"
     assert registry.execute_chat_completion.call_count == 0
+
+
+def test_get_model_tokenizer_returns_zip_and_limit(registry: MagicMock, client: TestClient, auth_header: dict[str, str]) -> None:
+    registry.get_embeddings_tokenizer = AsyncMock(return_value=(b"PK-zip", 8192))
+
+    resp = client.get("/v1/models/BAAI/bge-m3/tokenizer", headers=auth_header)
+
+    assert resp.status_code == 200
+    assert resp.content == b"PK-zip"
+    assert resp.headers["content-type"] == "application/zip"
+    assert resp.headers["x-max-tokens"] == "8192"
+    assert registry.get_embeddings_tokenizer.call_args == call("BAAI/bge-m3")
+
+
+def test_get_model_tokenizer_omits_unknown_limit(registry: MagicMock, client: TestClient, auth_header: dict[str, str]) -> None:
+    registry.get_embeddings_tokenizer = AsyncMock(return_value=(b"PK-zip", None))
+
+    resp = client.get("/v1/models/bge-m3/tokenizer", headers=auth_header)
+
+    assert resp.status_code == 200
+    assert "x-max-tokens" not in resp.headers
+
+
+def test_get_model_tokenizer_passes_through_404(registry: MagicMock, client: TestClient, auth_header: dict[str, str]) -> None:
+    registry.get_embeddings_tokenizer = AsyncMock(side_effect=HTTPException(404, "tokenizer_not_available"))
+
+    resp = client.get("/v1/models/text-embedding-3-small/tokenizer", headers=auth_header)
+
+    assert resp.status_code == 404
+    assert "tokenizer_not_available" in resp.text
+
+
+def test_get_model_with_path_id_still_reaches_model_route(registry: MagicMock, client: TestClient, auth_header: dict[str, str]) -> None:
+    registry.get_model = MagicMock(return_value=_make_api_model("BAAI/bge-m3"))
+    registry.get_embeddings_tokenizer = AsyncMock()
+
+    resp = client.get("/v1/models/BAAI/bge-m3", headers=auth_header)
+
+    assert resp.status_code == 200
+    assert resp.json()["id"] == "BAAI/bge-m3"
+    assert registry.get_embeddings_tokenizer.call_count == 0
