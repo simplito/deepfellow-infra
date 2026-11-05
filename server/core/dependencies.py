@@ -117,6 +117,18 @@ def auth_admin(
     raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def require_services_config_loaded(
+    service_provider: Annotated[ServiceProvider, Depends(get_service_provider)],
+    _: Annotated[str, Depends(auth_admin)],
+) -> None:
+    """Reject the request with 503 when services.json could not be read at startup.
+
+    Depends on `auth_admin` itself, so the error, which names the file path, never reaches an unauthenticated caller.
+    """
+    if service_provider.load_error is not None:
+        raise HTTPException(status_code=503, detail=service_provider.load_error)
+
+
 async def auth_metrics(
     request: Request,
     auth: Annotated[HTTPBasicCredentials, Depends(basic_security)],

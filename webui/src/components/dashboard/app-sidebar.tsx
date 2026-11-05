@@ -65,7 +65,8 @@ export function AppSidebar({ onLogout, ...props }: AppSidebarProps) {
     queryFn: () => apiClient.listAdminWarnings(),
     refetchInterval: 30000,
   });
-  const warningsCount = warnings?.list.length ?? 0;
+  const warningsCount =
+    (warnings?.list.length ?? 0) + (warnings?.load_error ? 1 : 0);
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>

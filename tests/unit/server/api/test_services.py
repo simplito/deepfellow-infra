@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from starlette.testclient import TestClient
 
 from server.api.services import router
-from server.core.dependencies import auth_admin, get_config, get_endpoint_registry, get_services_manager
+from server.core.dependencies import auth_admin, get_config, get_endpoint_registry, get_service_provider, get_services_manager
 from server.models.services import (
     InstallServiceOut,
     ListAllModelsOut,
@@ -67,11 +67,19 @@ def endpoint_registry() -> MagicMock:
 
 
 @pytest.fixture
-def client(services_manager: MagicMock, endpoint_registry: MagicMock) -> Generator[TestClient]:
+def service_provider() -> MagicMock:
+    provider = MagicMock()
+    provider.load_error = None
+    return provider
+
+
+@pytest.fixture
+def client(services_manager: MagicMock, endpoint_registry: MagicMock, service_provider: MagicMock) -> Generator[TestClient]:
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[auth_admin] = lambda: "test-key"
     app.dependency_overrides[get_services_manager] = lambda: services_manager
+    app.dependency_overrides[get_service_provider] = lambda: service_provider
     app.dependency_overrides[get_endpoint_registry] = lambda: endpoint_registry
     with TestClient(app) as c:
         yield c
@@ -83,6 +91,7 @@ def test_auth_required_returns_401_with_bad_token() -> None:
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_services_manager] = lambda: MagicMock()
+    app.dependency_overrides[get_service_provider] = lambda: MagicMock()
     app.dependency_overrides[get_endpoint_registry] = lambda: MagicMock()
     app.dependency_overrides[get_config] = lambda: fake_config
 
@@ -312,6 +321,23 @@ def test_list_services_passes_installed_filter(services_manager: MagicMock, clie
 
     filters = services_manager.list_services.call_args.args[0]
     assert filters.installed is True
+
+
+def test_list_services_load_error_null_by_default(client: TestClient, auth_header: dict[str, str]) -> None:
+    resp = client.get("/admin/services", headers=auth_header)
+
+    assert resp.json()["load_error"] is None
+
+
+def test_list_services_returns_load_error_when_services_config_unreadable(
+    service_provider: MagicMock, client: TestClient, auth_header: dict[str, str]
+) -> None:
+    service_provider.load_error = "Could not read the services configuration"
+
+    resp = client.get("/admin/services", headers=auth_header)
+
+    assert resp.status_code == 200
+    assert resp.json()["load_error"] == "Could not read the services configuration"
 
 
 def test_retrieve_service_returns_200(client: TestClient, auth_header: dict[str, str]) -> None:

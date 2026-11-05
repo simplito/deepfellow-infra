@@ -86,6 +86,7 @@ export interface InfraSettings {
 
 export interface ServiceListResponse {
   list: Service[];
+  load_error?: string | null;
 }
 
 export interface ServiceModel {
@@ -327,4 +328,5 @@ export interface ServiceWarning {
 
 export interface ListWarningsOut {
   list: ServiceWarning[];
+  load_error?: string | null;
 }

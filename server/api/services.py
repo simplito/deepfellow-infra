@@ -11,7 +11,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse, Response
 
-from server.core.dependencies import auth_admin, get_endpoint_registry, get_services_manager
+from server.core.dependencies import auth_admin, get_endpoint_registry, get_service_provider, get_services_manager
 from server.endpointregistry import EndpointRegistry
 from server.models.api import RegistrationId
 from server.models.services import (
@@ -32,6 +32,7 @@ from server.models.services import (
     UninstallServiceIn,
     UninstallServiceOut,
 )
+from server.serviceprovider import ServiceProvider
 from server.services_manager import ServicesManager
 from server.utils.core import convert_promise_with_progress_to_fastapi_response
 from server.utils.docker_image_version import has_cuda_variant, newer_tag_needing_cuda, newest_docker_tag
@@ -319,10 +320,13 @@ async def get_install_progress_service(
 async def list_service(
     filters: Annotated[ListServicesFilters, Query()],
     services_manager: Annotated[ServicesManager, Depends(get_services_manager)],
+    service_provider: Annotated[ServiceProvider, Depends(get_service_provider)],
     _: Annotated[str, Depends(auth_admin)],
 ) -> ListServicesOut:
     """List services."""
-    return await services_manager.list_services(filters)
+    result = await services_manager.list_services(filters)
+    result.load_error = service_provider.load_error
+    return result
 
 
 @router.get(

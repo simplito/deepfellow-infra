@@ -1,3 +1,4 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,7 +48,7 @@ import type { SimulationHandle } from "@/utils/progress-simulation";
 import type { ProgressEvent } from "@/utils/sse-stream";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { MoreVertical } from "lucide-react";
+import { AlertCircle, MoreVertical } from "lucide-react";
 /*
 DeepFellow Software Framework.
 Copyright © 2025 Simplito sp. z o.o.
@@ -116,6 +117,7 @@ export function ServicesList() {
   });
 
   const cloudEnabled = settingsData?.cloud_enabled ?? true;
+  const loadError = servicesData?.load_error;
 
   const cloudToggleMutation = useMutation({
     mutationFn: (enabled: boolean) =>
@@ -1060,7 +1062,7 @@ export function ServicesList() {
                 onCheckedChange={(checked) =>
                   cloudToggleMutation.mutate(checked)
                 }
-                disabled={cloudToggleMutation.isPending}
+                disabled={cloudToggleMutation.isPending || !!loadError}
               />
               <Label htmlFor="cloud-enabled">Cloud services</Label>
             </div>
@@ -1069,6 +1071,21 @@ export function ServicesList() {
             </Button>
           </div>
         </div>
+        {loadError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle />
+            <AlertTitle>Installed services were not loaded</AlertTitle>
+            <AlertDescription>
+              <p>
+                The services configuration could not be read. See{" "}
+                <Link to="/dashboard/warnings" className="underline">
+                  Warnings
+                </Link>{" "}
+                for details.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
         <Input
           placeholder="Search services..."
           value={searchQuery}

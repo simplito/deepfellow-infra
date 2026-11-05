@@ -4,14 +4,15 @@
 """Application Content module."""
 
 import asyncio
+import json
 import time
 
-from server.config import AppSettings
+from server.config import AppSettings, get_services_json_path
 from server.services_manager import ServicesManager
 from server.utils.logger import logger
 
 from .endpointregistry import EndpointRegistry
-from .serviceprovider import ServiceProvider, ServiceRawConfig
+from .serviceprovider import ServiceProvider, ServiceRawConfig, ServicesMigrationError
 
 
 class ApplicationContext:
@@ -63,9 +64,38 @@ class ApplicationContext:
 
     async def load_services(self) -> None:
         """Load all service from bootstrap."""
-        info = await self.service_provider.load()
+        try:
+            info = await self.service_provider.load()
+        except ServicesMigrationError as exc:
+            path = get_services_json_path(self.config)
+            logger.exception(f"Could not migrate {path} to the current version, no installed service was loaded")
+            self.service_provider.load_error = (
+                f"Could not migrate the services configuration ({path}) to the current version: {_describe_load_error(exc.cause)}. "
+                "Installed services were not loaded and the file was left unchanged. "
+                "Make sure DF Infra can write the file, then restart DF Infra."
+            )
+            return
+        except Exception as exc:
+            path = get_services_json_path(self.config)
+            logger.exception(f"Could not read {path}, no installed service was loaded")
+            self.service_provider.load_error = (
+                f"Could not read the services configuration ({path}): {_describe_load_error(exc)}. Installed services were not loaded "
+                "and the file was left unchanged. Fix or restore the file, then restart DF Infra."
+            )
+            return
         tasks = [asyncio.create_task(self._load_service(service_id, service_cfg)) for service_id, service_cfg in info["services"].items()]
         await asyncio.gather(*tasks)
+
+
+def _describe_load_error(exc: Exception) -> str:
+    """Describe why services.json could not be read, without the character offset a JSON error adds."""
+    if isinstance(exc, json.JSONDecodeError):
+        # Some messages already end with "at", e.g. "Unterminated string starting at".
+        msg = exc.msg if exc.msg.endswith(" at") else f"{exc.msg} at"
+        return f"invalid JSON: {msg} line {exc.lineno}, column {exc.colno}"
+    if isinstance(exc, OSError) and exc.strerror:
+        return exc.strerror
+    return str(exc) or type(exc).__name__
 
 
 def get_base_url(host: str, port: int) -> str:

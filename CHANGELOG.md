@@ -12,6 +12,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Public `GET /admin/config/sentry` returning the browser Sentry settings; the DSN and the Infra version are left out while Sentry is off.
 - Public `POST /admin/config/sentry/tunnel` forwarding the WebUI's Sentry events to the configured Sentry only, so the WebUI's CSP can keep `connect-src 'self'`.
 - Sentry settings sit next to the OTel ones on the WebUI Configuration page.
+- `load_error` in `GET /admin/services` and `GET /admin/warnings` when `services.json` can't be read
+
+### Fixed
+
+- An unreadable `services.json` is shown in the WebUI with the reason, not as an empty list of services.
 
 ## [0.38.0] - 2026-11-04
 

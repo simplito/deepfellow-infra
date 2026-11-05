@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 
-from server.core.dependencies import auth_admin, get_service_provider
+from server.core.dependencies import auth_admin, get_service_provider, require_services_config_loaded
 from server.models.warnings import ListWarningsOut, ServiceWarning
 from server.serviceprovider import ServiceProvider
 
@@ -20,13 +20,15 @@ async def list_warnings(
     _: Annotated[str, Depends(auth_admin)],
 ) -> ListWarningsOut:
     """List recorded warnings."""
+    if service_provider.load_error is not None:
+        return ListWarningsOut(list=[], load_error=service_provider.load_error)
     warnings = await service_provider.list_warnings()
     parsed = [ServiceWarning.model_validate(w) for w in warnings]
     parsed.sort(key=lambda w: w.created_at, reverse=True)
     return ListWarningsOut(list=parsed)
 
 
-@router.delete("", summary="Dismiss all warnings.")
+@router.delete("", summary="Dismiss all warnings.", dependencies=[Depends(require_services_config_loaded)])
 async def dismiss_all_warnings(
     service_provider: Annotated[ServiceProvider, Depends(get_service_provider)],
     _: Annotated[str, Depends(auth_admin)],
@@ -35,7 +37,7 @@ async def dismiss_all_warnings(
     await service_provider.dismiss_all_warnings()
 
 
-@router.delete("/{warning_id}", summary="Dismiss a warning.")
+@router.delete("/{warning_id}", summary="Dismiss a warning.", dependencies=[Depends(require_services_config_loaded)])
 async def dismiss_warning(
     warning_id: Annotated[str, Path(description="Id of the warning to dismiss.")],
     service_provider: Annotated[ServiceProvider, Depends(get_service_provider)],

@@ -79,6 +79,7 @@ class ListServicesFilters(BaseModel):
 
 class ListServicesOut(BaseModel):
     list: list[RetrieveServiceOut]
+    load_error: str | None = None
 
 
 class ListAllModelsFilters(BaseModel):
