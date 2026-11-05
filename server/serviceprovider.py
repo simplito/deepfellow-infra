@@ -45,10 +45,23 @@ class FileContent(TypedDict):
     warnings: list[WarningEntry]
 
 
+class ServicesConfigError(ValueError):
+    """Raised when services.json parses as JSON but does not have the expected structure."""
+
+
+class ServicesMigrationError(Exception):
+    """Raised when services.json was read but its content migrated to the current version could not be saved."""
+
+    def __init__(self, cause: OSError):
+        super().__init__(str(cause))
+        self.cause = cause
+
+
 class ServiceProvider:
     def __init__(self, config: AppSettings):
         self.config = config
         self.file_lock = asyncio.Lock()
+        self.load_error: str | None = None
 
     def _get_file_path(self) -> Path:
         return get_services_json_path(self.config)
@@ -111,6 +124,7 @@ class ServiceProvider:
                 content = await f.read()
                 logger.debug("Ending reading service.json file")
                 data: dict[str, Any] = json.loads(content)
+                self._validate_structure(data)
 
                 if "services" not in data:
                     data["services"] = {}
@@ -141,9 +155,26 @@ class ServiceProvider:
 
         if update_config:
             logger.debug("Config update")
-            await self._save_locked(data_out)
+            try:
+                await self._save_locked(data_out)
+            except OSError as exc:
+                raise ServicesMigrationError(exc) from exc
 
         return data_out
+
+    @staticmethod
+    def _validate_structure(data: object) -> None:
+        """Reject valid JSON of the wrong shape, which would otherwise fail later with an unclear TypeError."""
+        if not isinstance(data, dict):
+            msg = f"expected a JSON object at the top level, got {type(data).__name__}"
+            raise ServicesConfigError(msg)
+        content = cast("dict[str, Any]", data)
+        if not isinstance(content.get("services", {}), dict):
+            msg = "expected 'services' to be a JSON object"
+            raise ServicesConfigError(msg)
+        if not isinstance(content.get("warnings", []), list):
+            msg = "expected 'warnings' to be a JSON array"
+            raise ServicesConfigError(msg)
 
     async def save(self, content: FileContent) -> None:
         """Save settings file content."""

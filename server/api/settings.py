@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends
 
-from server.core.dependencies import auth_admin, get_hardware, get_service_provider
+from server.core.dependencies import auth_admin, get_hardware, get_service_provider, require_services_config_loaded
 from server.models.services import GpuStats, InfraSettingsOut, SystemStats, UpdateInfraSettingsIn
 from server.serviceprovider import ServiceProvider
 from server.utils.hardware import Hardware
@@ -15,7 +15,7 @@ from server.utils.hardware import Hardware
 router = APIRouter(prefix="/admin/settings", tags=["Settings"])
 
 
-@router.get("", summary="Retrieve infra settings.")
+@router.get("", summary="Retrieve infra settings.", dependencies=[Depends(require_services_config_loaded)])
 async def get_settings(
     service_provider: Annotated[ServiceProvider, Depends(get_service_provider)],
     _: Annotated[str, Depends(auth_admin)],
@@ -25,7 +25,7 @@ async def get_settings(
     return InfraSettingsOut(cloud_enabled=cloud_enabled)
 
 
-@router.put("", summary="Update infra settings.")
+@router.put("", summary="Update infra settings.", dependencies=[Depends(require_services_config_loaded)])
 async def update_settings(
     model: Annotated[UpdateInfraSettingsIn, Body()],
     service_provider: Annotated[ServiceProvider, Depends(get_service_provider)],

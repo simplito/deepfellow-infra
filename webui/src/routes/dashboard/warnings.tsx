@@ -10,6 +10,7 @@ limitations under the License.
 */
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { SiteHeader } from "@/components/dashboard/site-header";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -33,7 +34,7 @@ import { useRequireAuth } from "@/hooks/use-auth";
 import { useModal } from "@/hooks/use-modal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Trash2, X } from "lucide-react";
+import { AlertCircle, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/dashboard/warnings")({
@@ -172,10 +173,21 @@ function WarningsPage() {
                 )}
                 {error && (
                   <p className="text-destructive text-sm p-6">
-                    Failed to load warnings.
+                    Failed to load warnings: {error.message}
                   </p>
                 )}
-                {data && warnings.length === 0 && (
+                {data?.load_error && (
+                  <div className="p-6">
+                    <Alert variant="destructive">
+                      <AlertCircle />
+                      <AlertTitle>
+                        Installed services were not loaded
+                      </AlertTitle>
+                      <AlertDescription>{data.load_error}</AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+                {data && !data.load_error && warnings.length === 0 && (
                   <p className="text-muted-foreground text-sm p-6">
                     No warnings.
                   </p>

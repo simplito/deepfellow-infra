@@ -3,11 +3,14 @@
 
 """Tests for server/applicationcontext.py."""
 
+import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
 from server.applicationcontext import ApplicationContext, get_base_url
+from server.serviceprovider import ServiceProvider
 
 
 def _make_context(
@@ -18,6 +21,7 @@ def _make_context(
     config = MagicMock()
     service_provider = MagicMock()
     service_provider.load = AsyncMock(return_value={"services": services or {}})
+    service_provider.load_error = None
     service_provider.add_warning = AsyncMock()
     service_provider.dismiss_warnings_matching = AsyncMock()
     services_manager = MagicMock()
@@ -163,6 +167,104 @@ async def test_handles_empty_services() -> None:
     await ctx.load_services()
 
     assert sm.load_service.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_leaves_load_error_unset_on_successful_read() -> None:
+    ctx, sp, _ = _make_context(services={"svc": MagicMock()})
+
+    await ctx.load_services()
+
+    assert sp.load_error is None
+
+
+@pytest.mark.asyncio
+async def test_records_load_error_when_services_config_unreadable() -> None:
+    ctx, sp, sm = _make_context()
+    sp.load = AsyncMock(side_effect=PermissionError("Permission denied"))
+
+    await ctx.load_services()  # should not raise
+
+    sm.load_service.assert_not_awaited()
+    assert sp.load_error is not None
+    assert "Permission denied" in sp.load_error
+
+
+@pytest.mark.asyncio
+async def test_records_load_error_for_truncated_services_json(tmp_path: Path) -> None:
+    config = MagicMock()
+    config.get_storage_dir.return_value = tmp_path
+    content = '{"version": "v4", "serv'
+    (tmp_path / "services.json").write_text(content)
+    provider = ServiceProvider(config)
+    services_manager = MagicMock()
+    services_manager.load_service = AsyncMock()
+    ctx = ApplicationContext(MagicMock(), config, provider, services_manager)
+
+    await ctx.load_services()
+
+    services_manager.load_service.assert_not_awaited()
+    assert provider.load_error is not None
+    assert str((tmp_path / "services.json").resolve()) in provider.load_error
+    assert "invalid JSON: Unterminated string starting at line 1, column 19." in provider.load_error
+    assert "char" not in provider.load_error
+    assert (tmp_path / "services.json").read_text() == content
+
+
+@pytest.mark.asyncio
+async def test_records_migration_error_when_saving_migrated_services_json_fails(tmp_path: Path) -> None:
+    config = MagicMock()
+    config.get_storage_dir.return_value = tmp_path
+    content = json.dumps({"version": "v3", "services": {}, "cloud_enabled": False})
+    (tmp_path / "services.json").write_text(content)
+    provider = ServiceProvider(config)
+    provider._save_locked = AsyncMock(side_effect=OSError(30, "Read-only file system"))  # pyright: ignore[reportPrivateUsage]
+    services_manager = MagicMock()
+    services_manager.load_service = AsyncMock()
+    ctx = ApplicationContext(MagicMock(), config, provider, services_manager)
+
+    await ctx.load_services()
+
+    services_manager.load_service.assert_not_awaited()
+    assert provider.load_error is not None
+    path = (tmp_path / "services.json").resolve()
+    assert provider.load_error.startswith(
+        f"Could not migrate the services configuration ({path}) to the current version: Read-only file system."
+    )
+    assert "Could not read" not in provider.load_error
+    assert (tmp_path / "services.json").read_text() == content
+
+
+@pytest.mark.asyncio
+async def test_load_error_describes_json_error_without_trailing_at() -> None:
+    ctx, sp, _ = _make_context()
+    sp.load = AsyncMock(side_effect=json.JSONDecodeError("Expecting value", "", 0))
+
+    await ctx.load_services()
+
+    assert "invalid JSON: Expecting value at line 1, column 1." in sp.load_error
+
+
+@pytest.mark.asyncio
+async def test_load_error_names_os_error_without_errno_and_repeated_path() -> None:
+    ctx, sp, _ = _make_context()
+    sp.load = AsyncMock(side_effect=PermissionError(13, "Permission denied", "/data/services.json"))
+
+    await ctx.load_services()
+
+    assert "): Permission denied." in sp.load_error
+    assert "Errno" not in sp.load_error
+    assert "/data/services.json" not in sp.load_error
+
+
+@pytest.mark.asyncio
+async def test_load_error_falls_back_to_exception_type_without_message() -> None:
+    ctx, sp, _ = _make_context()
+    sp.load = AsyncMock(side_effect=OSError())
+
+    await ctx.load_services()
+
+    assert "): OSError." in sp.load_error
 
 
 @pytest.mark.parametrize(

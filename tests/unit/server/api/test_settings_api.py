@@ -18,6 +18,7 @@ from server.models.services import GpuCardStats, GpuStats, SystemStats
 @pytest.fixture
 def service_provider() -> MagicMock:
     sp = MagicMock()
+    sp.load_error = None
     sp.get_cloud_enabled = AsyncMock(return_value=False)
     sp.set_cloud_enabled = AsyncMock(return_value=None)
     return sp
@@ -84,6 +85,40 @@ def test_update_settings_calls_set_cloud_enabled(service_provider: MagicMock, cl
 
     assert service_provider.set_cloud_enabled.await_count == 1
     assert service_provider.set_cloud_enabled.await_args == call(True)
+
+
+def test_get_settings_503_when_services_config_unreadable(
+    service_provider: MagicMock, client: TestClient, auth_header: dict[str, str]
+) -> None:
+    service_provider.load_error = "Could not read the services configuration"
+
+    resp = client.get("/admin/settings", headers=auth_header)
+
+    assert resp.status_code == 503
+    assert resp.json() == {"detail": "Could not read the services configuration"}
+    service_provider.get_cloud_enabled.assert_not_awaited()
+
+
+def test_update_settings_503_when_services_config_unreadable(
+    service_provider: MagicMock, client: TestClient, auth_header: dict[str, str]
+) -> None:
+    service_provider.load_error = "Could not read the services configuration"
+
+    resp = client.put("/admin/settings", json={"cloud_enabled": True}, headers=auth_header)
+
+    assert resp.status_code == 503
+    service_provider.set_cloud_enabled.assert_not_awaited()
+
+
+def test_get_gpu_stats_works_when_services_config_unreadable(
+    service_provider: MagicMock, hardware: MagicMock, client: TestClient, auth_header: dict[str, str]
+) -> None:
+    service_provider.load_error = "Could not read the services configuration"
+    hardware.get_realtime_stats = AsyncMock(return_value=None)
+
+    resp = client.get("/admin/settings/hardware/gpu-stats", headers=auth_header)
+
+    assert resp.status_code == 200
 
 
 def test_get_gpu_stats_returns_null_when_no_gpu(hardware: MagicMock, client: TestClient, auth_header: dict[str, str]) -> None:

@@ -19,3 +19,4 @@ class ServiceWarning(BaseModel):
 
 class ListWarningsOut(BaseModel):
     list: list[ServiceWarning]
+    load_error: str | None = None

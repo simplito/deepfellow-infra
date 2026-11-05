@@ -5,11 +5,12 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
 from server.api.warnings import router
-from server.core.dependencies import auth_admin, get_service_provider
+from server.core.dependencies import auth_admin, get_config, get_service_provider
 
 API_KEY = "test-key"
 AUTH_HEADER = {"Authorization": f"Bearer {API_KEY}"}
@@ -17,6 +18,7 @@ AUTH_HEADER = {"Authorization": f"Bearer {API_KEY}"}
 
 def _make_service_provider(warnings: list[dict[str, str]] | None = None) -> MagicMock:
     provider = MagicMock()
+    provider.load_error = None
     provider.list_warnings = AsyncMock(return_value=warnings or [])
     provider.dismiss_warning = AsyncMock(return_value=True)
     provider.dismiss_all_warnings = AsyncMock(return_value=None)
@@ -38,7 +40,7 @@ def test_list_warnings_200_empty() -> None:
         resp = client.get("/admin/warnings", headers=AUTH_HEADER)
 
     assert resp.status_code == 200
-    assert resp.json() == {"list": []}
+    assert resp.json() == {"list": [], "load_error": None}
 
 
 def test_list_warnings_returns_entries() -> None:
@@ -56,7 +58,7 @@ def test_list_warnings_returns_entries() -> None:
         resp = client.get("/admin/warnings", headers=AUTH_HEADER)
 
     assert resp.status_code == 200
-    assert resp.json() == {"list": [{**entry, "created_at": "2026-08-10T00:00:00Z"}]}
+    assert resp.json() == {"list": [{**entry, "created_at": "2026-08-10T00:00:00Z"}], "load_error": None}
 
 
 def test_list_warnings_sorted_newest_first() -> None:
@@ -107,6 +109,50 @@ def test_dismiss_all_warnings_calls_provider() -> None:
 
     assert resp.status_code == 200
     provider.dismiss_all_warnings.assert_awaited_once_with()
+
+
+def test_list_warnings_returns_load_error_when_services_config_unreadable() -> None:
+    provider = _make_service_provider()
+    provider.load_error = "Could not read the services configuration"
+
+    with TestClient(_make_app(service_provider=provider)) as client:
+        resp = client.get("/admin/warnings", headers=AUTH_HEADER)
+
+    assert resp.status_code == 200
+    assert resp.json() == {"list": [], "load_error": "Could not read the services configuration"}
+    provider.list_warnings.assert_not_awaited()
+
+
+@pytest.mark.parametrize("path", ["/admin/warnings", "/admin/warnings/w1"])
+def test_dismiss_warnings_503_when_services_config_unreadable(path: str) -> None:
+    provider = _make_service_provider()
+    provider.load_error = "Could not read the services configuration"
+
+    with TestClient(_make_app(service_provider=provider)) as client:
+        resp = client.delete(path, headers=AUTH_HEADER)
+
+    assert resp.status_code == 503
+    assert resp.json() == {"detail": "Could not read the services configuration"}
+    provider.dismiss_warning.assert_not_awaited()
+    provider.dismiss_all_warnings.assert_not_awaited()
+
+
+@pytest.mark.parametrize("method", ["GET", "DELETE"])
+def test_warnings_load_error_hidden_without_auth(method: str) -> None:
+    fake_config = MagicMock()
+    fake_config.infra_admin_api_key.get_secret_value.return_value = "correct-key"
+    provider = _make_service_provider()
+    provider.load_error = "Could not read the services configuration"
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_service_provider] = lambda: provider
+    app.dependency_overrides[get_config] = lambda: fake_config
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        resp = client.request(method, "/admin/warnings", headers={"Authorization": "Bearer wrong-key"})
+
+    assert resp.status_code == 401
+    assert "services configuration" not in resp.text
 
 
 def test_dismiss_warning_unknown_id_404() -> None:

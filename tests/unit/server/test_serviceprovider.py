@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from server.serviceprovider import ACTUAL_CONFIG_VERSION, ServiceProvider
+from server.serviceprovider import ACTUAL_CONFIG_VERSION, ServiceProvider, ServicesConfigError, ServicesMigrationError
 
 
 def make_provider(tmp_path: Path) -> ServiceProvider:
@@ -171,6 +171,65 @@ async def test_load_missing_services_key_adds_empty(tmp_path: Path):
     result = await provider.load()
 
     assert result["services"] == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("content", "match"),
+    [
+        ("[]", "top level, got list"),
+        ("null", "top level, got NoneType"),
+        ('{"version": "v4", "services": []}', "'services' to be a JSON object"),
+        ('{"version": "v4", "services": {}, "warnings": {}}', "'warnings' to be a JSON array"),
+    ],
+)
+async def test_load_wrong_structure_raises_clear_error(tmp_path: Path, content: str, match: str):
+    provider = make_provider(tmp_path)
+    (tmp_path / "services.json").write_text(content)
+
+    with pytest.raises(ServicesConfigError, match=match):
+        await provider.load()
+
+    assert (tmp_path / "services.json").read_text() == content
+
+
+@pytest.mark.asyncio
+async def test_load_truncated_file_raises_and_leaves_file_untouched(tmp_path: Path):
+    provider = make_provider(tmp_path)
+    content = '{"version": "v4", "serv'
+    (tmp_path / "services.json").write_text(content)
+
+    with pytest.raises(json.JSONDecodeError):
+        await provider.load()
+
+    assert (tmp_path / "services.json").read_text() == content
+
+
+@pytest.mark.asyncio
+async def test_load_raises_migration_error_when_saving_migrated_file_fails(tmp_path: Path):
+    provider = make_provider(tmp_path)
+    content = json.dumps({"version": "v3", "services": {}, "cloud_enabled": False})
+    (tmp_path / "services.json").write_text(content)
+    error = OSError(30, "Read-only file system")
+    provider._save_locked = AsyncMock(side_effect=error)  # pyright: ignore[reportPrivateUsage]
+
+    with pytest.raises(ServicesMigrationError) as exc_info:
+        await provider.load()
+
+    assert exc_info.value.cause is error
+    assert (tmp_path / "services.json").read_text() == content
+
+
+@pytest.mark.asyncio
+async def test_save_service_config_on_truncated_file_raises_and_leaves_file_untouched(tmp_path: Path):
+    provider = make_provider(tmp_path)
+    content = '{"version": "v4", "serv'
+    (tmp_path / "services.json").write_text(content)
+
+    with pytest.raises(json.JSONDecodeError):
+        await provider.save_service_config("ollama", {})
+
+    assert (tmp_path / "services.json").read_text() == content
 
 
 @pytest.mark.asyncio
