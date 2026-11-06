@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Sentry settings sit next to the OTel ones on the WebUI Configuration page.
 - `load_error` in `GET /admin/services` and `GET /admin/warnings` when `services.json` can't be read
 
+### Changed
+
+- `web-search` MCP image bumped to `v0.3.4`, fixing zombie processes left behind by `v0.3.3`.
+
 ### Fixed
 
 - An unreadable `services.json` is shown in the WebUI with the reason, not as an empty list of services.
