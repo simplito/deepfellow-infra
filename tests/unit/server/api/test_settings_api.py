@@ -12,6 +12,7 @@ from starlette.testclient import TestClient
 
 from server.api.settings import router
 from server.core.dependencies import auth_admin, get_hardware, get_service_provider
+from server.error_handlers import register_exception_handlers
 from server.models.services import GpuCardStats, GpuStats, SystemStats
 
 
@@ -34,6 +35,7 @@ def hardware() -> MagicMock:
 @pytest.fixture
 def client(service_provider: MagicMock, hardware: MagicMock) -> Generator[TestClient]:
     app = FastAPI()
+    register_exception_handlers(app)
     app.include_router(router)
     app.dependency_overrides[auth_admin] = lambda: "test-key"
     app.dependency_overrides[get_service_provider] = lambda: service_provider
@@ -95,7 +97,9 @@ def test_get_settings_503_when_services_config_unreadable(
     resp = client.get("/admin/settings", headers=auth_header)
 
     assert resp.status_code == 503
-    assert resp.json() == {"detail": "Could not read the services configuration"}
+    assert resp.json() == {
+        "error": {"message": "Could not read the services configuration", "type": "api_error", "param": None, "code": None}
+    }
     service_provider.get_cloud_enabled.assert_not_awaited()
 
 

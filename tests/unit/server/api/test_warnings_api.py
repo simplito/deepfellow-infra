@@ -11,6 +11,7 @@ from starlette.testclient import TestClient
 
 from server.api.warnings import router
 from server.core.dependencies import auth_admin, get_config, get_service_provider
+from server.error_handlers import register_exception_handlers
 
 API_KEY = "test-key"
 AUTH_HEADER = {"Authorization": f"Bearer {API_KEY}"}
@@ -29,6 +30,7 @@ def _make_app(service_provider: MagicMock | None = None) -> FastAPI:
     if service_provider is None:
         service_provider = _make_service_provider()
     app = FastAPI()
+    register_exception_handlers(app)
     app.include_router(router)
     app.dependency_overrides[auth_admin] = lambda: API_KEY
     app.dependency_overrides[get_service_provider] = lambda: service_provider
@@ -132,7 +134,9 @@ def test_dismiss_warnings_503_when_services_config_unreadable(path: str) -> None
         resp = client.delete(path, headers=AUTH_HEADER)
 
     assert resp.status_code == 503
-    assert resp.json() == {"detail": "Could not read the services configuration"}
+    assert resp.json() == {
+        "error": {"message": "Could not read the services configuration", "type": "api_error", "param": None, "code": None}
+    }
     provider.dismiss_warning.assert_not_awaited()
     provider.dismiss_all_warnings.assert_not_awaited()
 

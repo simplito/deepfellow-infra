@@ -11,6 +11,7 @@ from starlette.testclient import TestClient
 
 from server.api.finetune import router
 from server.core.dependencies import auth_admin, get_services_manager
+from server.error_handlers import register_exception_handlers
 from server.services.finetune_service import FinetuneAdapterListOut, FinetuneAdapterOut, FinetuneService
 
 SERVICE_ID = "finetune"
@@ -46,6 +47,7 @@ def services_manager(finetune_service: MagicMock) -> MagicMock:
 @pytest.fixture
 def client(services_manager: MagicMock) -> TestClient:
     app = FastAPI()
+    register_exception_handlers(app)
     app.include_router(router)
     app.dependency_overrides[get_services_manager] = lambda: services_manager
     app.dependency_overrides[auth_admin] = lambda: "admin"
@@ -79,7 +81,7 @@ def test_list_adapters_service_not_finetune_returns_404(client: TestClient, serv
     response = client.get(f"/admin/services/{SERVICE_ID}/adapters")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == f"Service {SERVICE_ID} is not a Finetune service"
+    assert response.json()["error"]["message"] == f"Service {SERVICE_ID} is not a Finetune service"
 
 
 def test_list_adapters_unknown_service_returns_404(client: TestClient, services_manager: MagicMock) -> None:

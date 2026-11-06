@@ -13,6 +13,7 @@ from starlette.testclient import TestClient
 
 from server.api.services import router
 from server.core.dependencies import auth_admin, get_config, get_endpoint_registry, get_service_provider, get_services_manager
+from server.error_handlers import register_exception_handlers
 from server.models.services import (
     InstallServiceOut,
     ListAllModelsOut,
@@ -76,6 +77,7 @@ def service_provider() -> MagicMock:
 @pytest.fixture
 def client(services_manager: MagicMock, endpoint_registry: MagicMock, service_provider: MagicMock) -> Generator[TestClient]:
     app = FastAPI()
+    register_exception_handlers(app)
     app.include_router(router)
     app.dependency_overrides[auth_admin] = lambda: "test-key"
     app.dependency_overrides[get_services_manager] = lambda: services_manager
@@ -506,7 +508,9 @@ def test_service_change_503_when_services_config_unreadable(
     resp = client.request(method, path, json=body, headers=auth_header)
 
     assert resp.status_code == 503
-    assert resp.json() == {"detail": "Could not read the services configuration"}
+    assert resp.json() == {
+        "error": {"message": "Could not read the services configuration", "type": "api_error", "param": None, "code": None}
+    }
     getattr(services_manager, manager_method).assert_not_awaited()
 
 

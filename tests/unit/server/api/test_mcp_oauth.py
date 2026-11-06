@@ -11,6 +11,7 @@ from starlette.testclient import TestClient
 
 from server.api.mcp_oauth import callback_router, router
 from server.core.dependencies import auth_admin, get_services_manager
+from server.error_handlers import register_exception_handlers
 from server.services.mcp_service import McpOAuthStatusOut, McpService
 
 SERVICE_ID = "mcp"
@@ -37,6 +38,7 @@ def services_manager(mcp_service: MagicMock) -> MagicMock:
 @pytest.fixture
 def client(services_manager: MagicMock) -> TestClient:
     app = FastAPI()
+    register_exception_handlers(app)
     app.include_router(router)
     app.include_router(callback_router)
     app.dependency_overrides[get_services_manager] = lambda: services_manager
@@ -66,7 +68,7 @@ def test_start_mcp_oauth_service_not_mcp_returns_404(client: TestClient, service
     response = client.post(f"/admin/services/{SERVICE_ID}/models/{MODEL_ID}/oauth/start")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == f"Service {SERVICE_ID} is not an MCP service"
+    assert response.json()["error"]["message"] == f"Service {SERVICE_ID} is not an MCP service"
 
 
 def test_start_mcp_oauth_unknown_service_returns_404(client: TestClient, services_manager: MagicMock) -> None:
