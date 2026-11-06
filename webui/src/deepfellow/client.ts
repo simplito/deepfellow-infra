@@ -775,16 +775,28 @@ export class DeepFellowClient {
 }
 
 type ApiErrorPayload = {
+  error?: unknown;
   detail?: unknown;
   message?: unknown;
 };
 
-function formatApiErrorMessage(errorData: unknown, fallback: string): string {
+export function formatApiErrorMessage(
+  errorData: unknown,
+  fallback: string,
+): string {
   if (!errorData || typeof errorData !== "object") return fallback;
 
   const data = errorData as ApiErrorPayload;
   const detail = data.detail;
   const message = data.message;
+
+  // The server sends every error as `{"error": {"message": ...}}` (OpenAI style).
+  if (data.error && typeof data.error === "object") {
+    const errorMessage = (data.error as { message?: unknown }).message;
+    if (typeof errorMessage === "string" && errorMessage.trim()) {
+      return errorMessage;
+    }
+  }
 
   const detailString = formatDetail(detail);
   if (detailString) return detailString;

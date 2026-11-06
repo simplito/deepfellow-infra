@@ -13,6 +13,7 @@ from starlette.testclient import TestClient
 
 from server.api.models import router
 from server.core.dependencies import auth_admin, get_config, get_service_provider, get_services_manager
+from server.error_handlers import register_exception_handlers
 from server.models.models import (
     InstallModelOut,
     ListModelsOut,
@@ -70,6 +71,7 @@ def service_provider() -> MagicMock:
 @pytest.fixture
 def client(services_manager: MagicMock, service_provider: MagicMock) -> Generator[TestClient]:
     app = FastAPI()
+    register_exception_handlers(app)
     app.include_router(router)
     app.dependency_overrides[auth_admin] = lambda: "test-key"
     app.dependency_overrides[get_services_manager] = lambda: services_manager
@@ -478,7 +480,7 @@ def test_update_custom_model_route_still_rejects_when_installed(
     resp = client.put(f"/admin/services/{SERVICE_ID}/models/custom/cust-1", json={"spec": {"name": "x"}}, headers=auth_header)
 
     assert resp.status_code == 400
-    assert "Uninstall first" in resp.json()["detail"]
+    assert "Uninstall first" in resp.json()["error"]["message"]
 
 
 def test_sync_models_returns_200(client: TestClient, auth_header: dict[str, str]) -> None:
@@ -533,7 +535,9 @@ def test_model_change_503_when_services_config_unreadable(
     resp = client.request(method, path, json=body, params=params, headers=auth_header)
 
     assert resp.status_code == 503
-    assert resp.json() == {"detail": "Could not read the services configuration"}
+    assert resp.json() == {
+        "error": {"message": "Could not read the services configuration", "type": "api_error", "param": None, "code": None}
+    }
     getattr(services_manager, manager_method).assert_not_awaited()
 
 

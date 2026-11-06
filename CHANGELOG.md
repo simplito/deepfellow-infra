@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - An unreadable `services.json` is shown in the WebUI with the reason, not as an empty list of services.
 - Service and model changes return `503` while `services.json` can't be read.
+- API errors in the WebUI show the message text instead of raw JSON.
 
 ## [0.38.0] - 2026-11-04
 

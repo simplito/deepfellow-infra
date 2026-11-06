@@ -28,6 +28,7 @@ from server.core.dependencies import (
     get_parent_infra,
     get_task_manager,
 )
+from server.error_handlers import register_exception_handlers
 from server.utils.sentry import SentryManager
 
 
@@ -133,6 +134,7 @@ def client(
     model_downloader: MagicMock,
 ) -> Generator[TestClient]:
     app = FastAPI()
+    register_exception_handlers(app)
     app.include_router(router)
     app.dependency_overrides[auth_admin] = lambda: "test-key"
     app.dependency_overrides[get_config] = lambda: config
@@ -255,7 +257,7 @@ def test_update_config_unknown_field_returns_400(client: TestClient, auth_header
     resp = client.put("/admin/config", json={"not_a_field": "x"}, headers=auth_header)
 
     assert resp.status_code == 400
-    assert "not_a_field" in resp.json()["detail"]
+    assert "not_a_field" in resp.json()["error"]["message"]
 
 
 def test_update_config_invalid_value_returns_400(client: TestClient, auth_header: dict[str, str]) -> None:
@@ -285,7 +287,7 @@ def test_update_config_rejects_new_container_name_suffix_while_legacy_prefix_set
         resp = client.put("/admin/config", json={"container_name_suffix": "_myinstance"}, headers=auth_header)
 
     assert resp.status_code == 400
-    assert "DF_CONTAINER_NAME_PREFIX" in resp.json()["detail"]
+    assert "DF_CONTAINER_NAME_PREFIX" in resp.json()["error"]["message"]
     assert mock_persist.call_count == 0
 
 
@@ -643,7 +645,7 @@ def test_update_config_rejects_malformed_sentry_dsn(
     resp = client.put("/admin/config", json={"sentry_dsn": dsn}, headers=auth_header)
 
     assert resp.status_code == 400
-    assert "Invalid Sentry DSN" in resp.json()["detail"]
+    assert "Invalid Sentry DSN" in resp.json()["error"]["message"]
     assert mock_persist_settings.call_count == 0
     assert config.sentry_dsn.get_secret_value() == ""
 
@@ -738,7 +740,7 @@ def test_update_config_rejects_enabling_sentry_over_stored_malformed_dsn(
     resp = client.put("/admin/config", json=updates, headers=auth_header)
 
     assert resp.status_code == 400
-    assert "Invalid Sentry DSN" in resp.json()["detail"]
+    assert "Invalid Sentry DSN" in resp.json()["error"]["message"]
     assert mock_persist_settings.call_count == 0
 
 
