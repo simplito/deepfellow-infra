@@ -145,7 +145,7 @@ def test_load_default_models_web_search_uses_streamable_http_transport(svc: McpS
     assert model.proxy_transport == "streamable_http"
     assert model.model_props.transport == "streamable_http"
     assert model.options is not None
-    assert model.options.image == "hub.simplito.com/deepfellow/web-search-mcp:v0.3.3"
+    assert model.options.image == "hub.simplito.com/deepfellow/web-search-mcp:v0.3.4"
 
 
 def test_get_spec_has_no_fields(svc: McpService) -> None:

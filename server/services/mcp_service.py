@@ -2269,7 +2269,7 @@ _const = McpConst(
                 image_port=8080,
                 name="web-search",
                 container_name=mcp_service.docker_service.get_docker_container_name("web-search"),
-                image="hub.simplito.com/deepfellow/web-search-mcp:v0.3.3",
+                image="hub.simplito.com/deepfellow/web-search-mcp:v0.3.4",
                 env_vars={},
                 subnet=subnet,
             ),
