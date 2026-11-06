@@ -3,6 +3,7 @@
 
 import asyncio
 import contextlib
+import json
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -32,7 +33,7 @@ from server.models.services import (
     ServiceSpecification,
     UninstallServiceIn,
 )
-from server.serviceprovider import ServiceRawConfig
+from server.serviceprovider import ServiceProvider, ServiceRawConfig
 from server.services.base2_service import (
     Base2Service,
     CustomModel,
@@ -2503,6 +2504,29 @@ async def test_save_calls_service_provider(base2_svc: _Base2Impl, base2_deps: di
     await base2_svc._save()  # pyright: ignore[reportPrivateUsage]
 
     assert base2_deps["service_provider"].save_service_config.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_save_leaves_services_json_untouched_when_load_failed(base2_deps: dict[str, Any], tmp_path: Path) -> None:
+    config = MagicMock()
+    config.get_storage_dir.return_value = tmp_path
+    provider = ServiceProvider(config)
+    provider.load_error = "Could not read the services configuration"
+    content = json.dumps(
+        {
+            "version": "v4",
+            "services": {"test-b2": {"instances": {"default": {}, "second": {}}}},
+            "cloud_enabled": False,
+            "warnings": [],
+        }
+    )
+    (tmp_path / "services.json").write_text(content)
+    base2_deps["service_provider"] = provider
+    svc = _Base2Impl(**base2_deps)
+
+    await svc._save()  # pyright: ignore[reportPrivateUsage]
+
+    assert (tmp_path / "services.json").read_text() == content
 
 
 @pytest.mark.asyncio

@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 - An unreadable `services.json` is shown in the WebUI with the reason, not as an empty list of services.
+- Service and model changes return `503` while `services.json` can't be read.
 
 ## [0.38.0] - 2026-11-04
 

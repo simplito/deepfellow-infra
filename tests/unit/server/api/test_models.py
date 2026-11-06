@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from starlette.testclient import TestClient
 
 from server.api.models import router
-from server.core.dependencies import auth_admin, get_services_manager
+from server.core.dependencies import auth_admin, get_config, get_service_provider, get_services_manager
 from server.models.models import (
     InstallModelOut,
     ListModelsOut,
@@ -61,11 +61,19 @@ def services_manager(retrieve_model_out: RetrieveModelOut) -> MagicMock:
 
 
 @pytest.fixture
-def client(services_manager: MagicMock) -> Generator[TestClient]:
+def service_provider() -> MagicMock:
+    provider = MagicMock()
+    provider.load_error = None
+    return provider
+
+
+@pytest.fixture
+def client(services_manager: MagicMock, service_provider: MagicMock) -> Generator[TestClient]:
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[auth_admin] = lambda: "test-key"
     app.dependency_overrides[get_services_manager] = lambda: services_manager
+    app.dependency_overrides[get_service_provider] = lambda: service_provider
     with TestClient(app) as c:
         yield c
 
@@ -490,3 +498,74 @@ def test_sync_models_returns_ok_status(client: TestClient, auth_header: dict[str
     resp = client.post(f"/admin/services/{SERVICE_ID}/models/sync", headers=auth_header)
 
     assert resp.json()["status"] == "OK"
+
+
+MODELS_PATH = f"/admin/services/{SERVICE_ID}/models"
+MODEL_ID_PARAMS = {"model_id": MODEL_ID}
+CUSTOM_SPEC_BODY = {"spec": {"name": "x"}}
+
+BLOCKED_WHEN_CONFIG_NOT_LOADED = [
+    ("POST", f"{MODELS_PATH}/_", INSTALL_BODY, MODEL_ID_PARAMS, "install_model_in_service"),
+    ("DELETE", f"{MODELS_PATH}/_", UNINSTALL_BODY, MODEL_ID_PARAMS, "uninstall_model_from_service"),
+    ("POST", f"{MODELS_PATH}/custom", ADD_CUSTOM_BODY, None, "add_custom_model"),
+    ("DELETE", f"{MODELS_PATH}/custom/cust-1", None, None, "remove_custom_model"),
+    ("PUT", f"{MODELS_PATH}/custom/cust-1", CUSTOM_SPEC_BODY, None, "update_custom_model"),
+    ("POST", f"{MODELS_PATH}/custom/cust-1/edit", CUSTOM_SPEC_BODY, None, "edit_model"),
+    ("POST", f"{MODELS_PATH}/_/edit", INSTALL_BODY, MODEL_ID_PARAMS, "edit_model_install_options"),
+    ("POST", f"{MODELS_PATH}/sync", None, None, "sync_models_in_service"),
+]
+
+
+@pytest.mark.parametrize(("method", "path", "body", "params", "manager_method"), BLOCKED_WHEN_CONFIG_NOT_LOADED)
+def test_model_change_503_when_services_config_unreadable(
+    method: str,
+    path: str,
+    body: dict[str, object] | None,
+    params: dict[str, str] | None,
+    manager_method: str,
+    services_manager: MagicMock,
+    service_provider: MagicMock,
+    client: TestClient,
+    auth_header: dict[str, str],
+) -> None:
+    service_provider.load_error = "Could not read the services configuration"
+
+    resp = client.request(method, path, json=body, params=params, headers=auth_header)
+
+    assert resp.status_code == 503
+    assert resp.json() == {"detail": "Could not read the services configuration"}
+    getattr(services_manager, manager_method).assert_not_awaited()
+
+
+def test_cancel_model_install_allowed_when_services_config_unreadable(
+    services_manager: MagicMock, service_provider: MagicMock, client: TestClient, auth_header: dict[str, str]
+) -> None:
+    service_provider.load_error = "Could not read the services configuration"
+
+    resp = client.post(f"{MODELS_PATH}/cancel", params=MODEL_ID_PARAMS, headers=auth_header)
+
+    assert resp.status_code == 200
+    services_manager.cancel_model_install.assert_awaited_once_with(SERVICE_ID, MODEL_ID)
+
+
+@pytest.mark.parametrize(("method", "path", "body", "params", "manager_method"), BLOCKED_WHEN_CONFIG_NOT_LOADED)
+def test_model_change_load_error_hidden_without_auth(
+    method: str, path: str, body: dict[str, object] | None, params: dict[str, str] | None, manager_method: str
+) -> None:
+    fake_config = MagicMock()
+    fake_config.infra_admin_api_key.get_secret_value.return_value = "correct-key"
+    services_manager = MagicMock()
+    provider = MagicMock()
+    provider.load_error = "Could not read the services configuration"
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_services_manager] = lambda: services_manager
+    app.dependency_overrides[get_service_provider] = lambda: provider
+    app.dependency_overrides[get_config] = lambda: fake_config
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        resp = client.request(method, path, json=body, params=params, headers={"Authorization": "Bearer wrong-key"})
+
+    assert resp.status_code == 401
+    assert "services configuration" not in resp.text
+    getattr(services_manager, manager_method).assert_not_called()

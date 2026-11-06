@@ -479,3 +479,65 @@ def test_restart_docker_returns_ok_status(client: TestClient, auth_header: dict[
     resp = client.post("/admin/services/ollama/docker/restart", headers=auth_header)
 
     assert resp.json()["status"] == "OK"
+
+
+BLOCKED_WHEN_CONFIG_NOT_LOADED = [
+    ("POST", "/admin/services/ollama", INSTALL_BODY, "install_service"),
+    ("PUT", "/admin/services/ollama", INSTALL_BODY, "update_service"),
+    ("DELETE", "/admin/services/ollama", UNINSTALL_BODY, "uninstall_service"),
+    ("DELETE", "/admin/services/ollama", {"purge": True}, "uninstall_service"),
+    ("POST", "/admin/services/ollama/docker/restart", None, "restart_docker"),
+]
+
+
+@pytest.mark.parametrize(("method", "path", "body", "manager_method"), BLOCKED_WHEN_CONFIG_NOT_LOADED)
+def test_service_change_503_when_services_config_unreadable(
+    method: str,
+    path: str,
+    body: dict[str, object] | None,
+    manager_method: str,
+    services_manager: MagicMock,
+    service_provider: MagicMock,
+    client: TestClient,
+    auth_header: dict[str, str],
+) -> None:
+    service_provider.load_error = "Could not read the services configuration"
+
+    resp = client.request(method, path, json=body, headers=auth_header)
+
+    assert resp.status_code == 503
+    assert resp.json() == {"detail": "Could not read the services configuration"}
+    getattr(services_manager, manager_method).assert_not_awaited()
+
+
+def test_cancel_service_install_allowed_when_services_config_unreadable(
+    services_manager: MagicMock, service_provider: MagicMock, client: TestClient, auth_header: dict[str, str]
+) -> None:
+    service_provider.load_error = "Could not read the services configuration"
+
+    resp = client.post("/admin/services/ollama/cancel", headers=auth_header)
+
+    assert resp.status_code == 200
+    services_manager.cancel_service_install.assert_awaited_once_with("ollama")
+
+
+@pytest.mark.parametrize(("method", "path", "body", "manager_method"), BLOCKED_WHEN_CONFIG_NOT_LOADED)
+def test_service_change_load_error_hidden_without_auth(method: str, path: str, body: dict[str, object] | None, manager_method: str) -> None:
+    fake_config = MagicMock()
+    fake_config.infra_admin_api_key.get_secret_value.return_value = "correct-key"
+    services_manager = MagicMock()
+    provider = MagicMock()
+    provider.load_error = "Could not read the services configuration"
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_services_manager] = lambda: services_manager
+    app.dependency_overrides[get_service_provider] = lambda: provider
+    app.dependency_overrides[get_endpoint_registry] = lambda: MagicMock()
+    app.dependency_overrides[get_config] = lambda: fake_config
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        resp = client.request(method, path, json=body, headers={"Authorization": "Bearer wrong-key"})
+
+    assert resp.status_code == 401
+    assert "services configuration" not in resp.text
+    getattr(services_manager, manager_method).assert_not_called()
