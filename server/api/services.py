@@ -11,7 +11,13 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse, Response
 
-from server.core.dependencies import auth_admin, get_endpoint_registry, get_service_provider, get_services_manager
+from server.core.dependencies import (
+    auth_admin,
+    get_endpoint_registry,
+    get_service_provider,
+    get_services_manager,
+    require_services_config_loaded,
+)
 from server.endpointregistry import EndpointRegistry
 from server.models.api import RegistrationId
 from server.models.services import (
@@ -51,6 +57,7 @@ _DOCKER_TAGS_TTL = 7200  # seconds
 @router.post(
     "/{service_id}",
     summary="Install the service.",
+    dependencies=[Depends(require_services_config_loaded)],
 )
 @tracer.trace_request()
 async def install_service(
@@ -96,6 +103,7 @@ async def cancel_service_install(
 @router.put(
     "/{service_id}",
     summary="Update the service configuration.",
+    dependencies=[Depends(require_services_config_loaded)],
 )
 @tracer.trace_request()
 async def update_service(
@@ -121,6 +129,7 @@ async def update_service(
 @router.delete(
     "/{service_id}",
     summary="Uninstall the service.",
+    dependencies=[Depends(require_services_config_loaded)],
 )
 @tracer.trace_request()
 async def uninstall_service(
@@ -362,6 +371,7 @@ async def retrieve_docker_compose_file(
 @router.post(
     "/{service_id}/docker/restart",
     summary="Restart docker container.",
+    dependencies=[Depends(require_services_config_loaded)],
 )
 @tracer.trace_request()
 async def restart_docker_container(

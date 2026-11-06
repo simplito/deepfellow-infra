@@ -337,6 +337,25 @@ async def test_save_service_config(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_save_service_config_skipped_and_file_untouched_when_load_failed(tmp_path: Path):
+    provider = make_provider(tmp_path)
+    provider.load_error = "Could not read the services configuration"
+    content = json.dumps(
+        {
+            "version": "v4",
+            "services": {"ollama": {"instances": {"default": {}, "second": {}}}},
+            "cloud_enabled": False,
+            "warnings": [],
+        }
+    )
+    (tmp_path / "services.json").write_text(content)
+
+    await provider.save_service_config("ollama", {"instances": {"default": {}}})
+
+    assert (tmp_path / "services.json").read_text() == content
+
+
+@pytest.mark.asyncio
 async def test_get_cloud_enabled_false(tmp_path: Path):
     provider = make_provider(tmp_path)
     (tmp_path / "services.json").write_text(json.dumps({"version": "v3", "services": {}, "cloud_enabled": False}))

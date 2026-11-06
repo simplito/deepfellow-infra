@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse, Response
 
-from server.core.dependencies import auth_admin, get_services_manager
+from server.core.dependencies import auth_admin, get_services_manager, require_services_config_loaded
 from server.models.models import (
     AddCustomModelIn,
     AddCustomModelOut,
@@ -37,6 +37,7 @@ router = APIRouter(prefix="/admin/services/{service_id}/models", tags=["Services
 @router.post(
     "/_",
     summary="Install the model from the service.",
+    dependencies=[Depends(require_services_config_loaded)],
 )
 @tracer.trace_request()
 async def install_model(
@@ -96,6 +97,7 @@ async def cancel_model_install(
 @router.delete(
     "/_",
     summary="Uninstall the model from the service.",
+    dependencies=[Depends(require_services_config_loaded)],
 )
 @tracer.trace_request()
 async def uninstall_model(
@@ -146,6 +148,7 @@ async def list_model(
 @router.post(
     "/custom",
     summary="Add custom model.",
+    dependencies=[Depends(require_services_config_loaded)],
 )
 @tracer.trace_request()
 async def add_custom_model(
@@ -163,6 +166,7 @@ async def add_custom_model(
 @router.delete(
     "/custom/{custom_model_id}",
     summary="Remove custom model.",
+    dependencies=[Depends(require_services_config_loaded)],
 )
 @tracer.trace_request()
 async def remove_custom_model(
@@ -180,6 +184,7 @@ async def remove_custom_model(
 @router.put(
     "/custom/{custom_model_id}",
     summary="Update custom model.",
+    dependencies=[Depends(require_services_config_loaded)],
 )
 @tracer.trace_request()
 async def update_custom_model(
@@ -198,6 +203,7 @@ async def update_custom_model(
 @router.post(
     "/custom/{custom_model_id}/edit",
     summary="Edit a custom model, uninstalling and reinstalling it automatically if it's installed.",
+    dependencies=[Depends(require_services_config_loaded)],
 )
 @tracer.trace_request()
 async def edit_custom_model(
@@ -223,6 +229,7 @@ async def edit_custom_model(
 @router.post(
     "/_/edit",
     summary="Edit a model's install-time options only (prefix/envs/headers), reinstalling it if needed.",
+    dependencies=[Depends(require_services_config_loaded)],
 )
 @tracer.trace_request()
 async def edit_model_options(
@@ -266,6 +273,7 @@ async def get_duplicate_spec(
 @router.post(
     "/sync",
     summary="Trigger immediate model sync.",
+    dependencies=[Depends(require_services_config_loaded)],
 )
 @tracer.trace_request()
 async def sync_models(

@@ -218,7 +218,14 @@ class ServiceProvider:
                 await self._save_locked(new_content)
 
     async def save_service_config(self, service_id: str, data: ServiceRawConfig) -> None:
-        """Save service config."""
+        """Save service config.
+
+        Skipped while services.json is not loaded: the in-memory config then holds only what was started since,
+        so writing it would erase the saved instances once the admin repairs the file before restarting.
+        """
+        if self.load_error is not None:
+            logger.warning(f"{service_id} config not saved: the services configuration was not loaded")
+            return
 
         async def handler(content: FileContent) -> Literal[False] | FileContent:
             content["services"][service_id] = data
