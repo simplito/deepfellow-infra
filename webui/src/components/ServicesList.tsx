@@ -45,6 +45,7 @@ import {
   startProgressSimulation,
 } from "@/utils/progress-simulation";
 import type { SimulationHandle } from "@/utils/progress-simulation";
+import { LOAD_ERROR_HINT, getActionBlockReason } from "@/utils/service-actions";
 import type { ProgressEvent } from "@/utils/sse-stream";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -110,14 +111,21 @@ export function ServicesList() {
     queryKey: ["admin", "services"],
     queryFn: () => apiClient.listAdminServices(),
   });
+  const loadError = servicesData?.load_error;
 
   const { data: settingsData } = useQuery({
     queryKey: ["admin", "settings"],
     queryFn: () => apiClient.getSettings(),
+    enabled: !!servicesData && !loadError,
   });
 
-  const cloudEnabled = settingsData?.cloud_enabled ?? true;
-  const loadError = servicesData?.load_error;
+  const cloudEnabled = settingsData?.cloud_enabled;
+
+  const blockedByLoadError = () => {
+    if (!loadError) return false;
+    toast.error(LOAD_ERROR_HINT);
+    return true;
+  };
 
   const cloudToggleMutation = useMutation({
     mutationFn: (enabled: boolean) =>
@@ -136,7 +144,8 @@ export function ServicesList() {
       ...anotherInstances,
     ];
     const isDisabled = (service: Service) =>
-      !!service.disabled_reason || (!!service.is_cloud && !cloudEnabled);
+      !!service.disabled_reason ||
+      (!!service.is_cloud && cloudEnabled === false);
     newList.sort((a, b) => {
       const aDisabled = isDisabled(a) ? 1 : 0;
       const bDisabled = isDisabled(b) ? 1 : 0;
@@ -686,6 +695,7 @@ export function ServicesList() {
   };
 
   const handleRestartDocker = (serviceId: string) => {
+    if (blockedByLoadError()) return;
     modal.open(ConfirmModal, {
       title: "Restart Docker",
       description: `Are you sure you want to restart Docker for ${serviceId}?`,
@@ -708,6 +718,7 @@ export function ServicesList() {
     service: Service,
     installAnotherInstance: boolean,
   ) => {
+    if (blockedByLoadError()) return;
     modal.open(DynamicFormModal, {
       title: `Install ${service.id}`,
       fields: [],
@@ -795,6 +806,7 @@ export function ServicesList() {
   };
 
   const handleEditClick = (service: Service) => {
+    if (blockedByLoadError()) return;
     const installed = service.installed;
     const currentValues =
       installed &&
@@ -828,6 +840,7 @@ export function ServicesList() {
   };
 
   const handleUpdateClick = async (service: Service) => {
+    if (blockedByLoadError()) return;
     const installed = service.installed;
     const currentValues =
       installed &&
@@ -932,6 +945,7 @@ export function ServicesList() {
   };
 
   const handleUninstallClick = async (serviceId: string) => {
+    if (blockedByLoadError()) return;
     // Check if service has custom models before uninstalling
     let customModelsCount = 0;
     try {
@@ -970,6 +984,7 @@ export function ServicesList() {
   };
 
   const handlePurgeClick = (serviceId: string) => {
+    if (blockedByLoadError()) return;
     modal.open(ConfirmModal, {
       title: "Purge Service",
       description:
@@ -1055,17 +1070,35 @@ export function ServicesList() {
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-3xl font-bold">Services</h1>
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Switch
-                id="cloud-enabled"
-                checked={cloudEnabled}
-                onCheckedChange={(checked) =>
-                  cloudToggleMutation.mutate(checked)
-                }
-                disabled={cloudToggleMutation.isPending || !!loadError}
-              />
-              <Label htmlFor="cloud-enabled">Cloud services</Label>
-            </div>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="cloud-enabled"
+                      checked={cloudEnabled ?? false}
+                      onCheckedChange={(checked) =>
+                        cloudToggleMutation.mutate(checked)
+                      }
+                      disabled={
+                        cloudToggleMutation.isPending ||
+                        !!loadError ||
+                        cloudEnabled === undefined
+                      }
+                    />
+                    <Label htmlFor="cloud-enabled">
+                      Cloud services
+                      {loadError && (
+                        <span className="text-muted-foreground">(unknown)</span>
+                      )}
+                    </Label>
+                  </div>
+                </TooltipTrigger>
+                {loadError && (
+                  <TooltipContent>{LOAD_ERROR_HINT}</TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
             <Button onClick={handleShowMeshInfo} variant="outline">
               Show mesh info
             </Button>
@@ -1082,6 +1115,10 @@ export function ServicesList() {
                   Warnings
                 </Link>{" "}
                 for details.
+              </p>
+              <p>
+                Service actions are disabled until the file is fixed and
+                DeepFellow Infra is restarted.
               </p>
             </AlertDescription>
           </Alert>
@@ -1141,9 +1178,15 @@ export function ServicesList() {
                   typeof service.installed === "object" &&
                   "stage" in service.installed &&
                   "value" in service.installed;
-                const isCloudDisabled = service.is_cloud && !cloudEnabled;
+                const isCloudDisabled =
+                  service.is_cloud && cloudEnabled === false;
                 const isHardwareDisabled = !!service.disabled_reason;
                 const isDisabled = isCloudDisabled || isHardwareDisabled;
+                const blockReason = getActionBlockReason(
+                  service,
+                  loadError,
+                  cloudEnabled,
+                );
 
                 return (
                   <TableRow
@@ -1256,7 +1299,7 @@ export function ServicesList() {
                                       }
                                       size="sm"
                                       disabled={
-                                        isInstallingCurrent || isDisabled
+                                        isInstallingCurrent || !!blockReason
                                       }
                                     >
                                       {isInstallingCurrent
@@ -1265,30 +1308,38 @@ export function ServicesList() {
                                     </Button>
                                   </span>
                                 </TooltipTrigger>
-                                {isCloudDisabled ? (
-                                  <TooltipContent>
-                                    Cloud services are disabled. Enable cloud to
-                                    install this service.
+                                {blockReason && (
+                                  <TooltipContent className="whitespace-pre-line">
+                                    {blockReason}
                                   </TooltipContent>
-                                ) : (
-                                  isHardwareDisabled && (
-                                    <TooltipContent className="whitespace-pre-line">
-                                      {service.disabled_reason}
-                                    </TooltipContent>
-                                  )
                                 )}
                               </Tooltip>
                             </TooltipProvider>
                             <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={!isDownloaded}
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          disabled={
+                                            !isDownloaded || !!loadError
+                                          }
+                                        >
+                                          <MoreVertical className="h-4 w-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                    </span>
+                                  </TooltipTrigger>
+                                  {loadError && (
+                                    <TooltipContent>
+                                      {LOAD_ERROR_HINT}
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem
                                   onClick={() => handlePurgeClick(service.id)}
@@ -1327,12 +1378,14 @@ export function ServicesList() {
                                   onClick={() =>
                                     handleInstallClick(service, true)
                                   }
+                                  disabled={!!loadError}
                                 >
                                   Install another instance
                                 </DropdownMenuItem>
                                 {canUpdateImage(service) && (
                                   <DropdownMenuItem
                                     onClick={() => handleUpdateClick(service)}
+                                    disabled={!!loadError}
                                   >
                                     Update
                                   </DropdownMenuItem>
@@ -1357,6 +1410,7 @@ export function ServicesList() {
                                       onClick={() =>
                                         handleRestartDocker(service.id)
                                       }
+                                      disabled={!!loadError}
                                     >
                                       Restart Docker
                                     </DropdownMenuItem>
@@ -1367,6 +1421,7 @@ export function ServicesList() {
                                   onClick={() =>
                                     handleUninstallClick(service.id)
                                   }
+                                  disabled={!!loadError}
                                   variant="destructive"
                                 >
                                   Uninstall
