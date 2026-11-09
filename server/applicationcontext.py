@@ -72,7 +72,7 @@ class ApplicationContext:
             self.service_provider.load_error = (
                 f"Could not migrate the services configuration ({path}) to the current version: {_describe_load_error(exc.cause)}. "
                 "Installed services were not loaded and the file was left unchanged. "
-                "Make sure DF Infra can write the file, then restart DF Infra."
+                "Make sure DeepFellow Infra can write the file, then restart DeepFellow Infra."
             )
             return
         except Exception as exc:
@@ -80,7 +80,7 @@ class ApplicationContext:
             logger.exception(f"Could not read {path}, no installed service was loaded")
             self.service_provider.load_error = (
                 f"Could not read the services configuration ({path}): {_describe_load_error(exc)}. Installed services were not loaded "
-                "and the file was left unchanged. Fix or restore the file, then restart DF Infra."
+                "and the file was left unchanged. Fix or restore the file, then restart DeepFellow Infra."
             )
             return
         tasks = [asyncio.create_task(self._load_service(service_id, service_cfg)) for service_id, service_cfg in info["services"].items()]

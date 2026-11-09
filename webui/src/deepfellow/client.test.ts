@@ -26,7 +26,7 @@ describe("formatApiErrorMessage", () => {
   describe("OpenAI-style bodies", () => {
     it("returns the message of the 503 guard", () => {
       const message =
-        "Could not read the services configuration (...). Fix or restore the file, then restart DF Infra.";
+        "Could not read the services configuration (...). Fix or restore the file, then restart DeepFellow Infra.";
 
       expect(formatApiErrorMessage(openAiBody(message), FALLBACK)).toBe(
         message,
