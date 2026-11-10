@@ -2111,7 +2111,9 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         if not await self.docker_service.is_docker_image_pulled(image.name):
             size = await self.docker_service.get_docker_image_size(image.name)
             async for progress in self.docker_service.docker_pull(image.name, size or convert_size_to_bytes(image.size) or 0):
-                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress, data=data))
+                stream.emit(
+                    StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data=data | progress.to_data())
+                )
         stream.emit(StreamChunkProgress(type="progress", stage="download", value=1, data=data))
 
     async def _stop_docker(self, docker_options: DockerOptions) -> None:

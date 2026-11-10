@@ -809,7 +809,9 @@ class OllamaExternalService(Base2Service[InstalledInfo, DownloadedInfo]):
                     elif record.get("status") == "success":
                         progress.set_actual_value(progress.max)
 
-                    stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data={}))
+                    stream.emit(
+                        StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data=progress.to_data())
+                    )
 
         stream.emit(StreamChunkProgress(type="progress", stage="download", value=1, data={}))
 

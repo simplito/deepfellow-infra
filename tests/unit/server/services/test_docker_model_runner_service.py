@@ -1209,3 +1209,18 @@ async def test_load_instance_installed_is_none_after_promise(svc: DockerModelRun
 
     mock_install.assert_called_once()
     assert svc.instances_info["default"].installed is None
+
+
+@pytest.mark.asyncio
+async def test_pull_model_emits_record_byte_counts_in_progress_data(svc: DockerModelRunnerService) -> None:
+    stream = MagicMock()
+    model = DmrModel(id="ai/llama3.2", size="2.0 GB", type="llm")
+
+    async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield FetchResult(status_code=200, data=json.dumps({"completed": 500, "total": 1000}) + "\n")
+
+    with patch("server.services.docker_model_runner_service.stream_fetch_from", side_effect=mock_stream):
+        await svc._pull_model(stream, model, "ai/llama3.2", "http://localhost:12434")  # pyright: ignore[reportPrivateUsage]
+
+    chunk = next(c.args[0] for c in stream.emit.call_args_list if c.args[0]["value"] == 0.5)
+    assert chunk["data"] == {"completed": 500, "total": 1000}

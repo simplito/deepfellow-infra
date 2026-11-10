@@ -615,10 +615,13 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
                 local_model_path = packet.local_path
                 filename = packet.filename
 
-            stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data={}))
+            stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data=progress.to_data()))
         stream.emit(
             StreamChunkProgress(
-                type="progress", stage="download", value=1, data={"local_model_path": str(local_model_path), "filename": filename}
+                type="progress",
+                stage="download",
+                value=1,
+                data={"local_model_path": str(local_model_path), "filename": filename} if local_model_path else {},
             )
         )
         return local_model_path, filename
@@ -641,8 +644,8 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
             chunk: StreamChunk
             async for chunk in self.models_download_progress[model_id].as_generator():
                 if chunk.get("type") == "progress" and chunk.get("stage") == "download":
-                    if data := chunk.get("data"):
-                        local_model_path = Path(data.get("local_model_path", local_model_path) or "")
+                    if (data := chunk.get("data")) and (path := data.get("local_model_path")):
+                        local_model_path = Path(path)
                         filename = str(data.get("filename", filename))
                     stream.emit(chunk)
                 else:

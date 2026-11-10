@@ -5031,6 +5031,60 @@ def test_read_models_reads_stt_entries_from_catalog(tmp_path: Path) -> None:
     assert models["openai/whisper-small"].hf_id == "openai/whisper-small"
 
 
+@pytest.mark.asyncio
+async def test_download_model_emits_byte_counts_in_progress_data(svc: VllmService, deps: dict[str, Any], tmp_path: Path) -> None:
+    model = VllmModel(hf_id="google/test-model", size="100MB")
+    stream = MagicMock()
+
+    async def mock_download(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield DownloadedPacket(downloaded_bytes_size=1_000_000)
+        yield SuccessDownloadPacket(local_path=tmp_path / "model-files", filename="model-files")
+
+    deps["model_downloader"].download = mock_download
+
+    await svc._download_model(stream, model, tmp_path)  # pyright: ignore[reportPrivateUsage]
+
+    assert stream.emit.call_args_list[1].args[0]["data"] == {"completed": 1_000_000, "total": 100_000_000}
+    assert stream.emit.call_args_list[-1].args[0]["data"] == {"local_model_path": str(tmp_path / "model-files")}
+
+
+@pytest.mark.asyncio
+async def test_download_model_omits_path_from_final_chunk_when_downloader_returns_none(
+    svc: VllmService, deps: dict[str, Any], tmp_path: Path
+) -> None:
+    model = VllmModel(hf_id="google/test-model", size="100MB")
+    stream = MagicMock()
+
+    async def mock_download(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield DownloadedPacket(downloaded_bytes_size=1_000_000)
+
+    deps["model_downloader"].download = mock_download
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc._download_model(stream, model, tmp_path)  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.status_code == 500
+    assert stream.emit.call_args_list[-1].args[0]["data"] == {}
+
+
+@pytest.mark.asyncio
+async def test_download_model_or_set_progress_raises_500_when_watched_download_fails_after_byte_chunks(
+    svc: VllmService, tmp_path: Path
+) -> None:
+    existing_stream: Stream[StreamChunk] = Stream()  # type: ignore[type-arg]
+    existing_stream.emit(StreamChunkProgress(type="progress", stage="download", value=0.1, data={"completed": 100, "total": 1000}))
+    existing_stream.close()
+    model_id = "google/test-model"
+    model = VllmModel(hf_id=model_id, size="1GB")
+    svc.models_download_progress[model_id] = existing_stream  # type: ignore[assignment]
+    output_stream = MagicMock()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc._download_model_or_set_progress(output_stream, model_id, model, tmp_path)  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.status_code == 500
+
+
 async def _install_vllm(svc: VllmService, model_id: str, tmp_path: Path, spec: dict[str, Any] | None = None) -> None:
     with (
         patch.object(svc, "_download_model_or_set_progress", new_callable=AsyncMock, return_value=tmp_path / "model"),  # pyright: ignore[reportPrivateUsage]

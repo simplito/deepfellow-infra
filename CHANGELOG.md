@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Public `POST /admin/config/sentry/tunnel` forwarding the WebUI's Sentry events to the configured Sentry only, so the WebUI's CSP can keep `connect-src 'self'`.
 - Sentry settings sit next to the OTel ones on the WebUI Configuration page.
 - `load_error` in `GET /admin/services` and `GET /admin/warnings` when `services.json` can't be read
+- Download progress of images and models carries byte counts (`data.completed`, `data.total`), so clients can show size, speed and ETA.
 
 ### Changed
 

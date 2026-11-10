@@ -1011,8 +1011,11 @@ class DockerService:
 
         return False
 
-    async def docker_pull(self, full_image_name: str, image_size: float) -> AsyncGenerator[float]:
-        """Pull given docker image."""
+    async def docker_pull(self, full_image_name: str, image_size: float) -> AsyncGenerator[Progress]:
+        """Pull given docker image, yielding the pull's byte progress after each downloaded chunk.
+
+        The same `Progress` instance is yielded every time and updated in place — read it immediately, don't store it.
+        """
         progress = Progress(image_size)
         bytes_per_id: dict[str, float] = {}
         additional_params = {}
@@ -1032,7 +1035,7 @@ class DockerService:
                         bytes_per_id[id] = value
                         image_bytes = sum(bytes_per_id.values())
                         progress.set_actual_value(image_bytes)
-                        yield progress.get_percentage()
+                        yield progress
         except Exception as exc:
             is_missing_or_denied = isinstance(exc, DockerError) and exc.status in (401, 403, 404)
             if not (is_expected_error(exc) or is_missing_or_denied or await self._platform_mismatch(full_image_name)):

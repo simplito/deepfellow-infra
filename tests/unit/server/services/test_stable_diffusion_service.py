@@ -2005,3 +2005,45 @@ async def test_install_model_registration_failure_skips_rollback_when_already_re
             await promise.wait()
 
     assert model_id not in installed.models
+
+
+@pytest.mark.asyncio
+async def test_download_model_emits_byte_counts_and_omits_path_when_downloader_returns_none(
+    svc: StableDiffusionService, tmp_path: Path
+) -> None:
+    model = StableDiffusionModel(
+        filetype="Lora",
+        type="lora",
+        url="https://example.com/lora.safetensors",
+        filename="lora.safetensors",
+        size="100MB",
+    )
+
+    async def mock_download(*args: object) -> Any:
+        yield DownloadedPacket(downloaded_bytes_size=1_000_000)
+
+    svc.model_downloader.download.return_value = mock_download()  # pyright: ignore[reportAttributeAccessIssue]
+    stream = MagicMock()
+
+    with patch.object(svc, "_get_working_models_dir", return_value=tmp_path):  # pyright: ignore[reportPrivateUsage]
+        result = await svc._download_model(stream, model)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == (None, "")
+    assert stream.emit.call_args_list[1].args[0]["data"] == {"completed": 1_000_000, "total": 100_000_000}
+    assert stream.emit.call_args_list[-1].args[0]["data"] == {}
+
+
+@pytest.mark.asyncio
+async def test_download_model_or_set_progress_returns_no_path_when_watched_download_fails_after_byte_chunks(
+    svc: StableDiffusionService,
+) -> None:
+    existing_stream: Stream[StreamChunkProgress] = Stream()  # type: ignore[type-arg]
+    existing_stream.emit(StreamChunkProgress(type="progress", stage="download", value=0.1, data={"completed": 100, "total": 1000}))
+    existing_stream.close()
+    svc.models_download_progress["model-id"] = existing_stream  # type: ignore[assignment]
+    output_stream = MagicMock()
+    model = next(iter(svc.models["default"].values()))
+
+    result = await svc._download_model_or_set_progress(output_stream, model, "model-id")  # pyright: ignore[reportPrivateUsage]
+
+    assert result == (None, "")

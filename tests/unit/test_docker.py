@@ -2275,10 +2275,9 @@ async def test_docker_pull_yields_progress(docker_service: DockerService) -> Non
     images.pull = fake_pull
     cm, _ = _make_docker_mock(images)
     with patch("server.docker.Docker", return_value=cm):
-        percentages = [p async for p in docker_service.docker_pull("ubuntu:latest", image_size=2000)]
+        snapshots = [p.to_data() async for p in docker_service.docker_pull("ubuntu:latest", image_size=2000)]
 
-    assert len(percentages) == 2
-    assert percentages[-1] >= percentages[0]
+    assert snapshots == [{"completed": 500, "total": 2000}, {"completed": 1000, "total": 2000}]
 
 
 @pytest.mark.asyncio
