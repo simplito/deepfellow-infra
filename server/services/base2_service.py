@@ -55,7 +55,7 @@ from server.utils.core import (
     convert_size_to_bytes,
     is_own_cancellation,
 )
-from server.utils.exceptions import DockerImageAuthorizationError, DockerImageDoesNotExistError
+from server.utils.exceptions import DockerImageAuthorizationError, DockerImageDoesNotExistError, still_loading_error
 from server.utils.hardware import GpuInfo, Hardware, HardwarePartInfo, NvidiaGpuInfo
 from server.utils.logger import logger
 from server.utils.model_downloader import ModelDownloader
@@ -1552,6 +1552,8 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         """Uninstall the service."""
         await self._uninstall_instance(instance, options)
         self._failed_models.pop(instance, None)
+        # A restore still loading models must not keep the instance "loading" (503) or bring it back in _save().
+        self._restoring.pop(instance, None)
         await self.service_provider.dismiss_warnings_for_instance(self.get_type(), instance)
         await self._save()
 
@@ -2066,6 +2068,9 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
         """Get instance installed info or return exception."""
         installed = self.get_instance_info(instance).installed
         if installed is None:
+            # A persisted instance is reinstalled in the background after a restart, so it is not gone yet: ask clients to retry.
+            if instance in self._restoring:
+                raise still_loading_error("Service", self.get_id(instance))
             raise HTTPException(status_code=400, detail=f"Service {self.get_id(instance)} not installed")
         return installed
 

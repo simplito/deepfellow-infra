@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Service and model changes return `503` while `services.json` can't be read.
 - API errors in the WebUI show the message text instead of raw JSON.
 - WebUI disables service actions and shows **Cloud services** as unknown while `services.json` can't be read.
+- Admin service and model endpoints that answered `400 Service <id> not installed` while a service was still loading after a restart now return `503` with `Retry-After`.
 
 ## [0.38.0] - 2026-11-04
 

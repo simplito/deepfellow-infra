@@ -66,7 +66,7 @@ from server.models.api import (
     SystemOneRequest,
 )
 from server.utils.core import HttpClientError
-from server.utils.exceptions import OpenAIHTTPException
+from server.utils.exceptions import LOADING_RETRY_AFTER_SECONDS, OpenAIHTTPException
 from server.utils.sentry import UpstreamError, attached_tags, is_reported
 from server.websockets.models import UsageChangeRequest
 
@@ -6216,7 +6216,7 @@ async def test_execute_rerank_raises_503_with_retry_after_while_model_is_loading
         await reg.execute_rerank(body)
 
     assert exc_info.value.status_code == 503
-    assert exc_info.value.headers == {"Retry-After": "5"}
+    assert exc_info.value.headers == {"Retry-After": str(LOADING_RETRY_AFTER_SECONDS)}
 
 
 def test_get_model_raises_503_while_model_is_loading_and_404_after():
@@ -6279,6 +6279,7 @@ def test_model_not_found_returns_plain_503_while_model_is_loading():
 
     assert not isinstance(exc, OpenAIHTTPException)
     assert exc.status_code == 503
+    assert exc.detail == "Model m is still loading, try again shortly"
 
 
 def test_model_loading_on_two_instances_stays_marked_until_both_are_done():
@@ -6418,7 +6419,7 @@ async def test_get_embeddings_tokenizer_503_while_model_is_loading():
         await reg.get_embeddings_tokenizer("emb")
 
     assert exc_info.value.status_code == 503
-    assert exc_info.value.headers == {"Retry-After": "5"}
+    assert exc_info.value.headers == {"Retry-After": str(LOADING_RETRY_AFTER_SECONDS)}
 
 
 @pytest.mark.asyncio

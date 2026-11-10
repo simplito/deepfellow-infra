@@ -44,7 +44,7 @@ from server.services.base2_service import (
 )
 from server.services.base_service import BaseService
 from server.utils.core import PromiseWithProgress, Stream, StreamChunk, StreamChunkProgress
-from server.utils.exceptions import DockerImageAuthorizationError, DockerImageDoesNotExistError
+from server.utils.exceptions import LOADING_RETRY_AFTER_SECONDS, DockerImageAuthorizationError, DockerImageDoesNotExistError
 from server.utils.hardware import NvidiaGpuInfo
 from server.utils.registry_client import RegistryUnavailableError
 
@@ -3779,11 +3779,31 @@ def test_get_instance_installed_info_raises_when_not_installed(base2_svc: _Base2
         base2_svc.get_instance_installed_info("default")
 
     assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Service test-b2 not installed"
 
 
 def test_get_instance_installed_info_returns_value_when_installed(base2_svc: _Base2Impl) -> None:
     sentinel = object()
 
+    base2_svc.instances_info["default"].installed = sentinel
+
+    assert base2_svc.get_instance_installed_info("default") is sentinel
+
+
+def test_get_instance_installed_info_raises_503_while_restoring(base2_svc: _Base2Impl) -> None:
+    base2_svc._restoring["default"] = _restoring_config()  # pyright: ignore[reportPrivateUsage]
+
+    with pytest.raises(HTTPException) as exc_info:
+        base2_svc.get_instance_installed_info("default")
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == "Service test-b2 is still loading, try again shortly"
+    assert exc_info.value.headers == {"Retry-After": str(LOADING_RETRY_AFTER_SECONDS)}
+
+
+def test_get_instance_installed_info_returns_value_when_restoring_and_installed(base2_svc: _Base2Impl) -> None:
+    sentinel = object()
+    base2_svc._restoring["default"] = _restoring_config()  # pyright: ignore[reportPrivateUsage]
     base2_svc.instances_info["default"].installed = sentinel
 
     assert base2_svc.get_instance_installed_info("default") is sentinel
@@ -4967,6 +4987,65 @@ async def test_cancelling_load_task_itself_propagates(base2_svc: _Base2Impl) -> 
     with pytest.raises(asyncio.CancelledError):
         await task
     assert base2_svc._restoring == {}  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_installed_info_is_503_while_restoring_and_400_after_restore_fails(base2_svc: _Base2Impl) -> None:
+    task, pull = await _start_loading(base2_svc, _restoring_config())
+
+    with pytest.raises(HTTPException) as loading:
+        base2_svc.get_instance_installed_info("default")
+    pull._future.set_exception(RuntimeError("pull failed"))  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(RuntimeError):
+        await task
+    with pytest.raises(HTTPException) as failed:
+        base2_svc.get_instance_installed_info("default")
+
+    assert loading.value.status_code == 503
+    assert failed.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_installed_info_is_503_while_restoring_and_400_after_restore_is_cancelled(base2_svc: _Base2Impl) -> None:
+    task, pull = await _start_loading(base2_svc, _restoring_config())
+
+    with pytest.raises(HTTPException) as loading:
+        base2_svc.get_instance_installed_info("default")
+    pull.cancel()
+    await task
+    with pytest.raises(HTTPException) as cancelled:
+        base2_svc.get_instance_installed_info("default")
+
+    assert loading.value.status_code == 503
+    assert cancelled.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_uninstall_while_models_restore_answers_400_and_is_saved(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["service_provider"].save_service_config = AsyncMock()
+    models_loading = asyncio.Event()
+
+    async def load_model_blocked(*_: Any) -> None:
+        await models_loading.wait()
+
+    async def uninstall(instance: str, _options: UninstallServiceIn) -> None:
+        base2_svc.instances_info[instance].installed = None
+
+    task, pull = await _start_loading(base2_svc, _restoring_config())
+    base2_svc.load_model = AsyncMock(side_effect=load_model_blocked)  # type: ignore[method-assign]
+    base2_svc._uninstall_instance = uninstall  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage]
+    base2_svc.instances_info["default"].installed = MagicMock()
+    pull._future.set_result(InstallServiceOut(status="OK"))  # pyright: ignore[reportPrivateUsage]
+    await asyncio.sleep(0.01)
+
+    await base2_svc.uninstall_instance("default", UninstallServiceIn(purge=False))
+
+    with pytest.raises(HTTPException) as exc_info:
+        base2_svc.get_instance_installed_info("default")
+    assert exc_info.value.status_code == 400
+    assert _saved_instances(base2_deps)["default"]["options"] is None
+    models_loading.set()
+    await task
 
 
 @pytest.mark.asyncio

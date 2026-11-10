@@ -3,9 +3,11 @@
 
 """Custom exceptions."""
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import HTTPException
+
+LOADING_RETRY_AFTER_SECONDS = 5
 
 
 class AppError(Exception):
@@ -62,3 +64,12 @@ class OpenAIHTTPException(HTTPException):
         super().__init__(status_code, detail, headers)
         self.error_type = error_type
         self.code = code
+
+
+def still_loading_error(kind: Literal["Model", "Service"], name: str) -> HTTPException:
+    """Retryable 503 for a model or service that is still loading: clients retry after `Retry-After` instead of giving up."""
+    return HTTPException(
+        503,
+        f"{kind} {name} is still loading, try again shortly",
+        headers={"Retry-After": str(LOADING_RETRY_AFTER_SECONDS)},
+    )
