@@ -481,14 +481,20 @@ class DockerModelRunnerService(Base2Service[InstalledInfo, DownloadedInfo]):
             if increment > 0:
                 progress.add_to_actual_value(increment)
             last_layer_values[layer_id] = current
-            stream.emit(StreamChunkProgress(type="progress", stage="download", value=min(progress.get_percentage(), 0.99), data={}))
+            stream.emit(
+                StreamChunkProgress(type="progress", stage="download", value=min(progress.get_percentage(), 0.99), data=progress.to_data())
+            )
             handled = True
         else:
             completed = record.get("completed") or record.get("downloaded") or record.get("loaded")
             total = record.get("total") or record.get("size") or progress.max
             if isinstance(completed, (int, float)) and isinstance(total, (int, float)) and total > 0:
                 pct = min(completed / total, 0.99)
-                stream.emit(StreamChunkProgress(type="progress", stage="download", value=pct, data={}))
+                stream.emit(
+                    StreamChunkProgress(
+                        type="progress", stage="download", value=pct, data={"completed": int(completed), "total": int(total)}
+                    )
+                )
                 handled = True
 
         if not handled and (

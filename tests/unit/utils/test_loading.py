@@ -57,3 +57,33 @@ def test_get_percentage_returns_stored_percentage():
     p = Progress(max_value=100.0, actual_value=50.0)
     p.calculate_percentage()
     assert p.get_percentage() == 0.5
+
+
+def test_to_data_returns_completed_and_total_bytes():
+    p = Progress(max_value=2048.0, actual_value=512.0)
+    assert p.to_data() == {"completed": 512, "total": 2048}
+
+
+def test_to_data_omits_total_when_size_unknown():
+    p = Progress(max_value=0)
+    assert p.to_data() == {"completed": 0}
+
+
+@pytest.mark.parametrize("method_name", ["add_to_actual_value", "set_actual_value"])
+def test_to_data_omits_total_after_bytes_when_size_unknown(method_name: str) -> None:
+    p = Progress(0)
+    getattr(p, method_name)(1200)
+    assert p.to_data() == {"completed": 1200}
+
+
+def test_to_data_includes_total_once_max_value_is_set() -> None:
+    p = Progress(0)
+    p.add_to_actual_value(100)
+    p.set_max_value(1000)
+    assert p.to_data() == {"completed": 100, "total": 1000}
+
+
+def test_to_data_reports_raised_total_when_known_size_is_exceeded() -> None:
+    p = Progress(1000)
+    p.set_actual_value(1500)
+    assert p.to_data() == {"completed": 1500, "total": 1500}

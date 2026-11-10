@@ -587,7 +587,9 @@ class SpeachesAIService(Base2Service[InstalledInfo, DownloadedInfo]):
         async for packet in self.model_downloader.hugging_face_repo_with_blobs_downloader.download(model_id, model_dir):
             if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
                 progress.add_to_actual_value(packet.downloaded_bytes_size)
-                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data={}))
+                stream.emit(
+                    StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data=progress.to_data())
+                )
             elif isinstance(packet, PreDownloadPacket):
                 if max := packet.file_bytes_size:
                     progress.set_max_value(max)

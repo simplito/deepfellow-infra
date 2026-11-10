@@ -1008,14 +1008,20 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
         async for packet in self.model_downloader.download(model.hf_id, model_dir, revision=model.revision):
             if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
                 progress.add_to_actual_value(packet.downloaded_bytes_size)
-                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data={}))
+                stream.emit(
+                    StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data=progress.to_data())
+                )
             elif isinstance(packet, PreDownloadPacket):
                 if max := packet.file_bytes_size:
                     progress.set_max_value(max)
             elif isinstance(packet, SuccessDownloadPacket):
                 local_model_path = packet.local_path
 
-        stream.emit(StreamChunkProgress(type="progress", stage="download", value=1, data={"local_model_path": str(local_model_path)}))
+        stream.emit(
+            StreamChunkProgress(
+                type="progress", stage="download", value=1, data={"local_model_path": str(local_model_path)} if local_model_path else {}
+            )
+        )
         if local_model_path is None:
             raise HTTPException(500, f"Downloader doesn't return filepath in {model_dir} of {model.hf_id} model")
         return local_model_path
@@ -1127,8 +1133,8 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
             chunk: StreamChunk
             async for chunk in self.models_download_progress[download_key].as_generator():
                 if chunk.get("type") == "progress" and chunk.get("stage") == "download":
-                    if data := chunk.get("data"):
-                        local_model_path = Path(data.get("local_model_path", local_model_path) or "")
+                    if (data := chunk.get("data")) and (path := data.get("local_model_path")):
+                        local_model_path = Path(path)
                     stream.emit(chunk)
                 else:
                     break

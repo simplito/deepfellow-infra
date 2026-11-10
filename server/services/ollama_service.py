@@ -1333,7 +1333,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                         logger.info("Downloading model %s: %.0f%%", model_id, percentage * 100)
                         last_logged_percentage = percentage
 
-                    stream.emit(StreamChunkProgress(type="progress", stage="download", value=percentage, data={}))
+                    stream.emit(StreamChunkProgress(type="progress", stage="download", value=percentage, data=progress.to_data()))
 
         stream.emit(StreamChunkProgress(type="progress", stage="download", value=1, data={}))
 
@@ -1447,7 +1447,7 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
                         if last_logged_percentage < 1 and (percentage - last_logged_percentage >= _PROGRESS_LOG_STEP or percentage >= 1):
                             logger.info("Downloading model %s: %.0f%%", ref.manifest_path, percentage * 100)
                             last_logged_percentage = percentage
-                        stream.emit(StreamChunkProgress(type="progress", stage="download", value=percentage, data={}))
+                        stream.emit(StreamChunkProgress(type="progress", stage="download", value=percentage, data=progress.to_data()))
         except OllamaRegistryError as e:
             logger.warning("Downloading model %s from the Ollama registry failed: %s", ref.manifest_path, e.message)
             raise HTTPException(status_code=e.status_code, detail=e.message) from e

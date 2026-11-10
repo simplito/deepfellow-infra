@@ -10,10 +10,12 @@ class Progress:
     percentage: float
     actual: float
     max: float
+    max_known: bool
 
     def __init__(self, max_value: float, actual_value: float = 0.0):
         self.percentage = 0
         self.max = max_value
+        self.max_known = max_value > 0
         self.actual = actual_value
 
     def calculate_percentage(self) -> float:
@@ -41,8 +43,19 @@ class Progress:
     def set_max_value(self, value: float) -> None:
         """Set max value."""
         self.max = value
+        self.max_known = value > 0
         self.calculate_percentage()
 
     def get_percentage(self) -> float:
         """Return percentage."""
         return self.percentage
+
+    def to_data(self) -> dict[str, int]:
+        """Return byte counts for a progress chunk's `data`: `completed`, plus `total` once it is known.
+
+        `max` grows with `actual` while the size is unknown, so `total` is sent only if a real size was set.
+        """
+        data = {"completed": int(self.actual)}
+        if self.max_known:
+            data["total"] = int(self.max)
+        return data

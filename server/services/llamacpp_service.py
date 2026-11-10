@@ -607,7 +607,9 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
         async for packet in self.model_downloader.download(model.url, model_dir):
             if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
                 progress.add_to_actual_value(packet.downloaded_bytes_size)
-                stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data={}))
+                stream.emit(
+                    StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data=progress.to_data())
+                )
             elif isinstance(packet, PreDownloadPacket):
                 if max := packet.file_bytes_size:
                     progress.set_max_value(max)
@@ -617,7 +619,10 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
 
         stream.emit(
             StreamChunkProgress(
-                type="progress", stage="download", value=0, data={"local_model_path": str(local_model_path), "filename": filename}
+                type="progress",
+                stage="download",
+                value=0,
+                data={"local_model_path": str(local_model_path), "filename": filename} if local_model_path else {},
             )
         )
         return local_model_path, filename
@@ -637,8 +642,8 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
             chunk: StreamChunk
             async for chunk in self.models_download_progress[model_id].as_generator():
                 if chunk.get("type") == "progress" and chunk.get("stage") == "download":
-                    if data := chunk.get("data"):
-                        local_model_path = Path(data.get("local_model_path", local_model_path) or "")
+                    if (data := chunk.get("data")) and (path := data.get("local_model_path")):
+                        local_model_path = Path(path)
                         filename = str(data.get("filename", filename))
                     stream.emit(chunk)
                 else:

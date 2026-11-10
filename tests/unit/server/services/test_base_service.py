@@ -46,6 +46,7 @@ from server.services.base_service import BaseService
 from server.utils.core import PromiseWithProgress, Stream, StreamChunk, StreamChunkProgress
 from server.utils.exceptions import LOADING_RETRY_AFTER_SECONDS, DockerImageAuthorizationError, DockerImageDoesNotExistError
 from server.utils.hardware import NvidiaGpuInfo
+from server.utils.loading import Progress
 from server.utils.registry_client import RegistryUnavailableError
 
 
@@ -3872,14 +3873,17 @@ async def test_docker_pull_emits_progress_when_image_not_present(base2_svc: _Bas
     base2_deps["docker_service"].get_docker_image_size = AsyncMock(return_value=1024)
 
     async def mock_docker_pull(*args: Any):  # type: ignore[misc]
-        yield 0.5
+        yield Progress(max_value=1024, actual_value=512)
 
     base2_deps["docker_service"].docker_pull = mock_docker_pull
 
     await base2_svc._docker_pull(image, stream)  # pyright: ignore[reportPrivateUsage]
 
-    assert stream.emit.call_count >= 3
-    assert all(c.args[0]["data"] == {"image": "my-image"} for c in stream.emit.call_args_list)
+    assert [c.args[0]["data"] for c in stream.emit.call_args_list] == [
+        {"image": "my-image"},
+        {"image": "my-image", "completed": 512, "total": 1024},
+        {"image": "my-image"},
+    ]
 
 
 @pytest.mark.asyncio

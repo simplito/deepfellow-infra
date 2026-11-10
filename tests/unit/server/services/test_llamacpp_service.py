@@ -1812,3 +1812,56 @@ async def test_sync_models_logs_warning_when_background_refresh_fails(svc: LLama
 def test_newest_tag_in_the_real_ghcr_list(svc: LLamacppService, hardware: str, installed: str, expected: str) -> None:
     tags = svc.filter_docker_tags(real_tags("llamacpp"), hardware)
     assert newest_docker_tag(tags, installed) == expected
+
+
+@pytest.mark.asyncio
+async def test_download_model_emits_byte_counts_in_progress_data(svc: LLamacppService, deps: dict[str, Any], tmp_path: Path) -> None:
+    model = LlamacppModel(url="https://example.com/model.gguf", size="100MB")
+    stream = MagicMock()
+
+    async def mock_download(*args: object):  # type: ignore[misc]
+        yield DownloadedPacket(downloaded_bytes_size=1_000_000)
+        yield SuccessDownloadPacket(local_path=tmp_path / "model.gguf", filename="model.gguf")
+
+    deps["model_downloader"].download = mock_download
+
+    with patch.object(svc, "_get_working_dir", return_value=tmp_path):  # pyright: ignore[reportPrivateUsage]
+        await svc._download_model(stream, model)  # pyright: ignore[reportPrivateUsage]
+
+    assert stream.emit.call_args_list[1].args[0]["data"] == {"completed": 1_000_000, "total": 100_000_000}
+    assert stream.emit.call_args_list[-1].args[0]["data"] == {"local_model_path": str(tmp_path / "model.gguf"), "filename": "model.gguf"}
+
+
+@pytest.mark.asyncio
+async def test_download_model_omits_path_from_final_chunk_when_downloader_returns_none(
+    svc: LLamacppService, deps: dict[str, Any], tmp_path: Path
+) -> None:
+    model = LlamacppModel(url="https://example.com/model.gguf", size="100MB")
+    stream = MagicMock()
+
+    async def mock_download(*args: object):  # type: ignore[misc]
+        yield DownloadedPacket(downloaded_bytes_size=1_000_000)
+
+    deps["model_downloader"].download = mock_download
+
+    with patch.object(svc, "_get_working_dir", return_value=tmp_path):  # pyright: ignore[reportPrivateUsage]
+        result = await svc._download_model(stream, model)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == (None, "")
+    assert stream.emit.call_args_list[-1].args[0]["data"] == {}
+
+
+@pytest.mark.asyncio
+async def test_download_model_or_set_progress_returns_no_path_when_watched_download_fails_after_byte_chunks(
+    svc: LLamacppService,
+) -> None:
+    existing_stream: Stream[StreamChunk] = Stream()  # type: ignore[type-arg]
+    existing_stream.emit(StreamChunkProgress(type="progress", stage="download", value=0.1, data={"completed": 100, "total": 1000}))
+    existing_stream.close()
+    model = LlamacppModel(url="https://example.com/model.gguf", size="1GB")
+    svc.models_download_progress["my-model"] = existing_stream  # type: ignore[assignment]
+    output_stream = MagicMock()
+
+    result = await svc._download_model_or_set_progress(output_stream, model, "my-model")  # pyright: ignore[reportPrivateUsage]
+
+    assert result == (None, "")
