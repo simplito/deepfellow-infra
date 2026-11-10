@@ -45,6 +45,7 @@ from server.services.mcp_service import (
     _run_sse_reader,  # pyright: ignore[reportPrivateUsage]
     _sse_rpc,  # pyright: ignore[reportPrivateUsage]
     _SseState,  # pyright: ignore[reportPrivateUsage]
+    _terminate_mcp_session,  # pyright: ignore[reportPrivateUsage]
 )
 from server.utils.mcp_oauth import (
     AuthorizationServerMetadata,
@@ -1798,6 +1799,174 @@ async def test_fetch_tools_from_mcp_endpoint_401_sets_requires_oauth(mock_cls: M
     assert result.healthy is False
     assert result.requires_oauth is True
     assert mock_client.post.call_count == 1  # doesn't try notify/tools-list after a 401
+
+
+@pytest.mark.parametrize("status", [200, 204, 404, 405])
+@pytest.mark.asyncio
+async def test_terminate_mcp_session_any_status_returns_none(status: int) -> None:
+    mock_client = MagicMock()
+    mock_client.delete.return_value = _make_acm(_make_mock_resp(status))
+
+    result = await _terminate_mcp_session(mock_client, "http://example.com/mcp", {"Mcp-Session-Id": "sid-1"})
+
+    assert result is None
+    mock_client.delete.assert_called_once()
+    args, kwargs = mock_client.delete.call_args
+    assert args == ("http://example.com/mcp",)
+    assert kwargs["headers"] == {"Mcp-Session-Id": "sid-1"}
+    assert kwargs["timeout"].total == 5
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        TimeoutError(),
+        aiohttp.ClientConnectorError(MagicMock(), OSError("refused")),
+        RuntimeError("boom"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_terminate_mcp_session_swallows_errors(error: Exception) -> None:
+    mock_client = MagicMock()
+    mock_client.delete.side_effect = error
+
+    result = await _terminate_mcp_session(mock_client, "http://example.com/mcp", {})
+
+    assert result is None
+
+
+def _mcp_probe_client(*post_responses: MagicMock | BaseException, delete: MagicMock | BaseException | None = None) -> MagicMock:
+    client = MagicMock()
+    client.post.side_effect = [r if isinstance(r, BaseException) else _make_acm(r) for r in post_responses]
+    if isinstance(delete, BaseException):
+        client.delete.side_effect = delete
+    else:
+        client.delete.return_value = _make_acm(delete if delete is not None else _make_mock_resp(200))
+    return client
+
+
+@mock.patch("server.services.mcp_service.aiohttp.ClientSession")
+@pytest.mark.asyncio
+async def test_fetch_tools_from_mcp_endpoint_terminates_session_after_success(mock_cls: MagicMock) -> None:
+    client = _mcp_probe_client(
+        _make_mock_resp(200, json_data={"result": {}}, session_id="sid-abc"),
+        _make_mock_resp(202),
+        _make_mock_resp(200, json_data={"result": {"tools": [{"name": "t", "description": "d"}]}}),
+    )
+    mock_cls.return_value = _make_acm(client)
+
+    result = await _fetch_tools_from_mcp_endpoint("http://example.com/mcp", {"Authorization": "Bearer x"})
+
+    assert result.healthy is True
+    assert [t.name for t in result.tools] == ["t"]
+    client.delete.assert_called_once()
+    args, kwargs = client.delete.call_args
+    assert args == ("http://example.com/mcp",)
+    assert kwargs["headers"]["Mcp-Session-Id"] == "sid-abc"
+    assert kwargs["headers"]["Authorization"] == "Bearer x"
+
+
+@mock.patch("server.services.mcp_service.aiohttp.ClientSession")
+@pytest.mark.asyncio
+async def test_fetch_tools_from_mcp_endpoint_terminates_session_after_tools_list_error(mock_cls: MagicMock) -> None:
+    client = _mcp_probe_client(
+        _make_mock_resp(200, json_data={"result": {}}, session_id="sid-abc"),
+        _make_mock_resp(202),
+        _make_mock_resp(200, json_data={"error": {"message": "tools unavailable"}}),
+    )
+    mock_cls.return_value = _make_acm(client)
+
+    result = await _fetch_tools_from_mcp_endpoint("http://example.com/mcp", {})
+
+    assert result.healthy is True
+    assert result.error == "tools/list: tools unavailable"
+    client.delete.assert_called_once()
+    assert client.delete.call_args.kwargs["headers"]["Mcp-Session-Id"] == "sid-abc"
+
+
+@mock.patch("server.services.mcp_service.aiohttp.ClientSession")
+@pytest.mark.asyncio
+async def test_fetch_tools_from_mcp_endpoint_terminates_session_after_init_error_in_body(mock_cls: MagicMock) -> None:
+    client = _mcp_probe_client(_make_mock_resp(200, json_data={"error": {"message": "not initialized"}}, session_id="sid-abc"))
+    mock_cls.return_value = _make_acm(client)
+
+    result = await _fetch_tools_from_mcp_endpoint("http://example.com/mcp", {})
+
+    assert result.healthy is False
+    assert result.error == "initialize: not initialized"
+    client.delete.assert_called_once()
+    assert client.delete.call_args.kwargs["headers"]["Mcp-Session-Id"] == "sid-abc"
+
+
+@mock.patch("server.services.mcp_service.aiohttp.ClientSession")
+@pytest.mark.asyncio
+async def test_fetch_tools_from_mcp_endpoint_terminates_session_after_exception(mock_cls: MagicMock) -> None:
+    client = _mcp_probe_client(
+        _make_mock_resp(200, json_data={"result": {}}, session_id="sid-abc"),
+        _make_mock_resp(202),
+        TimeoutError(),
+    )
+    mock_cls.return_value = _make_acm(client)
+
+    result = await _fetch_tools_from_mcp_endpoint("http://example.com/mcp", {})
+
+    assert result.healthy is False
+    assert (result.error or "").startswith("TimeoutError")
+    client.delete.assert_called_once()
+    assert client.delete.call_args.kwargs["headers"]["Mcp-Session-Id"] == "sid-abc"
+
+
+@mock.patch("server.services.mcp_service.aiohttp.ClientSession")
+@pytest.mark.asyncio
+async def test_fetch_tools_from_mcp_endpoint_no_session_id_sends_no_delete(mock_cls: MagicMock) -> None:
+    client = _mcp_probe_client(
+        _make_mock_resp(200, json_data={"result": {}}),
+        _make_mock_resp(202),
+        _make_mock_resp(200, json_data={"result": {"tools": []}}),
+    )
+    mock_cls.return_value = _make_acm(client)
+
+    result = await _fetch_tools_from_mcp_endpoint("http://example.com/mcp", {})
+
+    assert result.healthy is True
+    client.delete.assert_not_called()
+
+
+@mock.patch("server.services.mcp_service.aiohttp.ClientSession")
+@pytest.mark.asyncio
+async def test_fetch_tools_from_mcp_endpoint_connection_error_on_init_sends_no_delete(mock_cls: MagicMock) -> None:
+    client = _mcp_probe_client(aiohttp.ClientConnectorError(MagicMock(), OSError("Name or service not known")))
+    mock_cls.return_value = _make_acm(client)
+
+    result = await _fetch_tools_from_mcp_endpoint("http://example.com/mcp", {})
+
+    assert result.healthy is False
+    assert "Connection refused" in (result.error or "")
+    client.delete.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "delete",
+    [_make_mock_resp(405), RuntimeError("boom"), TimeoutError()],
+    ids=["405", "raises", "timeout"],
+)
+@mock.patch("server.services.mcp_service.aiohttp.ClientSession")
+@pytest.mark.asyncio
+async def test_fetch_tools_from_mcp_endpoint_failing_delete_keeps_result(mock_cls: MagicMock, delete: MagicMock | BaseException) -> None:
+    client = _mcp_probe_client(
+        _make_mock_resp(200, json_data={"result": {}}, session_id="sid-abc"),
+        _make_mock_resp(202),
+        _make_mock_resp(200, json_data={"result": {"tools": [{"name": "t", "description": "d"}]}}),
+        delete=delete,
+    )
+    mock_cls.return_value = _make_acm(client)
+
+    result = await _fetch_tools_from_mcp_endpoint("http://example.com/mcp", {})
+
+    assert result.healthy is True
+    assert result.error is None
+    assert [t.name for t in result.tools] == ["t"]
+    client.delete.assert_called_once()
 
 
 @mock.patch("server.services.mcp_service.aiohttp.ClientSession")
