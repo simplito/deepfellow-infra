@@ -258,9 +258,11 @@ class Endpoint[T]:
         self,
         registry: dict[RegistrationId, RegistryEntry],
         parent_infra: ParentInfraGroup,
+        list_healthy_only: bool = False,
     ):
         self.registry = registry
         self.parent_infra = parent_infra
+        self.list_healthy_only = list_healthy_only
         self.models = dict[ModelId, dict[RegistrationId, RegisteredModel[T]]]()
         self._all_saturated_warning_last_logged: dict[ModelId, float] = {}
 
@@ -465,15 +467,16 @@ class Endpoint[T]:
             capacity=self._aggregate_capacity(model),
         )
 
-    def get_models(self) -> list[ApiModel]:
-        """List models from registry."""
-        return [self._build_api_model(model_id, model) for model_id, model in self.models.items()]
+    def get_listed_model(self, model_id: ModelId) -> dict[RegistrationId, RegisteredModel[T]] | None:
+        """Get the registrations of a model `/v1/models` lists; with `list_healthy_only`, only while one of them is healthy."""
+        model = self.models.get(model_id)
+        if not model or (self.list_healthy_only and not any(reg.healthy for reg in model.values())):
+            return None
+        return model
 
-    def get_healthy_models(self) -> list[ApiModel]:
-        """List only models that have at least one healthy registration."""
-        return [
-            self._build_api_model(model_id, model) for model_id, model in self.models.items() if any(reg.healthy for reg in model.values())
-        ]
+    def get_models(self) -> list[ApiModel]:
+        """List the models `/v1/models` shows from this registry."""
+        return [self._build_api_model(model_id, model) for model_id in self.models if (model := self.get_listed_model(model_id))]
 
     def list_models(self, exclude_owned_by: frozenset[str] = frozenset({"mesh-ancestor"})) -> list[Model]:
         """List models from registry, for reporting this node's own aggregate to the rest of the mesh.
@@ -751,7 +754,7 @@ class EndpointRegistry:
         self.images_generations_endpoints = Endpoint[SimpleEndpoint[ImagesRequest]](self.registry, self.parent_infra)
         self.rerank_endpoints = Endpoint[SimpleEndpoint[RerankRequest]](self.registry, self.parent_infra)
         self.systemone_endpoints = Endpoint[SimpleEndpoint[SystemOneRequest]](self.registry, self.parent_infra)
-        self.mcp_endpoints = Endpoint[McpEndpoint](self.registry, self.parent_infra)
+        self.mcp_endpoints = Endpoint[McpEndpoint](self.registry, self.parent_infra, list_healthy_only=True)
         self.response_item_store = ResponseItemStore()
         self._proxy_api_keys = dict[str, str]()
         self._loading_models = dict[ModelId, int]()
@@ -768,28 +771,24 @@ class EndpointRegistry:
         """
         return ClientTimeout(total=self.config.standard_proxy_timeout_seconds, sock_connect=30)
 
+    @property
+    def model_registries(self) -> tuple[Endpoint[Any], ...]:
+        """Every per-type registry, in the order `/v1/models` lists their models."""
+        return (
+            self.chat_completion_endpoints,
+            self.embeddings_endpoints,
+            self.audio_speech_endpoints,
+            self.audio_transcriptions_endpoints,
+            self.images_generations_endpoints,
+            self.rerank_endpoints,
+            self.systemone_endpoints,
+            self.mcp_endpoints,
+            self.custom_endpoints,
+        )
+
     def get_models(self) -> ApiModels:
         """Get models for api."""
-        models: list[ApiModel] = []
-        for model in self.chat_completion_endpoints.get_models():
-            models.append(model)
-        for model in self.embeddings_endpoints.get_models():
-            models.append(model)
-        for model in self.audio_speech_endpoints.get_models():
-            models.append(model)
-        for model in self.audio_transcriptions_endpoints.get_models():
-            models.append(model)
-        for model in self.images_generations_endpoints.get_models():
-            models.append(model)
-        for model in self.rerank_endpoints.get_models():
-            models.append(model)
-        for model in self.systemone_endpoints.get_models():
-            models.append(model)
-        for model in self.mcp_endpoints.get_healthy_models():
-            models.append(model)
-        for model in self.custom_endpoints.get_models():
-            models.append(model)
-        return ApiModels(data=models)
+        return ApiModels(data=[model for reg in self.model_registries for model in reg.get_models()])
 
     def get_model(self, model_id: str) -> ApiModel:
         """Get model for api."""
@@ -820,6 +819,20 @@ class EndpointRegistry:
                 headers={"Retry-After": str(MODEL_LOADING_RETRY_AFTER_SECONDS)},
             )
         return OpenAIHTTPException(404, detail, "invalid_request_error", "model_not_found")
+
+    def llm_endpoint_not_supported(self, model_id: ModelId) -> HTTPException:
+        """Error for a model none of whose registrations serves the called LLM endpoint, listing the ones it serves as `/v1/models` does."""
+        found = [
+            reg.get_model_available_endpoints(registrations)
+            for reg in self.model_registries
+            if (registrations := reg.get_listed_model(model_id))
+        ]
+        if not found:
+            return self.model_not_found(model_id)
+        msg = "Given model does not support this endpoint."
+        if supported := list(dict.fromkeys(endpoint for endpoints in found for endpoint in endpoints)):
+            msg += "\nSupported endpoints:\n" + ", ".join(supported)
+        return HTTPException(400, msg)
 
     def list_models(self) -> list[Model]:
         """List models for load balancing."""
@@ -858,19 +871,8 @@ class EndpointRegistry:
         return models
 
     def model_exists(self, model_id: ModelId) -> bool:
-        """Check if model exists in any endpoint."""
-        for reg in (
-            self.chat_completion_endpoints,
-            self.embeddings_endpoints,
-            self.audio_speech_endpoints,
-            self.audio_transcriptions_endpoints,
-            self.images_generations_endpoints,
-            self.rerank_endpoints,
-            self.systemone_endpoints,
-        ):
-            if model_id in reg.models:
-                return True
-        return False
+        """Check if `/v1/models` lists the model."""
+        return any(reg.get_listed_model(model_id) is not None for reg in self.model_registries)
 
     def register_chat_completion(
         self,
@@ -1554,21 +1556,7 @@ class EndpointRegistry:
         )
         on_messages = endpoint.endpoint.on_messages if endpoint else None
         if not endpoint or not on_messages:
-            if not self.model_exists(body.model):
-                raise self.model_not_found(body.model)
-            msg = "Given model does not support this endpoint.\n"
-            if endpoint:
-                supported_endpoints = []
-                if endpoint.endpoint.on_responses:
-                    supported_endpoints.append("/v1/responses")
-                if endpoint.endpoint.on_chat_completion:
-                    supported_endpoints.append("/v1/chat/completions")
-                if endpoint.endpoint.on_completion:
-                    supported_endpoints.append("/v1/completions")
-
-                msg = msg + "Supported endpoints:\n" + ", ".join(supported_endpoints)
-
-            raise HTTPException(400, msg)
+            raise self.llm_endpoint_not_supported(body.model)
 
         async def func() -> StarletteResponse:
             return await on_messages(body, request)
@@ -1595,21 +1583,7 @@ class EndpointRegistry:
         )
         on_responses = endpoint.endpoint.on_responses if endpoint else None
         if not endpoint or not on_responses:
-            if not self.model_exists(body.model):
-                raise self.model_not_found(body.model)
-            msg = "Given model does not support this endpoint.\n"
-            if endpoint:
-                supported_endpoints = []
-                if endpoint.endpoint.on_messages:
-                    supported_endpoints.append("/v1/messages")
-                if endpoint.endpoint.on_chat_completion:
-                    supported_endpoints.append("/v1/chat/completions")
-                if endpoint.endpoint.on_completion:
-                    supported_endpoints.append("/v1/completions")
-
-                msg = msg + "Supported endpoints:\n" + ", ".join(supported_endpoints)
-
-            raise HTTPException(400, msg)
+            raise self.llm_endpoint_not_supported(body.model)
 
         async def func() -> StarletteResponse:
             return await on_responses(body, request)
@@ -1646,21 +1620,7 @@ class EndpointRegistry:
         )
         on_chat_completion = endpoint.endpoint.on_chat_completion if endpoint else None
         if not endpoint or not on_chat_completion:
-            if not self.model_exists(body.model):
-                raise self.model_not_found(body.model)
-            msg = "Given model does not support this endpoint.\n"
-            if endpoint:
-                supported_endpoints = []
-                if endpoint.endpoint.on_messages:
-                    supported_endpoints.append("/v1/messages")
-                if endpoint.endpoint.on_responses:
-                    supported_endpoints.append("/v1/responses")
-                if endpoint.endpoint.on_completion:
-                    supported_endpoints.append("/v1/completions")
-
-                msg = msg + "Supported endpoints:\n" + ", ".join(supported_endpoints)
-
-            raise HTTPException(400, msg)
+            raise self.llm_endpoint_not_supported(body.model)
 
         async def func() -> StarletteResponse:
             return await on_chat_completion(body, request)
@@ -1681,21 +1641,7 @@ class EndpointRegistry:
         )
         on_completion = endpoint.endpoint.on_completion if endpoint else None
         if not endpoint or not on_completion:
-            if not self.model_exists(body.model):
-                raise self.model_not_found(body.model)
-            msg = "Given model does not support this endpoint.\n"
-            if endpoint:
-                supported_endpoints = []
-                if endpoint.endpoint.on_messages:
-                    supported_endpoints.append("/v1/messages")
-                if endpoint.endpoint.on_responses:
-                    supported_endpoints.append("/v1/responses")
-                if endpoint.endpoint.on_chat_completion:
-                    supported_endpoints.append("/v1/chat/completions")
-
-                msg = msg + "Supported endpoints:\n" + ", ".join(supported_endpoints)
-
-            raise HTTPException(400, msg)
+            raise self.llm_endpoint_not_supported(body.model)
 
         async def func() -> StarletteResponse:
             return await on_completion(body, request)
@@ -1716,23 +1662,7 @@ class EndpointRegistry:
         )
         on_ollama_chat = endpoint.endpoint.on_ollama_chat if endpoint else None
         if not endpoint or not on_ollama_chat:
-            if not self.model_exists(body.model):
-                raise self.model_not_found(body.model)
-            msg = "Given model does not support this endpoint.\n"
-            if endpoint:
-                supported_endpoints = []
-                if endpoint.endpoint.on_messages:
-                    supported_endpoints.append("/v1/messages")
-                if endpoint.endpoint.on_responses:
-                    supported_endpoints.append("/v1/responses")
-                if endpoint.endpoint.on_chat_completion:
-                    supported_endpoints.append("/v1/chat/completions")
-                if endpoint.endpoint.on_completion:
-                    supported_endpoints.append("/v1/completions")
-
-                msg = msg + "Supported endpoints:\n" + ", ".join(supported_endpoints)
-
-            raise HTTPException(400, msg)
+            raise self.llm_endpoint_not_supported(body.model)
 
         async def func() -> StarletteResponse:
             return await on_ollama_chat(body, request)

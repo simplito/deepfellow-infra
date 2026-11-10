@@ -26,6 +26,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - API errors in the WebUI show the message text instead of raw JSON.
 - WebUI disables service actions and shows **Cloud services** as unknown while `services.json` can't be read.
 
+### Fixed
+
+- Calling an LLM endpoint a model doesn't serve returns `400` listing the endpoints it does serve, as in `/v1/models`.
+- Custom and MCP models called on a non-LLM endpoint (e.g. `/v1/embeddings`) return `400`, not `404 Model not found`.
+
 ## [0.38.0] - 2026-11-04
 
 ### Added
