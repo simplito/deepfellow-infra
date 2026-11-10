@@ -17,7 +17,9 @@ git checkout -b release/0.31.0
 
 Rename the `[Unreleased]` section to the new version with today's date, e.g. `## [0.31.0] - 2026-05-22`.
 
-### 3. Update the version in `pyproject.toml`
+### 3. Update the version in `pyproject.toml` and `uv.lock`
+
+`uv.lock` stores the project version too. Change the `version` of the `df-infra` package in it by hand, to the same value as in `pyproject.toml`, and do not run `uv lock`: it also rewrites the `revision` line when the local uv writes a different one than the uv that last wrote the file. Check that `git diff uv.lock` shows that one line only.
 
 ### 4. Commit and push
 

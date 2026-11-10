@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 
 - `web-search` MCP image bumped to `v0.3.4`, fixing zombie processes left behind by `v0.3.3`.
+- `RELEASE.md` tells to update the version in `uv.lock` together with `pyproject.toml`.
 
 ### Fixed
 
