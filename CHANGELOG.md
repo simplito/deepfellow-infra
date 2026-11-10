@@ -27,9 +27,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - API errors in the WebUI show the message text instead of raw JSON.
 - WebUI disables service actions and shows **Cloud services** as unknown while `services.json` can't be read.
 - Admin service and model endpoints that answered `400 Service <id> not installed` while a service was still loading after a restart now return `503` with `Retry-After`.
-
-### Fixed
-
 - Calling an LLM endpoint a model doesn't serve returns `400` listing the endpoints it does serve, as in `/v1/models`.
 - Custom and MCP models called on a non-LLM endpoint (e.g. `/v1/embeddings`) return `400`, not `404 Model not found`.
 
