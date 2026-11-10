@@ -18,6 +18,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - An unreadable `services.json` is shown in the WebUI with the reason, not as an empty list of services.
 
+### Fixed
+
+- Calling an LLM endpoint a model doesn't serve returns `400` listing the endpoints it does serve, as in `/v1/models`.
+- Custom and MCP models called on a non-LLM endpoint (e.g. `/v1/embeddings`) return `400`, not `404 Model not found`.
+
 ## [0.38.0] - 2026-11-04
 
 ### Added

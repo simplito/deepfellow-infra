@@ -83,7 +83,7 @@ def make_props(
     return ModelProps(
         private=private,
         type=type,
-        endpoints=endpoints or ["chat"],
+        endpoints=["chat"] if endpoints is None else endpoints,
         context_window=context_window,
         max_context_window=max_context_window,
         supports_vision=supports_vision,
@@ -131,10 +131,10 @@ async def _async_byte_stream(data: bytes):
         yield data
 
 
-def make_endpoint() -> "Endpoint[Any]":
+def make_endpoint(list_healthy_only: bool = False) -> "Endpoint[Any]":
     registry: dict[Any, Any] = {}
     parent_infra = make_parent_infra()
-    return Endpoint(registry=registry, parent_infra=parent_infra)  # pyright: ignore[reportMissingTypeArgument]
+    return Endpoint(registry=registry, parent_infra=parent_infra, list_healthy_only=list_healthy_only)  # pyright: ignore[reportMissingTypeArgument]
 
 
 def make_chat_endpoint(
@@ -4444,90 +4444,175 @@ async def test_execute_rerank_with_log_payload():
     assert result is response
 
 
-def _make_registered_model_with_endpoint(ep: ChatCompletionEndpoint) -> Any:
-    """Build a RegisteredModel whose endpoint is `ep` but has no on_messages/etc."""
-    return RegisteredModel(
-        id="fake-id", name="gpt-4", origin="local", props=make_props(), type="llm", endpoint=ep, usage=0, created=0, owned_by="local"
+def _make_llm_request(request_type: type[BaseModel], model: str) -> MagicMock:
+    body = MagicMock(spec=request_type)
+    body.model = model
+    body.input = None
+    body.model_dump_json.return_value = "{}"
+    return body
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("handler", "request_type", "unsupported", "expected_endpoints"),
+    [
+        ("execute_completion", CompletionLegacyRequest, "on_completion", "/v1/chat/completions, /v1/responses, /v1/messages, /api/chat"),
+        ("execute_chat_completion", ChatCompletionRequest, "on_chat", "/v1/completions, /v1/responses, /v1/messages, /api/chat"),
+        ("execute_responses", ResponsesRequest, "on_responses", "/v1/completions, /v1/chat/completions, /v1/messages, /api/chat"),
+        ("execute_messages", MessagesRequest, "on_messages", "/v1/completions, /v1/chat/completions, /v1/responses, /api/chat"),
+        ("execute_ollama_chat", OllamaChatRequest, "on_ollama", "/v1/completions, /v1/chat/completions, /v1/responses, /v1/messages"),
+    ],
+)
+async def test_execute_llm_handler_lists_supported_endpoints_when_endpoint_unsupported(
+    handler: str, request_type: type[BaseModel], unsupported: str, expected_endpoints: str
+):
+    reg = make_registry()
+    callbacks = {name: name != unsupported for name in ("on_chat", "on_completion", "on_responses", "on_messages", "on_ollama")}
+    reg.register_chat_completion("gpt-4", make_props(endpoints=[]), make_chat_endpoint(**callbacks), RegistrationOptions(origin="local"))
+    body = _make_llm_request(request_type, "gpt-4")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await getattr(reg, handler)(body)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == f"Given model does not support this endpoint.\nSupported endpoints:\n{expected_endpoints}"
+
+
+@pytest.mark.asyncio
+async def test_execute_messages_lists_only_endpoint_of_chat_only_model():
+    reg = make_registry()
+    reg.register_chat_completion("gpt-4", make_props(endpoints=[]), make_chat_endpoint(on_chat=True), RegistrationOptions(origin="local"))
+    body = _make_llm_request(MessagesRequest, "gpt-4")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.execute_messages(body)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Given model does not support this endpoint.\nSupported endpoints:\n/v1/chat/completions"
+
+
+@pytest.mark.asyncio
+async def test_execute_messages_lists_union_of_endpoints_across_registrations():
+    reg = make_registry()
+    reg.register_chat_completion(
+        "gpt-4", make_props(endpoints=[]), make_chat_endpoint(on_chat=True, on_completion=True), RegistrationOptions(origin="local")
+    )
+    reg.register_chat_completion(
+        "gpt-4", make_props(endpoints=[]), make_chat_endpoint(on_chat=True, on_responses=True), RegistrationOptions(origin="local")
+    )
+    body = _make_llm_request(MessagesRequest, "gpt-4")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.execute_messages(body)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == (
+        "Given model does not support this endpoint.\nSupported endpoints:\n/v1/completions, /v1/chat/completions, /v1/responses"
     )
 
 
 @pytest.mark.asyncio
-async def test_execute_messages_includes_supported_endpoints_in_error():
+async def test_execute_messages_lists_only_endpoints_advertised_by_mesh_peer():
     reg = make_registry()
-    ep = make_chat_endpoint(on_chat=True, on_responses=True, on_completion=True, on_messages=False)
-    fake = _make_registered_model_with_endpoint(ep)
-    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
-    body = MagicMock(spec=MessagesRequest)
-    body.model = "gpt-4"
-    body.model_dump_json.return_value = "{}"
+    reg.register_chat_completion(
+        "gpt-4",
+        make_props(endpoints=["/v1/chat/completions"]),
+        make_chat_endpoint(on_chat=True, on_completion=True),
+        RegistrationOptions(origin="http://peer.example.com/", owned_by="mesh"),
+    )
+    body = _make_llm_request(MessagesRequest, "gpt-4")
 
-    with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         await reg.execute_messages(body)
 
-    assert "/v1/chat/completions" in exc_info.value.detail or "/v1/responses" in exc_info.value.detail
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Given model does not support this endpoint.\nSupported endpoints:\n/v1/chat/completions"
 
 
 @pytest.mark.asyncio
-async def test_execute_responses_includes_supported_endpoints_in_error():
+async def test_execute_messages_lists_endpoints_when_given_registration_lacks_endpoint():
     reg = make_registry()
-    ep = make_chat_endpoint(on_chat=True, on_messages=True, on_completion=True, on_responses=False)
-    fake = _make_registered_model_with_endpoint(ep)
-    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
-    body = MagicMock(spec=ResponsesRequest)
-    body.model = "gpt-4"
-    body.input = None
-    body.model_dump_json.return_value = "{}"
+    registration_id = reg.register_chat_completion(
+        "gpt-4", make_props(endpoints=[]), make_chat_endpoint(on_chat=True), RegistrationOptions(origin="local")
+    )
+    body = _make_llm_request(MessagesRequest, "gpt-4")
 
-    with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
-        await reg.execute_responses(body)
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.execute_messages(body, registration_id=registration_id)
 
-    assert "/v1/chat/completions" in exc_info.value.detail or "/v1/messages" in exc_info.value.detail
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Given model does not support this endpoint.\nSupported endpoints:\n/v1/chat/completions"
 
 
 @pytest.mark.asyncio
-async def test_execute_chat_completion_includes_supported_endpoints_in_error():
+async def test_execute_chat_completion_lists_endpoints_of_embedding_model():
     reg = make_registry()
-    ep = make_chat_endpoint(on_chat=False, on_messages=True, on_responses=True, on_completion=True)
-    fake = _make_registered_model_with_endpoint(ep)
-    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
-    body = MagicMock(spec=ChatCompletionRequest)
-    body.model = "gpt-4"
-    body.model_dump_json.return_value = "{}"
+    reg.register_embeddings(
+        "emb",
+        make_props(type="embedding", endpoints=["/v1/embeddings"]),
+        SimpleEndpoint(on_request=AsyncMock()),
+        RegistrationOptions(origin="local"),
+    )
+    body = _make_llm_request(ChatCompletionRequest, "emb")
 
-    with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         await reg.execute_chat_completion(body)
 
-    assert "/v1/messages" in exc_info.value.detail or "/v1/responses" in exc_info.value.detail
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Given model does not support this endpoint.\nSupported endpoints:\n/v1/embeddings"
 
 
 @pytest.mark.asyncio
-async def test_execute_completion_includes_supported_endpoints_in_error():
+async def test_execute_responses_lists_endpoints_of_custom_model():
     reg = make_registry()
-    ep = make_chat_endpoint(on_chat=True, on_messages=True, on_responses=True, on_completion=False)
-    fake = _make_registered_model_with_endpoint(ep)
-    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
-    body = MagicMock(spec=CompletionLegacyRequest)
-    body.model = "gpt-4"
+    reg.register_custom_endpoint(
+        "lemmatizer",
+        make_props(type="custom", endpoints=["/custom/v1/lemmatize"]),
+        CustomEndpoint(on_request=AsyncMock()),
+        RegistrationOptions(origin="local"),
+    )
+    body = _make_llm_request(ResponsesRequest, "lemmatizer")
 
-    with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
-        await reg.execute_completion(body)
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.execute_responses(body)
 
-    assert "/v1/chat/completions" in exc_info.value.detail or "/v1/messages" in exc_info.value.detail
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Given model does not support this endpoint.\nSupported endpoints:\n/custom/v1/lemmatize"
 
 
 @pytest.mark.asyncio
-async def test_execute_ollama_chat_includes_supported_endpoints_in_error():
+async def test_execute_messages_lists_endpoints_of_mcp_model():
     reg = make_registry()
-    ep = make_chat_endpoint(on_chat=True, on_messages=True, on_responses=True, on_completion=True, on_ollama=False)
-    fake = _make_registered_model_with_endpoint(ep)
-    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
-    body = MagicMock(spec=OllamaChatRequest)
-    body.model = "gpt-4"
+    reg.register_mcp_endpoint(
+        "web-search",
+        make_props(type="mcp", endpoints=["/mcp/web-search/mcp"]),
+        McpEndpoint(on_request=AsyncMock()),
+        RegistrationOptions(origin="local", healthy=True),
+    )
+    body = _make_llm_request(MessagesRequest, "web-search")
 
-    with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
-        await reg.execute_ollama_chat(body)
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.execute_messages(body)
 
-    assert "/v1/chat/completions" in exc_info.value.detail or "/v1/messages" in exc_info.value.detail
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Given model does not support this endpoint.\nSupported endpoints:\n/mcp/web-search/mcp"
+
+
+@pytest.mark.asyncio
+async def test_execute_messages_returns_not_found_for_unhealthy_mcp_model():
+    reg = make_registry()
+    reg.register_mcp_endpoint(
+        "web-search",
+        make_props(type="mcp", endpoints=["/mcp/web-search/mcp"]),
+        McpEndpoint(on_request=AsyncMock()),
+        RegistrationOptions(origin="local"),
+    )
+    body = _make_llm_request(MessagesRequest, "web-search")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.execute_messages(body)
+
+    assert exc_info.value.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -4797,101 +4882,6 @@ def test_update_models_prev_model_not_in_registry_is_skipped():
     assert reg.parent_infra.send_models_list.call_count == 0  # pyright: ignore[reportAttributeAccessIssue]
 
 
-@pytest.mark.asyncio
-async def test_execute_messages_error_with_no_supported_endpoints():
-    reg = make_registry()
-    ep = make_chat_endpoint(on_chat=False, on_responses=False, on_completion=False, on_messages=False)
-    fake = _make_registered_model_with_endpoint(ep)
-    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
-    body = MagicMock(spec=MessagesRequest)
-    body.model = "gpt-4"
-    body.model_dump_json.return_value = "{}"
-
-    with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
-        await reg.execute_messages(body)
-
-    assert "Given model does not support" in exc_info.value.detail
-    assert "/v1/responses" not in exc_info.value.detail
-    assert "/v1/chat/completions" not in exc_info.value.detail
-    assert "/v1/completions" not in exc_info.value.detail
-
-
-@pytest.mark.asyncio
-async def test_execute_responses_error_with_no_supported_endpoints():
-    reg = make_registry()
-    ep = make_chat_endpoint(on_chat=False, on_responses=False, on_completion=False, on_messages=False)
-    fake = _make_registered_model_with_endpoint(ep)
-    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
-    body = MagicMock(spec=ResponsesRequest)
-    body.model = "gpt-4"
-    body.input = None
-    body.model_dump_json.return_value = "{}"
-
-    with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
-        await reg.execute_responses(body)
-
-    assert "Given model does not support" in exc_info.value.detail
-    assert "/v1/messages" not in exc_info.value.detail
-    assert "/v1/chat/completions" not in exc_info.value.detail
-    assert "/v1/completions" not in exc_info.value.detail
-
-
-@pytest.mark.asyncio
-async def test_execute_chat_completion_error_with_no_supported_endpoints():
-    reg = make_registry()
-    ep = make_chat_endpoint(on_chat=False, on_responses=False, on_completion=False, on_messages=False)
-    fake = _make_registered_model_with_endpoint(ep)
-    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
-    body = MagicMock(spec=ChatCompletionRequest)
-    body.model = "gpt-4"
-    body.model_dump_json.return_value = "{}"
-
-    with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
-        await reg.execute_chat_completion(body)
-
-    assert "Given model does not support" in exc_info.value.detail
-    assert "/v1/messages" not in exc_info.value.detail
-    assert "/v1/responses" not in exc_info.value.detail
-    assert "/v1/completions" not in exc_info.value.detail
-
-
-@pytest.mark.asyncio
-async def test_execute_completion_error_with_no_supported_endpoints():
-    reg = make_registry()
-    ep = make_chat_endpoint(on_chat=False, on_responses=False, on_completion=False, on_messages=False)
-    fake = _make_registered_model_with_endpoint(ep)
-    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
-    body = MagicMock(spec=CompletionLegacyRequest)
-    body.model = "gpt-4"
-
-    with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
-        await reg.execute_completion(body)
-
-    assert "Given model does not support" in exc_info.value.detail
-    assert "/v1/messages" not in exc_info.value.detail
-    assert "/v1/responses" not in exc_info.value.detail
-    assert "/v1/chat/completions" not in exc_info.value.detail
-
-
-@pytest.mark.asyncio
-async def test_execute_ollama_chat_error_with_no_supported_endpoints():
-    reg = make_registry()
-    ep = make_chat_endpoint(on_chat=False, on_responses=False, on_completion=False, on_messages=False, on_ollama=False)
-    fake = _make_registered_model_with_endpoint(ep)
-    reg.register_chat_completion("gpt-4", make_props(), ep, RegistrationOptions(origin="local"))
-    body = MagicMock(spec=OllamaChatRequest)
-    body.model = "gpt-4"
-
-    with patch.object(reg.chat_completion_endpoints, "get_model", return_value=fake), pytest.raises(HTTPException) as exc_info:
-        await reg.execute_ollama_chat(body)
-
-    assert "Given model does not support" in exc_info.value.detail
-    assert "/v1/messages" not in exc_info.value.detail
-    assert "/v1/responses" not in exc_info.value.detail
-    assert "/v1/chat/completions" not in exc_info.value.detail
-    assert "/v1/completions" not in exc_info.value.detail
-
-
 def test_session_store_add_and_get() -> None:
     store = McpSseSessionStore()
     store.add("sid1", "https://upstream/msg?sessionId=sid1")
@@ -4941,13 +4931,41 @@ def test_model_exists_returns_false_when_not_registered():
     assert result is False
 
 
-def test_model_exists_ignores_custom_and_mcp_endpoints():
+def test_model_exists_includes_custom_and_healthy_mcp_endpoints():
     reg = make_registry()
     reg.register_custom_endpoint("custom/path", make_props(), CustomEndpoint(on_request=AsyncMock()), None)
-    reg.register_mcp_endpoint("mcp/url", make_props(), McpEndpoint(on_request=AsyncMock()), None)
+    reg.register_mcp_endpoint(
+        "mcp/url", make_props(), McpEndpoint(on_request=AsyncMock()), RegistrationOptions(origin="local", healthy=True)
+    )
 
-    assert reg.model_exists("custom/path") is False
-    assert reg.model_exists("mcp/url") is False
+    assert reg.model_exists("custom/path") is True
+    assert reg.model_exists("mcp/url") is True
+
+
+def test_model_exists_ignores_unhealthy_mcp_endpoint():
+    reg = make_registry()
+    reg.register_mcp_endpoint("mcp/url", make_props(), McpEndpoint(on_request=AsyncMock()), RegistrationOptions(origin="local"))
+
+    result = reg.model_exists("mcp/url")
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_execute_embeddings_raises_400_for_mcp_model():
+    reg = make_registry()
+    reg.register_mcp_endpoint(
+        "web-search", make_props(type="mcp"), McpEndpoint(on_request=AsyncMock()), RegistrationOptions(origin="local", healthy=True)
+    )
+    body = MagicMock(spec=EmbeddingRequest)
+    body.model = "web-search"
+    body.model_dump_json.return_value = "{}"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await reg.execute_embeddings(body)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Given model is not supported"
 
 
 @pytest.mark.asyncio
@@ -5024,9 +5042,9 @@ async def test_execute_rerank_raises_400_when_model_registered_for_other_endpoin
 
 
 @pytest.mark.asyncio
-async def test_execute_messages_raises_400_when_model_registered_for_other_endpoint():
+async def test_execute_messages_raises_400_without_list_when_model_advertises_no_endpoints():
     reg = make_registry()
-    reg.register_embeddings("shared", make_props(), SimpleEndpoint(on_request=AsyncMock()), RegistrationOptions(origin="local"))
+    reg.register_embeddings("shared", make_props(endpoints=[]), SimpleEndpoint(on_request=AsyncMock()), RegistrationOptions(origin="local"))
     body = MagicMock(spec=MessagesRequest)
     body.model = "shared"
     body.model_dump_json.return_value = "{}"
@@ -5035,7 +5053,7 @@ async def test_execute_messages_raises_400_when_model_registered_for_other_endpo
         await reg.execute_messages(body)
 
     assert exc_info.value.status_code == 400
-    assert "Given model does not support this endpoint" in exc_info.value.detail
+    assert exc_info.value.detail == "Given model does not support this endpoint."
 
 
 def test_session_store_evicts_oldest_when_at_capacity() -> None:
@@ -5383,28 +5401,37 @@ def test_get_model_tools_returns_empty_when_no_tools() -> None:
     assert result == []
 
 
-def test_get_healthy_models_returns_only_healthy() -> None:
-    ep = make_endpoint()
+def test_get_models_lists_only_healthy_when_list_healthy_only() -> None:
+    ep = make_endpoint(list_healthy_only=True)
     ep.add_model("healthy-m", make_props(), SimpleEndpoint(on_request=AsyncMock()), "mcp", RegistrationOptions(origin="local", id="r1"))
     ep.add_model("unhealthy-m", make_props(), SimpleEndpoint(on_request=AsyncMock()), "mcp", RegistrationOptions(origin="local", id="r2"))
 
     for reg_model in ep.models["healthy-m"].values():
         reg_model.healthy = True
 
-    result = ep.get_healthy_models()
+    result = ep.get_models()
 
     ids = [m.id for m in result]
     assert "healthy-m" in ids
     assert "unhealthy-m" not in ids
 
 
-def test_get_healthy_models_returns_empty_when_none_healthy() -> None:
-    ep = make_endpoint()
+def test_get_models_returns_empty_when_list_healthy_only_and_none_healthy() -> None:
+    ep = make_endpoint(list_healthy_only=True)
     ep.add_model("m1", make_props(), SimpleEndpoint(on_request=AsyncMock()), "mcp", RegistrationOptions(origin="local"))
 
-    result = ep.get_healthy_models()
+    result = ep.get_models()
 
     assert result == []
+
+
+def test_get_models_lists_unhealthy_by_default() -> None:
+    ep = make_endpoint()
+    ep.add_model("m1", make_props(), SimpleEndpoint(on_request=AsyncMock()), "llm", RegistrationOptions(origin="local"))
+
+    result = ep.get_models()
+
+    assert [m.id for m in result] == ["m1"]
 
 
 def test_registry_get_models_includes_healthy_mcp_models() -> None:
@@ -5834,7 +5861,7 @@ def test_update_models_registers_mcp_as_healthy_from_peer():
 
     reg.update_models([], [model], "http://child.example.com/", "key")
 
-    assert [m.id for m in reg.mcp_endpoints.get_healthy_models()] == ["duck"]
+    assert [m.id for m in reg.mcp_endpoints.get_models()] == ["duck"]
 
 
 def test_update_models_applies_health_and_props_change_in_place():
@@ -5848,7 +5875,7 @@ def test_update_models_applies_health_and_props_change_in_place():
         reg.update_models([old], [new], "http://child.example.com/", "key")
 
     assert mock_register.call_count == 0
-    assert [m.id for m in reg.mcp_endpoints.get_healthy_models()] == ["duck"]
+    assert [m.id for m in reg.mcp_endpoints.get_models()] == ["duck"]
     assert reg.registry["mcp-id"].registered_model.props.endpoints == ["/mcp/duck/mcp"]
     assert reg.parent_infra.send_models_list.call_count == 1  # pyright: ignore[reportAttributeAccessIssue]
 
