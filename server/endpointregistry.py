@@ -53,7 +53,7 @@ from server.models.api import (
 )
 from server.models.common import JsonSerializable, StarletteResponse
 from server.utils.core import HttpClientError, HttpResponse, Utils, make_http_request
-from server.utils.exceptions import OpenAIHTTPException
+from server.utils.exceptions import OpenAIHTTPException, still_loading_error
 from server.utils.sentry import UpstreamError, attach_tags, capture_exception, mark_reported
 from server.websockets.models import RegistrationId, UsageChangeRequest, WarmChangeRequest
 from server.websockets.parent_infra_group import ParentInfraGroup
@@ -729,9 +729,6 @@ class ModelInfo(NamedTuple):
     type: str
 
 
-MODEL_LOADING_RETRY_AFTER_SECONDS = 5
-
-
 class EndpointRegistry:
     def __init__(
         self,
@@ -813,11 +810,7 @@ class EndpointRegistry:
     def model_not_found(self, model_id: ModelId, detail: str = "Model not found") -> HTTPException:
         """Error for a model that is not registered: retryable 503 while it is still loading, OpenAI's `model_not_found` 404 otherwise."""
         if model_id in self._loading_models:
-            return HTTPException(
-                503,
-                f"Model {model_id} is still loading, try again shortly",
-                headers={"Retry-After": str(MODEL_LOADING_RETRY_AFTER_SECONDS)},
-            )
+            return still_loading_error("Model", model_id)
         return OpenAIHTTPException(404, detail, "invalid_request_error", "model_not_found")
 
     def llm_endpoint_not_supported(self, model_id: ModelId) -> HTTPException:
