@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Sentry settings sit next to the OTel ones on the WebUI Configuration page.
 - `load_error` in `GET /admin/services` and `GET /admin/warnings` when `services.json` can't be read
 - Download progress of images and models carries byte counts (`data.completed`, `data.total`), so clients can show size, speed and ETA.
+- `changelog-check` fails on a repeated or non-standard `###` heading in `[Unreleased]`, read as merged with `main`.
 
 ### Changed
 

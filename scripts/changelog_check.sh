@@ -3,6 +3,8 @@
 # lands on main while the branch is open: the rebase merges cleanly, but the entry ends up under the released version.
 # DFINFRA-454: GitLab runs no pipeline for that merge onto the newer main, so the check also runs on main itself. There it
 # compares CHANGELOG.md with the previous tip of main and fails on a line added outside `## [Unreleased]`.
+# DFMAIN-112: on a branch, `## [Unreleased]` of the branch merged with the latest main must not repeat a `###` heading or use
+# one that is not a Keep a Changelog type. Two branches can each add `### Fixed` and git merges them without a conflict.
 set -eu
 
 DEFAULT_BRANCH=${CI_DEFAULT_BRANCH:-main}
@@ -89,6 +91,7 @@ git diff --unified=0 --no-color "$BASE" -- CHANGELOG.md | awk '
 # An added entry (not blank, not a heading) must sit under `## [Unreleased]`.
 # On the default branch only that is checked: the branch pipeline already insisted on an entry, so a push without one
 # (a direct commit) is not a failure. A push that adds a version section is a release - it renames [Unreleased] - and passes.
+existing=0
 awk -v ok="$OK" -v fail="$FAIL" -v added="$tmp/added-lines.txt" -v on_default="$on_default" -v base="$BASE" '
   BEGIN {
     while ((getline n < added) > 0) added_at[n] = 1
@@ -120,4 +123,79 @@ awk -v ok="$OK" -v fail="$FAIL" -v added="$tmp/added-lines.txt" -v on_default="$
     if (on_default) print "Intentional? Put [skip changelog-check] in the title of the merged merge request, then retry this job."
     else print "Intentional? Put [skip changelog-check] in the merge request title, then retry this job."
     exit 1
-  }' CHANGELOG.md
+  }' CHANGELOG.md || existing=1
+
+# Prints the repeated and non-standard `###` headings of `## [Unreleased]` in the CHANGELOG.md given as $1, called $2 in the messages.
+# Exit status: 0 when clean, otherwise 1 for a repeated heading plus 2 for a heading that is not a Keep a Changelog type.
+check_headings() {
+    awk -v ok="$OK" -v fail="$FAIL" -v into="$2" '
+      /^## / { section++; unreleased = (tolower($0) ~ /^## \[unreleased\]/); if (unreleased) found = 1; next }
+      unreleased && /^### / {
+        heading = $0
+        sub(/[ \t]+$/, "", heading)
+        key = section SUBSEP tolower(heading)
+        if (++count[key] == 1) { order[++n] = key; name[key] = heading; lines[key] = NR } else lines[key] = lines[key] ", " NR
+        if (heading !~ /^### (Added|Changed|Deprecated|Removed|Fixed|Security)$/) odd = odd sprintf("  \"%s\" at line %d\n", heading, NR)
+      }
+      END {
+        if (!found) { print ok ": CHANGELOG.md merged with " into " has no \"## [Unreleased]\" section, nothing to check."; exit 0 }
+        for (i = 1; i <= n; i++) if (count[order[i]] > 1) repeated = repeated sprintf("  \"%s\" at lines %s\n", name[order[i]], lines[order[i]])
+        if (repeated == "" && odd == "") { print ok ": \"## [Unreleased]\" of CHANGELOG.md merged with " into " has no repeated or non-standard ### heading."; exit 0 }
+        if (repeated != "") {
+          print fail ": \"## [Unreleased]\" of CHANGELOG.md merged with " into " repeats a ### heading (line numbers are in the merged file):"
+          printf "%s", repeated
+          code += 1
+        }
+        if (odd != "") {
+          print fail ": \"## [Unreleased]\" of CHANGELOG.md merged with " into " has a ### heading that is not a Keep a Changelog type:"
+          printf "%s", odd
+          code += 2
+        }
+        exit code
+      }' "$1"
+}
+
+# Not on the default branch: this gates the merge, and a duplicate that already reached it fails every branch until someone
+# merges the headings, which is the point. A branch that does not merge cleanly is skipped, GitLab will not merge it anyway.
+headings=0
+if [ "$on_default" = 0 ]; then
+    # Locally the branch may hold uncommitted edits (always with jj); `git stash create` captures them without touching the checkout.
+    tip=HEAD
+    if [ -z "${CI:-}" ]; then
+        stash=$(git stash create 2>/dev/null) || stash=
+        if [ -n "$stash" ]; then tip=$stash; fi
+    fi
+
+    merge=0
+    tree=$(git merge-tree --write-tree --no-messages "origin/$DEFAULT_BRANCH" "$tip" 2>"$tmp/merge-tree.err") || merge=$?
+    if [ "$merge" = 1 ]; then
+        echo "$NOTE this branch does not merge cleanly with origin/$DEFAULT_BRANCH, so repeated headings are not checked. Rebase it first."
+    elif [ "$merge" != 0 ]; then
+        echo "$FAIL: could not merge this branch with origin/$DEFAULT_BRANCH to look for repeated headings ($(git --version); --write-tree needs 2.38):"
+        sed 's/^/  /' "$tmp/merge-tree.err"
+        headings=1
+    elif ! git show "$tree:CHANGELOG.md" > "$tmp/merged-changelog.md" 2>/dev/null; then
+        echo "$FAIL: CHANGELOG.md is missing from this branch merged with origin/$DEFAULT_BRANCH."
+        headings=1
+    else
+        rc=0
+        check_headings "$tmp/merged-changelog.md" "origin/$DEFAULT_BRANCH" || rc=$?
+        if [ "$rc" != 0 ]; then
+            headings=1
+            # When the default branch has the problem itself, nothing in this branch fixes it: say so instead of asking for a rebase.
+            main_bad=0
+            if git show "origin/$DEFAULT_BRANCH:CHANGELOG.md" > "$tmp/main-changelog.md" 2>/dev/null; then
+                check_headings "$tmp/main-changelog.md" "origin/$DEFAULT_BRANCH" > /dev/null || main_bad=1
+            fi
+            if [ "$main_bad" = 1 ]; then
+                echo "$NOTE origin/$DEFAULT_BRANCH already has a repeated or non-standard ### heading, so every branch fails until it is fixed there. Rebasing this branch will not help."
+            else
+                if [ $((rc & 1)) != 0 ]; then echo "Rebase the branch onto origin/$DEFAULT_BRANCH and merge the repeated blocks into one."; fi
+                if [ $((rc & 2)) != 0 ]; then echo "Use one of: Added, Changed, Deprecated, Removed, Fixed, Security."; fi
+            fi
+            echo "Intentional? Put [skip changelog-check] in the merge request title, then retry this job."
+        fi
+    fi
+fi
+
+if [ "$existing" != 0 ] || [ "$headings" != 0 ]; then exit 1; fi

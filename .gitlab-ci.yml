@@ -40,6 +40,8 @@ variables:
 # lands on main while the branch is open: the rebase merges cleanly, but the entry ends up under the released version.
 # It also runs on the default branch: GitLab merges a branch onto the newer default branch without a pipeline for the
 # merge, so an entry a merge puts under a released version is reported there, against the previous tip of the branch.
+# On a branch it also reads CHANGELOG.md as merged with the latest default branch and fails on a repeated or non-standard
+# `###` heading in `## [Unreleased]`: two branches can each add `### Fixed` and git merges them without a conflict.
 # First in the stage on purpose: it is the quickest and cheapest check here.
 changelog-check:
   stage: analysis
