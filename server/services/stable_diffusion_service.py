@@ -54,8 +54,6 @@ from server.models.services import (
 )
 from server.services.base2_service import Base2Service, CustomModel, Instance, InstanceConfig, ModelConfig, default_gpu_cpu_image_name
 from server.utils.core import (
-    DownloadedPacket,
-    PreDownloadPacket,
     PromiseWithProgress,
     Stream,
     StreamChunk,
@@ -66,6 +64,7 @@ from server.utils.core import (
     try_parse_pydantic,
 )
 from server.utils.loading import Progress
+from server.utils.model_downloader import track_download_progress
 from server.utils.size_fetcher import fetch_file_size_from_url
 
 ModelType = Literal["txt2img", "lora"]
@@ -604,18 +603,12 @@ class StableDiffusionService(Base2Service[InstalledInfo, DownloadedInfo]):
         local_model_path: Path | None = None
         filename = ""
         progress = Progress(convert_size_to_bytes(model.size) or 0)
-        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
-        async for packet in self.model_downloader.download(model.url, model_dir, model.filename):
-            if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
-                progress.add_to_actual_value(packet.downloaded_bytes_size)
-            elif isinstance(packet, PreDownloadPacket):
-                if max := packet.file_bytes_size:
-                    progress.set_max_value(max)
-            elif isinstance(packet, SuccessDownloadPacket):
+        packets = self.model_downloader.download(model.url, model_dir, model.filename)
+        async for packet in track_download_progress(stream, packets, progress, emit_on_every_packet=True):
+            if isinstance(packet, SuccessDownloadPacket):
                 local_model_path = packet.local_path
                 filename = packet.filename
 
-            stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data=progress.to_data()))
         stream.emit(
             StreamChunkProgress(
                 type="progress",

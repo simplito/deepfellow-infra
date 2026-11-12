@@ -1598,3 +1598,19 @@ async def test_update_instance_rejects_invalid_keep_alive_before_uninstalling(sv
     assert exc_info.value.status_code == 400
     assert mock_uninstall_instance.call_count == 0
     assert svc.instances_info["default"].installed is installed
+
+
+@pytest.mark.asyncio
+async def test_download_model_reports_the_catalog_size_as_total(svc: SpeachesAIService) -> None:
+    model = SpeachesModel(id="test-model", type="tts", size="100MB")
+    stream = MagicMock()
+
+    async def mock_gen(*args: object) -> object:  # type: ignore[misc]
+        yield DownloadedPacket(downloaded_bytes_size=1_000_000)
+
+    svc.model_downloader.hugging_face_repo_with_blobs_downloader.download.return_value = mock_gen()  # pyright: ignore[reportAttributeAccessIssue]
+
+    await svc._download_model(stream, model, "test-model", Path("/tmp"))  # pyright: ignore[reportPrivateUsage]
+
+    assert stream.emit.call_args_list[1].args[0]["data"] == {"completed": 1_000_000, "total": 100_000_000}
+    assert stream.emit.call_args_list[-1].args[0]["data"] == {}

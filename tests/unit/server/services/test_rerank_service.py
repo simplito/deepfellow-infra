@@ -1392,3 +1392,20 @@ async def test_container_name_survives_suffix_change_across_save_and_reload(deps
         await reloaded.load_service(persisted)
 
     assert docker.install_and_run_docker.call_args.args[0].container_name == "rerank_a"
+
+
+@pytest.mark.asyncio
+async def test_download_model_reports_the_catalog_size_as_total(svc: RerankService) -> None:
+    model_id = next(iter(_const.models))
+    model = _const.models[model_id].model_copy(update={"size": "100MB"})
+    stream = MagicMock()
+
+    async def mock_download(*args: object, **kwargs: object):  # type: ignore[misc]
+        yield DownloadedPacket(downloaded_bytes_size=1_000_000)
+
+    svc.model_downloader.hugging_face_repo_with_blobs_downloader.download.return_value = mock_download()  # pyright: ignore[reportAttributeAccessIssue]
+
+    await svc._download_model(stream, model, model_id, Path("/tmp"))  # pyright: ignore[reportPrivateUsage]
+
+    assert stream.emit.call_args_list[1].args[0]["data"] == {"completed": 1_000_000, "total": 100_000_000}
+    assert stream.emit.call_args_list[-1].args[0]["data"] == {}

@@ -61,8 +61,6 @@ from server.services.base2_service import Base2Service, CustomModel, Instance, I
 from server.services.finetune_service import FinetuneService
 from server.services.model_catalog_refresh import huggingface_refresh_guard
 from server.utils.core import (
-    DownloadedPacket,
-    PreDownloadPacket,
     PromiseWithProgress,
     Stream,
     StreamChunk,
@@ -80,7 +78,7 @@ from server.utils.files import get_model_dir_context_window
 from server.utils.hardware import HardwarePartInfo
 from server.utils.loading import Progress
 from server.utils.logger import logger
-from server.utils.model_downloader import AdapterRegistryDownloader
+from server.utils.model_downloader import AdapterRegistryDownloader, track_download_progress
 from server.utils.registry_client import image_without_registry_prefix, registry_for
 from server.utils.served_model_len import fetch_served_max_model_len
 from server.utils.size_fetcher import fetch_huggingface_model_size, fmt_size, sum_siblings_size_bytes
@@ -1004,17 +1002,9 @@ class VllmService(Base2Service[InstalledInfo, DownloadedInfo]):
     async def _download_model(self, stream: Stream[StreamChunk], model: VllmModel, model_dir: Path) -> Path | None:
         local_model_path: Path | None = None
         progress = Progress(convert_size_to_bytes(model.size) or 0)
-        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
-        async for packet in self.model_downloader.download(model.hf_id, model_dir, revision=model.revision):
-            if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
-                progress.add_to_actual_value(packet.downloaded_bytes_size)
-                stream.emit(
-                    StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data=progress.to_data())
-                )
-            elif isinstance(packet, PreDownloadPacket):
-                if max := packet.file_bytes_size:
-                    progress.set_max_value(max)
-            elif isinstance(packet, SuccessDownloadPacket):
+        packets = self.model_downloader.download(model.hf_id, model_dir, revision=model.revision)
+        async for packet in track_download_progress(stream, packets, progress):
+            if isinstance(packet, SuccessDownloadPacket):
                 local_model_path = packet.local_path
 
         stream.emit(

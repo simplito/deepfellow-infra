@@ -6,7 +6,7 @@
 import json
 import re
 from abc import abstractmethod
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from pathlib import Path
 from typing import Any, Never, NotRequired, TypedDict
 from urllib.parse import quote, urlparse, urlunparse
@@ -23,6 +23,9 @@ from server.utils.core import (
     DownloadPacket,
     HttpClientError,
     PreDownloadPacket,
+    Stream,
+    StreamChunk,
+    StreamChunkProgress,
     SuccessDownloadPacket,
     Utils,
     download_file,
@@ -524,3 +527,31 @@ class ModelDownloader:
     def get_civitai_token(self, config: AppSettings) -> str:
         """Return Civitai Face Key."""
         return config.civitai_token.get_secret_value()
+
+
+async def track_download_progress(
+    stream: Stream[StreamChunk],
+    packets: AsyncIterator[DownloadPacket],
+    progress: Progress,
+    *,
+    emit_on_every_packet: bool = False,
+    require_known_size: bool = False,
+) -> AsyncGenerator[DownloadPacket]:
+    """Emit `download` progress events for a downloader's packets and yield every packet unchanged.
+
+    The starting event is sent before the first packet. The final event, and `SuccessDownloadPacket` handling, are left to the caller.
+    `emit_on_every_packet` sends an event after each packet, not only after downloaded bytes.
+    `require_known_size` counts bytes only while `progress` has a total, so an unknown size never shows as 100%.
+    """
+    stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
+    async for packet in packets:
+        counted = False
+        if isinstance(packet, PreDownloadPacket):
+            if packet.file_bytes_size:
+                progress.set_max_value(packet.file_bytes_size)
+        elif isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0 and (progress.max or not require_known_size):
+            progress.add_to_actual_value(packet.downloaded_bytes_size)
+            counted = True
+        if counted or emit_on_every_packet:
+            stream.emit(StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data=progress.to_data()))
+        yield packet

@@ -43,8 +43,6 @@ from server.models.services import (
 )
 from server.services.base2_service import Base2Service, CustomModel, Instance, InstanceConfig, ModelConfig
 from server.utils.core import (
-    DownloadedPacket,
-    PreDownloadPacket,
     PromiseWithProgress,
     Stream,
     StreamChunk,
@@ -56,6 +54,7 @@ from server.utils.core import (
 )
 from server.utils.hardware import GpuInfo, HardwarePartInfo, NvidiaGpuInfo
 from server.utils.loading import Progress
+from server.utils.model_downloader import track_download_progress
 from server.utils.size_fetcher import fetch_huggingface_model_size
 
 
@@ -442,16 +441,9 @@ class RerankService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     async def _download_model(self, stream: Stream[StreamChunk], model: RerankModel, model_id: str, model_dir: Path) -> None:
         progress = Progress(convert_size_to_bytes(model.size) or 0)
-        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
-        async for packet in self.model_downloader.hugging_face_repo_with_blobs_downloader.download(model_id, model_dir, True):
-            if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
-                progress.add_to_actual_value(packet.downloaded_bytes_size)
-                stream.emit(
-                    StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data=progress.to_data())
-                )
-            elif isinstance(packet, PreDownloadPacket):
-                if max := packet.file_bytes_size:
-                    progress.set_max_value(max)
+        packets = self.model_downloader.hugging_face_repo_with_blobs_downloader.download(model_id, model_dir, True)
+        async for _ in track_download_progress(stream, packets, progress):
+            pass
 
         stream.emit(StreamChunkProgress(type="progress", stage="download", value=1, data={}))
 

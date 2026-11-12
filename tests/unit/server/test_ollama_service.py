@@ -1075,6 +1075,30 @@ async def test_download_with_registry_client_reports_progress_up_to_one(download
 
 
 @pytest.mark.asyncio
+@patch.object(OllamaRegistryClient, "download", _fake_registry_download([DownloadedPacket(500_000_000)]))
+async def test_download_with_registry_client_reports_the_catalog_size_as_total(download_service: OllamaService) -> None:
+    stream = MagicMock()
+
+    await download_service._download_with_registry_client(stream, _ref("llama3.2"), "1GB")  # pyright: ignore[reportPrivateUsage]
+
+    assert stream.emit.call_args_list[1].args[0]["data"] == {"completed": 500_000_000, "total": 1_000_000_000}
+    assert stream.emit.call_args_list[-1].args[0]["data"] == {}
+
+
+@pytest.mark.asyncio
+@patch.object(
+    OllamaRegistryClient, "download", _fake_registry_download([DownloadedPacket(10), PreDownloadPacket(100), DownloadedPacket(40)])
+)
+async def test_download_with_registry_client_emits_no_byte_event_until_the_size_is_known(download_service: OllamaService) -> None:
+    stream = MagicMock()
+
+    await download_service._download_with_registry_client(stream, _ref("llama3.2"), "unknown")  # pyright: ignore[reportPrivateUsage]
+
+    datas = [emit_call.args[0]["data"] for emit_call in stream.emit.call_args_list]
+    assert datas == [{}, {"completed": 40, "total": 100}, {}]
+
+
+@pytest.mark.asyncio
 @patch.object(OllamaRegistryClient, "download", _fake_registry_download(error=OllamaRegistryError("Model nope not found", 404)))
 async def test_download_with_registry_client_maps_registry_error_to_http_exception(download_service: OllamaService) -> None:
     with pytest.raises(HTTPException) as exc_info:
