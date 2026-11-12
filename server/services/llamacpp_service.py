@@ -51,8 +51,6 @@ from server.services import model_catalog_refresh
 from server.services.base2_service import Base2Service, CustomModel, Instance, InstanceConfig, ModelConfig
 from server.services.model_catalog_refresh import huggingface_refresh_guard
 from server.utils.core import (
-    DownloadedPacket,
-    PreDownloadPacket,
     PromiseWithProgress,
     Stream,
     StreamChunk,
@@ -66,6 +64,7 @@ from server.utils.files import get_gguf_arch_params, get_gguf_context_window
 from server.utils.hardware import GpuInfo, HardwarePartInfo, IntelGpuInfo, NvidiaGpuInfo
 from server.utils.loading import Progress
 from server.utils.logger import logger
+from server.utils.model_downloader import track_download_progress
 from server.utils.registry_client import image_without_registry_prefix, registry_for
 from server.utils.size_fetcher import fetch_file_size_from_url
 from server.utils.validators import clamp_non_positive_to_one
@@ -603,17 +602,9 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
         progress = Progress(convert_size_to_bytes(model.size) or 0)
         local_model_path: Path | None = None
         filename: str = ""
-        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
-        async for packet in self.model_downloader.download(model.url, model_dir):
-            if isinstance(packet, DownloadedPacket) and packet.downloaded_bytes_size != 0:
-                progress.add_to_actual_value(packet.downloaded_bytes_size)
-                stream.emit(
-                    StreamChunkProgress(type="progress", stage="download", value=progress.get_percentage(), data=progress.to_data())
-                )
-            elif isinstance(packet, PreDownloadPacket):
-                if max := packet.file_bytes_size:
-                    progress.set_max_value(max)
-            elif isinstance(packet, SuccessDownloadPacket):
+        packets = self.model_downloader.download(model.url, model_dir)
+        async for packet in track_download_progress(stream, packets, progress):
+            if isinstance(packet, SuccessDownloadPacket):
                 local_model_path = packet.local_path
                 filename = packet.filename
 
@@ -621,7 +612,7 @@ class LLamacppService(Base2Service[InstalledInfo, DownloadedInfo]):
             StreamChunkProgress(
                 type="progress",
                 stage="download",
-                value=0,
+                value=1,
                 data={"local_model_path": str(local_model_path), "filename": filename} if local_model_path else {},
             )
         )

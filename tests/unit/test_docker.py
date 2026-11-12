@@ -2281,6 +2281,26 @@ async def test_docker_pull_yields_progress(docker_service: DockerService) -> Non
 
 
 @pytest.mark.asyncio
+async def test_docker_pull_omits_total_when_the_image_size_is_unknown(docker_service: DockerService) -> None:
+    chunks = [
+        {"id": "layer1", "status": "Downloading", "progressDetail": {"current": 500}},
+        {"id": "layer1", "status": "Downloading", "progressDetail": {"current": 1000}},
+    ]
+
+    async def fake_pull(*args: Any, **kwargs: Any):
+        for chunk in chunks:
+            yield chunk
+
+    images = MagicMock()
+    images.pull = fake_pull
+    cm, _ = _make_docker_mock(images)
+    with patch("server.docker.Docker", return_value=cm):
+        snapshots = [p.to_data() async for p in docker_service.docker_pull("ubuntu:latest", image_size=0)]
+
+    assert snapshots == [{"completed": 500}, {"completed": 1000}]
+
+
+@pytest.mark.asyncio
 async def test_docker_pull_uses_auth_for_known_registry(docker_service: DockerService) -> None:
     docker_service.auths = {"ghcr.io": "mytoken"}
     captured_kwargs: dict[str, Any] = {}

@@ -70,6 +70,7 @@ from server.utils.files import detect_context_window_from_path
 from server.utils.hardware import GpuInfo, HardwarePartInfo, IntelGpuInfo
 from server.utils.loading import Progress
 from server.utils.logger import logger
+from server.utils.model_downloader import track_download_progress
 from server.utils.ollama import (
     GGUF_QUANTIZATION_UNSUPPORTED_MESSAGE,
     decision_models_unsupported_message,
@@ -1434,20 +1435,14 @@ class OllamaService(Base2Service[InstalledInfo, DownloadedInfo]):
         progress = Progress(convert_size_to_bytes(model_size) or 0)
         last_logged_percentage = 0.0
 
-        stream.emit(StreamChunkProgress(type="progress", stage="download", value=0, data={}))
         try:
             async with aclosing(client.download(ref)) as packets:
-                async for packet in packets:
-                    if isinstance(packet, PreDownloadPacket):
-                        if packet.file_bytes_size:
-                            progress.set_max_value(packet.file_bytes_size)
-                    elif isinstance(packet, DownloadedPacket) and progress.max:
-                        progress.add_to_actual_value(packet.downloaded_bytes_size)
+                async for packet in track_download_progress(stream, packets, progress, require_known_size=True):
+                    if isinstance(packet, DownloadedPacket):
                         percentage = progress.get_percentage()
                         if last_logged_percentage < 1 and (percentage - last_logged_percentage >= _PROGRESS_LOG_STEP or percentage >= 1):
                             logger.info("Downloading model %s: %.0f%%", ref.manifest_path, percentage * 100)
                             last_logged_percentage = percentage
-                        stream.emit(StreamChunkProgress(type="progress", stage="download", value=percentage, data=progress.to_data()))
         except OllamaRegistryError as e:
             logger.warning("Downloading model %s from the Ollama registry failed: %s", ref.manifest_path, e.message)
             raise HTTPException(status_code=e.status_code, detail=e.message) from e

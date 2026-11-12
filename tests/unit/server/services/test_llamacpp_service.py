@@ -1865,3 +1865,23 @@ async def test_download_model_or_set_progress_returns_no_path_when_watched_downl
     result = await svc._download_model_or_set_progress(output_stream, model, "my-model")  # pyright: ignore[reportPrivateUsage]
 
     assert result == (None, "")
+
+
+@pytest.mark.asyncio
+async def test_download_model_ends_with_progress_one_and_the_downloaded_file(
+    svc: LLamacppService, deps: dict[str, Any], tmp_path: Path
+) -> None:
+    model = LlamacppModel(url="https://example.com/model.gguf", size="100MB")
+    stream = MagicMock()
+
+    async def mock_download(*args: object):  # type: ignore[misc]
+        yield DownloadedPacket(downloaded_bytes_size=90_000_000)
+        yield SuccessDownloadPacket(local_path=tmp_path / "model.gguf", filename="model.gguf")
+
+    deps["model_downloader"].download = mock_download
+
+    with patch.object(svc, "_get_working_dir", return_value=tmp_path):  # pyright: ignore[reportPrivateUsage]
+        await svc._download_model(stream, model)  # pyright: ignore[reportPrivateUsage]
+
+    values = [emit_call.args[0]["value"] for emit_call in stream.emit.call_args_list]
+    assert values == pytest.approx([0, 0.9, 1])

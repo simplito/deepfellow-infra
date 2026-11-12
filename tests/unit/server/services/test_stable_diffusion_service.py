@@ -2047,3 +2047,27 @@ async def test_download_model_or_set_progress_returns_no_path_when_watched_downl
     result = await svc._download_model_or_set_progress(output_stream, model, "model-id")  # pyright: ignore[reportPrivateUsage]
 
     assert result == (None, "")
+
+
+@pytest.mark.asyncio
+async def test_download_model_emits_an_event_after_every_packet(svc: StableDiffusionService, tmp_path: Path) -> None:
+    model = StableDiffusionModel(
+        filetype="Lora",
+        type="lora",
+        url="https://example.com/lora.safetensors",
+        filename="lora.safetensors",
+        size="100MB",
+    )
+
+    async def mock_download(*args: object) -> Any:
+        yield PreDownloadPacket(file_bytes_size=200_000_000)
+        yield SuccessDownloadPacket(local_path=tmp_path / "lora.safetensors", filename="lora.safetensors")
+
+    svc.model_downloader.download.return_value = mock_download()  # pyright: ignore[reportAttributeAccessIssue]
+    stream = MagicMock()
+
+    with patch.object(svc, "_get_working_models_dir", return_value=tmp_path):  # pyright: ignore[reportPrivateUsage]
+        await svc._download_model(stream, model)  # pyright: ignore[reportPrivateUsage]
+
+    datas = [emit_call.args[0]["data"] for emit_call in stream.emit.call_args_list]
+    assert datas[:3] == [{}, {"completed": 0, "total": 200_000_000}, {"completed": 0, "total": 200_000_000}]

@@ -3,6 +3,7 @@
 
 """Tests for model_downloader.py — covers uncovered branches across all downloader classes."""
 
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -16,7 +17,15 @@ from pydantic import SecretStr
 
 from scripts.get_huggingface_models import HfRepoAccessError
 from scripts.utils.hf_common import HfErrorKind
-from server.utils.core import DownloadedPacket, HttpClientError, PreDownloadPacket, SuccessDownloadPacket
+from server.utils.core import (
+    DownloadedPacket,
+    DownloadPacket,
+    HttpClientError,
+    PreDownloadPacket,
+    StreamChunkProgress,
+    SuccessDownloadPacket,
+)
+from server.utils.loading import Progress
 from server.utils.model_downloader import (
     AdapterRegistryDownloader,
     CivitaiModelDownloader,
@@ -25,6 +34,7 @@ from server.utils.model_downloader import (
     HuggingFaceRepoWithBlobsDownloader,
     ModelDownloader,
     StandardModelDownloader,
+    track_download_progress,
 )
 
 
@@ -1198,3 +1208,148 @@ async def test_model_downloader_download_does_not_log_progress_when_size_unknown
             pass
 
     assert "%" not in caplog.text
+
+
+async def _track(
+    packets: list[DownloadPacket], progress: Progress, **flags: bool
+) -> tuple[list[DownloadPacket], list[StreamChunkProgress]]:
+    stream = MagicMock()
+    yielded = [packet async for packet in track_download_progress(stream, _yield(*packets), progress, **flags)]
+    events: list[StreamChunkProgress] = [emit_call.args[0] for emit_call in stream.emit.call_args_list]
+    return yielded, events
+
+
+@pytest.mark.asyncio
+async def test_track_download_progress_emits_the_starting_event_before_any_packet() -> None:
+    stream = MagicMock()
+    generator = track_download_progress(stream, _yield(DownloadedPacket(10)), Progress(100))
+
+    assert stream.emit.call_count == 0
+    await anext(generator)
+
+    assert stream.emit.call_args_list[0].args[0] == {"type": "progress", "stage": "download", "value": 0, "data": {}}
+    await generator.aclose()
+
+
+@pytest.mark.asyncio
+async def test_track_download_progress_reports_bytes_against_a_size_known_up_front() -> None:
+    _, events = await _track([DownloadedPacket(500), DownloadedPacket(500)], Progress(2000))
+
+    assert [(e["value"], e["data"]) for e in events[1:]] == [
+        (0.25, {"completed": 500, "total": 2000}),
+        (0.5, {"completed": 1000, "total": 2000}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_track_download_progress_adds_total_once_the_size_is_announced() -> None:
+    progress = Progress(0)
+
+    _, events = await _track([DownloadedPacket(100), PreDownloadPacket(1000), DownloadedPacket(100)], progress)
+
+    assert [e["data"] for e in events[1:]] == [{"completed": 100}, {"completed": 200, "total": 1000}]
+    assert progress.get_percentage() == 0.2
+
+
+@pytest.mark.asyncio
+async def test_track_download_progress_never_reports_total_when_the_size_stays_unknown() -> None:
+    _, events = await _track([DownloadedPacket(100), PreDownloadPacket(0), DownloadedPacket(100)], Progress(0))
+
+    assert [e["data"] for e in events[1:]] == [{"completed": 100}, {"completed": 200}]
+
+
+@pytest.mark.asyncio
+async def test_track_download_progress_raises_total_to_completed_when_the_size_is_exceeded() -> None:
+    _, events = await _track([DownloadedPacket(1500)], Progress(1000))
+
+    assert events[1]["data"] == {"completed": 1500, "total": 1500}
+
+
+@pytest.mark.asyncio
+async def test_track_download_progress_skips_zero_byte_packets() -> None:
+    _, events = await _track([DownloadedPacket(0), PreDownloadPacket(100)], Progress(100))
+
+    assert len(events) == 1
+
+
+@pytest.mark.asyncio
+async def test_track_download_progress_emits_after_every_packet_when_asked() -> None:
+    packets = [
+        PreDownloadPacket(100),
+        DownloadedPacket(0),
+        DownloadedPacket(10),
+        SuccessDownloadPacket(Path("/tmp/m"), "m"),
+        DownloadPacket(),
+    ]
+
+    _, events = await _track(packets, Progress(0), emit_on_every_packet=True)
+
+    assert [(e["value"], e["data"]) for e in events[1:]] == [
+        (0, {"completed": 0, "total": 100}),
+        (0, {"completed": 0, "total": 100}),
+        (0.1, {"completed": 10, "total": 100}),
+        (0.1, {"completed": 10, "total": 100}),
+        (0.1, {"completed": 10, "total": 100}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_track_download_progress_counts_bytes_only_while_the_size_is_known_when_asked() -> None:
+    progress = Progress(0)
+
+    _, events = await _track([DownloadedPacket(10), PreDownloadPacket(100), DownloadedPacket(40)], progress, require_known_size=True)
+
+    assert [(e["value"], e["data"]) for e in events] == [
+        (0, {}),
+        (0.4, {"completed": 40, "total": 100}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_track_download_progress_counts_bytes_up_front_when_the_size_is_known_even_if_asked_to_require_it() -> None:
+    _, events = await _track([DownloadedPacket(40)], Progress(100), require_known_size=True)
+
+    assert events[1]["data"] == {"completed": 40, "total": 100}
+
+
+@pytest.mark.asyncio
+async def test_track_download_progress_yields_every_packet_unchanged_and_in_order() -> None:
+    packets: list[DownloadPacket] = [
+        PreDownloadPacket(100),
+        DownloadedPacket(0),
+        DownloadedPacket(10),
+        SuccessDownloadPacket(Path("/tmp/m"), "m"),
+        DownloadPacket(),
+    ]
+
+    yielded, _ = await _track(packets, Progress(0))
+
+    assert len(yielded) == len(packets)
+    assert all(got is sent for got, sent in zip(yielded, packets, strict=True))
+
+
+@pytest.mark.asyncio
+async def test_track_download_progress_updates_the_progress_the_caller_passed_in() -> None:
+    progress = Progress(200)
+
+    await _track([DownloadedPacket(50)], progress)
+
+    assert (progress.actual, progress.get_percentage()) == (50, 0.25)
+
+
+@pytest.mark.asyncio
+async def test_track_download_progress_lets_cancellation_through() -> None:
+    async def never_ending() -> AsyncGenerator[DownloadPacket]:
+        await asyncio.sleep(3600)
+        yield DownloadPacket()
+
+    async def consume() -> None:
+        async for _ in track_download_progress(MagicMock(), never_ending(), Progress(100)):
+            pass
+
+    task = asyncio.create_task(consume())
+    await asyncio.sleep(0)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
