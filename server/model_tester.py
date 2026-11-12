@@ -408,38 +408,50 @@ class ModelTester:
         session_id: str | None = None
         if isinstance(init_response, StreamingResponse):
             session_id = init_response.headers.get("mcp-session-id")
-        (init_raw, init_data) = await self._read_mcp_response(init_response, 1)
-        if "error" in init_data:
-            raise ModelTestError(f"MCP initialize error: {init_data['error']}", init_raw)  # noqa: EM102
-        if "result" not in init_data:
-            raise ModelTestError("MCP initialize returned no result", init_raw)
-        server_info: dict[str, Any] = init_data["result"].get("serverInfo", {})
-
-        extra_headers: list[tuple[bytes, bytes]] = [(b"mcp-session-id", session_id.encode())] if session_id else []
-        tools_payload = json.dumps(
-            {
-                "jsonrpc": "2.0",
-                "id": 2,
-                "method": "tools/list",
-                "params": {},
-            }
-        ).encode()
         try:
-            tools_response = await endpoint.on_request(self._make_request(tools_payload, extra_headers))
-            (_, tools_data) = await self._read_mcp_response(tools_response, 2)
-            tools: list[Any] | None = tools_data.get("result", {}).get("tools")
-        except ModelTestError as e:
-            return {
-                "result": "ok",
-                "output": {"tools": None, "tools_error": e.error, "server_info": server_info},
-                "details": {"initialize": init_data},
-            }
-        else:
-            return {
-                "result": "ok",
-                "output": {"tools": tools, "server_info": server_info},
-                "details": {"initialize": init_data, "tools_list": tools_data},
-            }
+            (init_raw, init_data) = await self._read_mcp_response(init_response, 1)
+            if "error" in init_data:
+                raise ModelTestError(f"MCP initialize error: {init_data['error']}", init_raw)  # noqa: EM102
+            if "result" not in init_data:
+                raise ModelTestError("MCP initialize returned no result", init_raw)
+            server_info: dict[str, Any] = init_data["result"].get("serverInfo", {})
+
+            extra_headers: list[tuple[bytes, bytes]] = [(b"mcp-session-id", session_id.encode())] if session_id else []
+            tools_payload = json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/list",
+                    "params": {},
+                }
+            ).encode()
+            try:
+                tools_response = await endpoint.on_request(self._make_request(tools_payload, extra_headers))
+                (_, tools_data) = await self._read_mcp_response(tools_response, 2)
+                tools: list[Any] | None = tools_data.get("result", {}).get("tools")
+            except ModelTestError as e:
+                return {
+                    "result": "ok",
+                    "output": {"tools": None, "tools_error": e.error, "server_info": server_info},
+                    "details": {"initialize": init_data},
+                }
+            else:
+                return {
+                    "result": "ok",
+                    "output": {"tools": tools, "server_info": server_info},
+                    "details": {"initialize": init_data, "tools_list": tools_data},
+                }
+        finally:
+            if session_id:
+                await self._terminate_mcp_session(endpoint, session_id)
+
+    async def _terminate_mcp_session(self, endpoint: McpEndpoint, session_id: str) -> None:
+        """Best-effort DELETE of the MCP session opened by the test; failures are logged and ignored."""
+        try:
+            response = await endpoint.on_request(self._make_request(b"", [(b"mcp-session-id", session_id.encode())], method="DELETE"))
+            await self._read_response(response)
+        except Exception as exc:
+            logger.debug("MCP session termination in model test failed: %s: %s", type(exc).__name__, exc)
 
     async def _test_systemone(self, model: str, endpoint: SimpleEndpoint[SystemOneRequest]) -> JsonSerializable:
         (my_resp, json) = await self._read_json(

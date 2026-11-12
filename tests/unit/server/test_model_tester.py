@@ -1204,3 +1204,97 @@ async def test_test_mcp_raises_when_initialize_returns_no_result() -> None:
     result = await tester.test_model(MagicMock(registered_model=MagicMock(type="mcp", name="x", endpoint=endpoint)))
 
     assert "error" in result
+
+
+def _sid_init_response() -> StreamingResponse:
+    return _make_mcp_json_response(_INIT_RESULT, extra_headers={"mcp-session-id": "sess-abc"})
+
+
+@pytest.mark.asyncio
+async def test_test_mcp_terminates_session_after_success() -> None:
+    tester = ModelTester()
+    on_request = AsyncMock(side_effect=[_sid_init_response(), _make_mcp_json_response(_TOOLS_RESULT), _make_mcp_json_response({})])
+    endpoint = McpEndpoint(on_request=on_request)
+
+    result = await tester._test_mcp("model", endpoint)  # pyright: ignore[reportPrivateUsage]
+
+    assert result["output"]["tools"] == _TOOLS_RESULT["result"]["tools"]  # type: ignore[index]
+    assert on_request.call_count == 3
+    delete_request = on_request.call_args_list[2][0][0]
+    assert delete_request.method == "DELETE"
+    assert delete_request.headers.get("mcp-session-id") == "sess-abc"
+
+
+@pytest.mark.asyncio
+async def test_test_mcp_terminates_session_after_tools_list_error() -> None:
+    tester = ModelTester()
+
+    async def gen():
+        yield b"bad"
+
+    tools_fail_resp = StreamingResponse(gen(), media_type="application/json", status_code=500)
+    on_request = AsyncMock(side_effect=[_sid_init_response(), tools_fail_resp, _make_mcp_json_response({})])
+    endpoint = McpEndpoint(on_request=on_request)
+
+    result = await tester._test_mcp("model", endpoint)  # pyright: ignore[reportPrivateUsage]
+
+    assert result["output"]["tools"] is None  # type: ignore[index]
+    assert "tools_error" in result["output"]  # type: ignore[index]
+    delete_request = on_request.call_args_list[2][0][0]
+    assert delete_request.method == "DELETE"
+    assert delete_request.headers.get("mcp-session-id") == "sess-abc"
+
+
+@pytest.mark.asyncio
+async def test_test_mcp_terminates_session_when_initialize_fails() -> None:
+    tester = ModelTester()
+    init_resp = _make_mcp_json_response({"jsonrpc": "2.0", "id": 1}, extra_headers={"mcp-session-id": "sess-abc"})
+    on_request = AsyncMock(side_effect=[init_resp, _make_mcp_json_response({})])
+    endpoint = McpEndpoint(on_request=on_request)
+
+    with pytest.raises(ModelTestError):
+        await tester._test_mcp("model", endpoint)  # pyright: ignore[reportPrivateUsage]
+
+    delete_request = on_request.call_args_list[1][0][0]
+    assert delete_request.method == "DELETE"
+    assert delete_request.headers.get("mcp-session-id") == "sess-abc"
+
+
+@pytest.mark.asyncio
+async def test_test_mcp_sends_no_delete_without_session_id() -> None:
+    tester = ModelTester()
+    on_request = AsyncMock(side_effect=[_make_mcp_json_response(_INIT_RESULT), _make_mcp_json_response(_TOOLS_RESULT)])
+    endpoint = McpEndpoint(on_request=on_request)
+
+    await tester._test_mcp("model", endpoint)  # pyright: ignore[reportPrivateUsage]
+
+    assert on_request.call_count == 2
+    assert all(c[0][0].method == "POST" for c in on_request.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_test_mcp_failing_delete_keeps_result() -> None:
+    tester = ModelTester()
+    on_request = AsyncMock(side_effect=[_sid_init_response(), _make_mcp_json_response(_TOOLS_RESULT), RuntimeError("boom")])
+    endpoint = McpEndpoint(on_request=on_request)
+
+    result = await tester._test_mcp("model", endpoint)  # pyright: ignore[reportPrivateUsage]
+
+    assert result["result"] == "ok"
+    assert result["output"]["tools"] == _TOOLS_RESULT["result"]["tools"]  # type: ignore[index]
+    assert on_request.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_test_mcp_terminates_session_when_tools_list_raises() -> None:
+    tester = ModelTester()
+    on_request = AsyncMock(side_effect=[_sid_init_response(), RuntimeError("boom"), _make_mcp_json_response({})])
+    endpoint = McpEndpoint(on_request=on_request)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await tester._test_mcp("model", endpoint)  # pyright: ignore[reportPrivateUsage]
+
+    assert on_request.call_count == 3
+    delete_request = on_request.call_args_list[2][0][0]
+    assert delete_request.method == "DELETE"
+    assert delete_request.headers.get("mcp-session-id") == "sess-abc"

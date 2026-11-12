@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - llama.cpp model downloads no longer report progress dropping back to 0% just before they finish.
 - Calling an LLM endpoint a model doesn't serve returns `400` listing the endpoints it does serve, as in `/v1/models`.
 - Custom and MCP models called on a non-LLM endpoint (e.g. `/v1/embeddings`) return `400`, not `404 Model not found`.
+- MCP health checks and model tests close the MCP sessions they open, so MCP servers such as `open-websearch` no longer run out of memory.
 
 ## [0.38.0] - 2026-11-04
 

@@ -322,6 +322,7 @@ _MCP_INIT_PAYLOAD: dict[str, Any] = {
 }
 _MCP_INITIALIZED_NOTIF: dict[str, Any] = {"jsonrpc": "2.0", "method": "notifications/initialized"}
 _MCP_TOOLS_LIST_PAYLOAD: dict[str, Any] = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
+_MCP_SESSION_TERMINATE_TIMEOUT = aiohttp.ClientTimeout(total=5)
 
 
 def _parse_mcp_tools(raw: list[Any]) -> list[McpToolInfo]:
@@ -355,6 +356,15 @@ async def _read_first_sse_json(resp: aiohttp.ClientResponse) -> dict[str, Any] |
                 pass
             data_buf = ""
     return None
+
+
+async def _terminate_mcp_session(client: aiohttp.ClientSession, mcp_url: str, headers: dict[str, str]) -> None:
+    """Best-effort DELETE of a streamable-HTTP MCP session; failures are logged and ignored."""
+    try:
+        async with client.delete(mcp_url, headers=headers, timeout=_MCP_SESSION_TERMINATE_TIMEOUT) as resp:
+            logger.debug("MCP session termination at %s returned HTTP %s", mcp_url, resp.status)
+    except Exception as exc:
+        logger.debug("MCP session termination at %s failed: %s: %s", mcp_url, type(exc).__name__, exc)
 
 
 async def _fetch_tools_from_mcp_endpoint(mcp_url: str, extra_headers: dict[str, str]) -> McpHealthCheckResult:  # noqa: C901
@@ -396,20 +406,27 @@ async def _fetch_tools_from_mcp_endpoint(mcp_url: str, extra_headers: dict[str, 
                         return None, str(data["error"].get("message", data["error"]))
                     return data.get("result"), None
 
-            _, init_err = await _post(_MCP_INIT_PAYLOAD)
-            if unauthorized:
-                return McpHealthCheckResult(healthy=False, requires_oauth=True, error="initialize: HTTP 401 Unauthorized")
-            if init_err:
-                return McpHealthCheckResult(healthy=False, error=f"initialize: {init_err}")
+            async def _close_session() -> None:
+                if session_id:
+                    await _terminate_mcp_session(client, mcp_url, _req_headers())
 
-            await _post(_MCP_INITIALIZED_NOTIF)
+            try:
+                _, init_err = await _post(_MCP_INIT_PAYLOAD)
+                if unauthorized:
+                    return McpHealthCheckResult(healthy=False, requires_oauth=True, error="initialize: HTTP 401 Unauthorized")
+                if init_err:
+                    return McpHealthCheckResult(healthy=False, error=f"initialize: {init_err}")
 
-            tools_result, tools_err = await _post(_MCP_TOOLS_LIST_PAYLOAD)
-            if tools_err:
-                return McpHealthCheckResult(healthy=True, transport="streamable_http", error=f"tools/list: {tools_err}")
+                await _post(_MCP_INITIALIZED_NOTIF)
 
-            raw_tools = (tools_result or {}).get("tools", [])
-            return McpHealthCheckResult(healthy=True, transport="streamable_http", tools=_parse_mcp_tools(raw_tools))
+                tools_result, tools_err = await _post(_MCP_TOOLS_LIST_PAYLOAD)
+                if tools_err:
+                    return McpHealthCheckResult(healthy=True, transport="streamable_http", error=f"tools/list: {tools_err}")
+
+                raw_tools = (tools_result or {}).get("tools", [])
+                return McpHealthCheckResult(healthy=True, transport="streamable_http", tools=_parse_mcp_tools(raw_tools))
+            finally:
+                await _close_session()
 
     except aiohttp.ClientConnectorError as exc:
         return McpHealthCheckResult(healthy=False, error=f"Connection refused: {exc}")
