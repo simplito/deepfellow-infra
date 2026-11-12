@@ -3765,7 +3765,7 @@
         {
             "name": "qwen3.8-flash-next:125b-mlx",
             "size": "105GB",
-            "hash": "c7b96ffe21af",
+            "hash": "5fcb32f20cb4",
             "context": 262144
         },
         {
@@ -3985,6 +3985,18 @@
             "context": 131072
         },
         {
+            "name": "ripple-preview",
+            "size": "39GB",
+            "hash": "8cc02e88378d",
+            "context": 2097152
+        },
+        {
+            "name": "ripple-preview:65b",
+            "size": "39GB",
+            "hash": "8cc02e88378d",
+            "context": 2097152
+        },
+        {
             "name": "rnj-1",
             "size": "5.1GB",
             "hash": "d20e29ab8d0f",
@@ -4143,7 +4155,7 @@
         {
             "name": "SpeakLeash/bielik-1.5b-v3.0-instruct:Q8_0",
             "size": "1.7GB",
-            "hash": "c65bebd5c7a6",
+            "hash": "db43c178a735",
             "context": 8192
         },
         {
@@ -4173,13 +4185,13 @@
         {
             "name": "SpeakLeash/bielik-11b-v3.0-instruct:Q4_K_M",
             "size": "6.7GB",
-            "hash": "64d9b83aa068",
+            "hash": "3b52b68a462e",
             "context": 32768
         },
         {
             "name": "SpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0",
             "size": "5.1GB",
-            "hash": "88067a36fa44",
+            "hash": "4c6ed09ba6be",
             "context": 8192
         },
         {
@@ -4702,6 +4714,24 @@
         }
     ],
     "decision": [
+        {
+            "name": "autotrust-jev",
+            "size": "11GB",
+            "hash": "ae39b218bea7",
+            "context": 262144
+        },
+        {
+            "name": "autotrust-jev:35b",
+            "size": "26GB",
+            "hash": "973a7b9bdf9f",
+            "context": 262144
+        },
+        {
+            "name": "autotrust-jev:9b",
+            "size": "11GB",
+            "hash": "ae39b218bea7",
+            "context": 262144
+        },
         {
             "name": "clef",
             "size": "20GB",
