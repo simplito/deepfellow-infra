@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - `web-search` MCP image bumped to `v0.3.4`, fixing zombie processes left behind by `v0.3.3`.
 - `RELEASE.md` tells to update the version in `uv.lock` together with `pyproject.toml`.
+- Refreshed the Ollama, vLLM, llama.cpp and SGLang model lists; llama.cpp image bumped to `b12316` and Ollama image to `0.40.16`.
 
 ### Fixed
 
