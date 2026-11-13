@@ -32,17 +32,23 @@ git push origin release/0.31.0
 
 ### 6. Wait for pipeline finish.
 
+The release branch pipeline runs the e2e suite on the GPU runner: the full matrix and the upgrade from the latest
+release, about an hour (see `tests/e2e/README.md`). The MR can't be merged until it passes. If it fails, fix it on
+`main`, then recreate the release branch from `main`: no tag exists yet, so no version is lost.
+
 ### 7. Merge the MR to main.
+
+Only if nothing was merged to `main` since the release branch was created: the MR must not say the source branch is
+behind the target branch. Otherwise those commits would be tagged without the e2e run: recreate the release branch from `main`, so the
+pipeline runs again on everything that gets tagged.
 
 ### 8. Wait for the pipeline on `main` to finish
 
-CI picks up the merge commit and automatically pushes to [github.com/simplito/deepfellow-infra](https://github.com/simplito/deepfellow-infra).
+It builds the image of the merge commit, which the tag in step 9 publishes as the release, and deploys it to staging.
+It runs no e2e: the release branch did (step 6), and step 7 ensures the merge commit holds the same code. The push to
+GitHub happens on the tag.
 
-### 9. Verify staging
-
-Open [https://dfinfra.test.simplito.com/](https://dfinfra.test.simplito.com/) and confirm the changes look correct.
-
-### 10. Tag the merge commit on `main`
+### 9. Tag the merge commit on `main`
 
 ```bash
 git checkout main && git pull

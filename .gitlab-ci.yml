@@ -5,6 +5,7 @@ stages:
   - analysis
   - test
   - build
+  - e2e
   - deploy
   - smoke-test
   - release
@@ -178,11 +179,11 @@ build_and_publish_docker_image:
     - docker build --build-arg DF_BUILD_COMMIT=$CI_COMMIT_SHA -t $IMAGE_ID -t $DEV_IMAGE_ID .
     - docker push $IMAGE_ID
     - docker push $DEV_IMAGE_ID
-  except:
-    - tags
-  only:
-    - main
-    - /^hotfix-.*$/
+  rules:
+    # The e2e nightly schedule tests the image main already built; it must not rebuild or re-push :dev.
+    - if: '$DF_E2E_NIGHTLY == "true"'
+      when: never
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH =~ /^hotfix-.*$/'
 
 # Builds the image with the DeepFellow Dashboard in place of the legacy web UI, so the alternative UI has a gate
 # rather than only a description. It builds and does not push, because nothing deploys this variant yet.
@@ -275,6 +276,161 @@ tag_docker_image:
   only:
     - tags
 
+# E2e service-lifecycle suite, see tests/e2e/README.md. Off until DF_E2E_ENABLED=true: without the
+# deepfellow-e2e-gpu runner a job would sit pending forever and stall every release.
+.e2e:
+  stage: e2e
+  tags:
+    - deepfellow-e2e-gpu
+  variables:
+    # Storage is written as root by service containers, so it stays outside the checkout: a leftover there would break
+    # the next job's git clean. Logs go into the checkout for the artifacts.
+    E2E_STORAGE_ROOT: "/var/tmp/df-e2e"
+    E2E_LOG_DIR: "$CI_PROJECT_DIR/.e2e-run"
+    DF_E2E_LOG_DIR: "$CI_PROJECT_DIR/.e2e-run"
+  before_script:
+    - !reference [.e2e-skip-if-idle, before_script]
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    # Pulled with retries (main's push pipeline may still be building it), or built when E2E_BUILD_CONTEXT is set.
+    - tests/e2e/instance.sh image "$E2E_IMAGE"
+    - mkdir -p "$E2E_STORAGE_ROOT" "$E2E_LOG_DIR"
+    - tests/e2e/instance.sh start "$E2E_IMAGE" "$CI_JOB_ID" > "$E2E_LOG_DIR/instance.env"
+  script:
+    - set -a; . "$E2E_LOG_DIR/instance.env"; set +a
+    # release/0.39.0 -> 0.39.0, into the check E2E_RELEASE_VERSION_VAR names.
+    - if [ -n "${E2E_RELEASE_VERSION_VAR:-}" ]; then export "$E2E_RELEASE_VERSION_VAR=${CI_COMMIT_BRANCH#release/}"; fi
+    # eval, so E2E_PYTEST_ARGS may quote a marker expression: -m "cpu and not gate".
+    - eval "uv run pytest tests/e2e -v -ra --no-cov --junitxml=\"$CI_PROJECT_DIR/e2e-results.xml\" $E2E_PYTEST_ARGS"
+  after_script:
+    - tests/e2e/instance.sh stop "$CI_JOB_ID"
+    - rm -f "$E2E_LOG_DIR/instance.env"
+    # A branch image built for one manual run is not worth keeping; its layers stay cached for the next build.
+    - if [ -n "${E2E_BUILD_CONTEXT:-}" ]; then docker rmi -f "$E2E_IMAGE" >/dev/null 2>&1 || true; fi
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - .e2e-run/*.log
+    reports:
+      junit: e2e-results.xml
+
+# Ends green at once when main had no commit since E2E_SKIP_IF_IDLE: the run would repeat the last one.
+.e2e-skip-if-idle:
+  before_script:
+    - |
+      if [ -n "${E2E_SKIP_IF_IDLE:-}" ] && [ -z "$(git log -1 --since="$E2E_SKIP_IF_IDLE" --format=%H)" ]; then
+        echo "No commit since $E2E_SKIP_IF_IDLE, skipping the run."
+        exit 0
+      fi
+
+# Gate on the release branch, not the tag: same code (only a version bump, see RELEASE.md step 7), and a
+# failure blocks the MR before a tag exists.
+.e2e-release:
+  rules:
+    - if: '$DF_E2E_ENABLED == "true" && $CI_COMMIT_BRANCH =~ /^release\/\d+\.\d+\.\d+$/ && $CI_PIPELINE_SOURCE == "push"'
+  variables:
+    E2E_IMAGE: "df-e2e-build:$CI_COMMIT_SHA"
+    E2E_BUILD_CONTEXT: "$CI_PROJECT_DIR"
+    DF_E2E_REQUIRE_GPU: "true"
+  needs: []
+  resource_group: e2e-gpu
+
+e2e-release:
+  extends: [.e2e, .e2e-release]
+  variables:
+    E2E_PYTEST_ARGS: ""
+    E2E_RELEASE_VERSION_VAR: "DF_E2E_EXPECTED_VERSION"
+  timeout: 4h
+
+# Pipeline schedule on main with DF_E2E_NIGHTLY=true; feedback only, blocks nothing.
+e2e-nightly:
+  extends: .e2e
+  rules:
+    - if: '$DF_E2E_ENABLED == "true" && $CI_PIPELINE_SOURCE == "schedule" && $DF_E2E_NIGHTLY == "true"'
+  variables:
+    E2E_IMAGE: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    E2E_PYTEST_ARGS: ""
+    DF_E2E_REQUIRE_GPU: "true"
+    E2E_SKIP_IF_IDLE: "25 hours ago"
+  # Not held back by a failed lint or unit-test job of the same schedule, which would otherwise skip it silently.
+  needs: []
+  # One GPU: e2e jobs run one at a time.
+  resource_group: e2e-gpu
+  timeout: 4h
+
+# The instance starts from a release and the test upgrades it to $E2E_IMAGE. E2E_FROM_BELOW picks the release: the
+# highest vX.Y.Z tag below it, or the latest release when empty.
+.e2e-upgrade:
+  extends: .e2e
+  variables:
+    DF_E2E_REQUIRE_UPGRADE: "true"
+  before_script:
+    - !reference [.e2e-skip-if-idle, before_script]
+    - git fetch --tags --quiet
+    - E2E_FROM_TAG="$(tests/e2e/previous-release.sh $E2E_FROM_BELOW)"
+    - echo "Upgrading from $E2E_FROM_TAG to $E2E_IMAGE"
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - tests/e2e/instance.sh pull "$CI_REGISTRY_IMAGE:$E2E_FROM_TAG"
+    - tests/e2e/instance.sh image "$E2E_IMAGE"
+    - mkdir -p "$E2E_STORAGE_ROOT" "$E2E_LOG_DIR"
+    - tests/e2e/instance.sh start "$CI_REGISTRY_IMAGE:$E2E_FROM_TAG" "$CI_JOB_ID" > "$E2E_LOG_DIR/instance.env"
+    - |
+      cat >> "$E2E_LOG_DIR/instance.env" <<EOF
+      DF_E2E_EXPECTED_VERSION=$E2E_FROM_TAG
+      DF_E2E_UPGRADE_COMMAND='tests/e2e/instance.sh upgrade $E2E_IMAGE $CI_JOB_ID'
+      EOF
+
+# From the latest release, which on a release branch is the one before it, since its own tag comes after the merge.
+e2e-upgrade-release:
+  extends: [.e2e-upgrade, .e2e-release]
+  variables:
+    E2E_FROM_BELOW: ""
+    E2E_PYTEST_ARGS: "-m upgrade -k full"
+    E2E_RELEASE_VERSION_VAR: "DF_E2E_UPGRADE_VERSION"
+  timeout: 2h
+
+e2e-upgrade-nightly:
+  extends: .e2e-upgrade
+  rules:
+    - if: '$DF_E2E_ENABLED == "true" && $CI_PIPELINE_SOURCE == "schedule" && $DF_E2E_NIGHTLY == "true"'
+  variables:
+    E2E_IMAGE: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    E2E_FROM_BELOW: ""
+    E2E_PYTEST_ARGS: "-m upgrade -k full"
+    DF_E2E_REQUIRE_GPU: "true"
+    E2E_SKIP_IF_IDLE: "25 hours ago"
+  needs: []
+  resource_group: e2e-gpu
+  timeout: 2h
+
+# On demand, any branch; the image is built on the runner and removed after. E2E_PYTEST_ARGS: see README.
+.e2e-branch:
+  rules:
+    # A release branch runs the full suite on its own (.e2e-release).
+    - if: '$CI_COMMIT_BRANCH =~ /^release\/\d+\.\d+\.\d+$/'
+      when: never
+    - if: '$DF_E2E_ENABLED == "true" && $CI_COMMIT_BRANCH && ($CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "web")'
+      when: manual
+      allow_failure: true
+  variables:
+    E2E_IMAGE: "df-e2e-build:$CI_COMMIT_SHA"
+    E2E_BUILD_CONTEXT: "$CI_PROJECT_DIR"
+    DF_E2E_REQUIRE_GPU: "true"
+  needs: []
+  resource_group: e2e-gpu
+  timeout: 4h
+
+e2e-branch:
+  extends: [.e2e, .e2e-branch]
+  variables:
+    E2E_PYTEST_ARGS: "-m gate"
+
+e2e-upgrade-branch:
+  extends: [.e2e-upgrade, .e2e-branch]
+  variables:
+    E2E_FROM_BELOW: ""
+    E2E_PYTEST_ARGS: "-m upgrade -k gate"
+
 deploy_to_dev:
   stage: deploy
   image: curlimages/curl:latest
@@ -285,6 +441,9 @@ deploy_to_dev:
     - main
     - /^hotfix-.*$/
     - tags
+  except:
+    variables:
+      - $DF_E2E_NIGHTLY == "true"
   environment:
     name: dev
     url: https://dfinfra.test.simplito.com/
@@ -340,6 +499,8 @@ smoke-test:
       --env-var host="$DF_SMOKE_URL"
       --reporter-junit "$CI_PROJECT_DIR/smoke-results.xml"
   rules:
+    - if: '$DF_E2E_NIGHTLY == "true"'
+      when: never
     - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
       variables:
         SMOKE_EXPECTED_TAG: "$CI_COMMIT_TAG"
