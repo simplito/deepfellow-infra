@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+
+- E2e service-lifecycle suite (`just test-e2e` against `DF_E2E_BASE_URL`) with an upgrade test, and CI release gates, off until `DF_E2E_ENABLED=true`.
+
 ## [0.39.0] - 2026-11-12
 
 ### Added

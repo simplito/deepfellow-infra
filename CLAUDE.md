@@ -17,7 +17,7 @@ All Python commands use `uv` via `just`. Run from the project root.
 | `just ntest [FLAGS]` | Same but parallel (`-n auto`) |
 | `just test-unit [FLAGS]` | Run only `tests/unit` with coverage |
 | `just test-integration [FLAGS]` | Run `tests/integration` (registry tests, `DF_TEST_INTEGRATION_REGISTRIES=1`) |
-| `just test-e2e [FLAGS]` | Run `tests/e2e` (`DF_TEST_E2E=1`) — exits non-zero until the first test lands (no tests collected) |
+| `just test-e2e [FLAGS]` | Run the e2e lifecycle suite in `tests/e2e` against `DF_E2E_BASE_URL` (skipped when unset; destructive — throwaway instances only, see `tests/e2e/README.md`) |
 | `just test-smoke [FLAGS]` | Run `tests/smoke/run-local.sh` |
 | `just check` | Full lint suite: license headers, ruff, ruff-format, pyright, auth checks, example.env check |
 | `just ruff` | Lint Python files |
@@ -63,7 +63,7 @@ WebUI (from `webui/` directory):
 - Single test: `just test -k 'test_name'`
 - Coverage covers `server/` and `scripts/`
 - For ordinary code changes run `just test` (or `just test-unit`); integration, e2e and smoke suites are opt-in and not needed unless the change targets them
-- `just test-e2e` currently exits non-zero because `tests/e2e` has no tests yet — this is expected, don't investigate it
+- `just test-e2e` installs and uninstalls services on its target — never point `DF_E2E_BASE_URL` at a shared environment
 
 **WebUI (TypeScript):**
 - Framework: Vitest — installed automatically with `npm install` (it's in `devDependencies`)

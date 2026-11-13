@@ -17,7 +17,7 @@ test-integration *FLAGS:
     DF_TEST_INTEGRATION_REGISTRIES=1 uv run pytest tests/integration -v --no-cov {{FLAGS}}
 
 test-e2e *FLAGS:
-    DF_TEST_E2E=1 uv run pytest tests/e2e -v --no-cov {{FLAGS}}
+    uv run pytest tests/e2e -v -ra --no-cov {{FLAGS}}
 
 test-smoke *FLAGS:
     tests/smoke/run-local.sh {{FLAGS}}

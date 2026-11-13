@@ -155,6 +155,13 @@ asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
 env_files = [".test.env"]
 env_override_existing_values = true
+markers = [
+    "gate: e2e release gate - small, fast CPU scenarios with no external credentials",
+    "cpu: e2e scenario that runs on CPU",
+    "gpu: e2e scenario that needs a GPU on the target instance",
+    "cloud: e2e scenario that calls a cloud provider and needs its API key",
+    "upgrade: e2e upgrade test - needs DF_E2E_UPGRADE_COMMAND",
+]
 
 [tool.coverage.run]
 source = ["server", "scripts"]
