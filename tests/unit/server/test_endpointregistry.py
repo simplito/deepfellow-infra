@@ -17,12 +17,14 @@ from fastapi.responses import Response, StreamingResponse
 from fastapi.testclient import TestClient
 from prometheus_client import CollectorRegistry
 from pydantic import BaseModel, ValidationError
+from starlette.datastructures import Headers
 
 import server.endpointregistry as _er_module
 from server.api.openai import router as openai_router
 from server.config import AppSettings
 from server.core.dependencies import auth_server, get_config, get_endpoint_registry
 from server.endpointregistry import (
+    ROUTE_HEADER,
     ChatCompletionEndpoint,
     CustomEndpoint,
     Endpoint,
@@ -2976,6 +2978,238 @@ async def test_execute_custom_endpoints_raises_400_when_not_found():
         await reg.execute_custom_endpoints("nonexistent/path", request)
 
     assert exc_info.value.status_code == 400
+
+
+def register_custom_instance(reg: EndpointRegistry, prefix: str, registration_id: str, capacity: int, response: Response) -> AsyncMock:
+    on_request = AsyncMock(return_value=response)
+    reg.register_custom_endpoint(
+        prefix,
+        make_props(type="custom"),
+        CustomEndpoint(on_request=on_request),
+        RegistrationOptions(origin="local", id=registration_id, capacity_state=capacity),
+    )
+    return on_request
+
+
+@pytest.mark.asyncio
+async def test_execute_custom_endpoints_route_bypasses_selection():
+    reg = make_registry()
+    on_request_a = register_custom_instance(reg, "chunker", "a", 1, Response(content=b"a"))
+    on_request_b = register_custom_instance(reg, "chunker", "b", 8, Response(content=b"b"))
+
+    result = await reg.execute_custom_endpoints("chunker/jobs", MagicMock(), "a")
+
+    assert on_request_a.call_count == 1
+    assert on_request_b.call_count == 0
+    assert result.headers[ROUTE_HEADER] == "a"
+
+
+@pytest.mark.asyncio
+async def test_execute_custom_endpoints_repeated_route_sticks_to_instance():
+    reg = make_registry()
+    on_request_a = register_custom_instance(reg, "chunker", "a", 1, Response(content=b"a"))
+    on_request_b = register_custom_instance(reg, "chunker", "b", 8, Response(content=b"b"))
+
+    for _ in range(10):
+        await reg.execute_custom_endpoints("chunker/jobs", MagicMock(), "a")
+
+    assert on_request_a.call_count == 10
+    assert on_request_b.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_execute_custom_endpoints_without_route_selects_and_returns_route():
+    reg = make_registry()
+    on_request_a = register_custom_instance(reg, "chunker", "a", 1, Response(content=b"a"))
+    on_request_b = register_custom_instance(reg, "chunker", "b", 8, Response(content=b"b"))
+
+    result = await reg.execute_custom_endpoints("chunker/jobs", MagicMock())
+
+    assert on_request_a.call_count == 0
+    assert on_request_b.call_count == 1
+    assert result.headers[ROUTE_HEADER] == "b"
+
+
+@pytest.mark.asyncio
+async def test_execute_custom_endpoints_empty_route_selects_as_without_header():
+    reg = make_registry()
+    register_custom_instance(reg, "chunker", "a", 1, Response(content=b"a"))
+    on_request_b = register_custom_instance(reg, "chunker", "b", 8, Response(content=b"b"))
+
+    result = await reg.execute_custom_endpoints("chunker/jobs", MagicMock(), "")
+
+    assert on_request_b.call_count == 1
+    assert result.headers[ROUTE_HEADER] == "b"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("url", "route"),
+    [
+        pytest.param("chunker/jobs/1", "does-not-exist", id="unknown-route"),
+        pytest.param("chunker/jobs", "g", id="route-of-another-prefix"),
+        pytest.param("unknown-prefix/jobs", "a", id="unknown-prefix"),
+    ],
+)
+async def test_execute_custom_endpoints_unavailable_route_raises_503(url: str, route: str):
+    reg = make_registry()
+    on_request_a = register_custom_instance(reg, "chunker", "a", 1, Response(content=b"a"))
+    on_request_g = register_custom_instance(reg, "gliner", "g", 1, Response(content=b"g"))
+
+    with pytest.raises(OpenAIHTTPException) as exc_info:
+        await reg.execute_custom_endpoints(url, MagicMock(), route)
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.code == "route_unavailable"
+    assert exc_info.value.error_type == "api_error"
+    assert on_request_a.call_count == 0
+    assert on_request_g.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_execute_custom_endpoints_sets_route_on_streaming_response():
+    reg = make_registry()
+    register_custom_instance(reg, "chunker", "a", 1, StreamingResponse(_async_byte_stream(b"chunk")))
+
+    result = await reg.execute_custom_endpoints("chunker/jobs", MagicMock())
+
+    assert isinstance(result, StreamingResponse)
+    assert result.headers[ROUTE_HEADER] == "a"
+
+
+@pytest.mark.asyncio
+async def test_execute_custom_endpoints_sets_route_on_upstream_error_status():
+    reg = make_registry()
+    register_custom_instance(reg, "chunker", "a", 1, Response(content=b"no such job", status_code=404))
+
+    result = await reg.execute_custom_endpoints("chunker/jobs/1", MagicMock(), "a")
+
+    assert result.status_code == 404
+    assert result.headers[ROUTE_HEADER] == "a"
+
+
+@pytest.mark.asyncio
+async def test_custom_endpoint_persisted_id_is_used_by_id_consumers():
+    node_b = make_registry()
+    register_custom_instance(node_b, "chunker", "stable-id", 1, Response(content=b"ok"))
+    node_b.model_tester = MagicMock(test_model=AsyncMock(return_value={}))
+    node_a = make_registry()
+
+    node_a.update_models([], node_b.list_own_models(), "http://node-b/", "key")
+    await node_b.test_model("stable-id")
+    node_b.unregister_custom_endpoint("chunker", "stable-id")
+
+    assert [m.id for m in node_b.list_models()] == []
+    assert node_a.registry["stable-id"].registered_model.origin == "http://node-b/"
+    assert node_b.model_tester.test_model.call_args.args[0].registered_model.id == "stable-id"  # pyright: ignore[reportFunctionMemberAccess]
+    assert "stable-id" not in node_b.registry
+
+
+@pytest.mark.asyncio
+async def test_custom_endpoint_persisted_id_is_listed():
+    reg = make_registry()
+    register_custom_instance(reg, "chunker", "stable-id", 1, Response(content=b"ok"))
+
+    listed = reg.list_own_models()
+
+    assert [m.id for m in listed] == ["stable-id"]
+
+
+def make_mesh_custom_model(registration_id: str, prefix: str = "chunker", capacity: int = 1) -> Model:
+    return Model(
+        id=registration_id, name=prefix, type="custom", props=make_props(type="custom"), usage=0, capacity=capacity, capacity_known=True
+    )
+
+
+def make_proxied_custom_request(full_path: str, route: str | None = None) -> MagicMock:
+    request = MagicMock()
+    request.headers = Headers({ROUTE_HEADER: route} if route is not None else {})
+    request.method = "POST"
+    request.path_params = {"full_path": full_path}
+    request.url.query = ""
+    request.stream.return_value = AsyncMock()
+    return request
+
+
+@pytest.mark.asyncio
+async def test_update_models_custom_proxy_sends_peer_instance_route():
+    reg = make_registry()
+    reg.update_models([], [make_mesh_custom_model("peer-instance")], "http://node-b/", "key")
+    proxy = reg.custom_endpoints.get_model("chunker")
+    mock_http_response = MagicMock()
+    mock_http_response.as_streaming_response.return_value = MagicMock(spec=StreamingResponse)
+
+    with patch(
+        "server.endpointregistry.make_http_request", new_callable=AsyncMock, return_value=mock_http_response
+    ) as mock_make_http_request:
+        await proxy.endpoint.on_request(make_proxied_custom_request("chunker/jobs", "client-route"))  # pyright: ignore[reportOptionalMemberAccess]
+
+    assert mock_make_http_request.call_count == 1
+    assert mock_make_http_request.call_args.kwargs["headers"][ROUTE_HEADER] == "peer-instance"
+    assert "client-route" not in mock_make_http_request.call_args.kwargs["headers"].values()
+
+
+@pytest.mark.asyncio
+async def test_register_custom_endpoint_as_proxy_container_never_receives_route():
+    reg = make_registry()
+    reg.register_custom_endpoint_as_proxy(
+        "chunker", make_props(type="custom"), ProxyOptions(url="http://container:8000/"), RegistrationOptions(origin="local", id="local")
+    )
+    mock_http_response = MagicMock()
+    mock_http_response.as_streaming_response.return_value = StreamingResponse(_async_byte_stream(b"ok"))
+
+    with patch(
+        "server.endpointregistry.make_http_request", new_callable=AsyncMock, return_value=mock_http_response
+    ) as mock_make_http_request:
+        result = await reg.execute_custom_endpoints("chunker/jobs", make_proxied_custom_request("chunker/jobs", "local"), "local")
+
+    assert result.headers[ROUTE_HEADER] == "local"
+    assert mock_make_http_request.call_count == 1
+    assert {k.lower() for k in mock_make_http_request.call_args.kwargs["headers"]} == {"content-type"}
+
+
+def make_mesh_transport(peer: EndpointRegistry, received_routes: list[str | None]) -> AsyncMock:
+    async def make_http_request(url: str, method: str, data: object, headers: dict[str, str], timeout: object) -> MagicMock:
+        received_routes.append(headers.get(ROUTE_HEADER))
+        peer_response = await peer.execute_custom_endpoints(
+            url.removeprefix("http://node-b/custom/"),
+            make_proxied_custom_request(url.removeprefix("http://node-b/custom/"), headers.get(ROUTE_HEADER)),
+            headers.get(ROUTE_HEADER),
+        )
+        http_response = MagicMock()
+        http_response.as_streaming_response.return_value = Response(content=peer_response.body, status_code=peer_response.status_code)
+        return http_response
+
+    return AsyncMock(side_effect=make_http_request)
+
+
+@pytest.mark.asyncio
+async def test_execute_custom_endpoints_two_node_mesh_route_pins_instance():
+    node_b = make_registry()
+    on_request_remote = register_custom_instance(node_b, "chunker", "r", 1, Response(content=b"remote"))
+    node_a = make_registry()
+    on_request_local = register_custom_instance(node_a, "chunker", "l", 1, Response(content=b"local"))
+    node_a.update_models([], node_b.list_own_models(), "http://node-b/", "key")
+    received_routes: list[str | None] = []
+    local_instance = node_a.registry["l"].registered_model
+
+    with patch("server.endpointregistry.make_http_request", make_mesh_transport(node_b, received_routes)):
+        first = await node_a.execute_custom_endpoints("chunker/jobs", make_proxied_custom_request("chunker/jobs"))
+        local_instance.usage = 1
+        unrouted = [await node_a.execute_custom_endpoints("chunker/jobs", make_proxied_custom_request("chunker/jobs")) for _ in range(3)]
+        routed = [
+            await node_a.execute_custom_endpoints("chunker/jobs", make_proxied_custom_request("chunker/jobs", "l"), "l") for _ in range(3)
+        ]
+        remote_routed = await node_a.execute_custom_endpoints("chunker/jobs", make_proxied_custom_request("chunker/jobs", "r"), "r")
+
+    assert first.headers[ROUTE_HEADER] == "l"
+    assert [r.headers[ROUTE_HEADER] for r in unrouted] == ["r", "r", "r"]
+    assert [r.headers[ROUTE_HEADER] for r in routed] == ["l", "l", "l"]
+    assert remote_routed.headers[ROUTE_HEADER] == "r"
+    assert remote_routed.body == b"remote"
+    assert on_request_local.call_count == 4
+    assert on_request_remote.call_count == 4
+    assert received_routes == ["r", "r", "r", "r"]
 
 
 @pytest.mark.asyncio

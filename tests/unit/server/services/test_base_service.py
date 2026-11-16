@@ -2430,8 +2430,9 @@ async def test_load_service_backfills_unpinned_container_names(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("pins_registration_ids", [False, True], ids=["container-names-only", "with-registration-ids"])
 async def test_load_service_container_name_backfill_save_failure_warns_instead_of_failing_load(
-    base2_svc: _Base2Impl, base2_deps: dict[str, Any]
+    base2_svc: _Base2Impl, base2_deps: dict[str, Any], pins_registration_ids: bool
 ) -> None:
     """The service did load - a failed backfill save gets its own per-instance warning, not "failed to load"."""
     promise: PromiseWithProgress[Any, StreamChunk] = PromiseWithProgress(value={})
@@ -2445,12 +2446,16 @@ async def test_load_service_container_name_backfill_save_failure_warns_instead_o
         patch.object(base2_svc, "_install_model", new=AsyncMock(return_value=promise)),
         patch.object(base2_svc, "_generate_instance_config", return_value=live_config),
         patch.object(base2_svc, "_save", new=AsyncMock(side_effect=OSError("disk full"))),
+        patch.object(base2_svc, "_pins_registration_ids", pins_registration_ids),
     ):
         await base2_svc.load_service(config)
 
     warned = [c.kwargs["instance"] for c in base2_deps["service_provider"].add_warning.await_args_list]
     assert sorted(warned) == ["default", "second"]
-    assert "disk full" in base2_deps["service_provider"].add_warning.await_args_list[0].args[1]
+    message = base2_deps["service_provider"].add_warning.await_args_list[0].args[1]
+    assert "disk full" in message
+    assert "rename its containers" in message
+    assert ("X-DF-Route" in message) is pins_registration_ids
 
 
 @pytest.mark.asyncio
@@ -2488,12 +2493,54 @@ async def test_load_service_skips_container_name_backfill_for_service_without_co
     save_mock.assert_not_called()
 
 
-def test_instances_with_unpinned_container_names_ignores_instances_that_did_not_load(base2_svc: _Base2Impl) -> None:
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("persisted_registration_id", "live_registration_id", "expected_saves"),
+    [
+        pytest.param(None, "rid", 1, id="legacy-config-backfills"),
+        pytest.param("rid", "rid", 0, id="already-pinned"),
+        pytest.param(None, None, 0, id="service-without-registration-ids"),
+    ],
+)
+async def test_load_service_backfills_unpinned_registration_ids(
+    base2_svc: _Base2Impl, persisted_registration_id: str | None, live_registration_id: str | None, expected_saves: int
+):
+    promise: PromiseWithProgress[Any, StreamChunk] = PromiseWithProgress(value={})
+    live_config = InstanceConfig(
+        container_name="instance-ct",
+        models=[ModelConfig(model_id="m1", options=InstallModelIn(), container_name="m1-ct", registration_id=live_registration_id)],
+    )
+    config = _load_service_config("instance-ct", "m1-ct")
+    config["instances"]["default"]["models"][0]["registration_id"] = persisted_registration_id
+
+    with (
+        patch.object(base2_svc, "_install_instance", new=AsyncMock(return_value=promise)),
+        patch.object(base2_svc, "_install_model", new=AsyncMock(return_value=promise)),
+        patch.object(base2_svc, "_generate_instance_config", return_value=live_config),
+        patch.object(base2_svc, "_save", new=AsyncMock()) as mock_save,
+    ):
+        await base2_svc.load_service(config)
+
+    assert mock_save.call_count == expected_saves
+
+
+def test_instances_with_unpinned_identifiers_ignores_models_missing_from_persisted_config(base2_svc: _Base2Impl):
+    persisted = {"default": InstanceConfig(container_name="ct", models=[])}
+    base2_svc.instances_info["default"].installed = MagicMock()
+    live = InstanceConfig(container_name="ct", models=[ModelConfig(model_id="m1", options=InstallModelIn(), registration_id="rid")])
+
+    with patch.object(base2_svc, "_generate_instance_config", return_value=live):
+        result = base2_svc._instances_with_unpinned_identifiers(persisted)  # pyright: ignore[reportPrivateUsage]
+
+    assert result == []
+
+
+def test_instances_with_unpinned_identifiers_ignores_instances_that_did_not_load(base2_svc: _Base2Impl) -> None:
     persisted = {"default": InstanceConfig(), "missing": InstanceConfig()}
     base2_svc.instances_info["default"].installed = None
 
     with patch.object(base2_svc, "_generate_instance_config", return_value=InstanceConfig(container_name="ct")) as generate_mock:
-        assert base2_svc._instances_with_unpinned_container_names(persisted) == []  # pyright: ignore[reportPrivateUsage]
+        assert base2_svc._instances_with_unpinned_identifiers(persisted) == []  # pyright: ignore[reportPrivateUsage]
 
     generate_mock.assert_not_called()
 

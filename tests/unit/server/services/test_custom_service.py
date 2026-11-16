@@ -15,7 +15,7 @@ from server.docker import DockerOptions
 from server.models.api import ModelProps
 from server.models.models import AddCustomModelIn, InstallModelIn, ListModelsFilters, ModelInfo, ModelSpecification, UninstallModelIn
 from server.models.services import InstallServiceIn, UninstallServiceIn
-from server.services.base2_service import CustomModel, Instance, InstanceConfig
+from server.services.base2_service import CustomModel, Instance, InstanceConfig, ModelConfig
 from server.services.custom_service import (
     DOC_CHUNKER_DEFAULT_GATEWAY_URL,
     DOC_CHUNKER_PROXY_TIMEOUT_SECONDS,
@@ -345,6 +345,7 @@ def test_generate_instance_config_with_info(svc: CustomService) -> None:
     mock_model_info.id = "lemmatizer"
     mock_model_info.options = InstallModelIn(spec={})
     mock_model_info.docker_options.container_name = "df-lemmatizer"
+    mock_model_info.registration_id = "reg-1"
     installed = InstalledInfo(models={"lemmatizer": mock_model_info}, options=InstallServiceIn(spec={}))
 
     config = svc._generate_instance_config("default", installed, None)  # pyright: ignore[reportPrivateUsage]
@@ -360,12 +361,33 @@ def test_generate_instance_config_persists_resolved_container_name(svc: CustomSe
     mock_model_info.id = "lemmatizer"
     mock_model_info.options = InstallModelIn(spec={})
     mock_model_info.docker_options.container_name = "df-lemmatizer_abc123"
+    mock_model_info.registration_id = "reg-1"
     installed = InstalledInfo(models={"lemmatizer": mock_model_info}, options=InstallServiceIn(spec={}))
 
     config = svc._generate_instance_config("default", installed, None)  # pyright: ignore[reportPrivateUsage]
 
     assert config.models is not None
     assert config.models[0].container_name == "df-lemmatizer_abc123"
+
+
+def test_generate_instance_config_persists_registration_id(svc: CustomService) -> None:
+    mock_model_info = MagicMock()
+    mock_model_info.id = "lemmatizer"
+    mock_model_info.options = InstallModelIn(spec={})
+    mock_model_info.docker_options.container_name = "df-lemmatizer"
+    mock_model_info.registration_id = "stable-id"
+    installed = InstalledInfo(models={"lemmatizer": mock_model_info}, options=InstallServiceIn(spec={}))
+
+    config = svc._generate_instance_config("default", installed, None)  # pyright: ignore[reportPrivateUsage]
+
+    assert config.models is not None
+    assert config.models[0].registration_id == "stable-id"
+
+
+def test_model_config_without_registration_id_parses() -> None:
+    config = ModelConfig.model_validate({"model_id": "lemmatizer", "options": {"spec": {"prefix": "lemmatizer"}}})
+
+    assert config.registration_id is None
 
 
 def test_load_download_info(svc: CustomService) -> None:
@@ -916,6 +938,123 @@ def _mock_successful_install(deps: dict[str, Any]) -> None:
     deps["docker_service"].get_container_host.return_value = "172.20.0.1"
     deps["docker_service"].get_container_port.return_value = 8090
     deps["endpoint_registry"].register_custom_endpoint_as_proxy.return_value = "reg-1"
+
+
+def _mock_registration_echoing_id(deps: dict[str, Any]) -> None:
+    deps["endpoint_registry"].register_custom_endpoint_as_proxy.side_effect = lambda **kwargs: kwargs["registration_options"].id  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType]
+    deps["service_provider"].dismiss_warnings_matching = AsyncMock()
+
+
+@pytest.mark.asyncio
+async def test_install_model_registers_new_id_and_persists_it(svc: CustomService, deps: dict[str, Any]) -> None:
+    svc.instances_info["default"].installed = InstalledInfo(models={}, options=InstallServiceIn(spec={}))
+    _mock_successful_install(deps)
+    _mock_registration_echoing_id(deps)
+
+    promise = await svc._install_model("default", "lemmatizer", InstallModelIn(spec={"prefix": "lemmatizer"}))  # pyright: ignore[reportPrivateUsage]
+    await promise.wait()
+
+    registered_id = deps["endpoint_registry"].register_custom_endpoint_as_proxy.call_args.kwargs["registration_options"].id
+    assert registered_id
+    assert svc.instances_info["default"].installed.models["lemmatizer"].registration_id == registered_id  # pyright: ignore[reportOptionalMemberAccess]
+    persisted = svc._generate_instance_config("default", svc.instances_info["default"].installed, None)  # pyright: ignore[reportPrivateUsage]
+    assert persisted.models is not None
+    assert persisted.models[0].registration_id == registered_id
+
+
+@pytest.mark.asyncio
+async def test_load_model_registers_with_persisted_id(svc: CustomService, deps: dict[str, Any]) -> None:
+    svc.instances_info["default"].installed = InstalledInfo(models={}, options=InstallServiceIn(spec={}))
+    _mock_successful_install(deps)
+    _mock_registration_echoing_id(deps)
+    model = ModelConfig(model_id="lemmatizer", options=InstallModelIn(spec={"prefix": "lemmatizer"}), registration_id="stable-id")
+
+    await svc.load_model("default", model)
+
+    assert deps["endpoint_registry"].register_custom_endpoint_as_proxy.call_args.kwargs["registration_options"].id == "stable-id"
+    assert svc.instances_info["default"].installed.models["lemmatizer"].registration_id == "stable-id"  # pyright: ignore[reportOptionalMemberAccess]
+    assert svc._pinned_registration_ids == {}  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_load_model_without_persisted_id_registers_new_id(svc: CustomService, deps: dict[str, Any]) -> None:
+    svc.instances_info["default"].installed = InstalledInfo(models={}, options=InstallServiceIn(spec={}))
+    _mock_successful_install(deps)
+    _mock_registration_echoing_id(deps)
+    model = ModelConfig(model_id="lemmatizer", options=InstallModelIn(spec={"prefix": "lemmatizer"}))
+
+    await svc.load_model("default", model)
+
+    assert deps["endpoint_registry"].register_custom_endpoint_as_proxy.call_args.kwargs["registration_options"].id
+    assert svc._pinned_registration_ids == {}  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_load_model_clears_pinned_id_when_no_install_ran(svc: CustomService, deps: dict[str, Any]) -> None:
+    svc.instances_info["default"].installed = InstalledInfo(models={"lemmatizer": MagicMock()}, options=InstallServiceIn(spec={}))
+    deps["service_provider"].dismiss_warnings_matching = AsyncMock()
+    model = ModelConfig(model_id="lemmatizer", options=InstallModelIn(spec={"prefix": "lemmatizer"}), registration_id="stable-id")
+
+    await svc.load_model("default", model)
+
+    assert deps["endpoint_registry"].register_custom_endpoint_as_proxy.call_count == 0
+    assert svc._pinned_registration_ids == {}  # pyright: ignore[reportPrivateUsage]
+
+
+def _persisted_custom_config(registration_id: str | None) -> dict[str, Any]:
+    model: dict[str, Any] = {"model_id": "lemmatizer", "options": {"spec": {"prefix": "lemmatizer"}}, "container_name": "df-lemmatizer"}
+    if registration_id is not None:
+        model["registration_id"] = registration_id
+    return {"instances": {"default": {"options": {"spec": {}}, "models": [model]}}}
+
+
+def _new_loaded_service(deps: dict[str, Any]) -> CustomService:
+    _mock_successful_install(deps)
+    _mock_registration_echoing_id(deps)
+    deps["docker_service"].get_docker_container_name.side_effect = None
+    deps["docker_service"].get_docker_container_name.return_value = "df-lemmatizer"
+    deps["service_provider"].save_service_config = AsyncMock()
+    return CustomService(**deps)
+
+
+@pytest.mark.asyncio
+async def test_load_service_backfills_registration_id_for_legacy_config(deps: dict[str, Any]) -> None:
+    service = _new_loaded_service(deps)
+
+    await service.load_service(_persisted_custom_config(None))
+
+    registered_id = deps["endpoint_registry"].register_custom_endpoint_as_proxy.call_args.kwargs["registration_options"].id
+    assert deps["service_provider"].save_service_config.call_count == 1
+    saved = deps["service_provider"].save_service_config.call_args.args[1]
+    assert saved["instances"]["default"]["models"][0]["registration_id"] == registered_id
+
+
+@pytest.mark.asyncio
+async def test_load_service_reuses_persisted_registration_id_without_saving(deps: dict[str, Any]) -> None:
+    service = _new_loaded_service(deps)
+
+    await service.load_service(_persisted_custom_config("stable-id"))
+
+    assert deps["endpoint_registry"].register_custom_endpoint_as_proxy.call_args.kwargs["registration_options"].id == "stable-id"
+    assert deps["service_provider"].save_service_config.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_install_model_after_uninstall_registers_different_id(svc: CustomService, deps: dict[str, Any]) -> None:
+    svc.instances_info["default"].installed = InstalledInfo(models={}, options=InstallServiceIn(spec={}))
+    _mock_successful_install(deps)
+    _mock_registration_echoing_id(deps)
+    deps["docker_service"].uninstall_docker = AsyncMock()
+    spec = InstallModelIn(spec={"prefix": "lemmatizer"})
+
+    await (await svc._install_model("default", "lemmatizer", spec)).wait()  # pyright: ignore[reportPrivateUsage]
+    first_id = svc.instances_info["default"].installed.models["lemmatizer"].registration_id  # pyright: ignore[reportOptionalMemberAccess]
+    await svc._uninstall_model("default", "lemmatizer", UninstallModelIn(purge=False))  # pyright: ignore[reportPrivateUsage]
+    await (await svc._install_model("default", "lemmatizer", spec)).wait()  # pyright: ignore[reportPrivateUsage]
+    second_id = svc.instances_info["default"].installed.models["lemmatizer"].registration_id  # pyright: ignore[reportOptionalMemberAccess]
+
+    assert first_id != second_id
+    assert deps["endpoint_registry"].unregister_custom_endpoint.call_args == call("lemmatizer", first_id)
 
 
 @pytest.mark.asyncio
