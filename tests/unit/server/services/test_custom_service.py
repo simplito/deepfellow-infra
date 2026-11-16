@@ -995,7 +995,7 @@ def test_doc_chunker_mounts_data_dir_and_sets_async_job_defaults(svc: CustomServ
 def test_doc_chunker_worker_fields_are_optional(svc: CustomService) -> None:
     fields = {field.name: field for field in svc.models["default"]["doc_chunker"].model_spec.fields}
 
-    for name, default in (("max_concurrent", "2"), ("async_priority_workers", "0"), ("sync_only_workers", "0")):
+    for name, default in (("max_concurrent", None), ("async_priority_workers", "0"), ("sync_only_workers", "0")):
         assert fields[name].required is False
         assert fields[name].default == default
 
@@ -1020,7 +1020,7 @@ def test_doc_chunker_options_fall_back_to_field_defaults_for_partial_spec(svc: C
     docker_options = model.options({"hardware": "CPU"})  # pyright: ignore[reportCallIssue]
 
     env_vars = docker_options.env_vars or {}
-    assert env_vars["MAX_CONCURRENT"] == "2"
+    assert "MAX_CONCURRENT" not in env_vars  # doc-chunker sizes it from the memory and CPUs
     assert env_vars["ASYNC_PRIORITY_WORKERS"] == "0"
     assert env_vars["SYNC_ONLY_WORKERS"] == "0"
 
@@ -1536,7 +1536,7 @@ def test_create_doc_chunker_model_falls_back_to_default_version(svc: CustomServi
     model = create_doc_chunker_model(svc, "172.20.0.0/16")
 
     docker_opts = model.options({"hardware": "CPU"})  # pyright: ignore[reportCallIssue]
-    assert docker_opts.image == "hub.simplito.com/deepfellow/doc-chunker-cpu:v2.4.0"
+    assert docker_opts.image == "hub.simplito.com/deepfellow/doc-chunker-cpu:v2.5.0"
 
 
 @pytest.mark.parametrize(
@@ -1687,7 +1687,7 @@ async def test_get_duplicate_spec_with_empty_infra_key_keeps_envs_as_is(svc: Cus
     spec = await svc.get_duplicate_spec("default", "doc_chunker")
 
     assert spec["envs"]["INFRA_API_KEY"] == ""
-    assert spec["envs"]["MAX_CONCURRENT"] == "2"
+    assert spec["envs"]["MAX_QUEUED_JOBS"] == "100"
     assert spec["envs"]["INFRA_API_URL"] == DOC_CHUNKER_DEFAULT_GATEWAY_URL
 
 
@@ -1744,7 +1744,7 @@ def test_get_docker_image_repo_for_model_unknown_model_returns_none(svc: CustomS
 
 
 def test_get_default_docker_tag_for_model_doc_chunker(svc: CustomService) -> None:
-    assert svc.get_default_docker_tag_for_model("doc_chunker", "CPU") == "v2.4.0"
+    assert svc.get_default_docker_tag_for_model("doc_chunker", "CPU") == "v2.5.0"
 
 
 def test_get_default_docker_tag_for_model_unknown_model_returns_none(svc: CustomService) -> None:
