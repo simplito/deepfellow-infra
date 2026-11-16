@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - doc-chunker installs `v2.5.0` by default (was `v2.4.0`). It refuses to start without about 5 GB of RAM plus 2.4 GB per worker.
 - doc-chunker's `max_concurrent` is empty by default, so doc-chunker sizes it to the host (was 2).
 
+### Fixed
+
+- Installing a model on macOS no longer picks a host port that another container already uses.
+
 ## [0.39.0] - 2026-11-12
 
 ### Added

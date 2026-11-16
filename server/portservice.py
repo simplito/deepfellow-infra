@@ -3,7 +3,13 @@
 
 """Port Service module."""
 
+import errno
 import socket
+
+# Containers are published on loopback only (see DockerService.generate_docker_compose_content).
+_PUBLISH_HOST = "127.0.0.1"
+# Loopback answers at once; the timeout only bounds a listener that never replies.
+_PROBE_TIMEOUT_SECONDS = 0.5
 
 
 class PortService:
@@ -27,12 +33,15 @@ class PortService:
         self.allocated_ports.discard(port)
 
     def is_port_available(self, port: int) -> bool:
-        """Check whether port is available."""
+        """Check whether nothing is listening on port at the address containers are published on.
+
+        It connects instead of binding: whether a bind succeeds next to a listener on another address depends on
+        the OS (macOS lets a wildcard bind with SO_REUSEADDR through beside a listener on 127.0.0.1), a connection
+        does not. Only a refused connection means free; a timeout or any other outcome counts as in use.
+        """
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind(("", port))
-            sock.close()
-            return True  # noqa: TRY300
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(_PROBE_TIMEOUT_SECONDS)
+                return sock.connect_ex((_PUBLISH_HOST, port)) == errno.ECONNREFUSED
         except OSError:
             return False
