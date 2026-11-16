@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - E2e service-lifecycle suite (`just test-e2e` against `DF_E2E_BASE_URL`) with an upgrade test, and CI release gates, off until `DF_E2E_ENABLED=true`.
 
+### Changed
+
+- doc-chunker installs `v2.5.0` by default (was `v2.4.0`). It refuses to start without about 5 GB of RAM plus 2.4 GB per worker.
+- doc-chunker's `max_concurrent` is empty by default, so doc-chunker sizes it to the host (was 2).
+
 ## [0.39.0] - 2026-11-12
 
 ### Added

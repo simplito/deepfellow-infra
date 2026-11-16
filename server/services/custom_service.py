@@ -1123,12 +1123,11 @@ def create_doc_chunker_model(custom_service: CustomService, subnet: str | None) 
                 type="number",
                 name="max_concurrent",
                 description=(
-                    "Workers | total parallel worker count. Workers not assigned as async priority or sync only "
-                    "take sync jobs first and async jobs when none is waiting"
+                    "Workers | total parallel worker count; empty lets doc-chunker size it from the memory and CPUs. "
+                    "Workers not assigned as async priority or sync only take sync jobs first and async jobs when none is waiting"
                 ),
                 required=False,
-                placeholder="2",
-                default="2",
+                placeholder="auto",
             ),
             ModelField(
                 type="number",
@@ -1244,9 +1243,9 @@ def create_doc_chunker_model(custom_service: CustomService, subnet: str | None) 
             # Read on every call, so a rotated key lands on the next container rebuild.
             gateway_api_key = custom_service.config.infra_api_key.get_secret_value()
         image = (
-            "hub.simplito.com/deepfellow/doc-chunker-gpu:v2.4.0"
+            "hub.simplito.com/deepfellow/doc-chunker-gpu:v2.5.0"
             if _is_gpu_hardware(hardware_parts)
-            else "hub.simplito.com/deepfellow/doc-chunker-cpu:v2.4.0"
+            else "hub.simplito.com/deepfellow/doc-chunker-cpu:v2.5.0"
         )
         return DockerOptions(
             image_port=8000,
@@ -1259,7 +1258,7 @@ def create_doc_chunker_model(custom_service: CustomService, subnet: str | None) 
             hardware=hardware_parts,
             subnet=subnet,
             env_vars={
-                "MAX_CONCURRENT": model_fields.get("max_concurrent", 2),
+                "MAX_CONCURRENT": model_fields.get("max_concurrent"),
                 "ASYNC_PRIORITY_WORKERS": model_fields.get("async_priority_workers", 0),
                 "SYNC_ONLY_WORKERS": model_fields.get("sync_only_workers", 0),
                 "MAX_QUEUED_JOBS": model_fields.get("max_queued_jobs", 100),
