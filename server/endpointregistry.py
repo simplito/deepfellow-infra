@@ -79,6 +79,9 @@ determine it, e.g. a vLLM log-parse miss). Kept internal-only: the wire/mesh sch
 rolling-upgrade compatibility across mesh peers on different versions; `_capacity_state_from_pair`
 and `_capacity_pair_from_state` convert at that boundary."""
 
+ROUTE_HEADER = "X-DF-Route"
+"""Names the registration id a `/custom` request was or must be routed to."""
+
 _ALL_SATURATED_WARNING_INTERVAL_SECONDS = 60.0  # avoid flooding logs while a model stays saturated under peak load
 
 
@@ -1521,7 +1524,8 @@ class EndpointRegistry:
                 props=props,
                 options=ProxyOptions(
                     url=urljoin(url, "custom"),
-                    headers={"Authorization": f"Bearer {api_key}"},
+                    headers={"Authorization": f"Bearer {api_key}"}
+                    | ({ROUTE_HEADER: registration_options.id} if registration_options and registration_options.id else {}),
                     read_timeout_seconds=self.config.standard_proxy_timeout_seconds,
                     forward_full_path=True,
                 ),
@@ -1807,16 +1811,21 @@ class EndpointRegistry:
 
         return await self.with_usage(endpoint, func)
 
-    async def execute_custom_endpoints(self, url: str, request: Request) -> StarletteResponse:
-        """Process custom endpoint request."""
-        endpoint = self.custom_endpoints.get_model(url.split("/")[0])
+    async def execute_custom_endpoints(self, url: str, request: Request, route: str | None = None) -> StarletteResponse:
+        """Process custom endpoint request, routed to the instance named by `route` (the client's `X-DF-Route`) when given."""
+        prefix = url.split("/")[0]
+        endpoint = self.custom_endpoints.get_model(prefix, registration_id=route)
         if not endpoint:
+            if route:
+                raise OpenAIHTTPException(503, f"Route {route} is not available for prefix {prefix}", "api_error", "route_unavailable")
             raise HTTPException(400, "Given url is not supported")
 
         async def func() -> StarletteResponse:
             return await endpoint.endpoint.on_request(request)
 
-        return await self.with_usage(endpoint, func)
+        response = await self.with_usage(endpoint, func)
+        response.headers[ROUTE_HEADER] = endpoint.id
+        return response
 
     async def execute_mcp_endpoints(self, url: str, request: Request) -> StarletteResponse:
         """Process mcp endpoint request."""

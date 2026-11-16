@@ -75,6 +75,14 @@ class ModelConfig(BaseModel):
     gpu_memory_utilization: float | None = None
     # Resolved container name, pinned so a live container_name_suffix change doesn't rename it on restart.
     container_name: str | None = None
+    registration_id: str | None = None
+
+
+def _model_config_unpinned(persisted: ModelConfig, live: ModelConfig) -> bool:
+    """Whether `live` resolved a container name or registration id that `persisted` lacks."""
+    return (persisted.container_name is None and live.container_name is not None) or (
+        persisted.registration_id is None and live.registration_id is not None
+    )
 
 
 class CustomModel(BaseModel):
@@ -402,6 +410,8 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     """Override to False for services whose ``_generate_instance_config`` never populates ``ModelConfig.definition``
     (e.g. it has no registry snapshot to persist). Otherwise ``load_service`` treats every model as needing a
     backfill save on every startup, forever."""
+    _pins_registration_ids: bool = False
+    """Override to True for services that persist ``ModelConfig.registration_id``, so a failed backfill warns about routes."""
     _legacy_spec_fields: frozenset[str] = frozenset()
     """Spec keys still accepted for backward compatibility although ``get_spec()`` no longer lists them
     (e.g. ``gpu``, the old name of ``hardware``), so ``validate_spec_fields`` doesn't reject them."""
@@ -1089,40 +1099,50 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
             if needs_backfill:
                 logger.info(f"{self.get_type()} backfilling model definitions into persisted config")
                 await self._save()
-            elif unpinned := self._instances_with_unpinned_container_names(cfg.instances):
-                logger.info(f"{self.get_type()} backfilling container names into persisted config")
-                await self._backfill_container_names(unpinned)
+            elif unpinned := self._instances_with_unpinned_identifiers(cfg.instances):
+                logger.info(f"{self.get_type()} backfilling container names and registration ids into persisted config")
+                await self._backfill_pinned_identifiers(unpinned)
 
-    async def _backfill_container_names(self, instances: list[str]) -> None:
-        """Save to pin the container names resolved on load, without letting a failed save fail the load itself.
+    async def _backfill_pinned_identifiers(self, instances: list[str]) -> None:
+        """Save to pin the container names and registration ids resolved on load, without letting a failed save fail the load.
 
         The service did load fine, so a failed save must not surface as "Service failed to load" - it gets its own
         per-instance warning instead (a service-level one would be auto-dismissed right after the load succeeds),
-        since the names stay unpinned, and a container_name_suffix change would rename them, until the next save.
+        since the values stay unpinned until the next save: a container_name_suffix change would rename the
+        containers, and a restart would assign new registration ids.
         """
         try:
             await self._save()
         except Exception as exc:
-            logger.exception(f"{self.get_type()} failed to save container names into persisted config")
+            logger.exception(f"{self.get_type()} failed to save container names and registration ids into persisted config")
+            if self._pins_registration_ids:
+                unsaved = "Container names and registration ids"
+                consequences = (
+                    "changing container_name_suffix and restarting will rename its containers, and a restart will assign "
+                    "its models new registration ids, breaking X-DF-Route routing to them"
+                )
+            else:
+                unsaved = "Container names"
+                consequences = "changing container_name_suffix and restarting will rename its containers"
             for instance in instances:
                 try:
                     await self.service_provider.add_warning(
                         self.get_type(),
-                        f"Container names of instance '{instance}' could not be saved to services.json: {exc}. Until the next "
-                        "successful save, changing container_name_suffix and restarting will rename its containers.",
+                        f"{unsaved} of instance '{instance}' could not be saved to services.json: {exc}. "
+                        f"Until the next successful save, {consequences}.",
                         instance=instance,
                     )
                 except Exception:
-                    logger.exception(f"{self.get_id(instance)} failed to record warning for unsaved container names")
+                    logger.exception(f"{self.get_id(instance)} failed to record warning for unsaved container names and registration ids")
 
-    def _instances_with_unpinned_container_names(self, persisted: dict[str, InstanceConfig]) -> list[str]:
-        """Instances for which loading resolved a container name the persisted config doesn't pin yet.
+    def _instances_with_unpinned_identifiers(self, persisted: dict[str, InstanceConfig]) -> list[str]:
+        """Instances for which loading resolved a container name or registration id the persisted config doesn't pin yet.
 
-        Non-empty for a services.json written before container names were pinned - without saving right away,
-        the name would stay unpinned until some unrelated save, so a container_name_suffix change in the
-        meantime would rename the container on the next restart. Compares against the freshly generated
-        config rather than just checking for None, so services with no container at all don't re-save on
-        every startup.
+        Non-empty for a services.json written before container names (or custom-service registration ids) were
+        pinned - without saving right away, the value would stay unpinned until some unrelated save, so a
+        container_name_suffix change in the meantime would rename the container, and a restart would change the
+        registration id. Compares against the freshly generated config rather than just checking for None, so
+        services that never set these fields don't re-save on every startup.
         """
         unpinned: list[str] = []
         for name, persisted_instance in persisted.items():
@@ -1130,9 +1150,9 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
             if info is None or info.installed is None:
                 continue
             live = self._generate_instance_config(name, info.installed, info.config.custom)
-            unpinned_model_ids = {m.model_id for m in persisted_instance.models or [] if m.container_name is None}
+            persisted_models = {m.model_id: m for m in persisted_instance.models or []}
             if (persisted_instance.container_name is None and live.container_name is not None) or any(
-                m.model_id in unpinned_model_ids and m.container_name is not None for m in live.models or []
+                _model_config_unpinned(persisted_models[m.model_id], m) for m in live.models or [] if m.model_id in persisted_models
             ):
                 unpinned.append(name)
         return unpinned

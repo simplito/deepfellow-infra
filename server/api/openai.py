@@ -5,11 +5,11 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Form, Path, Query, Request, Response
+from fastapi import APIRouter, Body, Depends, Form, Header, Path, Query, Request, Response
 
 from server.config import AppSettings
 from server.core.dependencies import auth_server, get_config, get_endpoint_registry
-from server.endpointregistry import EndpointRegistry
+from server.endpointregistry import ROUTE_HEADER, EndpointRegistry
 from server.models.api import (
     ApiModel,
     ApiModelCompatible,
@@ -242,23 +242,36 @@ async def get_custom_prefixes(
     return [model.props.prefix for model in endpoint_registry.custom_endpoints.list_models() if model.props.prefix]
 
 
+_CUSTOM_ENDPOINT_RESPONSES: dict[int | str, dict[str, object]] = {
+    200: {
+        "description": "The custom service's response, passed through",
+        "headers": {ROUTE_HEADER: {"description": "Route of the instance that served the request; send it back to reach it again"}},
+    },
+    503: {"description": "`route_unavailable` when the instance named by `X-DF-Route` is not registered under this prefix"},
+}
+
+
 # Replacement from router.api_route which is kind bugged in swagger.
 # Also FastAPI creators doesn't recommend using api_route method.
-@router.get("/custom/{full_path:path}")
-@router.post("/custom/{full_path:path}")
-@router.put("/custom/{full_path:path}")
-@router.delete("/custom/{full_path:path}")
-@router.patch("/custom/{full_path:path}")
-@router.head("/custom/{full_path:path}")
-@router.options("/custom/{full_path:path}")
+@router.get("/custom/{full_path:path}", responses=_CUSTOM_ENDPOINT_RESPONSES)
+@router.post("/custom/{full_path:path}", responses=_CUSTOM_ENDPOINT_RESPONSES)
+@router.put("/custom/{full_path:path}", responses=_CUSTOM_ENDPOINT_RESPONSES)
+@router.delete("/custom/{full_path:path}", responses=_CUSTOM_ENDPOINT_RESPONSES)
+@router.patch("/custom/{full_path:path}", responses=_CUSTOM_ENDPOINT_RESPONSES)
+@router.head("/custom/{full_path:path}", responses=_CUSTOM_ENDPOINT_RESPONSES)
+@router.options("/custom/{full_path:path}", responses=_CUSTOM_ENDPOINT_RESPONSES)
 async def on_custom_endpoint(
     request: Request,
     _: Annotated[str, Depends(auth_server)],
     endpoint_registry: Annotated[EndpointRegistry, Depends(get_endpoint_registry)],
     full_path: SafePath,
+    x_df_route: Annotated[
+        str | None,
+        Header(alias=ROUTE_HEADER, description="Route returned by an earlier response; skips instance selection"),
+    ] = None,
 ) -> StarletteResponse:
     """Process custom endpoint request."""
-    return await endpoint_registry.execute_custom_endpoints(full_path, request)
+    return await endpoint_registry.execute_custom_endpoints(full_path, request, x_df_route)
 
 
 @router.get("/mcp")

@@ -41,9 +41,11 @@ def deps() -> dict[str, Any]:
     service_provider.dismiss_warnings_matching = AsyncMock()
     service_provider.dismiss_warnings_matching_any = AsyncMock()
     service_provider.dismiss_warnings_for_instance = AsyncMock()
+    endpoint_registry = MagicMock()
+    endpoint_registry.register_custom_endpoint_as_proxy.side_effect = lambda **kwargs: kwargs["registration_options"].id  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType]
     return {
         "config": MagicMock(),
-        "endpoint_registry": MagicMock(),
+        "endpoint_registry": endpoint_registry,
         "service_provider": service_provider,
         "model_downloader": MagicMock(),
         "docker_service": docker_svc,

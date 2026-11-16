@@ -5,6 +5,7 @@
 
 import asyncio
 import copy
+import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -201,11 +202,24 @@ _RETIRED_MODEL_IDS: dict[str, str] = {"deepfellow-finetune": "finetune"}
 class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
     models: dict[str, dict[str, "SrvCustomModel"]]
     _installing: set[tuple[str, str]]
+    _pinned_registration_ids: dict[tuple[str, str], RegistrationId]
     _persists_model_definitions = False
+    _pins_registration_ids = True
 
     def _after_init(self) -> None:
         self.load_default_models("default")
         self._installing = set()
+        self._pinned_registration_ids = {}
+
+    async def load_model(self, instance: str, model: ModelConfig, *, derive_container_name: bool = False) -> None:
+        """Load a single model, re-registering it under its persisted registration id."""
+        key = (instance, model.model_id)
+        if model.registration_id:
+            self._pinned_registration_ids[key] = model.registration_id
+        try:
+            await super().load_model(instance, model, derive_container_name=derive_container_name)
+        finally:
+            self._pinned_registration_ids.pop(key, None)
 
     def get_secret_values(self) -> list[str]:
         """Return the service's and installed models' `password` option values."""
@@ -466,7 +480,13 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
         return InstanceConfig(
             options=info.options if info else None,
             models=[
-                ModelConfig(model_id=x.id, options=x.options, container_name=x.docker_options.container_name) for x in info.models.values()
+                ModelConfig(
+                    model_id=x.id,
+                    options=x.options,
+                    container_name=x.docker_options.container_name,
+                    registration_id=x.registration_id or None,
+                )
+                for x in info.models.values()
             ]
             if info
             else [],
@@ -717,6 +737,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
             return PromiseWithProgress(value=InstallModelOut(status="OK", details="Already installed or being installed right now."))
         if model_id not in self.models[instance]:
             raise HTTPException(400, "Model not found")
+        registration_id = self._pinned_registration_ids.pop(key, None) or str(uuid.uuid4())
         model = self.models[instance][model_id]
         if not options.spec:
             options.spec = {}
@@ -781,7 +802,7 @@ class CustomService(Base2Service[InstalledInfo, DownloadedInfo]):
                         url=model_info.prefix,
                         props=model.model_props,
                         options=ProxyOptions(url=model_info.base_url, read_timeout_seconds=proxy_timeout_seconds),
-                        registration_options=RegistrationOptions(origin="local", owned_by=self.get_type()),
+                        registration_options=RegistrationOptions(origin="local", id=registration_id, owned_by=self.get_type()),
                     )
                     self.models_downloaded[model_id] = DownloadedInfo(image.name)
                     stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))

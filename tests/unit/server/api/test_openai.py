@@ -17,6 +17,7 @@ from server.config import AppSettings
 from server.core.dependencies import auth_server, get_config, get_endpoint_registry
 from server.error_handlers import register_exception_handlers
 from server.models.api import ApiModel, ApiModelProps, ApiModels
+from server.utils.exceptions import OpenAIHTTPException
 
 
 def _make_model_props(alias_of: list[str] | None = None) -> ApiModelProps:
@@ -591,6 +592,36 @@ def test_custom_endpoint_passes_full_path_to_registry(registry: MagicMock, clien
     client.get("/custom/my-svc/v1/action", headers=auth_header)
 
     assert registry.execute_custom_endpoints.call_args.args[0] == "my-svc/v1/action"
+
+
+@pytest.mark.parametrize(("route_headers", "expected_route"), [({"X-DF-Route": "inst-1"}, "inst-1"), ({}, None)])
+def test_custom_endpoint_passes_route_header_to_registry(
+    route_headers: dict[str, str], expected_route: str | None, registry: MagicMock, client: TestClient, auth_header: dict[str, str]
+) -> None:
+    client.post("/custom/my-svc/jobs", headers=auth_header | route_headers)
+
+    assert registry.execute_custom_endpoints.call_args.args[2] == expected_route
+
+
+def test_custom_endpoint_returns_route_unavailable_error_body(registry: MagicMock, client: TestClient, auth_header: dict[str, str]) -> None:
+    registry.execute_custom_endpoints = AsyncMock(
+        side_effect=OpenAIHTTPException(503, "Route x is not available for prefix my-svc", "api_error", "route_unavailable")
+    )
+
+    resp = client.post("/custom/my-svc/jobs", headers=auth_header | {"X-DF-Route": "x"})
+
+    assert resp.status_code == 503
+    assert resp.json()["error"]["code"] == "route_unavailable"
+    assert resp.json()["error"]["type"] == "api_error"
+
+
+@pytest.mark.parametrize("method", ["get", "post", "put", "delete", "patch", "head", "options"])
+def test_custom_endpoint_openapi_documents_route_header(method: str, client: TestClient) -> None:
+    operation = client.get("/openapi.json").json()["paths"]["/custom/{full_path}"][method]
+
+    assert any(p["in"] == "header" and p["name"] == "X-DF-Route" for p in operation["parameters"])
+    assert "X-DF-Route" in operation["responses"]["200"]["headers"]
+    assert "route_unavailable" in operation["responses"]["503"]["description"]
 
 
 def test_custom_endpoint_rejects_path_traversal(registry: MagicMock, auth_header: dict[str, str]) -> None:
