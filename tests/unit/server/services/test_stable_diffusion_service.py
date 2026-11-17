@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+import aiohttp
 import pytest
 from fastapi import HTTPException
 from PIL import Image
@@ -1614,6 +1615,52 @@ def _make_session_mock(status: int = 200, response_data: dict[str, Any] | None =
     session_mock.__aenter__ = AsyncMock(return_value=client_mock)
     session_mock.__aexit__ = AsyncMock(return_value=None)
     return session_mock
+
+
+def _make_failing_session_mock(error: BaseException) -> MagicMock:
+    """A `ClientSession` whose `post` fails with `error`, like a Stable Diffusion container that is restarting."""
+    client_mock = MagicMock()
+    client_mock.post = AsyncMock(side_effect=error)
+
+    session_mock = MagicMock()
+    session_mock.__aenter__ = AsyncMock(return_value=client_mock)
+    session_mock.__aexit__ = AsyncMock(return_value=None)
+    return session_mock
+
+
+_UPSTREAM_FAILURES = [
+    pytest.param(aiohttp.ServerDisconnectedError(), 502, id="connection-dropped"),
+    pytest.param(TimeoutError(), 504, id="timeout"),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("error", "status_code"), _UPSTREAM_FAILURES)
+async def test_handler_answers_502_or_504_when_sd_is_unreachable(error: BaseException, status_code: int) -> None:
+    handler = _stable_diffusion_handler("http://localhost:7860", "my-model")
+    body = ImagesRequest(prompt="draw a cat", model="sd")
+
+    with (
+        patch("server.services.stable_diffusion_service.ClientSession", return_value=_make_failing_session_mock(error)),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await handler(body, None)
+
+    assert exc_info.value.status_code == status_code
+    assert exc_info.value.__cause__ is error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("error", "status_code"), _UPSTREAM_FAILURES)
+async def test_remove_background_answers_502_or_504_when_sd_is_unreachable(error: BaseException, status_code: int) -> None:
+    with (
+        patch("server.services.stable_diffusion_service.ClientSession", return_value=_make_failing_session_mock(error)),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await remove_background_from_img("http://localhost:7860", "input_b64")
+
+    assert exc_info.value.status_code == status_code
+    assert exc_info.value.__cause__ is error
 
 
 @pytest.mark.asyncio

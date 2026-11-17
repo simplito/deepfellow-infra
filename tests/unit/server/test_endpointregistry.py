@@ -42,6 +42,7 @@ from server.endpointregistry import (
     _rewrite_sse_endpoint_events,  # pyright: ignore[reportPrivateUsage]
     _unwrap_json_text,  # pyright: ignore[reportPrivateUsage]
     get_tokenizer,
+    make_upstream_request,
     post_form,
     post_json,
     post_json_rerank_sglang,
@@ -3957,6 +3958,315 @@ def test_classify_error_generic():
     assert _classify_error(RuntimeError("boom")) == "model_error"
 
 
+@pytest.mark.parametrize(
+    ("cause", "expected"),
+    [
+        (aiohttp.ServerDisconnectedError(), "connection_error"),
+        (TimeoutError(), "timeout"),
+        (RuntimeError("boom"), "model_error"),
+    ],
+)
+def test_classify_error_http_exception_is_classified_by_its_cause(cause: Exception, expected: str):
+    exc = HTTPException(502, "Upstream service is unavailable.")
+    exc.__cause__ = cause
+
+    assert _classify_error(exc) == expected
+
+
+def test_classify_error_http_exception_without_cause_is_model_error():
+    assert _classify_error(HTTPException(502, "Upstream service is unavailable.")) == "model_error"
+
+
+@pytest.mark.asyncio
+async def test_make_upstream_request_returns_upstream_response():
+    mock_http_response = MagicMock()
+
+    with patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, return_value=mock_http_response) as mock_req:
+        result = await make_upstream_request(url="http://upstream/health", method="POST", data=b"x", headers={"a": "b"})
+
+    assert result is mock_http_response
+    mock_req.assert_awaited_once_with(url="http://upstream/health", method="POST", data=b"x", headers={"a": "b"}, timeout=None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        aiohttp.ServerDisconnectedError(),
+        aiohttp.ClientConnectorError(MagicMock(), OSError(111, "Connection refused")),
+        aiohttp.ClientOSError(104, "Connection reset by peer"),
+    ],
+)
+async def test_make_upstream_request_connection_error_raises_502(error: aiohttp.ClientError):
+    with (
+        patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, side_effect=error),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await make_upstream_request(url="http://upstream/health")
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.__cause__ is error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [TimeoutError(), aiohttp.ServerTimeoutError("read timed out")])
+async def test_make_upstream_request_timeout_raises_504(error: Exception):
+    with (
+        patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, side_effect=error),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await make_upstream_request(url="http://upstream/health")
+
+    assert exc_info.value.status_code == 504
+    assert exc_info.value.__cause__ is error
+
+
+@pytest.mark.asyncio
+async def test_make_upstream_request_logs_warning_without_query_string(caplog: pytest.LogCaptureFixture):
+    with (
+        patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, side_effect=aiohttp.ServerDisconnectedError()),
+        caplog.at_level(logging.WARNING, logger="uvicorn"),
+        pytest.raises(HTTPException),
+    ):
+        await make_upstream_request(url="http://upstream/v1/models?key=secret")
+
+    assert "http://upstream/v1/models is unavailable: ServerDisconnectedError" in caplog.text
+    assert "secret" not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("boom"),
+        aiohttp.InvalidURL("http://upstream/v1/models?key=secret"),
+        aiohttp.ClientPayloadError("bad payload"),
+    ],
+)
+async def test_make_upstream_request_lets_other_errors_through(error: Exception):
+    with (
+        patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, side_effect=error),
+        pytest.raises(type(error)) as exc_info,
+    ):
+        await make_upstream_request(url="http://upstream/health")
+
+    assert exc_info.value is error
+
+
+def _proxy_client(reg: EndpointRegistry, *, with_config: bool = False) -> TestClient:
+    app = FastAPI()
+    register_exception_handlers(app)
+    app.include_router(openai_router)
+    app.dependency_overrides[auth_server] = lambda: "test-key"
+    app.dependency_overrides[get_endpoint_registry] = lambda: reg
+    if with_config:
+        app.dependency_overrides[get_config] = lambda: AppSettings()  # pyright: ignore[reportCallIssue]
+    return TestClient(app, raise_server_exceptions=False)
+
+
+@pytest.mark.parametrize(
+    ("error", "status_code", "error_type"),
+    [
+        (aiohttp.ServerDisconnectedError(), 502, "connection_error"),
+        (aiohttp.ServerTimeoutError("timed out"), 504, "timeout"),
+    ],
+)
+@patch("server.error_handlers.capture_exception")
+@patch("server.endpointregistry.capture_exception")
+def test_custom_proxy_unreachable_upstream_answers_gateway_error(
+    mock_registry_capture: MagicMock,
+    mock_handler_capture: MagicMock,
+    error: aiohttp.ClientError,
+    status_code: int,
+    error_type: str,
+):
+    metrics = make_metrics_registry()
+    reg = make_registry(metrics)
+    reg.register_custom_endpoint_as_proxy("doc_chunker", make_props(type="custom"), ProxyOptions(url="http://doc-chunker:8000"), None)
+
+    with patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, side_effect=error):
+        resp = _proxy_client(reg).get("/custom/doc_chunker/health")
+
+    assert resp.status_code == status_code
+    assert resp.json()["error"]["type"] == "api_error"
+    assert "X-Error-Id" not in resp.headers
+    assert mock_registry_capture.call_count == 1
+    assert mock_handler_capture.call_count == 0
+    metrics.request_errors.labels.assert_called_once_with(model_name="doc_chunker", error_type=error_type)
+
+
+@patch("server.endpointregistry.capture_exception")
+def test_chat_proxy_unreachable_upstream_answers_502(mock_capture: MagicMock):
+    reg = make_registry()
+    reg.register_chat_completion_as_proxy(
+        "m", make_props(), ProxyOptions(url="http://vllm:8000/v1/chat/completions"), None, None, None, None, None
+    )
+
+    with patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, side_effect=aiohttp.ServerDisconnectedError()):
+        resp = _proxy_client(reg, with_config=True).post(
+            "/v1/chat/completions", json={"model": "m", "messages": [{"role": "user", "content": "hi"}]}
+        )
+
+    assert resp.status_code == 502
+    assert resp.json()["error"]["message"] == "Upstream service is unavailable. Try again shortly."
+    assert mock_capture.call_count == 1
+
+
+_UNREACHABLE_UPSTREAM_ERRORS = [
+    (aiohttp.ServerDisconnectedError(), 502),
+    (aiohttp.ServerTimeoutError("timed out"), 504),
+]
+
+
+def _http_exception_from(cause: Exception, status_code: int) -> HTTPException:
+    exc = HTTPException(status_code, "Upstream failed.")
+    exc.__cause__ = cause
+    return exc
+
+
+@pytest.mark.parametrize(
+    ("cause", "status_code", "error_type"),
+    [
+        (aiohttp.ServerDisconnectedError(), 502, "connection_error"),
+        (aiohttp.ServerTimeoutError("timed out"), 504, "timeout"),
+    ],
+)
+@pytest.mark.asyncio
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_groups_unreachable_upstream_by_service_and_status(
+    mock_capture_exception: MagicMock,
+    metered_registry: EndpointRegistry,
+    vllm_model: RegisteredModel[Any],
+    cause: Exception,
+    status_code: int,
+    error_type: str,
+):
+    error = _http_exception_from(cause, status_code)
+
+    with pytest.raises(HTTPException):
+        await metered_registry.with_usage(vllm_model, AsyncMock(side_effect=error))
+
+    assert mock_capture_exception.call_args == call(
+        error,
+        error_id=mock_capture_exception.call_args.kwargs["error_id"],
+        tags={**VLLM_TAGS, "error_type": error_type, "upstream_status": str(status_code)},
+        fingerprint=["upstream-unavailable", "vllm", str(status_code)],
+    )
+
+
+@pytest.mark.parametrize(
+    "cause",
+    [
+        aiohttp.ClientResponseError(request_info=MagicMock(), history=(), status=500),
+        aiohttp.InvalidURL("bad url"),
+    ],
+)
+@pytest.mark.asyncio
+@patch("server.endpointregistry.capture_exception")
+async def test_with_usage_does_not_group_other_aiohttp_errors_as_unreachable_upstream(
+    mock_capture_exception: MagicMock, metered_registry: EndpointRegistry, vllm_model: RegisteredModel[Any], cause: Exception
+):
+    error = _http_exception_from(cause, 502)
+
+    with pytest.raises(HTTPException):
+        await metered_registry.with_usage(vllm_model, AsyncMock(side_effect=error))
+
+    assert mock_capture_exception.call_args == call(
+        error,
+        error_id=mock_capture_exception.call_args.kwargs["error_id"],
+        tags={**VLLM_TAGS, "error_type": "connection_error", "upstream_status": "502"},
+        fingerprint=None,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("error", "status_code"), _UNREACHABLE_UPSTREAM_ERRORS)
+async def test_post_form_unreachable_upstream_raises_gateway_error(error: aiohttp.ClientError, status_code: int):
+    data = MagicMock()
+    data.to_form = AsyncMock(return_value=MagicMock())
+
+    with (
+        patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, side_effect=error),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await post_form(data, ProxyOptions(url="http://example.com/v1/audio/transcriptions"))
+
+    assert exc_info.value.status_code == status_code
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("error", "status_code"), _UNREACHABLE_UPSTREAM_ERRORS)
+async def test_post_json_responses_unreachable_upstream_raises_gateway_error(error: aiohttp.ClientError, status_code: int):
+    with (
+        patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, side_effect=error),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await post_json_responses(
+            ResponsesRequest(model="m", stream=False), ProxyOptions(url="http://example.com/v1/responses"), ResponseItemStore()
+        )
+
+    assert exc_info.value.status_code == status_code
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("error", "status_code"), _UNREACHABLE_UPSTREAM_ERRORS)
+async def test_post_json_rerank_sglang_unreachable_upstream_raises_gateway_error(error: aiohttp.ClientError, status_code: int):
+    with (
+        patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, side_effect=error),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await post_json_rerank_sglang(RerankRequest(model="m", query="q", documents=[]), ProxyOptions(url="http://example.com/v1/rerank"))
+
+    assert exc_info.value.status_code == status_code
+
+
+def _mcp_proxy_request() -> MagicMock:
+    request = MagicMock()
+    request.headers = {"content-type": "application/json"}
+    request.method = "POST"
+    request.path_params = {"full_path": "mcp-svc"}
+    request.stream = lambda: _async_byte_stream(b"{}")
+    request.url.query = ""
+    return request
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_reauth", [None, AsyncMock()], ids=["streamed", "buffered-for-reauth"])
+async def test_mcp_proxy_unreachable_upstream_raises_502(on_reauth: AsyncMock | None):
+    reg = make_registry()
+    reg.register_mcp_endpoint_as_proxy("mcp-svc", make_props(), ProxyOptions(url="http://example.com/mcp/", on_reauth=on_reauth), None)
+    ep = reg.mcp_endpoints.get_model("mcp-svc")
+
+    with (
+        patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, side_effect=aiohttp.ServerDisconnectedError()),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await ep.endpoint.on_request(_mcp_proxy_request())  # pyright: ignore[reportOptionalMemberAccess]
+
+    assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_make_request_with_reauth_retry_to_unreachable_upstream_raises_502_after_discarding_401():
+    opts = ProxyOptions(url="http://example.com/mcp/", on_reauth=AsyncMock(return_value={"Authorization": "Bearer new"}))
+    unauthorized_response = MagicMock()
+    unauthorized_response.response.status = 401
+    unauthorized_response.discard = AsyncMock()
+
+    with (
+        patch(
+            "server.endpointregistry.make_http_request",
+            new_callable=AsyncMock,
+            side_effect=[unauthorized_response, aiohttp.ServerDisconnectedError()],
+        ),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await _make_request_with_reauth("http://example.com/mcp/", "POST", b"{}", {"Authorization": "Bearer old"}, opts)
+
+    assert exc_info.value.status_code == 502
+    unauthorized_response.discard.assert_awaited_once()
+
+
 @pytest.mark.asyncio
 async def test_post_json_sends_request_and_returns_streaming_response():
     class FakeBody(BaseModel):
@@ -5503,6 +5813,59 @@ async def test_mcp_sse_proxy_post_valid_session_forwards_to_upstream() -> None:
 
     assert result is mock_streaming
     mock_upstream_post.as_streaming_response.assert_called_once_with(["content-type"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("error", "status_code"), _UNREACHABLE_UPSTREAM_ERRORS)
+async def test_mcp_sse_proxy_get_unreachable_upstream_raises_gateway_error(error: aiohttp.ClientError, status_code: int) -> None:
+    reg = make_registry()
+    reg.config.mcp_sse_session_ttl_seconds = 300
+    reg.config.mcp_sse_max_sessions = 128
+    reg.register_mcp_sse_endpoint_as_proxy("sse-svc", make_props(), ProxyOptions(url="https://upstream.example.com/sse"), None)
+    ep = reg.mcp_endpoints.get_model("sse-svc")
+
+    request = MagicMock()
+    request.method = "GET"
+    request.headers = {}
+    request.url = MagicMock()
+    request.url.__str__ = MagicMock(return_value="https://proxy.example.com/mcp/sse-svc/mcp")
+
+    with (
+        patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, side_effect=error),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await ep.endpoint.on_request(request)  # pyright: ignore[reportOptionalMemberAccess]
+
+    assert exc_info.value.status_code == status_code
+    assert exc_info.value.__cause__ is error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("error", "status_code"), _UNREACHABLE_UPSTREAM_ERRORS)
+async def test_mcp_sse_proxy_post_unreachable_upstream_raises_gateway_error(error: aiohttp.ClientError, status_code: int) -> None:
+    mock_store = MagicMock(spec=McpSseSessionStore)
+    mock_store.get.return_value = "https://upstream.example.com/msg?sessionId=valid1"
+    with patch("server.endpointregistry.McpSseSessionStore", return_value=mock_store):
+        reg = make_registry()
+        reg.config.mcp_sse_session_ttl_seconds = 300
+        reg.config.mcp_sse_max_sessions = 128
+        reg.register_mcp_sse_endpoint_as_proxy("sse-svc2", make_props(), ProxyOptions(url="https://upstream.example.com/sse"), None)
+    ep = reg.mcp_endpoints.get_model("sse-svc2")
+
+    post_request = MagicMock()
+    post_request.method = "POST"
+    post_request.headers = {"content-type": "application/json"}
+    post_request.query_params = {"sessionId": "valid1"}
+    post_request.stream = MagicMock()
+
+    with (
+        patch("server.endpointregistry.make_http_request", new_callable=AsyncMock, side_effect=error),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await ep.endpoint.on_request(post_request)  # pyright: ignore[reportOptionalMemberAccess]
+
+    assert exc_info.value.status_code == status_code
+    assert exc_info.value.__cause__ is error
 
 
 def test_session_store_evict_expired_removes_stale_session() -> None:

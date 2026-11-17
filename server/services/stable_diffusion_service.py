@@ -27,7 +27,7 @@ from server.docker import (
     DockerImage,
     DockerOptions,
 )
-from server.endpointregistry import EndpointCallback, ProxyOptions, RegistrationId, RegistrationOptions, SimpleEndpoint
+from server.endpointregistry import EndpointCallback, ProxyOptions, RegistrationId, RegistrationOptions, SimpleEndpoint, upstream_errors
 from server.models.api import IMG_ENDPOINTS, ImagesRequest, ModelProps
 from server.models.models import (
     CustomModelField,
@@ -958,7 +958,8 @@ async def remove_background_from_img(base_url: str, img: str) -> str:
     rm_bg_url = f"{base_url}/rembg/"
     request_model = RemoveBackgroundRequest(input_image=img)
     async with ClientSession(rm_bg_url) as client:
-        response = await client.post(rm_bg_url, json=request_model.model_dump(), timeout=600)  # type: ignore
+        with upstream_errors("POST", rm_bg_url):
+            response = await client.post(rm_bg_url, json=request_model.model_dump(), timeout=600)  # type: ignore
         response_json = await response.json()
         try:
             return response_json.get("image", "")
@@ -983,7 +984,8 @@ def _stable_diffusion_handler(base_url: str, model_filename: str) -> EndpointCal
 
         gen_img_url = f"{base_url}/sdapi/v1/txt2img/"
         async with ClientSession(gen_img_url) as client:
-            response = await client.post(gen_img_url, json=settings.model_dump(), timeout=600)  # type: ignore
+            with upstream_errors("POST", gen_img_url):
+                response = await client.post(gen_img_url, json=settings.model_dump(), timeout=600)  # type: ignore
 
             if response.status != 200:
                 raise HTTPException(

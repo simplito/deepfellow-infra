@@ -9,10 +9,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
+from fastapi import HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
+from starlette.requests import Request
 
-from server.endpointregistry import ChatCompletionEndpoint, CustomEndpoint, McpEndpoint, RegisteredModel, RegistryEntry, SimpleEndpoint
+from server.endpointregistry import (
+    ChatCompletionEndpoint,
+    CustomEndpoint,
+    McpEndpoint,
+    RegisteredModel,
+    RegistryEntry,
+    SimpleEndpoint,
+    make_upstream_request,
+)
 from server.model_tester import ModelTester, ModelTestError, Response, UnpackedResponse
 
 
@@ -716,6 +726,58 @@ async def test_perform_test_custom_reports_unreachable_model() -> None:
         await tester._perform_test(entry)  # pyright: ignore[reportPrivateUsage]
 
     assert exc_info.value.error == "Model unreachable: Connection refused"
+
+
+def _make_proxying_custom_entry() -> RegistryEntry:
+    """A custom entry whose `on_request` goes through the real `make_upstream_request`; the test patches the layer below it."""
+
+    async def on_request(_request: Request) -> StreamingResponse:
+        return (await make_upstream_request(url="http://upstream/health")).as_streaming_response(None)
+
+    entry = _make_registered_model("custom")
+    entry.registered_model.name = "deepfellow-bge-m3"
+    entry.registered_model.endpoint = CustomEndpoint(on_request=on_request)
+    return entry
+
+
+@pytest.mark.asyncio
+async def test_perform_test_custom_reports_unreachable_model_behind_proxy() -> None:
+    tester = ModelTester()
+    entry = _make_proxying_custom_entry()
+
+    with (
+        patch("server.endpointregistry.make_http_request", AsyncMock(side_effect=aiohttp.ServerDisconnectedError())),
+        pytest.raises(ModelTestError) as exc_info,
+    ):
+        await tester._perform_test(entry)  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.error == "Model unreachable: Upstream service is unavailable. Try again shortly."
+
+
+@pytest.mark.asyncio
+async def test_perform_test_custom_reports_timed_out_model_behind_proxy() -> None:
+    tester = ModelTester()
+    entry = _make_proxying_custom_entry()
+
+    with (
+        patch("server.endpointregistry.make_http_request", AsyncMock(side_effect=TimeoutError())),
+        pytest.raises(ModelTestError) as exc_info,
+    ):
+        await tester._perform_test(entry)  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.error == "Model timed out"
+
+
+@pytest.mark.asyncio
+async def test_perform_test_custom_does_not_hide_other_http_errors() -> None:
+    tester = ModelTester()
+    entry = _make_registered_model("custom")
+    entry.registered_model.endpoint = CustomEndpoint(on_request=AsyncMock(side_effect=HTTPException(401, "Unauthorized")))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await tester._perform_test(entry)  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.status_code == 401
 
 
 @pytest.mark.asyncio
