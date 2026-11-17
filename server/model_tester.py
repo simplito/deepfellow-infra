@@ -11,7 +11,7 @@ import wave
 from typing import Any, NamedTuple, NoReturn, cast
 
 import aiohttp
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from starlette.datastructures import Headers
@@ -336,6 +336,13 @@ class ModelTester:
     async def _get_custom(self, prefix: str, endpoint: CustomEndpoint, path: str) -> Response:
         try:
             response = await endpoint.on_request(self._make_request(b"", method="GET", full_path=f"{prefix}/{path}"))
+        except HTTPException as e:
+            # The proxy (`make_upstream_request`) answers 502/504 for an unreachable or slow upstream; any other status isn't ours to hide.
+            if e.status_code == 504:
+                raise ModelTestError("Model timed out") from e
+            if e.status_code == 502:
+                raise ModelTestError(f"Model unreachable: {e.detail}") from e  # noqa: EM102
+            raise
         except aiohttp.ClientError as e:
             # Typically a container that is still starting: show it instead of a generic internal error.
             raise ModelTestError(f"Model unreachable: {e}") from e  # noqa: EM102

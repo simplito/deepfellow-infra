@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- Requests to a proxied service that drops or refuses the connection (e.g. while it restarts) get `502`, and a timeout `504`, instead of `500`.
 - Installing a model on macOS no longer picks a host port that another container already uses.
 
 ## [0.39.0] - 2026-11-12

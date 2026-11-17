@@ -9,13 +9,14 @@ import json
 import random
 import time
 import uuid
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple, TypeVar, cast
 from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 import aiohttp
-from aiohttp import ClientTimeout, JsonPayload
+from aiohttp import ClientTimeout, FormData, JsonPayload, Payload
 from fastapi import HTTPException, Request
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, TypeAdapter, ValidationError, field_validator
@@ -687,6 +688,45 @@ class ProxyOptions:
         return headers
 
 
+@contextmanager
+def upstream_errors(method: str, url: str) -> Iterator[None]:
+    """Answer 504 for an upstream that times out and 502 for one that can't be reached, instead of an unhandled 500.
+
+    Wrap the call that sends a request to an upstream. It covers only failures before the upstream's response
+    starts (refused or dropped connection, e.g. a restarting container); a failure mid-stream can no longer
+    change the status. Other aiohttp errors (e.g. `InvalidURL` from a malformed path) aren't the upstream being
+    down, so they pass through. The aiohttp error is kept as `__cause__`, so `_classify_error` still tells a
+    timeout from a connection error.
+    """
+    try:
+        yield
+    except TimeoutError as e:
+        # Checked first: aiohttp's ServerTimeoutError is both a TimeoutError and a ClientConnectionError.
+        logger.warning("Upstream %s %s timed out: %s", method, _url_without_query(url), type(e).__name__)
+        raise HTTPException(504, "Upstream service timed out. Try again later.") from e
+    except aiohttp.ClientConnectionError as e:
+        # The message of a connection error names only the host, never the query string.
+        logger.warning("Upstream %s %s is unavailable: %s: %s", method, _url_without_query(url), type(e).__name__, e)
+        raise HTTPException(502, "Upstream service is unavailable. Try again shortly.") from e
+
+
+async def make_upstream_request(
+    url: str,
+    method: str = "GET",
+    data: AsyncGenerator[bytes] | bytes | FormData | Payload | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: ClientTimeout | None = None,
+) -> HttpResponse:
+    """`make_http_request` for proxy paths, with failures of the upstream answered as in `upstream_errors`."""
+    with upstream_errors(method, url):
+        return await make_http_request(url=url, method=method, data=data, headers=headers, timeout=timeout)
+
+
+def _url_without_query(url: str) -> str:
+    """`url` without its query string, which may carry credentials (e.g. an API key)."""
+    return urlparse(url)._replace(query="", fragment="").geturl()
+
+
 async def _make_request_with_reauth(
     url: str,
     method: str,
@@ -700,14 +740,14 @@ async def _make_request_with_reauth(
     If `on_reauth` isn't set, or returns None (nothing to refresh, e.g. no refresh token),
     the original 401 response is returned untouched so it streams through to the client.
     """
-    response = await make_http_request(url=url, method=method, data=data, headers=headers, timeout=timeout)
+    response = await make_upstream_request(url=url, method=method, data=data, headers=headers, timeout=timeout)
     if response.response.status != 401 or not options.on_reauth:
         return response
     new_headers = await options.on_reauth()
     if new_headers is None:
         return response
     await response.discard()
-    return await make_http_request(url=url, method=method, data=data, headers=headers | new_headers, timeout=timeout)
+    return await make_upstream_request(url=url, method=method, data=data, headers=headers | new_headers, timeout=timeout)
 
 
 async def _read_body_with_limit(request: Request, max_bytes: int) -> bytes:
@@ -1153,7 +1193,7 @@ class EndpointRegistry:
             if request.url.query:
                 full_url = f"{full_url}?{request.url.query}"
             return (
-                await make_http_request(
+                await make_upstream_request(
                     url=full_url,
                     method=request.method,
                     data=request.stream(),
@@ -1206,7 +1246,7 @@ class EndpointRegistry:
                 body = await _read_body_with_limit(request, _MCP_PROXY_MAX_BODY_BYTES)
                 response = await _make_request_with_reauth(full_url, request.method, body, headers, options, timeout=self._proxy_timeout)
             else:
-                response = await make_http_request(
+                response = await make_upstream_request(
                     url=full_url, method=request.method, data=request.stream(), headers=headers, timeout=self._proxy_timeout
                 )
             logger.debug("MCP proxy response: %s", response.response.status)
@@ -1277,7 +1317,7 @@ class EndpointRegistry:
             if upstream_url is None:
                 raise HTTPException(404, f"Unknown session: {session_id}")
             headers["content-type"] = request.headers.get("content-type") or "application/json"
-            response = await make_http_request(
+            response = await make_upstream_request(
                 url=upstream_url, method="POST", data=request.stream(), headers=headers, timeout=self._proxy_timeout
             )
             return response.as_streaming_response(options.allowed_response_headers)
@@ -1927,7 +1967,11 @@ class EndpointRegistry:
     def _report_upstream_exception(self, model: RegisteredModel[Any], exc: Exception, *, already_reported: bool = False) -> None:
         """Report a new 5xx `HTTPException`; otherwise tag `exc` for the catch-all handler and mark it if `already_reported`."""
         if isinstance(exc, StarletteHTTPException) and exc.status_code >= 500 and not already_reported:
-            self._capture_upstream_failure(model, exc, self._upstream_tags(model, _classify_error(exc), exc.status_code))
+            # An unreachable upstream (see `upstream_errors`) groups per service and status, not per aiohttp error class.
+            # Asked of the cause, not of the metrics label: that one also covers errors that aren't the upstream being down.
+            unreachable = isinstance(exc.__cause__, aiohttp.ClientConnectionError | TimeoutError)
+            fingerprint = ["upstream-unavailable", model.owned_by, str(exc.status_code)] if unreachable else None
+            self._capture_upstream_failure(model, exc, self._upstream_tags(model, _classify_error(exc), exc.status_code), fingerprint)
             mark_reported(exc)
             return
         attach_tags(exc, self._upstream_tags(model, _classify_error(exc)))
@@ -1955,7 +1999,9 @@ class EndpointRegistry:
 
 
 def _classify_error(e: Exception) -> str:
-    """Classify an exception into an error type for metrics."""
+    """Classify an exception into an error type for metrics; an `HTTPException` raised from another is classified by its cause."""
+    if isinstance(e, StarletteHTTPException) and isinstance(e.__cause__, Exception):
+        return _classify_error(e.__cause__)
     if isinstance(e, asyncio.TimeoutError):
         return "timeout"
     if isinstance(e, aiohttp.ClientError):
@@ -2000,7 +2046,7 @@ async def post_json(
     if options.rewrite_model_to:
         raw["model"] = options.rewrite_model_to
     return (
-        await make_http_request(
+        await make_upstream_request(
             url=options.url,
             method="POST",
             data=JsonPayload(raw),
@@ -2023,7 +2069,7 @@ async def post_json_responses(
         del raw["model"]
     if options.rewrite_model_to:
         raw["model"] = options.rewrite_model_to
-    http_response = await make_http_request(
+    http_response = await make_upstream_request(
         url=options.url,
         method="POST",
         data=JsonPayload(raw),
@@ -2079,7 +2125,7 @@ async def post_json_rerank_sglang(
         del raw["model"]
     if options.rewrite_model_to:
         raw["model"] = options.rewrite_model_to
-    http_response = await make_http_request(
+    http_response = await make_upstream_request(
         url=options.url,
         method="POST",
         data=JsonPayload(raw),
@@ -2138,7 +2184,7 @@ async def post_form(
 ) -> StreamingResponse:
     """Make HTTP POST request sending data as form."""
     return (
-        await make_http_request(
+        await make_upstream_request(
             url=options.url,
             method="POST",
             data=await data.to_form(options.remove_model, options.rewrite_model_to),
