@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from pydantic import SecretStr
 
 from server.docker import DockerImage, DockerOptions
+from server.error_handlers import handle_http_exception
 from server.models.models import (
     AddCustomModelIn,
     CustomModelSpecification,
@@ -4048,6 +4049,41 @@ async def test_verify_docker_image_passes_when_warnings_ignored(base2_svc: _Base
     base2_deps["docker_service"].get_image_warnings = AsyncMock(return_value=["w1"])
 
     await base2_svc._verify_docker_image("img", True)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_verify_docker_image_passes_without_warnings(base2_svc: _Base2Impl, base2_deps: dict[str, Any]) -> None:
+    base2_deps["docker_service"].get_image_warnings = AsyncMock(return_value=[])
+
+    await base2_svc._verify_docker_image("img", False)  # pyright: ignore[reportPrivateUsage]
+
+
+async def _verify_docker_image_error_body(base2_svc: _Base2Impl, warnings: list[str]) -> tuple[int, Any]:
+    base2_svc.docker_service.get_image_warnings = AsyncMock(return_value=warnings)
+    with pytest.raises(HTTPException) as exc_info:
+        await base2_svc._verify_docker_image("img", False)  # pyright: ignore[reportPrivateUsage]
+    response = await handle_http_exception(MagicMock(), exc_info.value)
+    return response.status_code, json.loads(bytes(response.body))
+
+
+@pytest.mark.asyncio
+async def test_verify_docker_image_error_message_is_the_warning_text(base2_svc: _Base2Impl) -> None:
+    warning = "Cannot access docker image, authorization failed nonexistent-org/nonexistent-image:1."
+
+    status_code, body = await _verify_docker_image_error_body(base2_svc, [warning])
+
+    assert status_code == 400
+    assert body == {"error": {"message": warning, "type": "invalid_request_error", "param": None, "code": None}}
+
+
+@pytest.mark.asyncio
+async def test_verify_docker_image_error_message_joins_several_warnings(base2_svc: _Base2Impl) -> None:
+    status_code, body = await _verify_docker_image_error_body(
+        base2_svc, ["Docker image does not exist foo/bar:1.", "Cannot access docker image, authorization failed foo/bar:1."]
+    )
+
+    assert status_code == 400
+    assert body["error"]["message"] == "Docker image does not exist foo/bar:1. Cannot access docker image, authorization failed foo/bar:1."
 
 
 def test_get_specified_hardware_parts_matches_gpu_by_name(base2_deps: dict[str, Any]) -> None:

@@ -2185,7 +2185,7 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     async def _verify_docker_image(self, docker_image: str, ignore_warning: bool) -> None:
         warnings = await self.docker_service.get_image_warnings(docker_image)
         if len(warnings) > 0 and not ignore_warning:
-            raise HTTPException(400, {"warnings": warnings})
+            raise HTTPException(400, " ".join(warnings))
 
     def get_default_docker_image_name(self) -> str | None:
         """Return the docker image this service would install by default, or None to skip the upfront platform check.
