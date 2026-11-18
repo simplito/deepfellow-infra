@@ -268,6 +268,33 @@ def test_update_config_invalid_value_returns_400(client: TestClient, auth_header
     assert mock_persist.call_count == 0
 
 
+def test_update_config_invalid_value_error_names_field_and_problem(client: TestClient, auth_header: dict[str, str]) -> None:
+    with patch("server.api.config.dynamic_config.persist_settings"):
+        resp = client.put("/admin/config", json={"container_name_suffix": "Bad Suffix"}, headers=auth_header)
+
+    assert resp.status_code == 400
+    assert resp.json() == {
+        "error": {
+            "message": "container_name_suffix: String should match pattern '^[a-z0-9_-]*$'",
+            "type": "invalid_request_error",
+            "param": "container_name_suffix",
+            "code": None,
+        }
+    }
+
+
+def test_update_config_several_invalid_values_are_joined_in_one_message(client: TestClient, auth_header: dict[str, str]) -> None:
+    with patch("server.api.config.dynamic_config.persist_settings"):
+        resp = client.put("/admin/config", json={"container_name_suffix": "Bad Suffix", "max_choices": 0}, headers=auth_header)
+
+    assert resp.status_code == 400
+    error = resp.json()["error"]
+    assert error["message"] == (
+        "container_name_suffix: String should match pattern '^[a-z0-9_-]*$'; max_choices: Input should be greater than or equal to 1"
+    )
+    assert error["param"] == "container_name_suffix"
+
+
 @pytest.mark.parametrize("suffix", ["bad/name", "a" * 33, "_Prod"])
 def test_update_config_rejects_container_name_suffix_docker_disallows(client: TestClient, auth_header: dict[str, str], suffix: str) -> None:
     with patch("server.api.config.dynamic_config.persist_settings") as mock_persist:
