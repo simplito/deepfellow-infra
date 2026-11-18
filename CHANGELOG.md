@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - doc-chunker installs `v2.5.0` by default (was `v2.4.0`). It refuses to start without about 5 GB of RAM plus 2.4 GB per worker.
 - doc-chunker's `max_concurrent` is empty by default, so doc-chunker sizes it to the host (was 2).
+- vLLM installs `v0.34.0` by default (was `v0.33.0`), llama.cpp `b12464` (was `b12316`) and the DuckDuckGo MCP server `0.7.0` (was `0.6.1`).
+- Refreshed the vLLM, SGLang and llama.cpp model lists.
 
 ### Fixed
 
