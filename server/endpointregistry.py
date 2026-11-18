@@ -357,8 +357,8 @@ class Endpoint[T]:
         return chosen
 
     def is_model_private(self, model: dict[RegistrationId, RegisteredModel[T]]) -> bool:
-        """Return is model private."""
-        return any(item.props.private for item in model.values())
+        """Return True only if every registration is private (a mixed local/cloud alias can reach the cloud)."""
+        return all(item.props.private for item in model.values())
 
     def get_model_type(self, model: dict[RegistrationId, RegisteredModel[T]]) -> str:
         """Return unique model types."""
