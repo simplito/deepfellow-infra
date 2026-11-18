@@ -117,6 +117,15 @@ class InstanceConfig(BaseModel):
     custom: list[CustomModel] | None = None
     # Same purpose as ModelConfig.container_name, for single-container-per-instance services (e.g. Ollama).
     container_name: str | None = None
+    # Registration id of the instance's own endpoint (e.g. Finetune), pinned so X-DF-Route routing to it survives restarts.
+    registration_id: str | None = None
+
+
+def _instance_config_unpinned(persisted: InstanceConfig, live: InstanceConfig) -> bool:
+    """Whether `live` resolved an instance-level container name or registration id that `persisted` lacks."""
+    return (persisted.container_name is None and live.container_name is not None) or (
+        persisted.registration_id is None and live.registration_id is not None
+    )
 
 
 class ServiceConfig(BaseModel):
@@ -411,7 +420,7 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     (e.g. it has no registry snapshot to persist). Otherwise ``load_service`` treats every model as needing a
     backfill save on every startup, forever."""
     _pins_registration_ids: bool = False
-    """Override to True for services that persist ``ModelConfig.registration_id``, so a failed backfill warns about routes."""
+    """Override to True for services that persist registration ids (model- or instance-level), so a failed backfill warns about routes."""
     _legacy_spec_fields: frozenset[str] = frozenset()
     """Spec keys still accepted for backward compatibility although ``get_spec()`` no longer lists them
     (e.g. ``gpu``, the old name of ``hardware``), so ``validate_spec_fields`` doesn't reject them."""
@@ -1119,7 +1128,7 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
                 unsaved = "Container names and registration ids"
                 consequences = (
                     "changing container_name_suffix and restarting will rename its containers, and a restart will assign "
-                    "its models new registration ids, breaking X-DF-Route routing to them"
+                    "new registration ids, breaking X-DF-Route routing"
                 )
             else:
                 unsaved = "Container names"
@@ -1138,7 +1147,7 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
     def _instances_with_unpinned_identifiers(self, persisted: dict[str, InstanceConfig]) -> list[str]:
         """Instances for which loading resolved a container name or registration id the persisted config doesn't pin yet.
 
-        Non-empty for a services.json written before container names (or custom-service registration ids) were
+        Non-empty for a services.json written before container names (or custom-service and finetune registration ids) were
         pinned - without saving right away, the value would stay unpinned until some unrelated save, so a
         container_name_suffix change in the meantime would rename the container, and a restart would change the
         registration id. Compares against the freshly generated config rather than just checking for None, so
@@ -1151,7 +1160,7 @@ class Base2Service(Generic[InstalledInfoType, DownloadInfoType], BaseService):  
                 continue
             live = self._generate_instance_config(name, info.installed, info.config.custom)
             persisted_models = {m.model_id: m for m in persisted_instance.models or []}
-            if (persisted_instance.container_name is None and live.container_name is not None) or any(
+            if _instance_config_unpinned(persisted_instance, live) or any(
                 _model_config_unpinned(persisted_models[m.model_id], m) for m in live.models or [] if m.model_id in persisted_models
             ):
                 unpinned.append(name)

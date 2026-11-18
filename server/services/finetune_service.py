@@ -14,6 +14,7 @@ instance lists (and can delete) adapters trained by any other one. Uploaded trai
 configs and the job database are per instance.
 """
 
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
@@ -39,6 +40,7 @@ from server.models.models import (
 )
 from server.models.services import (
     InstallServiceIn,
+    InstallServiceOut,
     InstallServiceProgress,
     ServiceField,
     ServiceOptions,
@@ -97,6 +99,43 @@ class FinetuneAdapterListOut(BaseModel):
 
 
 class FinetuneService(Base2Service[InstalledInfo, DownloadedInfo]):
+    # Registration id the next `_install_instance` re-registers the instance under. Set from the persisted
+    # config on load, and by `_uninstall_instance` so update and its rollback (which bypass `install_instance`)
+    # keep the id. A user install on a free instance drops it, so a fresh install gets a new id; one on a busy instance leaves it.
+    _pinned_registration_ids: dict[str, RegistrationId]
+    _pins_registration_ids = True
+
+    def _after_init(self) -> None:
+        self._pinned_registration_ids = {}
+
+    async def install_instance(
+        self,
+        instance: str,
+        options: InstallServiceIn,
+        instance_config: InstanceConfig | None = None,
+        save: bool = True,
+        run_after_install: bool = True,
+    ) -> PromiseWithProgress[InstallServiceOut, StreamChunk]:
+        """Install the instance, re-registering it under the registration id persisted in `instance_config`.
+
+        Without one (a user install), drops any pin left by an earlier uninstall, so the instance gets a new id.
+        A busy (installed or installing) instance is rejected by the base without touching the pin.
+        """
+        # Let the base reject a busy instance before touching the pin - an in-flight update relies on it
+        info = self.instances_info.get(instance)
+        if info and (info.installed or info.installing):
+            return await super().install_instance(instance, options, instance_config, save=save, run_after_install=run_after_install)
+        pinned = instance_config.registration_id if instance_config else None
+        if pinned:
+            self._pinned_registration_ids[instance] = pinned
+        else:
+            self._pinned_registration_ids.pop(instance, None)
+        try:
+            return await super().install_instance(instance, options, instance_config, save=save, run_after_install=run_after_install)
+        except BaseException:
+            self._pinned_registration_ids.pop(instance, None)
+            raise
+
     async def load_service(self, config: ServiceRawConfig) -> None:
         """Load service using the config, ignoring any persisted per-model entries.
 
@@ -211,7 +250,11 @@ class FinetuneService(Base2Service[InstalledInfo, DownloadedInfo]):
 
     def _generate_instance_config(self, instance: str, info: InstalledInfo | None, custom: list[CustomModel] | None) -> InstanceConfig:  # noqa: ARG002
         return InstanceConfig(
-            options=info.options if info else None, models=[], custom=custom, container_name=info.docker.container_name if info else None
+            options=info.options if info else None,
+            models=[],
+            custom=custom,
+            container_name=info.docker.container_name if info else None,
+            registration_id=info.registration_id if info else None,
         )
 
     def _load_download_info(self, data: dict[str, Any]) -> DownloadedInfo:
@@ -233,6 +276,9 @@ class FinetuneService(Base2Service[InstalledInfo, DownloadedInfo]):
             if other != instance and info.installed and info.installed.parsed_options.prefix == parsed_options.prefix:
                 raise HTTPException(400, f"Prefix {parsed_options.prefix!r} is already used by Finetune instance {other!r}.")
         hardware_parts = self.get_specified_hardware_parts(parsed_options.hardware)
+        # Not popped: a rollback after a failed update calls _install_instance() again (bypassing install_instance(),
+        # so nothing re-pins) and must re-register under the same id
+        pinned_registration_id = self._pinned_registration_ids.get(instance) or str(uuid.uuid4())
         image = _FINETUNE_IMAGE
         await self._verify_docker_image(image, options.ignore_warnings)
 
@@ -301,7 +347,7 @@ class FinetuneService(Base2Service[InstalledInfo, DownloadedInfo]):
                     headers=Utils.create_bearer_header(worker_token),
                     read_timeout_seconds=proxy_timeout_seconds,
                 ),
-                registration_options=RegistrationOptions(origin="local", owned_by=self.get_type()),
+                registration_options=RegistrationOptions(origin="local", id=pinned_registration_id, owned_by=self.get_type()),
             )
             stream.emit(StreamChunkProgress(type="progress", stage="install", value=1, data={}))
             return InstalledInfo(
@@ -320,6 +366,9 @@ class FinetuneService(Base2Service[InstalledInfo, DownloadedInfo]):
     async def _uninstall_instance(self, instance: str, options: UninstallServiceIn) -> None:
         installed = self.get_instance_info(instance).installed
         if installed:
+            # Intentional: update_instance() calls _uninstall_instance()/_install_instance() directly, bypassing install_instance(),
+            # so this pin is what keeps the registration id across an update; install_instance() re-sets it, so it never goes stale
+            self._pinned_registration_ids[instance] = installed.registration_id
             self.endpoint_registry.unregister_custom_endpoint(installed.parsed_options.prefix, installed.registration_id)
             await self.docker_service.uninstall_docker(installed.docker)
 
