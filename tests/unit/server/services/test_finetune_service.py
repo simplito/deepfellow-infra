@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 Simplito sp. z o.o.
 
+import uuid
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -298,6 +299,7 @@ def test_generate_instance_config_without_info(svc: FinetuneService) -> None:
 
     assert config.options is None
     assert config.models == []
+    assert config.registration_id is None
 
 
 def test_generate_instance_config_with_info_has_no_models(svc: FinetuneService) -> None:
@@ -308,6 +310,7 @@ def test_generate_instance_config_with_info_has_no_models(svc: FinetuneService) 
     assert config.options == installed.options
     assert config.models == []
     assert config.container_name == "df-finetune"
+    assert config.registration_id == "reg-1"
 
 
 def test_load_download_info(svc: FinetuneService) -> None:
@@ -581,3 +584,248 @@ async def test_uninstall_model_raises(svc: FinetuneService) -> None:
         await svc._uninstall_model("default", "deepfellow-finetune", UninstallModelIn(purge=False))  # pyright: ignore[reportPrivateUsage]
 
     assert exc.value.status_code == 400
+
+
+@pytest.fixture
+def lifecycle(deps: dict[str, Any], tmp_path: Path) -> Any:
+    """Mocks for running the real install/update/uninstall/load flows; registration returns the id it was given."""
+    _mock_install_deps(deps)
+    deps["docker_service"].uninstall_docker = AsyncMock()
+    deps["endpoint_registry"].register_custom_endpoint_as_proxy.side_effect = lambda **kwargs: kwargs["registration_options"].id  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType]
+    provider = deps["service_provider"]
+    provider.save_service_config = AsyncMock()
+    provider.add_warning = AsyncMock()
+    provider.dismiss_warnings_matching = AsyncMock()
+    provider.dismiss_warnings_matching_any = AsyncMock()
+    provider.dismiss_warnings_for_instance = AsyncMock()
+    with patch.object(FinetuneService, "_get_working_dir", return_value=tmp_path):
+        yield
+
+
+def _registered_ids(deps: dict[str, Any]) -> list[str]:
+    calls = deps["endpoint_registry"].register_custom_endpoint_as_proxy.call_args_list
+    return [c.kwargs["registration_options"].id for c in calls]
+
+
+def _persisted_instance(registration_id: str | None) -> dict[str, Any]:
+    return {
+        "options": {"stream": False, "ignore_warnings": False, "spec": {"prefix": "deepfellow-finetune"}},
+        "models": [],
+        "custom": None,
+        "container_name": "df-finetune",
+        "registration_id": registration_id,
+    }
+
+
+def _installed_registration_id(svc: FinetuneService, instance: str = "default") -> str:
+    installed = svc.instances_info[instance].installed
+    assert installed is not None
+    return installed.registration_id
+
+
+@pytest.mark.asyncio
+async def test_install_instance_registers_under_pinned_id(svc: FinetuneService, deps: dict[str, Any], lifecycle: None) -> None:
+    svc._pinned_registration_ids["default"] = "stable-id"  # pyright: ignore[reportPrivateUsage]
+
+    promise = await svc._install_instance("default", InstallServiceIn(spec={}))  # pyright: ignore[reportPrivateUsage]
+    result = await promise.wait()
+
+    assert _registered_ids(deps) == ["stable-id"]
+    assert result.registration_id == "stable-id"
+
+
+@pytest.mark.asyncio
+async def test_install_instance_without_pin_registers_under_new_id(svc: FinetuneService, deps: dict[str, Any], lifecycle: None) -> None:
+    for _ in range(2):
+        promise = await svc._install_instance("default", InstallServiceIn(spec={}))  # pyright: ignore[reportPrivateUsage]
+        await promise.wait()
+
+    first, second = _registered_ids(deps)
+    assert uuid.UUID(first) != uuid.UUID(second)
+
+
+@pytest.mark.asyncio
+async def test_install_instance_with_persisted_id_reuses_it(svc: FinetuneService, deps: dict[str, Any], lifecycle: None) -> None:
+    config = InstanceConfig.model_validate(_persisted_instance("stable-id"))
+    assert config.options is not None
+
+    promise = await svc.install_instance("default", config.options, config, save=False)
+    await promise.wait()
+
+    assert _registered_ids(deps) == ["stable-id"]
+    assert _installed_registration_id(svc) == "stable-id"
+
+
+@pytest.mark.asyncio
+async def test_install_instance_without_persisted_id_gets_new_id(svc: FinetuneService, deps: dict[str, Any], lifecycle: None) -> None:
+    config = InstanceConfig.model_validate(_persisted_instance(None))
+    assert config.options is not None
+
+    promise = await svc.install_instance("default", config.options, config, save=False)
+    await promise.wait()
+
+    assert uuid.UUID(_installed_registration_id(svc))
+
+
+@pytest.mark.asyncio
+async def test_user_install_drops_earlier_pin(svc: FinetuneService, deps: dict[str, Any], lifecycle: None) -> None:
+    svc._pinned_registration_ids["default"] = "stale-id"  # pyright: ignore[reportPrivateUsage]
+
+    promise = await svc.install_instance("default", InstallServiceIn(spec={}))
+    await promise.wait()
+
+    assert _installed_registration_id(svc) != "stale-id"
+    assert "default" not in svc._pinned_registration_ids  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_install_instance_failure_drops_pin_from_config(svc: FinetuneService, deps: dict[str, Any], lifecycle: None) -> None:
+    svc.instances_info["other"] = Instance(_make_installed_info(), None, {}, InstanceConfig())
+    config = InstanceConfig.model_validate(_persisted_instance("stable-id"))
+    assert config.options is not None
+
+    with pytest.raises(HTTPException):
+        await svc.install_instance("default", config.options, config)
+
+    assert "default" not in svc._pinned_registration_ids  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_install_instance_on_installed_instance_keeps_pin(svc: FinetuneService, deps: dict[str, Any], lifecycle: None) -> None:
+    svc.instances_info["default"].installed = _make_installed_info()
+    svc._pinned_registration_ids["default"] = "stable-id"  # pyright: ignore[reportPrivateUsage]
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.install_instance("default", InstallServiceIn(spec={}))
+
+    assert exc.value.status_code == 400
+    assert svc._pinned_registration_ids["default"] == "stable-id"  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.asyncio
+async def test_update_instance_keeps_registration_id_despite_concurrent_install(
+    svc: FinetuneService, deps: dict[str, Any], lifecycle: None
+) -> None:
+    promise = await svc.install_instance("default", InstallServiceIn(spec={}))
+    await promise.wait()
+    original = _installed_registration_id(svc)
+    rejections: list[int] = []
+
+    async def _concurrent_install(*_: Any, **__: Any) -> None:
+        try:
+            await svc.install_instance("default", InstallServiceIn(spec={}))
+        except HTTPException as e:
+            rejections.append(e.status_code)
+
+    deps["docker_service"].uninstall_docker.side_effect = _concurrent_install
+
+    promise = await svc.update_instance("default", InstallServiceIn(spec={"hardware": False}))
+    await promise.wait()
+
+    assert rejections == [400]
+    assert _registered_ids(deps) == [original, original]
+    assert _installed_registration_id(svc) == original
+
+
+@pytest.mark.asyncio
+async def test_rollback_after_failed_update_keeps_registration_id_despite_concurrent_install(
+    svc: FinetuneService, deps: dict[str, Any], lifecycle: None
+) -> None:
+    promise = await svc.install_instance("default", InstallServiceIn(spec={}))
+    await promise.wait()
+    original = _installed_registration_id(svc)
+    rejections: list[int] = []
+
+    async def _install_and_run_docker(*_: Any, **__: Any) -> tuple[int, bool, bool]:
+        if rejections:
+            return (20000, True, False)
+        try:
+            await svc.install_instance("default", InstallServiceIn(spec={}))
+        except HTTPException as e:
+            rejections.append(e.status_code)
+        raise RuntimeError("container failed")
+
+    deps["docker_service"].install_and_run_docker.side_effect = _install_and_run_docker
+
+    promise = await svc.update_instance("default", InstallServiceIn(spec={"hardware": False}))
+    with pytest.raises(RuntimeError):
+        await promise.wait()
+
+    assert rejections == [400]
+    assert _registered_ids(deps) == [original, original]
+    assert _installed_registration_id(svc) == original
+
+
+@pytest.mark.asyncio
+async def test_update_instance_keeps_registration_id(svc: FinetuneService, deps: dict[str, Any], lifecycle: None) -> None:
+    promise = await svc.install_instance("default", InstallServiceIn(spec={}))
+    await promise.wait()
+    original = _installed_registration_id(svc)
+
+    promise = await svc.update_instance("default", InstallServiceIn(spec={"hardware": False}))
+    await promise.wait()
+
+    assert _registered_ids(deps) == [original, original]
+    assert _installed_registration_id(svc) == original
+
+
+@pytest.mark.asyncio
+async def test_rollback_after_failed_update_keeps_registration_id(svc: FinetuneService, deps: dict[str, Any], lifecycle: None) -> None:
+    promise = await svc.install_instance("default", InstallServiceIn(spec={}))
+    await promise.wait()
+    original = _installed_registration_id(svc)
+    deps["docker_service"].install_and_run_docker.side_effect = [RuntimeError("container failed"), (20000, True, False)]
+
+    promise = await svc.update_instance("default", InstallServiceIn(spec={"hardware": False}))
+    with pytest.raises(RuntimeError):
+        await promise.wait()
+
+    assert _installed_registration_id(svc) == original
+    assert _registered_ids(deps) == [original, original]
+
+
+@pytest.mark.asyncio
+async def test_uninstall_then_install_gets_new_registration_id(svc: FinetuneService, deps: dict[str, Any], lifecycle: None) -> None:
+    promise = await svc.install_instance("default", InstallServiceIn(spec={}))
+    await promise.wait()
+    original = _installed_registration_id(svc)
+
+    await svc.uninstall_instance("default", UninstallServiceIn(purge=False))
+    promise = await svc.install_instance("default", InstallServiceIn(spec={}))
+    await promise.wait()
+
+    assert _installed_registration_id(svc) != original
+
+
+@pytest.mark.asyncio
+async def test_load_service_reuses_persisted_registration_id(svc: FinetuneService, deps: dict[str, Any], lifecycle: None) -> None:
+    await svc.load_service({"instances": {"default": _persisted_instance("stable-id")}})
+
+    assert _registered_ids(deps) == ["stable-id"]
+    assert _installed_registration_id(svc) == "stable-id"
+    deps["service_provider"].save_service_config.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_load_service_backfills_registration_id_for_legacy_config(
+    svc: FinetuneService, deps: dict[str, Any], lifecycle: None
+) -> None:
+    await svc.load_service({"instances": {"default": _persisted_instance(None)}})
+
+    registration_id = _installed_registration_id(svc)
+    deps["service_provider"].save_service_config.assert_awaited_once()
+    saved = deps["service_provider"].save_service_config.await_args.args[1]
+    assert saved["instances"]["default"]["registration_id"] == registration_id
+
+
+@pytest.mark.asyncio
+async def test_load_service_warns_when_registration_id_backfill_fails(svc: FinetuneService, deps: dict[str, Any], lifecycle: None) -> None:
+    deps["service_provider"].save_service_config.side_effect = OSError("disk full")
+
+    await svc.load_service({"instances": {"default": _persisted_instance(None)}})
+
+    assert svc.instances_info["default"].installed is not None
+    warning = deps["service_provider"].add_warning.await_args
+    assert warning.kwargs["instance"] == "default"
+    assert "X-DF-Route" in warning.args[1]
+    assert "disk full" in warning.args[1]

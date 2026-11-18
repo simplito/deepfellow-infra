@@ -2524,6 +2524,44 @@ async def test_load_service_backfills_unpinned_registration_ids(
     assert mock_save.call_count == expected_saves
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("persisted_registration_id", "live_registration_id", "expected_saves"),
+    [
+        pytest.param(None, "rid", 1, id="legacy-config-backfills"),
+        pytest.param("rid", "rid", 0, id="already-pinned"),
+        pytest.param(None, None, 0, id="service-without-instance-registration-ids"),
+    ],
+)
+async def test_load_service_backfills_unpinned_instance_registration_id(
+    base2_svc: _Base2Impl, persisted_registration_id: str | None, live_registration_id: str | None, expected_saves: int
+) -> None:
+    promise: PromiseWithProgress[Any, StreamChunk] = PromiseWithProgress(value={})
+    live_config = InstanceConfig(
+        container_name="instance-ct",
+        registration_id=live_registration_id,
+        models=[ModelConfig(model_id="m1", options=InstallModelIn(), container_name="m1-ct")],
+    )
+    config = _load_service_config("instance-ct", "m1-ct")
+    config["instances"]["default"]["registration_id"] = persisted_registration_id
+
+    with (
+        patch.object(base2_svc, "_install_instance", new=AsyncMock(return_value=promise)),
+        patch.object(base2_svc, "_install_model", new=AsyncMock(return_value=promise)),
+        patch.object(base2_svc, "_generate_instance_config", return_value=live_config),
+        patch.object(base2_svc, "_save", new=AsyncMock()) as mock_save,
+    ):
+        await base2_svc.load_service(config)
+
+    assert mock_save.call_count == expected_saves
+
+
+def test_instance_config_without_registration_id_parses() -> None:
+    config = InstanceConfig.model_validate({"options": None, "models": [], "custom": None, "container_name": "ct"})
+
+    assert config.registration_id is None
+
+
 def test_instances_with_unpinned_identifiers_ignores_models_missing_from_persisted_config(base2_svc: _Base2Impl):
     persisted = {"default": InstanceConfig(container_name="ct", models=[])}
     base2_svc.instances_info["default"].installed = MagicMock()
