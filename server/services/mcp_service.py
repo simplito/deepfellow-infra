@@ -2375,7 +2375,7 @@ _const = McpConst(
                 image_port=8000,
                 name="duckduckgo",
                 container_name=mcp_service.docker_service.get_docker_container_name("duckduckgo"),
-                image="ghcr.io/nickclyde/duckduckgo-mcp-server:0.6.1",
+                image="ghcr.io/nickclyde/duckduckgo-mcp-server:0.7.0",
                 subnet=subnet,
                 command="python -m duckduckgo_mcp_server.server --transport streamable-http --host 0.0.0.0 --port 8000",
                 # Any port: without docker_subnet DF Infra connects via localhost:<exposed port>, not :8000.
