@@ -9,7 +9,6 @@ from typing import Annotated, Any
 
 import aiohttp
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
-from fastapi.encoders import jsonable_encoder
 from pydantic import SecretStr, ValidationError
 
 from server import dynamic_config
@@ -27,6 +26,7 @@ from server.core.dependencies import (
 from server.dynamic_config import DynamicSettings
 from server.models.config import ConfigEntry, ConfigOut, ConfigRevealOut, SentryBrowserConfigOut
 from server.task_manager import TaskManager
+from server.utils.core import format_pydantic_errors
 from server.utils.logger import logger
 from server.utils.model_downloader import ModelDownloader
 from server.utils.sentry import browser_config, parse_dsn, sentry, tunnel_url
@@ -257,7 +257,7 @@ async def update_dynamic_config(
         try:
             new_settings = DynamicSettings.model_validate(merged_data)
         except ValidationError as e:
-            raise HTTPException(status_code=400, detail=jsonable_encoder(e.errors())) from e
+            raise HTTPException(status_code=400, detail=format_pydantic_errors(e)) from e
         _validate_container_name_suffix(config, current, new_settings)
         _validate_sentry_dsn(updates, new_settings)
 
