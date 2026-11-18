@@ -302,6 +302,28 @@ def test_get_models_alias_of_drops_model_once_its_registration_is_removed():
     assert smart.props.alias_of == ["gpt-4"]
 
 
+def test_get_models_alias_mixing_local_and_cloud_is_not_private():
+    ep = make_endpoint()
+    ep.add_model(
+        "llama3",
+        make_props(private=True),
+        SimpleEndpoint(on_request=AsyncMock()),
+        "llm",
+        RegistrationOptions(origin="local", alias="smart", owned_by="ollama"),
+    )
+    ep.add_model(
+        "gpt-4",
+        make_props(private=False),
+        SimpleEndpoint(on_request=AsyncMock()),
+        "llm",
+        RegistrationOptions(origin="cloud", alias="smart", owned_by="openai"),
+    )
+
+    smart = next(m for m in ep.get_models() if m.id == "smart")
+
+    assert smart.props.private is False
+
+
 def test_registry_get_model_reports_alias_of():
     registry = make_registry()
     registry.embeddings_endpoints.add_model(
@@ -1124,19 +1146,42 @@ def test_get_model_with_registration_id_returns_specific():
     assert result.id == rid2
 
 
-def test_is_model_private_returns_true_when_any_private():
+def test_is_model_private_returns_true_when_all_private():
+    ep = make_endpoint()
+    for rid in ("id-1", "id-2"):
+        ep.add_model(
+            "gpt-4",
+            make_props(private=True),
+            SimpleEndpoint(on_request=AsyncMock()),
+            "llm",
+            RegistrationOptions(origin="local", id=rid),
+        )
+
+    result = ep.is_model_private(ep.models["gpt-4"])
+
+    assert result is True
+
+
+def test_is_model_private_returns_false_when_mixed_local_and_cloud():
     ep = make_endpoint()
     ep.add_model(
         "gpt-4",
         make_props(private=True),
         SimpleEndpoint(on_request=AsyncMock()),
         "llm",
-        RegistrationOptions(origin="local"),
+        RegistrationOptions(origin="local", id="id-1"),
+    )
+    ep.add_model(
+        "gpt-4",
+        make_props(private=False),
+        SimpleEndpoint(on_request=AsyncMock()),
+        "llm",
+        RegistrationOptions(origin="cloud", id="id-2"),
     )
 
     result = ep.is_model_private(ep.models["gpt-4"])
 
-    assert result is True
+    assert result is False
 
 
 def test_get_model_type_returns_type():
